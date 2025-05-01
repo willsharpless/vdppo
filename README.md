@@ -16,17 +16,14 @@
 
 ``` .
 ├── README.md
-├── __init__.py
 ├── make_env.yml
 └── rraa_rl
-    ├── __init__.py
     ├── tests
     │   ├── test_train_dmc.py
     │   ├── test_train_dmc_wandb.py
     │   └── test_train_gym.py
     ├── train.py
     └── utils
-        ├── __init__.py
         ├── custom_dmc2gym.py
         └── wandb_callback.py
 ```
