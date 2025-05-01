@@ -1,5 +1,8 @@
 # rraa-rl
 
+### to setup
+```conda env create -f make_env.yml```
+
 ### deps
  - python = 3.10
  - torch >= 2.2
@@ -10,29 +13,28 @@
  - wandb (optional)
 
 ### to do
- - custom envs
+ - policy test / rendering scripts
  - custom RRAA-RL SAC/PPO algos
- - training and sim scripts
+ - more custom envs
 
-### structure (4/30/25):
+### structure (5/1/25):
 
-``` .
+```.
 ├── README.md
 ├── make_env.yml
 └── rraa_rl
+    ├── algos
+    │   └── ... SB3 + custom
     ├── custom_envs
-    │   └── safeCartpole
+    ├── exp
+    │   └── ... where models are saved
     ├── tests
-    │   ├── test_train_dmc.py
-    │   ├── test_train_dmc_wandb.py
-    │   ├── test_train_gym.py
-    │   └── test_train_safeCartpole.py
+    │   └── ... basic code tests
     ├── train
-    │   └── train_safeCartpole.py
+    │   └── train.py <- general training script
     └── utils
-        ├── custom_dmc2gym.py
-        └── wandb_callback.py
+        └── ... config, dmc2gym, wandb stuff etc.
 ```
 
 ### to run, eg.
-```python -m rraa_rl.train.train_safeCartpole```
+```python -m rraa_rl.train.train```

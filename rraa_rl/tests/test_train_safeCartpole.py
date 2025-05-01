@@ -5,7 +5,7 @@ from stable_baselines3 import PPO
 from rraa_rl.utils.custom_dmc2gym import DMCWrapper
 from rraa_rl.utils.wandb_callback import WandbCallback
 
-USING_WANB = False
+USING_WANB = False # @sander if u see this, plz add willsharpless (github) to braat_brrt (not ucsd.edu)
 
 def main():
 
