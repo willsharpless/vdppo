@@ -1,13 +1,11 @@
 name: rraa-rl
 channels:
-  - nvidia
   - pytorch
   - conda-forge
   - defaults
 dependencies:
   - python=3.10
   - pip
-  - cudatoolkit=12.1
   - pytorch=2.2.0
   - torchvision
   - torchaudio
@@ -16,5 +14,7 @@ dependencies:
       - stable-baselines3
       - mujoco
       - dm_control
-      - numpy
+      - numpy==1.24.4
       - wandb
+      - shimmy
+      - imageio
