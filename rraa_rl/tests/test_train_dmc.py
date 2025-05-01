@@ -1,7 +1,7 @@
 # test_train_dm_control_env.py
 
 from stable_baselines3 import PPO
-from utils.custom_dmc2gym import DMCWrapper  # adjust path if needed
+from rraa_rl.utils.custom_dmc2gym import DMCWrapper  # adjust path if needed
 
 def main():
     env = DMCWrapper(domain_name="cartpole", task_name="balance")
