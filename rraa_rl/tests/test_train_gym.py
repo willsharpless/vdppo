@@ -12,7 +12,7 @@ def main():
     for _ in range(500):
         action, _ = model.predict(obs, deterministic=True)
         obs, reward, terminated, truncated, _ = env.step(action)
-        env.render()
+        # env.render()
         if terminated or truncated:
             obs, _ = env.reset()
 
