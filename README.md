@@ -1,13 +1,14 @@
 # rraa-rl
 
-# deps structure
- - python=3.10?
- - dm_control = ... (for custom rraa mods)
- - gy = 0.26.1 (paired w dmc-gym gym wrapper)
+# deps
+ - python = 3.10
+ - torch >= 2.2
+ - dm_control  (for custom rraa envs)
+ - gym = 0.26.1
  - mujoco > 2.
- - stable-baselines3 (subclassing custom algs)
+ - stable-baselines3 = 2.6 (subclassing custom algs)
 
- # (this leaves) to make
+ # to do
  - custom envs
  - custom RRAA-RL SAC/PPO algos
  - training and sim scripts
