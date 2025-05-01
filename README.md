@@ -14,7 +14,7 @@
 
  ### structure (4/30/25):
 
- .
+``` .
 ├── README.md
 ├── __init__.py
 ├── make_env.yml
@@ -28,4 +28,4 @@
     └── utils
         ├── __init__.py
         ├── custom_dmc2gym.py
-        └── wandb_callback.py
+        └── wandb_callback.py```
