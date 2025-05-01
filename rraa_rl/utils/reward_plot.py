@@ -23,4 +23,3 @@ def save_reward_plot(rewards, timestep, save_dir="./models/checkpoints"):
     plot_path = os.path.join(save_dir, f"model_rewards.png")
     plt.savefig(plot_path)
     plt.close()
-    print(f"Saved plot at {plot_path}")

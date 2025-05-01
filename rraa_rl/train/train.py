@@ -3,6 +3,7 @@ import os
 import rraa_rl.custom_envs
 from rraa_rl.algos import algorithms # SB3 + custom
 from rraa_rl.utils import *
+from tqdm import tqdm
 import wandb
 
 def main():
@@ -17,42 +18,44 @@ def main():
         wandb.init(name=CONFIG.NAME, project=CONFIG.WB_PROJECT, entity=CONFIG.WB_ENTITY, group=CONFIG.WB_GROUP, config=CONFIG)
 
     ## Define environment
-    env = DMCWrapper(domain_name=CONFIG.ENV, task_name=CONFIG.TASK)
-    env.seed(CONFIG.SEED)
+    env = DMCWrapper(domain_name=CONFIG.ENV, task_name=CONFIG.TASK, seed=CONFIG.SEED)
+    env.reset(CONFIG.SEED)
 
     ## Define algorithm
     if CONFIG.ALG not in algorithms:
         raise ValueError(f"Algorithm {CONFIG.ALG} not recognized. Available algorithms: {list(algorithms.keys())}")
     model_class = algorithms[CONFIG.ALG]
-    model = model_class(CONFIG.POLICY_TYPE, env, seed=CONFIG.SEED) #FIXME verbose no, tqmd someday
+    model = model_class(CONFIG.POLICY_TYPE, env, seed=CONFIG.SEED)
     
-    # Training loop with intermittent saving
+    ## Training loop with intermittent saving
+    print(f"\n\nRRAA-RL\n\n Learning {CONFIG.ENV}_{CONFIG.TASK} with {CONFIG.ALG} ...\n  writing to {CONFIG.CURR_EXP_PATH} \n")
     rewards = []
-    for timestep in range(0, CONFIG.MODEL_STEPS, CONFIG.SUB_STEPS):
+    for step in tqdm(range(0, CONFIG.MODEL_STEPS, CONFIG.SUB_STEPS), desc=""):
+        tqdm.write(f"Training Step: {step} | Avg Reward: {sum(rewards)/len(rewards) if rewards else 0:0.3f}")
 
-        ## Learn
+        ## Learn & Save Model
         if CONFIG.WANDB:
             model.learn(total_timesteps=CONFIG.SUB_STEPS, callback=WandbCallback())
         else:
             model.learn(total_timesteps=CONFIG.SUB_STEPS)
-        model.save(os.path.join(CONFIG.CURR_MODEL_PATH, f'model_{timestep + CONFIG.SUB_STEPS}'))
+        model.save(os.path.join(CONFIG.CURR_MODEL_PATH, f'model_{step + CONFIG.SUB_STEPS}'))
 
         ## Guage model rewards
-        obs, _ = env.reset()
-        for _ in range(CONFIG.SAMPLE_HORIZON):
+        obs, _ = env.reset(CONFIG.SEED)
+        for _ in tqdm(range(CONFIG.SAMPLE_HORIZON), desc="Evaluating rewards", leave=False):
             action, _ = model.predict(obs, deterministic=True)
             obs, reward, terminated, truncated, _ = env.step(action)
             if terminated or truncated:
-                obs, _ = env.reset()
+                obs, _ = env.reset(CONFIG.SEED)
+
+        ## Save & Plot Reward
         rewards.append(reward)
+        save_reward_plot(rewards, step, CONFIG.CURR_EXP_PATH)
 
-        ## Save reward plot
-        save_reward_plot(rewards, timestep, CONFIG.CURR_EXP_PATH)
-
+        ## Also save model as WandB artifact
         if CONFIG.WANDB:
-            # Log the model checkpoint as a WandB artifact
-            artifact = wandb.Artifact(f"model_checkpoint_{timestep}", type="model")
-            artifact.add_file(os.path.join(CONFIG.CURR_MODEL_PATH, f"model_{timestep}.zip"))
+            artifact = wandb.Artifact(f"model_checkpoint_{step}", type="model")
+            artifact.add_file(os.path.join(CONFIG.CURR_MODEL_PATH, f"model_{step}.zip"))
             wandb.log_artifact(artifact)
 
 if __name__ == "__main__":

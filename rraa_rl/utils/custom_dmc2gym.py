@@ -1,4 +1,5 @@
 import numpy as np
+import random
 import gym
 from gym import spaces
 from dm_control import suite
@@ -6,8 +7,8 @@ from dm_control import suite
 class DMCWrapper(gym.Env):
     metadata = {"render_modes": [], "render_fps": 60}
 
-    def __init__(self, domain_name="cartpole", task_name="balance", max_steps=1000):
-        self.env = suite.load(domain_name=domain_name, task_name=task_name)
+    def __init__(self, domain_name="cartpole", task_name="balance", max_steps=1000, seed=0):
+        self.env = suite.load(domain_name=domain_name, task_name=task_name, task_kwargs={'random':seed})
         self.max_steps = max_steps
         self.step_count = 0
 
