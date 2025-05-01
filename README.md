@@ -3,17 +3,18 @@
 # deps
  - python = 3.10
  - torch >= 2.2
- - dm_control  (for custom rraa envs)
+ - dm_control >= 1.0
  - gym = 0.26.1
- - mujoco > 2.
+ - mujoco >= 2.0
  - stable-baselines3 = 2.6 (subclassing custom algs)
+ - wandb (optional)
 
- # to do
+# to do
  - custom envs
  - custom RRAA-RL SAC/PPO algos
  - training and sim scripts
 
- ### structure (4/30/25):
+### structure (4/30/25):
 
 ``` .
 ├── README.md
