@@ -1,6 +1,6 @@
 # rraa-rl
 
-# deps
+### deps
  - python = 3.10
  - torch >= 2.2
  - dm_control >= 1.0
@@ -9,7 +9,7 @@
  - stable-baselines3 = 2.6 (subclassing custom algs)
  - wandb (optional)
 
-# to do
+### to do
  - custom envs
  - custom RRAA-RL SAC/PPO algos
  - training and sim scripts

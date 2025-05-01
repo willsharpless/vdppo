@@ -10,13 +10,13 @@ class WandbCallback(BaseCallback):
             for info in self.locals["infos"]:
                 if "episode" in info:
                     wandb.log({
-                        "Score/reward": info["episode"]["r"],
-                        "General/length": info["episode"]["l"],
-                        "General/timesteps": self.num_timesteps
+                        "1-Score/reward": info["episode"]["r"],
+                        "2-General/length": info["episode"]["l"],
+                        "2-General/timesteps": self.num_timesteps
                     })
                 if "c" in info["episode"].keys():
                     wandb.log({
-                        "Score/penalty": info["episode"]["c"],
+                        "1-Score/penalty": info["episode"]["c"],
                     })
         return True
     

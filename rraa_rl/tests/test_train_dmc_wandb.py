@@ -5,7 +5,7 @@ from rraa_rl.utils.custom_dmc2gym import DMCWrapper
 from rraa_rl.utils.wandb_callback import WandbCallback
 
 def main():
-    wandb.init(project="rl_tests", entity="rraa-rl", name="test_dmc_cartpole", config={"algo": "PPO", "env": "CartPole-v1"})
+    wandb.init(project="init_tests", entity="braat_brrt", group="rl_tests", name="dmc_cartpole_ppo", config={"algo": "PPO", "env": "CartPole-v1"})
 
     env = DMCWrapper(domain_name="cartpole", task_name="balance")
     model = PPO("MlpPolicy", env, verbose=1)
