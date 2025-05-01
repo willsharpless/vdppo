@@ -32,11 +32,11 @@ class Config:
         parser.add_argument("-ms", "--MODEL_STEPS", type=int, default=self.MODEL_STEPS, help="Total timesteps for training")
         parser.add_argument("--SUB_STEPS", type=int, default=self.SUB_STEPS, help="Interval to save model checkpoints")
         parser.add_argument("-n", "--NAME", type=str, default=self.NAME, help="Model name")
-        parser.add_argument("-alg", "--ALG", type=str, default=self.POLICY_TYPE, help="Algorithm name for stable-baselines/custom")
+        parser.add_argument("-alg", "--ALG", type=str, default=self.ALG, help="Algorithm name for stable-baselines/custom")
         parser.add_argument("--POLICY_TYPE", type=str, default=self.POLICY_TYPE, help="Policy type")
-        parser.add_argument("--SEED", type=int, default=self.SEED, help="Random seed for reproducibility")
+        parser.add_argument("-s","--SEED", type=int, default=self.SEED, help="Random seed for reproducibility")
         
-        parser.add_argument("-wb", "--WANDB", action="store_true", help="Log to WandB")
+        parser.add_argument("-wb", "--WANDB", action="store_true", default=False, help="Log to WandB")
         parser.add_argument("--WB_ENTITY", type=str, default=self.WB_ENTITY, help="WandB entity")
         parser.add_argument("-wbp", "--WB_PROJECT", type=str, default=self.WB_PROJECT, help="WandB project")
         parser.add_argument("-wbg", "--WB_GROUP", type=str, default=self.WB_GROUP, help="WandB group(?)")
@@ -49,7 +49,13 @@ class Config:
         self.MODEL_STEPS = args.MODEL_STEPS
         self.SUB_STEPS = args.SUB_STEPS
         self.NAME = args.NAME
+        self.ALG = args.ALG
         self.POLICY_TYPE = args.POLICY_TYPE
+        self.SEED = args.SEED
+        self.WANDB = args.WANDB
+        self.WB_ENTITY = args.WB_ENTITY
+        self.WB_PROJECT = args.WB_PROJECT
+        self.WB_GROUP = args.WB_GROUP
 
         # Make out folders
         self.CURR_EXP_PATH = os.path.join(self.BASE_PATH, self.ENV + '_' + self.TASK, self.ALG, self.NAME)

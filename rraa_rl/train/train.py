@@ -19,7 +19,7 @@ def main():
 
     ## Define environment
     env = DMCWrapper(domain_name=CONFIG.ENV, task_name=CONFIG.TASK, seed=CONFIG.SEED)
-    env.reset(CONFIG.SEED)
+    env.reset(seed=CONFIG.SEED)
 
     ## Define algorithm
     if CONFIG.ALG not in algorithms:
@@ -41,12 +41,12 @@ def main():
         model.save(os.path.join(CONFIG.CURR_MODEL_PATH, f'model_{step + CONFIG.SUB_STEPS}'))
 
         ## Guage model rewards
-        obs, _ = env.reset(CONFIG.SEED)
+        obs, _ = env.reset(seed=CONFIG.SEED)
         for _ in tqdm(range(CONFIG.SAMPLE_HORIZON), desc="Evaluating rewards", leave=False):
             action, _ = model.predict(obs, deterministic=True)
             obs, reward, terminated, truncated, _ = env.step(action)
             if terminated or truncated:
-                obs, _ = env.reset(CONFIG.SEED)
+                obs, _ = env.reset(seed=CONFIG.SEED)
 
         ## Save & Plot Reward
         rewards.append(reward)
