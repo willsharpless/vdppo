@@ -13,9 +13,10 @@
  - wandb (optional)
 
 ### to do
- - policy test / rendering scripts
+ - general policy test + render script (test w/ cartpole)
  - custom RRAA-RL SAC/PPO algos
- - more custom envs
+ - what baselines?
+ - what safe envs? custom?
 
 ### structure (5/1/25):
 
@@ -37,4 +38,7 @@
 ```
 
 ### to run, eg.
-```python -m rraa_rl.train.train```
+```
+python -m rraa_rl.train.train
+python -m rraa_rl.train.train_safeCartpole
+```
