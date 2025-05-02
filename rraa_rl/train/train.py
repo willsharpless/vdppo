@@ -50,7 +50,7 @@ def main():
 
         ## Save & Plot Reward
         rewards.append(reward)
-        save_reward_plot(rewards, step, CONFIG.CURR_EXP_PATH)
+        save_reward_plot(rewards, step, CONFIG.SUB_STEPS, CONFIG.CURR_EXP_PATH)
 
         ## Also save model as WandB artifact
         if CONFIG.WANDB:
