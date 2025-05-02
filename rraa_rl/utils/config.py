@@ -57,17 +57,20 @@ class Config:
         self.WB_PROJECT = args.WB_PROJECT
         self.WB_GROUP = args.WB_GROUP
 
+    def save_config(self):
+        
         # Make out folders
         self.CURR_EXP_PATH = os.path.join(self.BASE_PATH, self.ENV + '_' + self.TASK, self.ALG, self.NAME)
-        self.CURR_MODEL_PATH = os.path.join(self.BASE_PATH, self.ENV + '_' + self.TASK, self.ALG, self.NAME, 'model')
+        self.CURR_MODEL_PATH = os.path.join(self.BASE_PATH, self.ENV + '_' + self.TASK, self.ALG, self.NAME, 'model')       
+
         if os.path.exists(self.CURR_EXP_PATH):
             if input(f"\n{self.CURR_EXP_PATH} exists. Overwrite? (y/n):").lower() != 'y':
                 sys.exit("Exiting without overwriting.")  # Exit if user chooses 'n'
             shutil.rmtree(self.CURR_EXP_PATH)
-        os.makedirs(self.CURR_EXP_PATH, exist_ok=True)
-        os.makedirs(self.CURR_MODEL_PATH, exist_ok=True)       
 
-    def save_config(self):
+        os.makedirs(self.CURR_EXP_PATH, exist_ok=True)
+        os.makedirs(self.CURR_MODEL_PATH, exist_ok=True)
+
         with open(os.path.join(self.CURR_EXP_PATH, "config.pkl"), "wb") as f:
             pickle.dump(self, f)  # Save the entire config object as a pickle
 
