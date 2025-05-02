@@ -1,4 +1,5 @@
 # rraa-rl
+by the ucsd phdawgs
 
 ### to setup
 ```conda env create -f make_env.yml```
