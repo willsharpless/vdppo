@@ -16,7 +16,7 @@ def main():
     CONFIG.ENV='safeCartpole'
     CONFIG.TASK='swingup'
     CONFIG.MODEL_STEPS=200_000
-    CONFIG.SUB_STEPS=2_000
+    CONFIG.SUB_STEPS=10_000
     CONFIG.NAME='test'
     CONFIG.save_config()
 

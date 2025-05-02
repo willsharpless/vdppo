@@ -2,4 +2,11 @@
 
 *wandb
 
-/rraa_rl/exp*
+# Ignore all experiments
+/rraa_rl/exp/**
+
+# except certain files
+!/rraa_rl/exp/safeCartpole_swingup
+!/rraa_rl/exp/safeCartpole_swingup/PPO
+!/rraa_rl/exp/safeCartpole_swingup/PPO/test
+!/rraa_rl/exp/safeCartpole_swingup/PPO/test/**
