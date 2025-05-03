@@ -14,10 +14,15 @@ by the ucsd phdawgs
  - wandb (optional)
 
 ### to do
- - general policy test + render script (test w/ cartpole)
- - custom RRAA-RL SAC/PPO algos
+ - rendering utils (test w/ cartpole)
+ - custom RRAA-RL algos
+    - PPO: written but correct GAE update?
+    - SAC: todo
+    - general: simultaneous solving of decomposed problem (for coupled policy learning)
  - what baselines?
+    - 05/02, WND: PPO w/ constrained MDP (aug lagrangian), RESPO (milan), CRL (used in oswin work)
  - what safe envs? custom?
+    - 05/02, WND: all envs need reward l(x) and penalty g(x) fns, some multiple l(x)
 
 ### structure (5/1/25):
 
