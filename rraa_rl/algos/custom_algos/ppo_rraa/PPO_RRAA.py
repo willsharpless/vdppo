@@ -84,7 +84,7 @@ class RolloutBufferRRAA(RolloutBuffer):
             
             elif self.problem_type == 'R':
                 last_delta = (1 - (self.gamma * next_non_terminal)) * self.rewards[step] + \
-                    self.gamma * np.min(self.rewards[step], last_delta) * next_non_terminal
+                    self.gamma * np.max(self.rewards[step], last_delta) * next_non_terminal
                 last_gae_lam = last_delta - self.values[step] + self.gamma * self.gae_lambda * next_non_terminal * last_gae_lam
 
             elif self.problem_type == 'RA':
