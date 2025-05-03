@@ -61,6 +61,7 @@ class RolloutBufferRRAA(RolloutBuffer):
 
         # Compute GAE
         last_gae_lam = 0
+        last_delta = last_values.copy()
         for step in reversed(range(self.buffer_size)):
             if step == self.buffer_size - 1:
                 next_non_terminal = 1.0 - dones.astype(np.float32)
@@ -74,12 +75,29 @@ class RolloutBufferRRAA(RolloutBuffer):
                 delta = self.rewards[step] + self.gamma * next_values * next_non_terminal - self.values[step]
                 last_gae_lam = delta + self.gamma * self.gae_lambda * next_non_terminal * last_gae_lam
             
-            elif self.problem_type == 'RA':
-                # TODO
-                pass
+            elif self.problem_type == 'R':
+                last_delta = (1 - (self.gamma * next_non_terminal)) * self.rewards[step] + \
+                    self.gamma * np.min(self.rewards[step], last_delta) * next_non_terminal
+                last_gae_lam = last_delta - self.values[step] + self.gamma * self.gae_lambda * next_non_terminal * last_gae_lam
 
-            # TODO other cases as well
-            
+            elif self.problem_type == 'RA':
+                self.penalties = None # FIXME WAS: get penalties/g(x) from env
+                last_delta = (1 - (self.gamma * next_non_terminal)) * np.max(self.rewards[step], self.penalties[step]) + \
+                    self.gamma * np.max(torch.min(self.rewards[step], last_delta), self.penalties[step]) * next_non_terminal
+                last_gae_lam = last_delta - self.values[step] + self.gamma * self.gae_lambda * next_non_terminal * last_gae_lam
+
+            # NOTE WAS:
+            #
+            # not sure abt next_non_terminal mult: 
+            #   as of now, fixing (1-gam) * rewards to account for termination,
+            #   eg. for terminal pts, (1 - (gam * next_non_terminal)) * rewards = rewards
+            #
+            # nikhil & I not certain about delta update for BRT/BRAT bellman eq:
+            #   alternatively: last_delta = (1 - (self.gamma * next_non_terminal)) * self.rewards[step] + \
+            #                                   self.gamma * np.min(self.rewards[step], next_values) * next_non_terminal
+            # 
+            # need to certify correct clipping advantage occurs outside (if we want to match Oswin)
+
             self.advantages[step] = last_gae_lam
 
         self.returns = self.advantages + self.values
