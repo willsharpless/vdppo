@@ -10,15 +10,16 @@ def main():
 
     ## Init experiment
     CONFIG = Config()
-    CONFIG.parse_args()
-    
+        
     ## Safe Cartpole
     CONFIG.ENV='safeCartpole'
     CONFIG.TASK='swingup'
     CONFIG.MODEL_STEPS=200_000
     CONFIG.SUB_STEPS=10_000
-    CONFIG.NAME='test_PPO_RRAA'
+    CONFIG.NAME='test'
     CONFIG.ALG='PPO_RRAA'
+    CONFIG.SEED=0
+    CONFIG.parse_args()
     CONFIG.save_config()
 
     if CONFIG.WANDB:

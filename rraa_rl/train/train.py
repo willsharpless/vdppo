@@ -10,8 +10,8 @@ def main():
 
     ## Init experiment
     CONFIG = Config()
+    # script fixed args go here
     CONFIG.parse_args()
-    # script fixed args go here (overwrite parsed/default)
     CONFIG.save_config()
 
     if CONFIG.WANDB:
