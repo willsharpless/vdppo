@@ -260,8 +260,8 @@ class Balance(base.Task):
     Defined to be _negative_ iff unsafe.
     
     NOTE WAS:
-    For now, computed directly from obs and may diverge from is_unsafe, if not sparse. 
-    (Well see whats best for other envs.)
+    For now, computed directly from obs and may diverge from is_unsafe, eg. if not sparse. 
+    (We should probably make target/obstacle sdf's for future envs)
     
     Doing this bc chat says to convert to physics (and use is_unsafe), one would need to either:
       1. cache each state physics during roll-out 

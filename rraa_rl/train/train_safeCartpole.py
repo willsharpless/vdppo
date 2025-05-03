@@ -17,7 +17,8 @@ def main():
     CONFIG.TASK='swingup'
     CONFIG.MODEL_STEPS=200_000
     CONFIG.SUB_STEPS=10_000
-    CONFIG.NAME='test'
+    CONFIG.NAME='test_PPO_RRAA'
+    CONFIG.ALG='PPO_RRAA'
     CONFIG.save_config()
 
     if CONFIG.WANDB:

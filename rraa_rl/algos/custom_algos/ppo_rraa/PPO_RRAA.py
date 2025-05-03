@@ -5,12 +5,12 @@ import torch
 import numpy as np
 
 class PPO_RRAA(PPO):
-    def __init__(self, *args, problem_type='RAA', decomposed_model_1_path=None, decomposed_model_2_path=None, **kwargs):
+    def __init__(self, *args, problem_type='default', decomposed_model_1_path=None, decomposed_model_2_path=None, **kwargs):
         self.problem_type = problem_type
         self.decomposed_model_1 = BaseAlgorithm.load(decomposed_model_1_path) \
-            if problem_type in ['RAA', 'RR', 'RRAA'] else None
+            if problem_type in ['RAA', 'RR', 'RRAA'] and decomposed_model_1_path else None
         self.decomposed_model_2 = BaseAlgorithm.load(decomposed_model_2_path) \
-            if problem_type in ['RR', 'RRAA'] else None
+            if problem_type in ['RR', 'RRAA'] and decomposed_model_2_path else None
         super().__init__(*args, **kwargs)
 
     def _setup_model(self):
@@ -23,13 +23,13 @@ class PPO_RRAA(PPO):
             gamma=self.gamma,
             gae_lambda=self.gae_lambda,
             problem_type=self.problem_type,
-            decomposed_model=self.decomposed_model_1,
-            decomposed_model=self.decomposed_model_2,
+            decomposed_model_1=self.decomposed_model_1,
+            decomposed_model_2=self.decomposed_model_2,
             env=self.env,
         )
 
 class RolloutBufferRRAA(RolloutBuffer):
-    def __init__(self, *args, problem_type='RAA', decomposed_model_1=None, decomposed_model_2=None, env=None, **kwargs):
+    def __init__(self, *args, problem_type='default', decomposed_model_1=None, decomposed_model_2=None, env=None, **kwargs):
         super().__init__(*args, **kwargs)
         # Load the saved model
         self.problem_type = problem_type
@@ -49,16 +49,14 @@ class RolloutBufferRRAA(RolloutBuffer):
         # Compute Decomposed Values Vd(s)
         if self.problem_type != 'default':
             with torch.no_grad():
-                obs_tensor = self.observations.to(self.device)
 
-                ## TODO WAS: compute l(x), g(x) ie rewards, penalties
-                # self.observations is a stored attribute, with obs (output of env.step), for each position ix
-                self.penalties = self.env.get_penalty(obs_tensor)
+                # Compute l(x), g(x) ie rewards, penalties
+                self.penalties = self.env.get_penalty(self.observations)
 
                 if self.problem_type in ['RAA', 'RR', 'RRAA']:
-                    decomposed_value_1 = self.decomposed_model_1.policy.predict_values(obs_tensor).clone().cpu().numpy().flatten()
+                    decomposed_value_1 = self.decomposed_model_1.policy.predict_values(torch.from_numpy(self.observations).to(self.device)).clone().cpu().numpy().flatten()
                 if self.problem_type in ['RR', 'RRAA']:
-                    decomposed_value_2 = self.decomposed_model_2.policy.predict_values(obs_tensor).clone().cpu().numpy().flatten()
+                    decomposed_value_2 = self.decomposed_model_2.policy.predict_values(torch.from_numpy(self.observations).to(self.device)).clone().cpu().numpy().flatten()
                 
                 # NOTE WAS: 
                 # since we can solve BRAT/BRT problems, models could also be inferred in env.get_rewards
