@@ -5,12 +5,16 @@ import torch
 import numpy as np
 
 class PPO_RRAA(PPO):
-    def __init__(self, *args, problem_type='default', decomposed_model_1_path=None, decomposed_model_2_path=None, **kwargs):
-        self.problem_type = problem_type
-        self.decomposed_model_1 = BaseAlgorithm.load(decomposed_model_1_path) \
-            if problem_type in ['RAA', 'RR', 'RRAA'] and decomposed_model_1_path else None
-        self.decomposed_model_2 = BaseAlgorithm.load(decomposed_model_2_path) \
-            if problem_type in ['RR', 'RRAA'] and decomposed_model_2_path else None
+    def __init__(self, *args, bellman='normal', decomposed_model_1_path=None, decomposed_model_2_path=None, **kwargs):
+
+        if bellman in ['RAA', 'RR', 'RRAA'] and decomposed_model_1_path:
+            decomposed_model_1_path = BaseAlgorithm.load(decomposed_model_1_path) 
+        if bellman in ['RR', 'RRAA'] and decomposed_model_2_path:
+            decomposed_model_2_path = BaseAlgorithm.load(decomposed_model_2_path)
+        self.decomposed_model_1 = decomposed_model_1_path
+        self.decomposed_model_2 = decomposed_model_2_path
+        self.bellman = bellman
+        
         super().__init__(*args, **kwargs)
 
     def _setup_model(self):
@@ -22,17 +26,17 @@ class PPO_RRAA(PPO):
             self.device,
             gamma=self.gamma,
             gae_lambda=self.gae_lambda,
-            problem_type=self.problem_type,
+            bellman=self.bellman,
             decomposed_model_1=self.decomposed_model_1,
             decomposed_model_2=self.decomposed_model_2,
             env=self.env,
         )
 
 class RolloutBufferRRAA(RolloutBuffer):
-    def __init__(self, *args, problem_type='default', decomposed_model_1=None, decomposed_model_2=None, env=None, **kwargs):
+    def __init__(self, *args, bellman='normal', decomposed_model_1=None, decomposed_model_2=None, env=None, **kwargs):
         super().__init__(*args, **kwargs)
         # Load the saved model
-        self.problem_type = problem_type
+        self.bellman = bellman
         self.decomposed_model_1 = decomposed_model_1
         self.decomposed_model_2 = decomposed_model_2
         self.env = env
@@ -47,15 +51,15 @@ class RolloutBufferRRAA(RolloutBuffer):
         """
 
         # Compute Decomposed Values Vd(s)
-        if self.problem_type != 'default':
+        if self.bellman != 'normal':
             with torch.no_grad():
 
                 # Compute l(x), g(x) ie rewards, penalties
                 self.penalties = self.env.get_penalty(self.observations)
 
-                if self.problem_type in ['RAA', 'RR', 'RRAA']:
+                if self.bellman in ['RAA', 'RR', 'RRAA']:
                     decomposed_value_1 = self.decomposed_model_1.policy.predict_values(torch.from_numpy(self.observations).to(self.device)).clone().cpu().numpy().flatten()
-                if self.problem_type in ['RR', 'RRAA']:
+                if self.bellman in ['RR', 'RRAA']:
                     decomposed_value_2 = self.decomposed_model_2.policy.predict_values(torch.from_numpy(self.observations).to(self.device)).clone().cpu().numpy().flatten()
                 
                 # NOTE WAS: 
@@ -76,22 +80,23 @@ class RolloutBufferRRAA(RolloutBuffer):
                 next_values = self.values[step + 1]
             
             # Compute GA for Various Bellman Updates
-            if self.problem_type == 'default':
+            if self.bellman == 'normal':
                 delta = self.rewards[step] + self.gamma * next_values * next_non_terminal - self.values[step]
                 last_gae_lam = delta + self.gamma * self.gae_lambda * next_non_terminal * last_gae_lam
             
-            elif self.problem_type == 'R':
+            elif self.bellman == 'R':
                 last_delta = (1 - (self.gamma * next_non_terminal)) * self.rewards[step] + \
                     self.gamma * np.max(self.rewards[step], last_delta) * next_non_terminal
                 last_gae_lam = last_delta - self.values[step] + self.gamma * self.gae_lambda * next_non_terminal * last_gae_lam
 
-            elif self.problem_type == 'RA':
+            elif self.bellman == 'RA':
                 self.penalties = None # FIXME WAS: get penalties/g(x) from env
                 last_delta = (1 - (self.gamma * next_non_terminal)) * np.min(self.rewards[step], self.penalties[step]) + \
                     self.gamma * np.min(torch.max(self.rewards[step], last_delta), self.penalties[step]) * next_non_terminal
                 last_gae_lam = last_delta - self.values[step] + self.gamma * self.gae_lambda * next_non_terminal * last_gae_lam
 
-            # TODO WAS: 'RAA', 'RR', 'RRAA' versions too
+            else:
+                raise NotImplementedError("TODO WAS: 'RAA', 'RR', 'RRAA' versions")
 
             # NOTE WAS:
             #

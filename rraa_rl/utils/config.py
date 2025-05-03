@@ -3,6 +3,7 @@ import os
 import pickle
 import sys
 import shutil
+from rraa_rl.algos import algorithms # SB3 + custom
 
 class Config:
     def __init__(self):
@@ -14,6 +15,7 @@ class Config:
         self.SAMPLE_HORIZON = 2000 # roll-out length for guaging rewards
         self.POLICY_TYPE = "MlpPolicy"
         self.ALG = "PPO"
+        self.BELLMAN='normal'
         self.SEED = 0
 
         self.NAME = "test"
@@ -35,6 +37,7 @@ class Config:
         parser.add_argument("-alg", "--ALG", type=str, default=self.ALG, help="Algorithm name for stable-baselines/custom")
         parser.add_argument("--POLICY_TYPE", type=str, default=self.POLICY_TYPE, help="Policy type")
         parser.add_argument("-s","--SEED", type=int, default=self.SEED, help="Random seed for reproducibility")
+        parser.add_argument("-b", "--BELLMAN", type=str, default=self.BELLMAN, help="Bellman equation to use")
         
         parser.add_argument("-wb", "--WANDB", action="store_true", default=False, help="Log to WandB")
         parser.add_argument("--WB_ENTITY", type=str, default=self.WB_ENTITY, help="WandB entity")
@@ -52,10 +55,14 @@ class Config:
         self.ALG = args.ALG
         self.POLICY_TYPE = args.POLICY_TYPE
         self.SEED = args.SEED
+        self.BELLMAN = args.BELLMAN if args.ALG in ['PPO', 'SAC', 'A2C', 'DDPG'] else 'normal'
         self.WANDB = args.WANDB
         self.WB_ENTITY = args.WB_ENTITY
         self.WB_PROJECT = args.WB_PROJECT
         self.WB_GROUP = args.WB_GROUP
+
+        if self.ALG not in algorithms:
+            raise ValueError(f"Algorithm {self.ALG} not recognized. Available algorithms: {list(algorithms.keys())}")
 
     def save_config(self):
         

@@ -17,7 +17,8 @@ def main():
     CONFIG.MODEL_STEPS=200_000
     CONFIG.SUB_STEPS=10_000
     CONFIG.NAME='test'
-    CONFIG.ALG='PPO_RRAA'
+    CONFIG.ALG='PPO'
+    CONFIG.BELLMAN='normal'
     CONFIG.SEED=0
     CONFIG.parse_args()
     CONFIG.save_config()
@@ -30,13 +31,14 @@ def main():
     env.reset(seed=CONFIG.SEED)
 
     ## Define algorithm
-    if CONFIG.ALG not in algorithms:
-        raise ValueError(f"Algorithm {CONFIG.ALG} not recognized. Available algorithms: {list(algorithms.keys())}")
     model_class = algorithms[CONFIG.ALG]
-    model = model_class(CONFIG.POLICY_TYPE, env, seed=CONFIG.SEED)
+    if CONFIG.ALG in ['PPO', 'SAC', 'A2C', 'DDPG']:
+        model = model_class(CONFIG.POLICY_TYPE, env, seed=CONFIG.SEED)
+    else:
+        model = model_class(CONFIG.POLICY_TYPE, env, seed=CONFIG.SEED, bellman=CONFIG.BELLMAN)
     
     ## Training loop with intermittent saving
-    print(f"\n\nRRAA-RL\n\n Learning {CONFIG.ENV}_{CONFIG.TASK} with {CONFIG.ALG} ...\n  writing to {CONFIG.CURR_EXP_PATH} \n")
+    print(f"\n\nRRAA-RL\n\n Learning {CONFIG.ENV}_{CONFIG.TASK} with {CONFIG.ALG}-{CONFIG.BELLMAN} ...\n  writing to {CONFIG.CURR_EXP_PATH} \n")
     rewards = []
     for step in tqdm(range(0, CONFIG.MODEL_STEPS, CONFIG.SUB_STEPS), desc=""):
         tqdm.write(f"Training Step: {step} | Avg Reward: {sum(rewards)/len(rewards) if rewards else 0:0.3f}")
