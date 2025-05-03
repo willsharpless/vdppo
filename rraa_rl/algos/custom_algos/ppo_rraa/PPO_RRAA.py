@@ -25,15 +25,17 @@ class PPO_RRAA(PPO):
             problem_type=self.problem_type,
             decomposed_model=self.decomposed_model_1,
             decomposed_model=self.decomposed_model_2,
+            env=self.env,
         )
 
 class RolloutBufferRRAA(RolloutBuffer):
-    def __init__(self, *args, problem_type='RAA', decomposed_model_1=None, decomposed_model_2=None, **kwargs):
+    def __init__(self, *args, problem_type='RAA', decomposed_model_1=None, decomposed_model_2=None, env=None, **kwargs):
         super().__init__(*args, **kwargs)
         # Load the saved model
         self.problem_type = problem_type
         self.decomposed_model_1 = decomposed_model_1
         self.decomposed_model_2 = decomposed_model_2
+        self.env = env
 
     def compute_returns_and_advantage(self, last_values, dones):
         """
@@ -50,6 +52,8 @@ class RolloutBufferRRAA(RolloutBuffer):
                 obs_tensor = self.observations.to(self.device)
 
                 ## TODO WAS: compute l(x), g(x) ie rewards, penalties
+                # self.observations is a stored attribute, with obs (output of env.step), for each position ix
+                self.penalties = self.env.get_penalty(obs_tensor)
 
                 if self.problem_type in ['RAA', 'RR', 'RRAA']:
                     decomposed_value_1 = self.decomposed_model_1.policy.predict_values(obs_tensor).clone().cpu().numpy().flatten()
@@ -85,8 +89,8 @@ class RolloutBufferRRAA(RolloutBuffer):
 
             elif self.problem_type == 'RA':
                 self.penalties = None # FIXME WAS: get penalties/g(x) from env
-                last_delta = (1 - (self.gamma * next_non_terminal)) * np.max(self.rewards[step], self.penalties[step]) + \
-                    self.gamma * np.max(torch.min(self.rewards[step], last_delta), self.penalties[step]) * next_non_terminal
+                last_delta = (1 - (self.gamma * next_non_terminal)) * np.min(self.rewards[step], self.penalties[step]) + \
+                    self.gamma * np.min(torch.max(self.rewards[step], last_delta), self.penalties[step]) * next_non_terminal
                 last_gae_lam = last_delta - self.values[step] + self.gamma * self.gae_lambda * next_non_terminal * last_gae_lam
 
             # TODO WAS: 'RAA', 'RR', 'RRAA' versions too
@@ -98,8 +102,9 @@ class RolloutBufferRRAA(RolloutBuffer):
             #   s.t. for terminal pts, (1 - (gam * next_non_terminal)) * rewards = rewards
             #
             # Nikhil & I not certain about delta update for BRT/BRAT bellman eq:
-            #   alternatively, last_delta = (1 - (self.gamma * next_non_terminal)) * self.rewards[step] + \
-            #                                   self.gamma * np.min(self.rewards[step], next_values) * next_non_terminal
+            #   alt, use next_values instead of last_delta
+            #   last_delta = (1 - (self.gamma * next_non_terminal)) * self.rewards[step] + \
+            #       self.gamma * np.min(self.rewards[step], next_values) * next_non_terminal
             # 
             # need to certify correct clipping advantage occurs outside (if we want to match Oswin)
 

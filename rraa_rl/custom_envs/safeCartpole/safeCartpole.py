@@ -253,6 +253,79 @@ class Balance(base.Task):
             return (theta < self.unsafe_theta_min or self.unsafe_theta_max < theta)
 
     return False 
+  
+  def _get_penalty(self, obs, sparse=False):
+    """
+    A penalty function (ie g(x)) for given obs. Mainly to be used in custom PPO/SAC algorithms.
+    Defined to be _negative_ iff unsafe.
+    
+    NOTE WAS:
+    For now, computed directly from obs and may diverge from is_unsafe, if not sparse. 
+    (Well see whats best for other envs.)
+    
+    Doing this bc chat says to convert to physics (and use is_unsafe), one would need to either:
+      1. cache each state physics during roll-out 
+        - requires subclassing on_policy_algorithm + defining custom collect_rollouts method (SB3)
+        - slow if not-vectorized
+        - hefty memory
+      2. "approximate" w/ smth like,
+        def observation_to_physics(obs):
+          return {"pos": obs[..., 0], "vel": obs[..., 1]}
+    """
+
+    if isinstance(obs, torch.Tensor):
+      obs_cpu = obs.clone().cpu().numpy()
+    else: 
+      obs_cpu = np.array(obs)
+
+    x = obs_cpu[..., 0]
+    theta = (np.arctan2(obs_cpu[..., 2], obs_cpu[..., 1]) + np.pi) % (2*np.pi) - np.pi
+    xdot = obs_cpu[..., 3]
+    thetadot = obs_cpu[..., 4]
+
+    if sparse:
+      # Matches is_unsafe logic
+
+      unsafe_x = (x < self.unsafe_x_min) | (x > self.unsafe_x_max)
+      unsafe_vel = (xdot < -self.unsafe_vel_max) | (xdot > self.unsafe_vel_max)
+
+      if self.use_unsafe_theta:
+          if self.unsafe_theta_in_range:
+              unsafe_theta = (theta > self.unsafe_theta_min) & (theta < self.unsafe_theta_max)
+          else:
+              unsafe_theta = (theta < self.unsafe_theta_min) | (theta > self.unsafe_theta_max)
+      else:
+          unsafe_theta = np.zeros_like(x, dtype=bool)
+
+      penalty = -(unsafe_x | unsafe_vel | unsafe_theta).astype(float)
+
+    else:
+      # continuous versions of the above, w cos sim for angles
+
+      x_penalty = np.abs(x - (self.unsafe_x_min + self.unsafe_x_max)/2) - (self.unsafe_x_max - self.unsafe_x_min) / 2
+      v_penalty = np.abs(xdot - (self.unsafe_vel_min + self.unsafe_vel_max)/2) - (self.unsafe_vel_max - self.unsafe_vel_min) / 2
+      
+      if self.use_unsafe_theta:
+        theta_min = ((self.unsafe_theta_min + np.pi) % (2 * np.pi)) - np.pi
+        theta_max = ((self.unsafe_theta_max + np.pi) % (2 * np.pi)) - np.pi
+
+        safe_theta_center = ((theta_min + theta_max) / 2 + np.pi) % (2 * np.pi) - np.pi
+        safe_theta_halfwidth = (theta_max - theta_min) / 2
+        safe_theta_halfwidth += (safe_theta_halfwidth < 0) * np.pi
+
+        angle_diff = (theta - safe_theta_center + np.pi) % (2 * np.pi) - np.pi
+        theta_penalty = np.cos(angle_diff) - np.cos(safe_theta_halfwidth)
+
+      else:
+        theta_penalty = -np.full_like(x, np.inf, dtype=float)
+      
+      penalty = -np.max([x_penalty, v_penalty, theta_penalty], axis=0)
+      
+    return penalty # negative in obstacle!
+  
+  def get_penalty(self, obs):
+    """Returns a sparse or a smooth penalty, as specified in the constructor."""
+    return self._get_penalty(obs, sparse=self._sparse)
 
   # def setup_hj_reachability(self): 
 
