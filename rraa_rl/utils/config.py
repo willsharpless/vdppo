@@ -19,6 +19,7 @@ class Config:
         self.SEED = 0
 
         self.NAME = "test"
+        self.OVERWRITE = False
         self.BASE_PATH = "rraa_rl/exp"
         self.WANDB = False
         self.WB_ENTITY = "braat_brrt"
@@ -28,12 +29,14 @@ class Config:
     def parse_args(self):
         # Use argparse to optionally override defaults with command-line args
         parser = argparse.ArgumentParser(description="Training script for DM Control environments")
-        
+
+        parser.add_argument("-n", "--NAME", type=str, default=self.NAME, help="Model name")
+        parser.add_argument("-y", "--OVERWRITE", action="store_true", default=False, help="Automatically overwrite")
+
         parser.add_argument("--ENV", type=str, default=self.ENV, help="Domain name")
         parser.add_argument("--TASK", type=str, default=self.TASK, help="Task name")
         parser.add_argument("-ms", "--MODEL_STEPS", type=int, default=self.MODEL_STEPS, help="Total timesteps for training")
         parser.add_argument("--SUB_STEPS", type=int, default=self.SUB_STEPS, help="Interval to save model checkpoints")
-        parser.add_argument("-n", "--NAME", type=str, default=self.NAME, help="Model name")
         parser.add_argument("-alg", "--ALG", type=str, default=self.ALG, help="Algorithm name for stable-baselines/custom")
         parser.add_argument("--POLICY_TYPE", type=str, default=self.POLICY_TYPE, help="Policy type")
         parser.add_argument("-s","--SEED", type=int, default=self.SEED, help="Random seed for reproducibility")
@@ -52,10 +55,11 @@ class Config:
         self.MODEL_STEPS = args.MODEL_STEPS
         self.SUB_STEPS = args.SUB_STEPS
         self.NAME = args.NAME
+        self.OVERWRITE = args.OVERWRITE
         self.ALG = args.ALG
         self.POLICY_TYPE = args.POLICY_TYPE
         self.SEED = args.SEED
-        self.BELLMAN = args.BELLMAN if args.ALG in ['PPO', 'SAC', 'A2C', 'DDPG'] else 'normal'
+        self.BELLMAN = args.BELLMAN if args.ALG in ['PPO_RRAA', 'SAC_RRAA'] else 'normal'
         self.WANDB = args.WANDB
         self.WB_ENTITY = args.WB_ENTITY
         self.WB_PROJECT = args.WB_PROJECT
@@ -71,7 +75,7 @@ class Config:
         self.CURR_MODEL_PATH = os.path.join(self.BASE_PATH, self.ENV + '_' + self.TASK, self.ALG, self.NAME, 'model')       
 
         if os.path.exists(self.CURR_EXP_PATH):
-            if input(f"\n{self.CURR_EXP_PATH} exists. Overwrite? (y/n):").lower() != 'y':
+            if not self.OVERWRITE and input(f"\n{self.CURR_EXP_PATH} exists. Overwrite? (y/n):").lower() != 'y':
                 sys.exit("Exiting without overwriting.")  # Exit if user chooses 'n'
             shutil.rmtree(self.CURR_EXP_PATH)
 

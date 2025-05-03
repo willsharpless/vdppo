@@ -14,7 +14,7 @@ class PPO_RRAA(PPO):
         self.decomposed_model_1 = decomposed_model_1_path
         self.decomposed_model_2 = decomposed_model_2_path
         self.bellman = bellman
-        
+
         super().__init__(*args, **kwargs)
 
     def _setup_model(self):
@@ -55,7 +55,8 @@ class RolloutBufferRRAA(RolloutBuffer):
             with torch.no_grad():
 
                 # Compute l(x), g(x) ie rewards, penalties
-                self.penalties = self.env.get_penalty(self.observations)
+                if self.bellman in ['RA', 'RAA', 'RRAA']:
+                    self.penalties = self.env.get_penalty(self.observations)
 
                 if self.bellman in ['RAA', 'RR', 'RRAA']:
                     decomposed_value_1 = self.decomposed_model_1.policy.predict_values(torch.from_numpy(self.observations).to(self.device)).clone().cpu().numpy().flatten()
@@ -63,7 +64,7 @@ class RolloutBufferRRAA(RolloutBuffer):
                     decomposed_value_2 = self.decomposed_model_2.policy.predict_values(torch.from_numpy(self.observations).to(self.device)).clone().cpu().numpy().flatten()
                 
                 # NOTE WAS: 
-                # since we can solve BRAT/BRT problems, models could also be inferred in env.get_rewards
+                # since we can solve BRAT/BRT problems, models could also be inferred in env.get_rewards but dont like that
             
         # Convert to numpy
         last_values = last_values.clone().cpu().numpy().flatten()  # type: ignore[assignment]
@@ -86,13 +87,12 @@ class RolloutBufferRRAA(RolloutBuffer):
             
             elif self.bellman == 'R':
                 last_delta = (1 - (self.gamma * next_non_terminal)) * self.rewards[step] + \
-                    self.gamma * np.max(self.rewards[step], last_delta) * next_non_terminal
+                    self.gamma * np.maximum(self.rewards[step], last_delta) * next_non_terminal
                 last_gae_lam = last_delta - self.values[step] + self.gamma * self.gae_lambda * next_non_terminal * last_gae_lam
 
             elif self.bellman == 'RA':
-                self.penalties = None # FIXME WAS: get penalties/g(x) from env
                 last_delta = (1 - (self.gamma * next_non_terminal)) * np.min(self.rewards[step], self.penalties[step]) + \
-                    self.gamma * np.min(torch.max(self.rewards[step], last_delta), self.penalties[step]) * next_non_terminal
+                    self.gamma * np.minimum(np.maximum(self.rewards[step], last_delta), self.penalties[step]) * next_non_terminal
                 last_gae_lam = last_delta - self.values[step] + self.gamma * self.gae_lambda * next_non_terminal * last_gae_lam
 
             else:

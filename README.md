@@ -14,7 +14,13 @@ by the ucsd phdawgs
  - wandb (optional)
 
 ### to do
- - rendering utils (test w/ cartpole)
+ - rendering utils
+ - safeCartpole needs disentangeld reward/goal/penalty fns
+   - reward/penalty coded but not disentagled
+   - reward(physics) -> obs -> state -> goal(state), penalty(state)
+   - also goal_obs/penalty_obs(obs) -> state -> goal(state), penalty(state) # for Bellman updates
+   - cant see how to do this wo tracking last_goal/last_penalty (need to be careful w batches)
+   - this could be a model for how abstract safeEnv could work
  - custom RRAA-RL algos
     - PPO: written but correct GAE update?
     - SAC: todo
