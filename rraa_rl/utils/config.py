@@ -7,6 +7,10 @@ from rraa_rl.algos import algorithms # SB3 + custom
 
 class Config:
     def __init__(self):
+        self.BASE_PATH = "rraa_rl/exp"
+
+        self.NAME = "test"
+        self.OVERWRITE = False
         
         self.ENV = "cartpole"
         self.TASK = "balance"
@@ -18,17 +22,15 @@ class Config:
         self.BELLMAN='normal'
         self.SEED = 0
 
-        self.NAME = "test"
-        self.OVERWRITE = False
-        self.BASE_PATH = "rraa_rl/exp"
         self.WANDB = False
         self.WB_ENTITY = "braat_brrt"
         self.WB_PROJECT = "test"
         self.WB_GROUP = "all"
         self.RENDER = False
 
+        self.set_path()
+
     def parse_args(self):
-        # Use argparse to optionally override defaults with command-line args
         parser = argparse.ArgumentParser(description="Training script for DM Control environments")
 
         parser.add_argument("-n", "--NAME", type=str, default=self.NAME, help="Model name")
@@ -68,15 +70,16 @@ class Config:
         self.WB_GROUP = args.WB_GROUP
         self.RENDER = args.RENDER
 
+        self.set_path()
+
         if self.ALG not in algorithms:
             raise ValueError(f"Algorithm {self.ALG} not recognized. Available algorithms: {list(algorithms.keys())}")
 
-    def save_config(self):
-        
-        # Make out folders
+    def set_path(self):
         self.CURR_EXP_PATH = os.path.join(self.BASE_PATH, self.ENV + '_' + self.TASK, self.ALG, self.NAME)
         self.CURR_MODEL_PATH = os.path.join(self.BASE_PATH, self.ENV + '_' + self.TASK, self.ALG, self.NAME, 'model')       
 
+    def save(self):
         if os.path.exists(self.CURR_EXP_PATH):
             if not self.OVERWRITE and input(f"\n{self.CURR_EXP_PATH} exists. Overwrite? (y/n):").lower() != 'y':
                 sys.exit("Exiting without overwriting.")  # Exit if user chooses 'n'
@@ -88,3 +91,9 @@ class Config:
         with open(os.path.join(self.CURR_EXP_PATH, "config.pkl"), "wb") as f:
             pickle.dump(self, f)  # Save the entire config object as a pickle
 
+    @classmethod
+    def load(cls, model_path):
+        with open(os.path.join(model_path, 'config.pkl'), "rb") as f:
+            return pickle.load(f)
+        
+        self.set_path()

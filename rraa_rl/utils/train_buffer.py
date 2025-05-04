@@ -62,15 +62,15 @@ class TrainBuffer:
         if render and frames:
             imageio.mimsave(self.render_path, frames, fps=30)  # 30 fps
 
-    def save(self):
-        with open(os.path.join(self.CONFIG.CURR_EXP_PATH, 'train_rewards'), "wb") as f:
+    def save(self, added_name='train'):
+        with open(os.path.join(self.CONFIG.CURR_EXP_PATH, added_name + '_rewards'), "wb") as f:
             pickle.dump({"rewards": self.rewards}, f)
 
         if self.CONFIG.BELLMAN in ['R', 'RA']:
-            with open(os.path.join(self.CONFIG.CURR_EXP_PATH, 'train_goals'), "wb") as f:
+            with open(os.path.join(self.CONFIG.CURR_EXP_PATH, added_name + '_goals'), "wb") as f:
                 pickle.dump({"goals": self.goals}, f)
 
         if self.CONFIG.BELLMAN in ['A', 'RA', 'RAA']:
-            with open(os.path.join(self.CONFIG.CURR_EXP_PATH, 'train_penalties'), "wb") as f:
+            with open(os.path.join(self.CONFIG.CURR_EXP_PATH, added_name + '_penalties'), "wb") as f:
                 pickle.dump({"penalties": self.penalties}, f)
         

@@ -5,7 +5,7 @@ from rraa_rl.algos import algorithms # SB3 + custom
 from rraa_rl.utils import *
 from tqdm import tqdm
 import wandb
-os.environ["MUJOCO_GL"] = "egl"
+# os.environ["MUJOCO_GL"] = "egl"
 
 def main():
 
@@ -22,7 +22,7 @@ def main():
     CONFIG.BELLMAN='R'
     CONFIG.SEED=0
     CONFIG.parse_args()
-    CONFIG.save_config()
+    CONFIG.save()
 
     if CONFIG.WANDB:
         wandb.init(name=CONFIG.NAME, project=CONFIG.WB_PROJECT, entity=CONFIG.WB_ENTITY, group=CONFIG.WB_GROUP, config=CONFIG)
