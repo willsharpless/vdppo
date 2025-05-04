@@ -40,6 +40,9 @@ class DMCWrapper(gym.Env):
     def _flatten_obs(self, obs_dict):
         return np.concatenate([v.ravel() for v in obs_dict.values()])
 
+    def render(self, height=480, width=640):
+        return self.env.physics.render(height=height, width=width, camera_id=0)
+
 ## Used with:
 
 # from stable_baselines3 import PPO

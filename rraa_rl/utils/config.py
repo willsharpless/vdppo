@@ -25,6 +25,7 @@ class Config:
         self.WB_ENTITY = "braat_brrt"
         self.WB_PROJECT = "test"
         self.WB_GROUP = "all"
+        self.RENDER = False
 
     def parse_args(self):
         # Use argparse to optionally override defaults with command-line args
@@ -46,6 +47,7 @@ class Config:
         parser.add_argument("--WB_ENTITY", type=str, default=self.WB_ENTITY, help="WandB entity")
         parser.add_argument("-wbp", "--WB_PROJECT", type=str, default=self.WB_PROJECT, help="WandB project")
         parser.add_argument("-wbg", "--WB_GROUP", type=str, default=self.WB_GROUP, help="WandB group(?)")
+        parser.add_argument("-r", "--RENDER", action="store_true", default=False, help="Render roll-out")
 
         args = parser.parse_args()
         
@@ -64,6 +66,7 @@ class Config:
         self.WB_ENTITY = args.WB_ENTITY
         self.WB_PROJECT = args.WB_PROJECT
         self.WB_GROUP = args.WB_GROUP
+        self.RENDER = args.RENDER
 
         if self.ALG not in algorithms:
             raise ValueError(f"Algorithm {self.ALG} not recognized. Available algorithms: {list(algorithms.keys())}")

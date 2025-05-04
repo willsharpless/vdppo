@@ -5,6 +5,7 @@ from rraa_rl.algos import algorithms # SB3 + custom
 from rraa_rl.utils import *
 from tqdm import tqdm
 import wandb
+os.environ["MUJOCO_GL"] = "egl"
 
 def main():
 
@@ -53,7 +54,7 @@ def main():
         model.save(os.path.join(CONFIG.CURR_MODEL_PATH, f'model_{step + CONFIG.SUB_STEPS}'))
 
         ## Guage model rewards
-        train_buffer.model_rollout(env, model, render=False)
+        train_buffer.model_rollout(env, model, render=CONFIG.RENDER)
 
         ## Save & Plot Reward
         plot_rewards(train_buffer, step)

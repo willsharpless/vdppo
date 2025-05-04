@@ -2,22 +2,31 @@ import numpy as np
 from tqdm import tqdm
 import pickle
 import os
+import imageio
+from PIL import Image
 
 class TrainBuffer:
     def __init__(self, CONFIG):
         self.CONFIG = CONFIG
+        # NOTE, these are the _last_ wrt the sampled trajectory
         self.rewards = []
         self.goals = [] 
         self.penalties = []
         self.obs = []
-        # NOTE, these are the _last_ wrt the sampled trajectory
+        self.render_path = os.path.join(CONFIG.CURR_EXP_PATH, 'roll_out.mp4')
 
     def model_rollout(self, env, model, render=False):
         obs, _ = env.reset(seed=self.CONFIG.SEED)
         rollout_obs = []
         rollout_rewards, rollout_goals, rollout_penalties = [], [], []
+        
+        frames = []
+        if render:
+            frame = env.render()
+            frames.append(Image.fromarray(frame))
 
         for _ in tqdm(range(self.CONFIG.SAMPLE_HORIZON), desc="Evaluating rewards", leave=False):
+            
             action, _ = model.predict(obs, deterministic=True)
             obs, reward, terminated, truncated, _ = env.step(action)
 
@@ -33,6 +42,10 @@ class TrainBuffer:
             #         penalty = env.get_penalty(obs)
             #         rollout_penalties.append(penalty)
 
+            if render:
+                frame = env.render()
+                frames.append(Image.fromarray(frame))
+
             if terminated or truncated:
                 obs, _ = env.reset(seed=self.CONFIG.SEED)
 
@@ -45,6 +58,9 @@ class TrainBuffer:
         #     self.goals.append(rollout_goals)
         # if self.CONFIG.BELLMAN == 'RA':
         #     self.penalties.append(rollout_penalties)
+
+        if render and frames:
+            imageio.mimsave(self.render_path, frames, fps=30)  # 30 fps
 
     def save(self):
         with open(os.path.join(self.CONFIG.CURR_EXP_PATH, 'train_rewards'), "wb") as f:

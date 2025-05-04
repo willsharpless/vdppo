@@ -18,3 +18,4 @@ dependencies:
       - wandb
       - shimmy
       - imageio
+      - imageio-ffmpeg
