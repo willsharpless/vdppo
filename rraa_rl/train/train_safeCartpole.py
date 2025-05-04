@@ -15,9 +15,9 @@ def main():
     ## Safe Cartpole settings
     CONFIG.ENV='safeCartpole_rraa'
     CONFIG.TASK='swingup'
-    CONFIG.MODEL_STEPS=200_000
+    CONFIG.MODEL_STEPS=1_000_000
     CONFIG.SUB_STEPS=10_000
-    CONFIG.NAME='debug'
+    CONFIG.NAME='debug1M'
     CONFIG.ALG='PPO' #'PPO_RRAA'
     CONFIG.PROBLEM_TYPE='RA' #'R'
     CONFIG.REWARD_TYPE='historic' #'R'
