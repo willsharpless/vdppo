@@ -22,16 +22,19 @@ def main():
     env.reset(seed=CONFIG.SEED)
 
     ## Define algorithm
-    if CONFIG.ALG not in algorithms:
-        raise ValueError(f"Algorithm {CONFIG.ALG} not recognized. Available algorithms: {list(algorithms.keys())}")
     model_class = algorithms[CONFIG.ALG]
-    model = model_class(CONFIG.POLICY_TYPE, env, seed=CONFIG.SEED)
+    if CONFIG.ALG in ['PPO', 'SAC', 'A2C', 'DDPG']:
+        model = model_class(CONFIG.POLICY_TYPE, env, seed=CONFIG.SEED)
+    else:
+        model = model_class(CONFIG.POLICY_TYPE, env, seed=CONFIG.SEED, bellman=CONFIG.BELLMAN)
     
-    ## Training loop with intermittent saving
-    print(f"\n\nRRAA-RL\n\n Learning {CONFIG.ENV}_{CONFIG.TASK} with {CONFIG.ALG} ...\n  writing to {CONFIG.CURR_EXP_PATH} \n")
-    rewards = []
+    ## Define training buffer for rollout scores
+    train_buffer = TrainBuffer(CONFIG)
+
+    ## Training loop with checkpoints
+    print(f"\n\nRRAA-RL\n\n Learning {CONFIG.ENV}_{CONFIG.TASK} with {CONFIG.ALG}-{CONFIG.BELLMAN} ...\n  writing to {CONFIG.CURR_EXP_PATH} \n")
     for step in tqdm(range(0, CONFIG.MODEL_STEPS, CONFIG.SUB_STEPS), desc=""):
-        tqdm.write(f"Training Step: {step} | Avg Reward: {sum(rewards)/len(rewards) if rewards else 0:0.3f}")
+        tqdm.write(f"Training Step: {step} | Avg Reward: {sum(train_buffer.rewards)/len(train_buffer.rewards) if train_buffer.rewards else 0:0.3f}")
 
         ## Learn & Save Model
         if CONFIG.WANDB:
@@ -41,16 +44,12 @@ def main():
         model.save(os.path.join(CONFIG.CURR_MODEL_PATH, f'model_{step + CONFIG.SUB_STEPS}'))
 
         ## Guage model rewards
-        obs, _ = env.reset(seed=CONFIG.SEED)
-        for _ in tqdm(range(CONFIG.SAMPLE_HORIZON), desc="Evaluating rewards", leave=False):
-            action, _ = model.predict(obs, deterministic=True)
-            obs, reward, terminated, truncated, _ = env.step(action)
-            if terminated or truncated:
-                obs, _ = env.reset(seed=CONFIG.SEED)
+        train_buffer.model_rollout(env, model, render=False)
 
         ## Save & Plot Reward
-        rewards.append(reward)
-        save_reward_plot(rewards, step, CONFIG.SUB_STEPS, CONFIG.CURR_EXP_PATH)
+        train_rewards = train_buffer.rewards # FIXME
+        save_reward_plot(train_rewards, step, CONFIG)
+        # TODO: save_rewards(train_buffer)
 
         ## Also save model as WandB artifact
         if CONFIG.WANDB:
