@@ -14,12 +14,14 @@ class Config:
         
         self.ENV = "cartpole"
         self.TASK = "balance"
+        self.SPARSE = True
         self.MODEL_STEPS = 10_000 # total grad steps
         self.SUB_STEPS = 2_000 # checkpoint period
         self.SAMPLE_HORIZON = 2000 # roll-out length for guaging rewards
         self.POLICY_TYPE = "MlpPolicy"
         self.ALG = "PPO"
-        self.BELLMAN='normal'
+        self.PROBLEM_TYPE='normal'
+        self.REWARD_TYPE='current'
         self.SEED = 0
 
         self.WANDB = False
@@ -38,12 +40,14 @@ class Config:
 
         parser.add_argument("--ENV", type=str, default=self.ENV, help="Domain name")
         parser.add_argument("--TASK", type=str, default=self.TASK, help="Task name")
+        parser.add_argument("--SPARSE", type=bool, default=self.SPARSE, help="Sparse rewards or nah")
         parser.add_argument("-ms", "--MODEL_STEPS", type=int, default=self.MODEL_STEPS, help="Total timesteps for training")
         parser.add_argument("--SUB_STEPS", type=int, default=self.SUB_STEPS, help="Interval to save model checkpoints")
         parser.add_argument("-alg", "--ALG", type=str, default=self.ALG, help="Algorithm name for stable-baselines/custom")
         parser.add_argument("--POLICY_TYPE", type=str, default=self.POLICY_TYPE, help="Policy type")
         parser.add_argument("-s","--SEED", type=int, default=self.SEED, help="Random seed for reproducibility")
-        parser.add_argument("-b", "--BELLMAN", type=str, default=self.BELLMAN, help="Bellman equation to use")
+        parser.add_argument("-pt", "--PROBLEM_TYPE", type=str, default=self.PROBLEM_TYPE, help="Bellman equation to use")
+        parser.add_argument("-rt", "--REWARD_TYPE", type=str, default=self.REWARD_TYPE, help="Reward type to use")
         
         parser.add_argument("-wb", "--WANDB", action="store_true", default=False, help="Log to WandB")
         parser.add_argument("--WB_ENTITY", type=str, default=self.WB_ENTITY, help="WandB entity")
@@ -56,6 +60,7 @@ class Config:
         # Update configuration with command-line arguments
         self.ENV = args.ENV
         self.TASK = args.TASK
+        self.SPARSE = args.SPARSE
         self.MODEL_STEPS = args.MODEL_STEPS
         self.SUB_STEPS = args.SUB_STEPS
         self.NAME = args.NAME
@@ -63,7 +68,8 @@ class Config:
         self.ALG = args.ALG
         self.POLICY_TYPE = args.POLICY_TYPE
         self.SEED = args.SEED
-        self.BELLMAN = args.BELLMAN if args.ALG in ['PPO_RRAA', 'SAC_RRAA'] else 'normal'
+        self.PROBLEM_TYPE = args.PROBLEM_TYPE
+        self.REWARD_TYPE = args.REWARD_TYPE
         self.WANDB = args.WANDB
         self.WB_ENTITY = args.WB_ENTITY
         self.WB_PROJECT = args.WB_PROJECT

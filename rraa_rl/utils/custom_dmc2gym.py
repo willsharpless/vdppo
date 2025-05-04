@@ -3,12 +3,15 @@ import random
 import gym
 from gym import spaces
 from dm_control import suite
+import inspect
 
 class DMCWrapper(gym.Env):
     metadata = {"render_modes": [], "render_fps": 60}
 
-    def __init__(self, domain_name="cartpole", task_name="balance", max_steps=1000, seed=None):
-        self.env = suite.load(domain_name=domain_name, task_name=task_name, task_kwargs={'random':seed})
+    def __init__(self, domain_name="cartpole", task_name="balance", max_steps=1000, seed=None, task_kwargs={}):
+        
+        task_kwargs['random'] = seed
+        self.env = suite.load(domain_name=domain_name, task_name=task_name, task_kwargs=task_kwargs)
         self.max_steps = max_steps
         self.step_count = 0
 
@@ -22,6 +25,8 @@ class DMCWrapper(gym.Env):
         self.action_space = spaces.Box(act_spec.minimum, act_spec.maximum, dtype=np.float32)
 
     def reset(self, seed=None, options=None):
+        if hasattr(self.env.task, 'custom_reset'):
+            self.env.task.custom_reset()
         super().reset(seed=seed)
         self.step_count = 0
         ts = self.env.reset()

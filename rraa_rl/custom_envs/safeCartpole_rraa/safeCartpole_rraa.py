@@ -82,10 +82,10 @@ def _make_model(n_poles):
 
 @SUITE.add('benchmarking')
 def balance(time_limit=_DEFAULT_TIME_LIMIT, random=None,
-            environment_kwargs=None):
+            environment_kwargs=None, **task_kwargs):
   """Returns the Cartpole Balance task."""
   physics = Physics.from_xml_string(*get_model_and_assets())
-  task = Balance(swing_up=False, sparse=False, random=random)
+  task = Balance(swing_up=False, sparse=False, random=random, **task_kwargs)
   environment_kwargs = environment_kwargs or {}
   return control.Environment(
       physics, task, time_limit=time_limit, **environment_kwargs)
@@ -93,10 +93,10 @@ def balance(time_limit=_DEFAULT_TIME_LIMIT, random=None,
 
 @SUITE.add('benchmarking')
 def balance_sparse(time_limit=_DEFAULT_TIME_LIMIT, random=None,
-                   environment_kwargs=None):
+                   environment_kwargs=None, **task_kwargs):
   """Returns the sparse reward variant of the Cartpole Balance task."""
   physics = Physics.from_xml_string(*get_model_and_assets())
-  task = Balance(swing_up=False, sparse=True, random=random)
+  task = Balance(swing_up=False, sparse=True, random=random, **task_kwargs)
   environment_kwargs = environment_kwargs or {}
   return control.Environment(
       physics, task, time_limit=time_limit, **environment_kwargs)
@@ -104,10 +104,10 @@ def balance_sparse(time_limit=_DEFAULT_TIME_LIMIT, random=None,
 
 @SUITE.add('benchmarking')
 def swingup(time_limit=_DEFAULT_TIME_LIMIT, random=None,
-            environment_kwargs=None):
+            environment_kwargs=None, **task_kwargs):
   """Returns the Cartpole Swing-Up task."""
   physics = Physics.from_xml_string(*get_model_and_assets())
-  task = Balance(swing_up=True, sparse=False, random=random)
+  task = Balance(swing_up=True, sparse=False, random=random, **task_kwargs)
   environment_kwargs = environment_kwargs or {}
   return control.Environment(
       physics, task, time_limit=time_limit, **environment_kwargs)
@@ -115,10 +115,10 @@ def swingup(time_limit=_DEFAULT_TIME_LIMIT, random=None,
 
 @SUITE.add('benchmarking')
 def swingup_sparse(time_limit=_DEFAULT_TIME_LIMIT, random=None,
-                   environment_kwargs=None):
+                   environment_kwargs=None, **task_kwargs):
   """Returns the sparse reward variant of the Cartpole Swing-Up task."""
   physics = Physics.from_xml_string(*get_model_and_assets())
-  task = Balance(swing_up=True, sparse=True, random=random)
+  task = Balance(swing_up=True, sparse=True, random=random, **task_kwargs)
   environment_kwargs = environment_kwargs or {}
   return control.Environment(
       physics, task, time_limit=time_limit, **environment_kwargs)
@@ -126,10 +126,10 @@ def swingup_sparse(time_limit=_DEFAULT_TIME_LIMIT, random=None,
 
 @SUITE.add()
 def two_poles(time_limit=_DEFAULT_TIME_LIMIT, random=None,
-              environment_kwargs=None):
+              environment_kwargs=None, **task_kwargs):
   """Returns the Cartpole Balance task with two poles."""
   physics = Physics.from_xml_string(*get_model_and_assets(num_poles=2))
-  task = Balance(swing_up=True, sparse=False, random=random)
+  task = Balance(swing_up=True, sparse=False, random=random, **task_kwargs)
   environment_kwargs = environment_kwargs or {}
   return control.Environment(
       physics, task, time_limit=time_limit, **environment_kwargs)
@@ -137,10 +137,10 @@ def two_poles(time_limit=_DEFAULT_TIME_LIMIT, random=None,
 
 @SUITE.add()
 def three_poles(time_limit=_DEFAULT_TIME_LIMIT, random=None, num_poles=3,
-                sparse=False, environment_kwargs=None):
+                sparse=False, environment_kwargs=None, **task_kwargs):
   """Returns the Cartpole Balance task with three or more poles."""
   physics = Physics.from_xml_string(*get_model_and_assets(num_poles=num_poles))
-  task = Balance(swing_up=True, sparse=sparse, random=random)
+  task = Balance(swing_up=True, sparse=sparse, random=random, **task_kwargs)
   environment_kwargs = environment_kwargs or {}
   return control.Environment(
       physics, task, time_limit=time_limit, **environment_kwargs)
@@ -182,28 +182,39 @@ class Balance(base.Task):
   _THETA_VEL_RANGE = (0.1, 0.1)
   ################# RRAA Change #################
 
-  def __init__(self, swing_up, sparse, problem_type="RA", use_velocity_target=True, train_type="baseline", random=None):
+  def __init__(self, swing_up, sparse, problem_type='R', reward_type='current', use_velocity_target=True, random=None):
     """Initializes an instance of `Balance`.
 
     Args:
-      swing_up: A `bool`, which if `True` sets the cart to the middle of the
+
+      swing_up: a `bool`, which if `True` sets the cart to the middle of the
         slider and the pole pointing towards the ground. Otherwise, sets the
         cart to a random position on the slider and the pole to a random
         near-vertical position.
-      sparse: A `bool`, whether to return a sparse or a smooth reward.
+      
+      sparse: a `bool`, whether to return a sparse or a smooth reward.
+      
       random: Optional, either a `numpy.random.RandomState` instance, an
         integer seed for creating a new `RandomState`, or None to select a seed
         automatically (default).
-      ################# RRAA Change #################
-      problem_type: A `str`, which if "RA" or "R" - changes the problem between reach_avoid and reach
-        setting which in effect changes the reward function state augmentation: 
-        - "R": reach: problem is just reaching the swingup position - take max l(x) over steps
-        - "RA": reach_avoid: problem is to reach the swingup position while avoiding unsafe region
-           takes max with min(max(reward(x_{t-1}), l(x)), g(x))
-      use_velocity_target: A `bool`, whether to use the velocity targets in the reward function.
-      train_type: A `str`, which if "RAA" or "baseline" - changes the training type - 
-        this changes which rewards are used - if the min/max is done in the reward or outside
-      ################# RRAA Change #################
+
+      ################################ __RRAA Change__ ###############################
+
+      problem_type: a `str`, 
+        sets the problem type by altering the reward computation
+        - 'R': reach problem, reach the swingup position       - l(x) only
+        - 'A': avoid problem, avoid the unsafe region          - g(x) only
+        - 'RA': reach_avoid problem, swing up in the safe set  - l(x) and g(x)
+      
+      use_velocity_target: a `bool`, 
+        whether to use the velocity targets in the reward function.
+      
+      reward_type: a `str`,
+        - 'current': computes reward with l(x) and/or g(x) of current point (standard)
+        - 'historic': computes rewards with min l(x) and/or g(x) up to now 
+          (opt over time like HJR, but for vanilla RL algs)
+        
+      ################################ ^^RRAA Change^^ ###############################
     """
 
     # self.set_unsafe_region(unsafe_x_min=-10,
@@ -226,15 +237,22 @@ class Balance(base.Task):
     self._swing_up = swing_up
     # self.setup_hj_reachability()
 
-    ################# RRAA Change #################
+    ################################ __RRAA Change__ ###############################
+
     self.problem_type = problem_type
-    self.last_lofx = None 
+    self.last_lofx = None
     self.last_gofx = None 
     self.use_velocity_target = use_velocity_target
-    self.train_type = train_type # ["RAA", "baseline"]
-    ################# RRAA Change #################
-
+    self.reward_type = reward_type # ['current', 'historic']
+    
     super().__init__(random=random)
+
+  def custom_reset(self):
+    """ To accomodate additional resets, eg. running costs, (called in DMCWrapper) """
+    self.last_lofx = None
+    self.last_gofx = None 
+
+    ################################ ^^RRAA Change^^ ###############################
 
   def set_unsafe_region(self, unsafe_x_min, unsafe_x_max, unsafe_vel_max, unsafe_theta_min, unsafe_theta_max, unsafe_theta_in_range): 
     """
@@ -279,11 +297,12 @@ class Balance(base.Task):
 
     return False 
 
-  ################# RRAA Change #################
+  ################################ __RRAA Change__ ###############################
+
   ##################################### g(x) #####################################
   
   def get_gofx(self, obs, sparse=False):
-    # Computes g(x): avoid function
+    # Computes g(x): penalty function
     # CONVENTIONS: NEGATIVE IFF UNSAFE 
     """
     A penalty function (ie g(x)) for given obs. Mainly to be used in custom PPO/SAC algorithms.
@@ -361,7 +380,8 @@ class Balance(base.Task):
     return self.get_gofx(obs, sparse=self._sparse)
 
   ##################################### g(x) #####################################
-  ##################################### l(x) #####################################
+
+  ##################################### l(x) ####################################
 
   def get_lofx(self, obs, sparse): 
     # Computes l(x): target function
@@ -369,7 +389,6 @@ class Balance(base.Task):
     # NOTE: l(x) is changed to just be a swingup task (NO BALANCE)
     # Get reward l(x) from observation
 
-    
     if isinstance(obs, torch.Tensor):
       obs_cpu = obs.clone().cpu().numpy()
     else: 
@@ -423,7 +442,8 @@ class Balance(base.Task):
     return reward
 
   ##################################### l(x) #####################################
-  ################# RRAA Change #################
+  
+  ################################ ^^RRAA Change^^ ###############################
 
   def obs_to_cbfstate(self, obs):
     if isinstance(obs, torch.Tensor):
@@ -520,7 +540,8 @@ class Balance(base.Task):
       physics.named.model.geom_rgba['cart'] = [0.5, 0.5, 0.5, 1] # default back to beige
     return obs
 
-  ################# RRAA Change #################
+  ################################ __RRAA Change__ ###############################
+
   def get_reward(self, physics):
     """Returns a sparse or a smooth reward, as specified in the constructor."""
     obs = self.get_observation(physics)
@@ -528,48 +549,48 @@ class Balance(base.Task):
     # reshape obs 
     obs_array = np.concatenate([obs['position'], obs['velocity']]).reshape(1, -1)
     
-    if self.train_type == "baseline":
-      # Baseline: does the min/max with avoid and target for PPO baseline
-      if self.last_lofx is None or self.last_gofx is None: 
-        if self.problem_type == "R": 
-          lofx = self.get_lofx(obs_array, sparse=self._sparse)
-          self.last_lofx = lofx
-          reward = lofx 
-        elif self.problem_type == "RA":
-          lofx = self.get_lofx(obs_array, sparse=self._sparse)
-          gofx = self.get_gofx(obs_array, sparse=self._sparse)
-          self.last_lofx = lofx
-          self.last_gofx = gofx
-          reward = min(lofx, gofx)
-        else:
-          raise ValueError("Problem type not recognized")
+    # Reward 'historic', use past scores in reward comp (unless first state)
+    if self.reward_type == 'historic' and (self.last_lofx or self.last_gofx):
 
-      else: 
-        if self.problem_type == "R": 
-          lofx = self.get_lofx(obs_array, sparse=self._sparse)
-          reward = max(lofx, self.last_lofx)
-          self.last_lofx = lofx
-        elif self.problem_type == "RA":
-          lofx = self.get_lofx(obs_array, sparse=self._sparse)
-          gofx = self.get_gofx(obs_array, sparse=self._sparse)
-
-          max_lofx = max(lofx, self.last_lofx)
-          min_gofx = min(gofx, self.last_gofx)
-
-          self.last_lofx = lofx
-          self.last_gofx = gofx
-
-          reward = min(max_lofx, min_gofx)
-        else:
-          raise ValueError("Problem type not recognized")
-
-      reward = reward.item()
-    elif self.train_type == "RAA": 
-      lofx = self.get_lofx(obs_array, sparse=self._sparse)
-      gofx = self.get_gofx(obs_array, sparse=self._sparse)
-
-      reward = min(lofx, gofx)  
+      self.lofx, self.gofx = None, None
       
-      reward = reward.item()
+      if self.problem_type == 'R': 
+        lofx = self.get_lofx(obs_array, sparse=self._sparse)
+        reward = max(lofx, self.last_lofx)
+
+      elif self.problem_type == 'A':
+        gofx = self.get_gofx(obs_array, sparse=self._sparse)
+        reward = min(gofx, self.last_gofx)
+
+      elif self.problem_type == 'RA':
+        lofx = self.get_lofx(obs_array, sparse=self._sparse)
+        gofx = self.get_gofx(obs_array, sparse=self._sparse)
+
+        max_lofx = max(lofx, self.last_lofx)
+        min_gofx = min(gofx, self.last_gofx)
+        reward = min(max_lofx, min_gofx)
+
+      else:
+        raise ValueError("Problem type not recognized")
+      
+      self.last_lofx = lofx
+      self.last_gofx = gofx
+
+    # Reward 'current', use current state only for reward comp
+    else: 
+
+      if self.problem_type == 'R':
+        reward = self.get_lofx(obs_array, sparse=self._sparse)
+      
+      elif self.problem_type == 'A':
+        reward = self.get_gofx(obs_array, sparse=self._sparse)
+    
+      elif self.problem_type == 'RA':
+        lofx = self.get_lofx(obs_array, sparse=self._sparse)
+        gofx = self.get_gofx(obs_array, sparse=self._sparse)
+        reward = min(lofx, gofx)  
+  
+    reward = reward.item() # WAS @ NIKHIL, does this work for batches?
     return reward #self._get_reward(physics, sparse=self._sparse)
-    ################# RRAA Change #################
+    
+    ################################ ^^RRAA Change^^ ###############################

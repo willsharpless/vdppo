@@ -34,11 +34,11 @@ class TrainBuffer:
             rollout_rewards.append(reward)
 
             # TODO: env needs goals
-            # if self.CONFIG.BELLMAN in ['R', 'RA']:
+            # if self.CONFIG.PROBLEM_TYPE in ['R', 'RA']:
             #     goal = env.get_goal(obs)
             #     rollout_goals.append(goal)
 
-            #     if self.CONFIG.BELLMAN == 'RA':
+            #     if self.CONFIG.PROBLEM_TYPE == 'RA':
             #         penalty = env.get_penalty(obs)
             #         rollout_penalties.append(penalty)
 
@@ -54,9 +54,9 @@ class TrainBuffer:
         self.rewards.append(rollout_rewards[-1])
 
         # TODO: env needs goals
-        # if self.CONFIG.BELLMAN in ['R', 'RA']:
+        # if self.CONFIG.PROBLEM_TYPE in ['R', 'RA']:
         #     self.goals.append(rollout_goals)
-        # if self.CONFIG.BELLMAN == 'RA':
+        # if self.CONFIG.PROBLEM_TYPE == 'RA':
         #     self.penalties.append(rollout_penalties)
 
         if render and frames:
@@ -66,11 +66,11 @@ class TrainBuffer:
         with open(os.path.join(self.CONFIG.CURR_EXP_PATH, added_name + '_rewards'), "wb") as f:
             pickle.dump({"rewards": self.rewards}, f)
 
-        if self.CONFIG.BELLMAN in ['R', 'RA']:
+        if self.CONFIG.PROBLEM_TYPE in ['R', 'RA']:
             with open(os.path.join(self.CONFIG.CURR_EXP_PATH, added_name + '_goals'), "wb") as f:
                 pickle.dump({"goals": self.goals}, f)
 
-        if self.CONFIG.BELLMAN in ['A', 'RA', 'RAA']:
+        if self.CONFIG.PROBLEM_TYPE in ['A', 'RA', 'RAA']:
             with open(os.path.join(self.CONFIG.CURR_EXP_PATH, added_name + '_penalties'), "wb") as f:
                 pickle.dump({"penalties": self.penalties}, f)
         

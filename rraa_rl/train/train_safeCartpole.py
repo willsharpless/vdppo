@@ -12,23 +12,31 @@ def main():
     ## Init experiment
     CONFIG = Config()
         
-    ## Safe Cartpole
+    ## Safe Cartpole settings
     CONFIG.ENV='safeCartpole_rraa'
     CONFIG.TASK='swingup'
     CONFIG.MODEL_STEPS=200_000
     CONFIG.SUB_STEPS=10_000
-    CONFIG.NAME='test_R'
-    CONFIG.ALG='PPO'#'PPO_RRAA'
-    CONFIG.BELLMAN='normal'#'R'
+    CONFIG.NAME='debug'
+    CONFIG.ALG='PPO' #'PPO_RRAA'
+    CONFIG.PROBLEM_TYPE='RA' #'R'
+    CONFIG.REWARD_TYPE='historic' #'R'
     CONFIG.SEED=0
+    
     CONFIG.parse_args()
     CONFIG.save()
+
+    ## Safe Cartpole kwargs
+    task_kwargs = {
+        'problem_type':CONFIG.PROBLEM_TYPE,
+        'reward_type':CONFIG.REWARD_TYPE,
+    }
 
     if CONFIG.WANDB:
         wandb.init(name=CONFIG.NAME, project=CONFIG.WB_PROJECT, entity=CONFIG.WB_ENTITY, group=CONFIG.WB_GROUP, config=CONFIG)
 
     ## Define environment
-    env = DMCWrapper(domain_name=CONFIG.ENV, task_name=CONFIG.TASK, seed=CONFIG.SEED)
+    env = DMCWrapper(domain_name=CONFIG.ENV, task_name=CONFIG.TASK, seed=CONFIG.SEED, task_kwargs=task_kwargs)
     env.reset(seed=CONFIG.SEED)
 
     ## Define algorithm
@@ -36,13 +44,13 @@ def main():
     if CONFIG.ALG in ['PPO', 'SAC', 'A2C', 'DDPG']:
         model = model_class(CONFIG.POLICY_TYPE, env, seed=CONFIG.SEED)
     else:
-        model = model_class(CONFIG.POLICY_TYPE, env, seed=CONFIG.SEED, bellman=CONFIG.BELLMAN)
+        model = model_class(CONFIG.POLICY_TYPE, env, seed=CONFIG.SEED, problem_type=CONFIG.PROBLEM_TYPE)
     
     ## Define training buffer for rollout scores
     train_buffer = TrainBuffer(CONFIG)
 
     ## Training loop with checkpoints
-    print(f"\n\nRRAA-RL\n\n Learning {CONFIG.ENV}_{CONFIG.TASK} with {CONFIG.ALG}-{CONFIG.BELLMAN} ...\n  writing to {CONFIG.CURR_EXP_PATH} \n")
+    print(f"\n\nRRAA-RL\n\n Learning {CONFIG.ENV}_{CONFIG.TASK} with {CONFIG.ALG}-{CONFIG.PROBLEM_TYPE} ...\n  writing to {CONFIG.CURR_EXP_PATH} \n")
     for step in tqdm(range(0, CONFIG.MODEL_STEPS, CONFIG.SUB_STEPS), desc=""):
         tqdm.write(f"Training Step: {step} | Avg Reward: {sum(train_buffer.rewards)/len(train_buffer.rewards) if train_buffer.rewards else 0:0.3f}")
 

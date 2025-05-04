@@ -16,7 +16,7 @@ def save_reward_plot(rewards, step, CONFIG):
 
     # Plot rewards
     plt.plot(range(0, step+substep, substep), rewards, color='tab:blue', linewidth=5, label='Reward')
-    plt.title(f"{CONFIG.ENV}-{CONFIG.TASK}, {CONFIG.ALG}-{CONFIG.BELLMAN}: Training Roll-out")
+    plt.title(f"{CONFIG.ENV}-{CONFIG.TASK}, {CONFIG.ALG}-{CONFIG.PROBLEM_TYPE}: Training Roll-out")
     plt.xlabel("Steps")
     plt.ylabel("Reward")
 
@@ -46,7 +46,7 @@ def save_reward_plot_RA(rewards, goals, penalties, step, CONFIG):
         plt.plot(range(0, step+substep, substep), goals, color='tab:blue', linewidth=3, label='Goal')
     if penalties:
         plt.plot(range(0, step+substep, substep), penalties, color='tab:red', linewidth=3, label='Penalty')
-    plt.title(f"{CONFIG.ENV}-{CONFIG.TASK}, {CONFIG.ALG}-{CONFIG.BELLMAN}: Training Roll-out")
+    plt.title(f"{CONFIG.ENV}-{CONFIG.TASK}, {CONFIG.ALG}-{CONFIG.PROBLEM_TYPE}: Training Roll-out")
     plt.xlabel("Steps")
     plt.ylabel("Value")
     plt.legend(loc='lower right')
@@ -60,10 +60,10 @@ def plot_rewards(train_buffer, step):
     """
     General Function for saving and plotting the current rollout rewards.
     """
-    if train_buffer.CONFIG.BELLMAN == 'normal':
+    if train_buffer.CONFIG.PROBLEM_TYPE == 'normal':
         save_reward_plot(train_buffer.rewards, step, train_buffer.CONFIG)
     
-    if train_buffer.CONFIG.BELLMAN in ['R', 'A', 'RA']:
+    if train_buffer.CONFIG.PROBLEM_TYPE in ['R', 'A', 'RA']:
         save_reward_plot_RA(train_buffer.rewards, train_buffer.goals, train_buffer.penalties, step, train_buffer.CONFIG)
 
     

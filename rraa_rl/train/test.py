@@ -31,7 +31,7 @@ def main():
     if CONFIG.ALG in ['PPO', 'SAC', 'A2C', 'DDPG']:
         model = model_class(CONFIG.POLICY_TYPE, env, seed=CONFIG.SEED)
     else:
-        model = model_class(CONFIG.POLICY_TYPE, env, seed=CONFIG.SEED, bellman=CONFIG.BELLMAN)
+        model = model_class(CONFIG.POLICY_TYPE, env, seed=CONFIG.SEED, problem_type=CONFIG.PROBLEM_TYPE)
     
     ## Define training buffer for rollout scores
     train_buffer = TrainBuffer(CONFIG)
