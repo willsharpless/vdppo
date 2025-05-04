@@ -13,13 +13,13 @@ def main():
     CONFIG = Config()
         
     ## Safe Cartpole
-    CONFIG.ENV='safeCartpole'
+    CONFIG.ENV='safeCartpole_rraa'
     CONFIG.TASK='swingup'
     CONFIG.MODEL_STEPS=200_000
     CONFIG.SUB_STEPS=10_000
     CONFIG.NAME='test_R'
-    CONFIG.ALG='PPO_RRAA'
-    CONFIG.BELLMAN='R'
+    CONFIG.ALG='PPO'#'PPO_RRAA'
+    CONFIG.BELLMAN='normal'#'R'
     CONFIG.SEED=0
     CONFIG.parse_args()
     CONFIG.save()
