@@ -47,9 +47,8 @@ def main():
         train_buffer.model_rollout(env, model, render=False)
 
         ## Save & Plot Reward
-        train_rewards = train_buffer.rewards # FIXME
-        save_reward_plot(train_rewards, step, CONFIG)
-        # TODO: save_rewards(train_buffer)
+        plot_rewards(train_buffer, step)
+        train_buffer.save()
 
         ## Also save model as WandB artifact
         if CONFIG.WANDB:
