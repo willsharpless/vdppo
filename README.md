@@ -12,21 +12,26 @@ by the ucsd phdawgs
  - mujoco >= 2.0
  - stable-baselines3 = 2.6 (subclassing custom algs)
  - wandb (optional)
+ 
+ - oswins code needs more jax stuff, will fio tmrw
 
-### to do
- - rendering utils
- - safeCartpole needs disentangeld reward/goal/penalty fns
-   - reward/penalty coded but not disentagled
-   - reward(physics) -> obs -> state -> goal(state), penalty(state)
-   - also goal_obs/penalty_obs(obs) -> state -> goal(state), penalty(state) # for Bellman updates
-   - cant see how to do this wo tracking last_goal/last_penalty (need to be careful w batches)
-   - this could be a model for how abstract safeEnv could work
+### to do 05/05:
+ - We now have oswin's envs & baselines code (rcppo_code_private)
+    - need to test, requires every jax library u kno
+    - envs will need modification for RAA & RR problem 
+      (must have l(x) & g(x))
+
+ - safeCartpole needs to be fixed
+    - NW wrote custom l(x), g(x) with historic (last max) scoring for vanilla PPO but it dont work
+
  - custom RRAA-RL algos
     - PPO: written but correct GAE update?
     - SAC: todo
     - general: simultaneous solving of decomposed problem (for coupled policy learning)
+
  - what baselines?
     - 05/02, WND: PPO w/ constrained MDP (aug lagrangian), RESPO (milan), CRL (used in oswin work)
+
  - what safe envs? custom?
     - 05/02, WND: all envs need reward l(x) and penalty g(x) fns, some multiple l(x)
 
@@ -41,12 +46,13 @@ by the ucsd phdawgs
     ├── custom_envs
     ├── exp
     │   └── ... where models are saved
+    ├── rcppo_code_private (oswin's)
     ├── tests
-    │   └── ... basic code tests
+    │   └── ... basic code tests not roll-out test
     ├── train
-    │   └── train.py <- general training script
+    │   ├── test.py
+    │   └── train.py
     └── utils
-        └── ... config, dmc2gym, wandb stuff etc.
 ```
 
 ### to run, eg.
