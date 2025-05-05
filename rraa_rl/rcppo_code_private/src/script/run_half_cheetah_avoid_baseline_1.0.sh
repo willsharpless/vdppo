@@ -1,0 +1,24 @@
+python ./src/rl/PPO.py \
+--EXP_NAME=HalfCheetahAvoidBaseline \
+--DIR=halfcheetah_avoid_baseline_1.0 \
+--LR=3e-4 \
+--NUM_ENVS=128 \
+--NUM_STEPS=400 \
+--TOTAL_TIMESTEPS=100_000_000 \
+--STEP_SCAN=4 \
+--UPDATE_EPOCHS=10 \
+--NUM_MINIBATCHES=32 \
+--ALPHA_REACH=1.0 \
+--GAMMA_ENERGY=1.0 \
+--GAMMA_REACH_INIT=0.995 \
+--GAMMA_REACH_FINAL=0.9995 \
+--GAE_LAMBDA=0.95 \
+--CLIP_EPS=0.2 \
+--ENT_COEF=0.005 \
+--VF_COEF=2.0 \
+--MAX_GRAD_NORM=0.5 \
+--ACTIVATION=tanh \
+--CUDA_USE=2 \
+--ANNEAL_LR \
+--ANNEAL_ENT \
+--NAME=halfcheetah_baseline_1.0_final

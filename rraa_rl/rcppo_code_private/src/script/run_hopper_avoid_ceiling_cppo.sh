@@ -1,0 +1,26 @@
+python ./src/rl/CPPO.py \
+--EXP_NAME=HopperAvoidCeilingBaseline \
+--DIR=hopper_avoid_ceiling_cppo_10 \
+--LR=3e-4 \
+--NUM_ENVS=128 \
+--NUM_STEPS=400 \
+--TOTAL_TIMESTEPS=100_000_000 \
+--STEP_SCAN=4 \
+--UPDATE_EPOCHS=10 \
+--NUM_MINIBATCHES=32 \
+--GAMMA_ENERGY=0.99 \
+--GAMMA_REACH_INIT=0.995 \
+--GAMMA_REACH_FINAL=0.9995 \
+--GAE_LAMBDA=0.95 \
+--LAMBDA_REACH=0.1 \
+--K_P=1.0 \
+--THRESHOLD_CPPO=10. \
+--CLIP_EPS=0.2 \
+--ENT_COEF=0.0001 \
+--VF_COEF=2.0 \
+--MAX_GRAD_NORM=0.5 \
+--ACTIVATION=tanh \
+--CUDA_USE=1,2,3 \
+--ANNEAL_LR \
+--ANNEAL_ENT \
+--NAME=hopper_cppo_10
