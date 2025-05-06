@@ -10,7 +10,10 @@ by the ucsd phdawgs
 
 ### to do 05/05:
  - We now have oswin's envs & baselines code ("EFPPO" dir)
-    - hopper_avoid_ceiling works (~40 min)
+    - hopper_avoid_ceiling works (~40 min, on sdsc)
+    - F16_avoid works (~35 min, on sdsc)
+    - half_cheetah_avoid works (~30 min, on ws2)
+    - windfield_avoid works (~60 min/section=4hrs total, on ws2)
     - envs: need to clone and remove energy minimization / state augmentation
     - envs: requires slight for general RAA & RR problem (must have l(x) & g(x))
 
