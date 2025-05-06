@@ -1,0 +1,28 @@
+name: rraa-rl_jax_sbx
+channels:
+  - conda-forge
+  - defaults
+dependencies:
+  - python=3.10
+  - pip
+  - pip:
+      - jax[cuda12_pip]==0.4.25
+      - --find-links https://storage.googleapis.com/jax-releases/jax_cuda_releases.html
+      - nvidia-cudnn-cu12==8.9.2.26
+      - flax
+      - brax
+      - gymnax
+      - chex
+      - gymnasium
+      - sbx-rl
+      - mujoco
+      # - dm_control, adds pytorch 2.7 and bad cuda utils for jax
+      - numpy<2
+      - wandb
+      - shimmy
+      - imageio
+      - imageio-ffmpeg
+      - einops
+      - control
+      - distrax
+      - colour

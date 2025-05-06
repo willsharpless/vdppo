@@ -2,6 +2,12 @@
 
 *wandb
 
+*rraa_rl.egg-info
+
+# Ignore all EFPPO experiments
+/rraa_rl/EFPPO/model/hopper_avoid_ceiling/**
+/model/hopper_avoid_ceiling/*
+
 # Ignore all experiments
 /rraa_rl/exp/**
 

@@ -2,38 +2,53 @@
 by the ucsd phdawgs
 
 ### to setup
-```conda env create -f make_env.yml```
+```conda env create -f make_env.yml``` (pytorch + SB3 OLD)
+```conda env create -f make_env_jax_sbx.yml``` (jax + SBX)
 
-### deps
- - python = 3.10
- - torch >= 2.2
- - dm_control >= 1.0
- - gym = 0.26.1
- - mujoco >= 2.0
- - stable-baselines3 = 2.6 (subclassing custom algs)
- - wandb (optional)
- 
- - oswins code needs more jax stuff, will fio tmrw
+
 
 ### to do 05/05:
- - We now have oswin's envs & baselines code (rcppo_code_private)
-    - need to test, requires every jax library u kno
-    - envs will need modification for RAA & RR problem 
-      (must have l(x) & g(x))
+ - We now have oswin's envs & baselines code ("EFPPO" dir)
+    - hopper_avoid_ceiling works (~40 min)
+    - envs: need to clone and remove energy minimization / state augmentation
+    - envs: requires slight for general RAA & RR problem (must have l(x) & g(x))
 
- - safeCartpole needs to be fixed
-    - NW wrote custom l(x), g(x) with historic (last max) scoring for vanilla PPO but it dont work
+ - W: Going to start w/ hopper, 
+    - run w SBX PPO to see if this works
+    - then add walls on ends (RAA)
 
  - custom RRAA-RL algos
-    - PPO: written but correct GAE update?
-    - SAC: todo
-    - general: simultaneous solving of decomposed problem (for coupled policy learning)
+    - SBX vs. oswin-modifications:
+      - testing SBX forms first, which workd w prev. coded PPO-RRAA
+      - PPO: written but correct GAE update?
+      - if fails, making mod of oswin PPO (EC-EFPPO)
+    - general: simultaneous solving of decomposed problem 
+    (for coupled policy learning, probably important)
 
- - what baselines?
-    - 05/02, WND: PPO w/ constrained MDP (aug lagrangian), RESPO (milan), CRL (used in oswin work)
+ - what baselines? need to make,
+    - PPO: w simple sum max{min l, max g}
+    - PPO: special augmented problem -> constrained MDP (see oswin code for eg.)
 
- - what safe envs? custom?
-    - 05/02, WND: all envs need reward l(x) and penalty g(x) fns, some multiple l(x)
+ - TARGET ENVS
+    - Hopper RR
+    - F16 RAA (target near obstacle wall)
+
+- OLD
+ - safeCartpole doesnt work (ditching anyway)
+
+### to run, eg.
+Oswin code
+```
+./rraa_rl/EFPPO/src/script/run_hopper_avoid_ceiling.sh
+```
+this calls the alg `EC-EFPPO`.
+
+OLD
+```
+python -m rraa_rl.train.train
+python -m rraa_rl.train.train_safeCartpole
+```
+this calls with whatever model was used.
 
 ### structure (5/1/25):
 
@@ -55,8 +70,13 @@ by the ucsd phdawgs
     └── utils
 ```
 
-### to run, eg.
-```
-python -m rraa_rl.train.train
-python -m rraa_rl.train.train_safeCartpole
-```
+### deps
+ - python = 3.10
+ - torch >= 2.2
+ - dm_control >= 1.0
+ - gym = 0.26.1
+ - mujoco >= 2.0
+ - stable-baselines3 = 2.6 (subclassing custom algs)
+ - wandb (optional)
+ 
+ - oswins code needs more jax stuff, use make_env_jax.

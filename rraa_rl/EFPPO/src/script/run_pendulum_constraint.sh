@@ -1,0 +1,23 @@
+python ./rraa_rl/EFPPO/src/rl/EC-EFPPO.py \
+--EXP_NAME=PendulumConstraint \
+--DIR=pendulum_constraint \
+--LR=3e-4 \
+--NUM_ENVS=32 \
+--NUM_STEPS=400 \
+--TOTAL_TIMESTEPS=80_000_000 \
+--STEP_SCAN=10 \
+--UPDATE_EPOCHS=10 \
+--NUM_MINIBATCHES=8 \
+--GAMMA_ENERGY=1.0 \
+--GAMMA_REACH_INIT=0.995 \
+--GAMMA_REACH_FINAL=0.9995 \
+--GAE_LAMBDA=0.95 \
+--CLIP_EPS=0.2 \
+--ENT_COEF=0.0001 \
+--VF_COEF=0.5 \
+--MAX_GRAD_NORM=0.5 \
+--ACTIVATION=tanh \
+--CUDA_USE=0,1,2,3 \
+--ANNEAL_LR \
+--ANNEAL_ENT \
+--NAME=pendulum_final
