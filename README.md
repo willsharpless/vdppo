@@ -3,9 +3,10 @@ by the ucsd phdawgs
 
 ### to setup
 ```conda env create -f make_env.yml``` (pytorch + SB3 OLD)
+
 ```conda env create -f make_env_jax_sbx.yml``` (jax + SBX)
 
-
+```pip install -e .```
 
 ### to do 05/05:
  - We now have oswin's envs & baselines code ("EFPPO" dir)
@@ -33,8 +34,8 @@ by the ucsd phdawgs
     - Hopper RR
     - F16 RAA (target near obstacle wall)
 
-- OLD
- - safeCartpole doesnt work (ditching anyway)
+ - OLD
+    - safeCartpole doesnt work (ditching anyway)
 
 ### to run, eg.
 Oswin code
