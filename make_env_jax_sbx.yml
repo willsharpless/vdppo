@@ -26,4 +26,5 @@ dependencies:
       - control
       - distrax
       - colour
-      - jax-f16
+      # - jax-f16, uses incompatible jnp, use my fork
+      - git+https://github.com/willsharpless/jax-f16.git

@@ -6,7 +6,7 @@
 
 # Ignore all EFPPO experiments
 /rraa_rl/EFPPO/model/hopper_avoid_ceiling/**
-/model/hopper_avoid_ceiling/*
+/model/*
 
 # Ignore all experiments
 /rraa_rl/exp/**
