@@ -1,4 +1,4 @@
-name: rraa-rl_jax_sbx
+name: jax_sbx
 channels:
   - conda-forge
   - defaults
@@ -6,7 +6,7 @@ dependencies:
   - python=3.10
   - pip
   - pip:
-      - jax[cuda12_pip]==0.4.25
+      - jax[cuda12_pip]==0.4.26
       - --find-links https://storage.googleapis.com/jax-releases/jax_cuda_releases.html
       - nvidia-cudnn-cu12==8.9.2.26
       - flax
@@ -26,3 +26,4 @@ dependencies:
       - control
       - distrax
       - colour
+      - jax-f16
