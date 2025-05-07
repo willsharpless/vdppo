@@ -23,6 +23,20 @@ class EnvParams:
     torque_limit: float = 0.2
     max_torque: float = 1.0
 
+@struct.dataclass
+class EnvStateRAA:
+    state: State
+    reach: float
+
+@struct.dataclass
+class EnvStateRR:
+    state: State
+    reach1: float
+    reach2: float
+
+@struct.dataclass
+class EnvParamsEmpty:
+    pass
 
 class HopperAvoidCeiling:
     def __init__(self, backend="positional"):
@@ -215,12 +229,269 @@ class HopperAvoidCeilingDeterministic:
             shape=(self._env.action_size,),
         )
 
-class HopperAvoidCeilingWall(HopperAvoidCeiling):
+class HopperAvoidCeilingWallDebug(HopperAvoidCeiling):
     def __init__(self, backend="positional"):
         super().__init__(backend=backend)
 
     @partial(jax.jit, static_argnums=(0,))
     def is_avoid(self, head_pos):
         avoid_1 = (head_pos[1] >= 1.3) & (head_pos[0] >= 0.95) & (head_pos[0] <= 1.05)
-        avoid_2 = (head_pos[0] >= 2.35) # dont hit head on wall
+        avoid_2 = (head_pos[0] >= 2.35) # dont hit head on walls, bad dobby
         return avoid_1 | avoid_2
+
+class HopperAvoidCeilingWall:
+    def __init__(self, backend="positional"):
+        env = HopperRandom(backend=backend,
+                           exclude_current_positions_from_observation=False,
+                           terminate_when_unhealthy=False)
+        env = EpisodeWrapper(env, episode_length=1000, action_repeat=2)
+        env = AutoResetWrapper(env)
+        self._env = env
+        self.action_size = env.action_size
+        self.observation_size = (env.observation_size,)
+        self.default_params = EnvParamsEmpty()
+
+    @partial(jax.jit, static_argnums=(0,))
+    def reset(self, key, params=None):
+        state = self._env.reset(key)
+        head_pos, _, _, _, _, _ = self.calculate_position(state.obs)
+        is_avoid = self.is_avoid(head_pos)
+        avoid_value = jnp.where(is_avoid, -1, 1)
+        reach_value = self.is_reach(head_pos, avoid_value)
+        observation = state.obs
+        env_state = EnvStateRAA(state, reach_value)
+        return observation, env_state
+
+    @partial(jax.jit, static_argnums=(0,))
+    def step(self, key, state, action, params=None):
+        u = jnp.tanh(action)
+        next_state = self._env.step(state.state, u)
+        head_pos, _, _, _, _, _ = self.calculate_position(next_state.obs)
+        is_avoid = self.is_avoid(head_pos)
+        avoid_value = jnp.where(is_avoid, -1, state.avoid)
+        reach_value = self.is_reach(head_pos, avoid_value)
+        head_pos, jaw_pos, thg_pos, leg_pos, foot_front_pos, foot_back_pos = self.calculate_position(state.state.obs)
+        pos_dict = {"head_pos": head_pos, "jaw_pos": jaw_pos, "thg_pos": thg_pos, "leg_pos": leg_pos,
+                    "foot_front_pos": foot_front_pos, "foot_back_pos": foot_back_pos}
+        observation = next_state.obs
+        next_state_new = EnvStateRAA(next_state, reach_value)
+
+        return observation, next_state_new, next_state.done > 0.5, pos_dict
+
+    @partial(jax.jit, static_argnums=(0,))
+    def calculate_position(self, obs):
+        head_pos = jnp.array([obs[0] + 0.2 * jnp.sin(obs[2]),
+                              obs[1] + 0.2 * jnp.cos(obs[2])])
+        jaw_pos = jnp.array([obs[0] - 0.2 * jnp.sin(obs[2]),
+                             obs[1] - 0.2 * jnp.cos(obs[2])])
+        thg_pos = jnp.array([jaw_pos[0] - 0.45 * jnp.sin(obs[2] - obs[3]),
+                             jaw_pos[1] - 0.45 * jnp.cos(obs[2] - obs[3])])
+        leg_pos = jnp.array([thg_pos[0] - 0.5 * jnp.sin(obs[2] - obs[3] - obs[4]),
+                             thg_pos[1] - 0.5 * jnp.cos(obs[2] - obs[3] - obs[4])])
+        foot_back_pos = jnp.array([leg_pos[0] - 0.13 * jnp.cos(obs[2] - obs[3] - obs[4] - obs[5]),
+                                    leg_pos[1] + 0.13 * jnp.sin(obs[2] - obs[3] - obs[4] - obs[5])])
+        foot_front_pos = jnp.array([leg_pos[0] + 0.26 * jnp.cos(obs[2] - obs[3] - obs[4] - obs[5]),
+                                   leg_pos[1] - 0.26 * jnp.sin(obs[2] - obs[3] - obs[4] - obs[5])])
+        return head_pos, jaw_pos, thg_pos, leg_pos, foot_front_pos, foot_back_pos
+
+    @partial(jax.jit, static_argnums=(0,))
+    def is_reach(self, head_pos, avoid_value):
+        reach = jnp.sqrt((head_pos[0] - 2.0) ** 2 + (head_pos[1] - 1.4) ** 2) - 0.1
+        has_reached_goal = jnp.sqrt((head_pos[0] - 2.0) ** 2 + (head_pos[1] - 1.4) ** 2) < 0.1
+        value = jnp.where(has_reached_goal, -2.5, reach)
+        is_avoid = (avoid_value == -1)
+        value = jnp.where(is_avoid, 3.0, value)
+        return value * 100.0
+
+    @partial(jax.jit, static_argnums=(0,))
+    def is_avoid(self, head_pos):
+        avoid_1 = (head_pos[1] >= 1.3) & (head_pos[0] >= 0.95) & (head_pos[0] <= 1.05)
+        avoid_2 = (head_pos[0] >= 2.35) # dont hit head on walls, bad dobby
+        return avoid_1 | avoid_2
+
+    def observation_space(self, params):
+        return spaces.Box(
+            low=-jnp.inf,
+            high=jnp.inf,
+            shape=(self._env.observation_size + 2,),
+        )
+
+    def action_space(self, params):
+        return spaces.Box(
+            low=-1.0,
+            high=1.0,
+            shape=(self._env.action_size,),
+        )
+    
+class HopperReachReach:
+    def __init__(self, backend="positional"):
+        env = HopperRandom(backend=backend,
+                           exclude_current_positions_from_observation=False,
+                           terminate_when_unhealthy=False)
+        env = EpisodeWrapper(env, episode_length=1000, action_repeat=2)
+        env = AutoResetWrapper(env)
+        self._env = env
+        self.action_size = env.action_size
+        self.observation_size = (env.observation_size,)
+        self.default_params = EnvParamsEmpty()
+
+    @partial(jax.jit, static_argnums=(0,))
+    def reset(self, key, params=None):
+        state = self._env.reset(key)
+        head_pos, _, _, _, _, _ = self.calculate_position(state.obs)
+        # is_avoid = self.is_avoid(head_pos)
+        # avoid_value = jnp.where(is_avoid, -1, 1)
+        reach1_value = self.is_reach1(head_pos)
+        reach2_value = self.is_reach2(head_pos)
+        observation = jnp.concatenate([state.obs, jnp.array([reach1_value, reach2_value])])
+        env_state = EnvStateRR(state, reach1_value, reach2_value)
+        return observation, env_state
+
+    @partial(jax.jit, static_argnums=(0,))
+    def step(self, key, state, action, params=None):
+        u = jnp.tanh(action)
+        next_state = self._env.step(state.state, u)
+        head_pos, _, _, _, _, _ = self.calculate_position(next_state.obs)
+        reach1_value = self.is_reach1(head_pos)
+        reach2_value = self.is_reach2(head_pos)
+        head_pos, jaw_pos, thg_pos, leg_pos, foot_front_pos, foot_back_pos = self.calculate_position(state.state.obs)
+        pos_dict = {"head_pos": head_pos, "jaw_pos": jaw_pos, "thg_pos": thg_pos, "leg_pos": leg_pos,
+                    "foot_front_pos": foot_front_pos, "foot_back_pos": foot_back_pos}
+        observation = jnp.concatenate([next_state.obs, jnp.array([reach1_value, reach2_value])])
+        next_state_new = EnvStateRR(next_state, reach1_value, reach2_value)
+        reward = 0. # used to be energy consumption? FIXME
+
+        return observation, next_state_new, reward, next_state.done > 0.5, pos_dict
+
+    @partial(jax.jit, static_argnums=(0,))
+    def calculate_position(self, obs):
+        head_pos = jnp.array([obs[0] + 0.2 * jnp.sin(obs[2]),
+                              obs[1] + 0.2 * jnp.cos(obs[2])])
+        jaw_pos = jnp.array([obs[0] - 0.2 * jnp.sin(obs[2]),
+                             obs[1] - 0.2 * jnp.cos(obs[2])])
+        thg_pos = jnp.array([jaw_pos[0] - 0.45 * jnp.sin(obs[2] - obs[3]),
+                             jaw_pos[1] - 0.45 * jnp.cos(obs[2] - obs[3])])
+        leg_pos = jnp.array([thg_pos[0] - 0.5 * jnp.sin(obs[2] - obs[3] - obs[4]),
+                             thg_pos[1] - 0.5 * jnp.cos(obs[2] - obs[3] - obs[4])])
+        foot_back_pos = jnp.array([leg_pos[0] - 0.13 * jnp.cos(obs[2] - obs[3] - obs[4] - obs[5]),
+                                    leg_pos[1] + 0.13 * jnp.sin(obs[2] - obs[3] - obs[4] - obs[5])])
+        foot_front_pos = jnp.array([leg_pos[0] + 0.26 * jnp.cos(obs[2] - obs[3] - obs[4] - obs[5]),
+                                   leg_pos[1] - 0.26 * jnp.sin(obs[2] - obs[3] - obs[4] - obs[5])])
+        return head_pos, jaw_pos, thg_pos, leg_pos, foot_front_pos, foot_back_pos
+
+    @partial(jax.jit, static_argnums=(0,))
+    def is_reach1(self, head_pos):
+        target_center = [2., 1.4]
+        reach = jnp.sqrt((head_pos[0] - target_center[0]) ** 2 + (head_pos[1] - target_center[1]) ** 2) - 0.1
+        has_reached_goal = jnp.sqrt((head_pos[0] - target_center[0]) ** 2 + (head_pos[1] - target_center[1]) ** 2) < 0.1
+        value = jnp.where(has_reached_goal, -2.5, reach)
+        return value * 100.0
+    
+    @partial(jax.jit, static_argnums=(0,))
+    def is_reach2(self, head_pos):
+        target_center = [-2., 1.4]
+        reach = jnp.sqrt((head_pos[0] - target_center[0]) ** 2 + (head_pos[1] - target_center[1]) ** 2) - 0.1
+        has_reached_goal = jnp.sqrt((head_pos[0] - target_center[0]) ** 2 + (head_pos[1] - target_center[1]) ** 2) < 0.1
+        value = jnp.where(has_reached_goal, -2.5, reach)
+        return value * 100.0
+
+    def observation_space(self, params):
+        return spaces.Box(
+            low=-jnp.inf,
+            high=jnp.inf,
+            shape=(self._env.observation_size + 2,),
+        )
+
+    def action_space(self, params):
+        return spaces.Box(
+            low=-1.0,
+            high=1.0,
+            shape=(self._env.action_size,),
+        )
+    
+class HopperReachReachDeterministic:
+    def __init__(self, backend="positional"):
+        env = HopperDeterministic(backend=backend,
+                           exclude_current_positions_from_observation=False,
+                           terminate_when_unhealthy=False)
+        env = EpisodeWrapper(env, episode_length=1000, action_repeat=2)
+        env = AutoResetWrapper(env)
+        self._env = env
+        self.action_size = env.action_size
+        self.observation_size = (env.observation_size,)
+        self.default_params = EnvParamsEmpty()
+
+    @partial(jax.jit, static_argnums=(0,))
+    def reset(self, key, params=None):
+        state = self._env.reset(key)
+        head_pos, _, _, _, _, _ = self.calculate_position(state.obs)
+        reach1_value = self.is_reach1(head_pos)
+        reach2_value = self.is_reach2(head_pos)
+        observation = jnp.concatenate([state.obs, jnp.array([reach1_value, reach2_value])])
+        env_state = EnvStateRR(state, reach1_value, reach2_value)
+        return observation, env_state
+
+    @partial(jax.jit, static_argnums=(0,))
+    def step(self, key, state, action, params=None):
+        u = jnp.tanh(action)
+        next_state = self._env.step(state.state, u)
+        head_pos, _, _, _, _, _ = self.calculate_position(next_state.obs)
+        reach1_value = self.is_reach1(head_pos)
+        reach2_value = self.is_reach2(head_pos)
+        head_pos, jaw_pos, thg_pos, leg_pos, foot_front_pos, foot_back_pos = self.calculate_position(state.state.obs)
+        pos_dict = {"head_pos": head_pos, "jaw_pos": jaw_pos, "thg_pos": thg_pos, "leg_pos": leg_pos,
+                    "foot_front_pos": foot_front_pos, "foot_back_pos": foot_back_pos}
+        observation = jnp.concatenate([next_state.obs, jnp.array([reach1_value, reach2_value])])
+        next_state_new = EnvStateRR(next_state, reach1_value, reach2_value)
+        reward = 0. # used to be energy consumption? FIXME
+
+        return observation, next_state_new, reward, next_state.done > 0.5, pos_dict
+
+    @partial(jax.jit, static_argnums=(0,))
+    def calculate_position(self, obs):
+        head_pos = jnp.array([obs[0] + 0.2 * jnp.sin(obs[2]),
+                              obs[1] + 0.2 * jnp.cos(obs[2])])
+        jaw_pos = jnp.array([obs[0] - 0.2 * jnp.sin(obs[2]),
+                             obs[1] - 0.2 * jnp.cos(obs[2])])
+        thg_pos = jnp.array([jaw_pos[0] - 0.45 * jnp.sin(obs[2] - obs[3]),
+                             jaw_pos[1] - 0.45 * jnp.cos(obs[2] - obs[3])])
+        leg_pos = jnp.array([thg_pos[0] - 0.5 * jnp.sin(obs[2] - obs[3] - obs[4]),
+                             thg_pos[1] - 0.5 * jnp.cos(obs[2] - obs[3] - obs[4])])
+        foot_back_pos = jnp.array([leg_pos[0] - 0.13 * jnp.cos(obs[2] - obs[3] - obs[4] - obs[5]),
+                                    leg_pos[1] + 0.13 * jnp.sin(obs[2] - obs[3] - obs[4] - obs[5])])
+        foot_front_pos = jnp.array([leg_pos[0] + 0.26 * jnp.cos(obs[2] - obs[3] - obs[4] - obs[5]),
+                                   leg_pos[1] - 0.26 * jnp.sin(obs[2] - obs[3] - obs[4] - obs[5])])
+        return head_pos, jaw_pos, thg_pos, leg_pos, foot_front_pos, foot_back_pos
+
+    @partial(jax.jit, static_argnums=(0,))
+    def is_reach1(self, head_pos):
+        target_center = [2., 1.4]
+        reach = jnp.sqrt((head_pos[0] - target_center[0]) ** 2 + (head_pos[1] - target_center[1]) ** 2) - 0.1
+        has_reached_goal = jnp.sqrt((head_pos[0] - target_center[0]) ** 2 + (head_pos[1] - target_center[1]) ** 2) < 0.1
+        value = jnp.where(has_reached_goal, -2.5, reach)
+        return value * 100.0
+    
+    @partial(jax.jit, static_argnums=(0,))
+    def is_reach2(self, head_pos):
+        target_center = [-2., 1.4]
+        reach = jnp.sqrt((head_pos[0] - target_center[0]) ** 2 + (head_pos[1] - target_center[1]) ** 2) - 0.1
+        has_reached_goal = jnp.sqrt((head_pos[0] - target_center[0]) ** 2 + (head_pos[1] - target_center[1]) ** 2) < 0.1
+        value = jnp.where(has_reached_goal, -2.5, reach)
+        return value * 100.0
+
+    def observation_space(self, params):
+        return spaces.Box(
+            low=-jnp.inf,
+            high=jnp.inf,
+            shape=(self._env.observation_size + 2,),
+        )
+
+    def action_space(self, params):
+        return spaces.Box(
+            low=-1.0,
+            high=1.0,
+            shape=(self._env.action_size,),
+        )
+    
+
+## TODO WAS: RRAA Hopper (should be like ReachReach + is_avoid)

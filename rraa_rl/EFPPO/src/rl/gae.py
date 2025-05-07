@@ -37,6 +37,43 @@ class Transition_reach(NamedTuple):
     info: jnp.ndarray
     reach: jnp.ndarray
 
+class Transition_raa(NamedTuple):
+    done: jnp.ndarray
+    action: jnp.ndarray
+    value: jnp.ndarray
+    value_reach: jnp.ndarray
+    reward: jnp.ndarray
+    log_prob: jnp.ndarray
+    obs: jnp.ndarray
+    info: jnp.ndarray
+    reach: jnp.ndarray
+
+class Transition_rr(NamedTuple):
+    done: jnp.ndarray
+    action: jnp.ndarray
+    value: jnp.ndarray
+    value_reach1: jnp.ndarray
+    value_reach2: jnp.ndarray
+    reward: jnp.ndarray
+    log_prob: jnp.ndarray
+    obs: jnp.ndarray
+    info: jnp.ndarray
+    reach1: jnp.ndarray
+    reach2: jnp.ndarray
+
+class Transition_rraa(NamedTuple):
+    done: jnp.ndarray
+    action: jnp.ndarray
+    value: jnp.ndarray
+    value_reach1: jnp.ndarray
+    value_reach2: jnp.ndarray
+    reward: jnp.ndarray
+    log_prob: jnp.ndarray
+    obs: jnp.ndarray
+    info: jnp.ndarray
+    reach1: jnp.ndarray
+    reach2: jnp.ndarray
+
 @partial(jax.jit)
 def calculate_advantage(
     gae_nval_gamma_lambda: Tuple[jnp.ndarray, jnp.ndarray, float, float],
@@ -262,6 +299,114 @@ def calculate_gae_reach4(
     _, Qhs_GAEs = jax.lax.scan(loop, init_carry, inps, reverse=True)
     return Qhs_GAEs - T_Vhs[:-1], Qhs_GAEs
 
+@partial(jax.jit)
+def calculate_gae_avoid4(
+    gamma: float,
+    gae_lambda: float,
+    T_hs: jnp.ndarray,
+    T_Vhs: jnp.ndarray,
+    done: jnp.ndarray,
+) -> Tuple[jnp.ndarray, jnp.ndarray]:
+
+    Tp1, nh = T_hs.shape
+    T = Tp1 - 1
+
+    def loop(carry, inp):
+        ii, hs, Vhs, done_row = inp
+        next_Vhs_row, gae_coeffs, pre_done_row = carry
+
+        # Update GAE coeffs. [1] -> [1, λ/(1-λ)] -> [1 λ λ²/(1-λ)] -> [1 λ λ² λ³/(1-λ)]
+        gae_coeffs = (jnp.roll(gae_coeffs, 1, axis=0) * gae_lambda * (1 - pre_done_row) +
+                      jnp.roll(gae_coeffs, 1, axis=0) * (gae_lambda / (1 - gae_lambda)) * pre_done_row) * (1 - done_row)
+        gae_coeffs = gae_coeffs.at[0, :].set(1.0)
+
+        mask = jnp.arange(T + 1) < ii + 1
+        mask_h = mask[:, None]
+
+        # DP for Vh.
+        done_row_processed = jnp.where(jnp.isnan(done_row * jnp.inf), 0, done_row * jnp.inf)
+        disc_to_h = (1 - gamma) * hs + gamma * (next_Vhs_row + done_row_processed)
+
+        Vhs_row = jnp.maximum(hs, disc_to_h) # AVOID IS MAXIMUM
+        Vhs_row = mask_h * Vhs_row
+
+        normed_gae_coeffs = gae_coeffs / jnp.sum(gae_coeffs, axis=0)
+        Qhs_GAE = jnp.sum(Vhs_row * normed_gae_coeffs, axis=0)
+
+        # Setup Vs_row for next timestep.
+        Vhs_row = jnp.roll(Vhs_row, 1, axis=0)
+        Vhs_row = Vhs_row.at[0, :].set(Vhs)
+
+        return (Vhs_row, gae_coeffs, done_row), Qhs_GAE
+
+    done = jnp.array(done, dtype=int)
+    init_gae_coeffs = jnp.zeros((T + 1, nh))
+
+    init_Vhs = jnp.zeros((T + 1, nh)).at[0, :].set(T_Vhs[T, :])
+    init_carry = (init_Vhs, init_gae_coeffs, jnp.zeros(nh, dtype=int))
+
+    ts = jnp.arange(T)[::-1]
+    inps = (ts, T_hs[:-1], T_Vhs[1:], done)
+
+    _, Qhs_GAEs = jax.lax.scan(loop, init_carry, inps, reverse=True)
+    return Qhs_GAEs - T_Vhs[:-1], Qhs_GAEs
+
+@partial(jax.jit)
+def calculate_gae_reachavoid4(
+    gamma: float,
+    gae_lambda: float,
+    T_ls: jnp.ndarray,
+    T_gs: jnp.ndarray,
+    T_Vs: jnp.ndarray,
+    done: jnp.ndarray,
+) -> Tuple[jnp.ndarray, jnp.ndarray]:
+
+    Tp1, nh = T_ls.shape
+    T = Tp1 - 1
+
+    def loop(carry, inp):
+        ii, ls, gs, Vs, done_row = inp
+        next_Vs_row, gae_coeffs, pre_done_row = carry
+
+        # Update GAE coeffs. [1] -> [1, λ/(1-λ)] -> [1 λ λ²/(1-λ)] -> [1 λ λ² λ³/(1-λ)]
+        gae_coeffs = (jnp.roll(gae_coeffs, 1, axis=0) * gae_lambda * (1 - pre_done_row) +
+                      jnp.roll(gae_coeffs, 1, axis=0) * (gae_lambda / (1 - gae_lambda)) * pre_done_row) * (1 - done_row)
+        gae_coeffs = gae_coeffs.at[0, :].set(1.0)
+
+        mask = jnp.arange(T + 1) < ii + 1
+        mask_lg = mask[:, None]
+
+        # DP for Vh.
+        done_row_processed = jnp.where(jnp.isnan(done_row * jnp.inf), 0, done_row * jnp.inf)
+
+        # disc_to_h = (1 - gamma) * hs + gamma * (next_Vhs_row + done_row_processed) # OSWIN BRT backup
+        # Vhs_row = jnp.minimum(hs, disc_to_h)
+        # Vhs_row = mask_h * Vhs_row
+
+        Vs_row = (1 - gamma) * jnp.maximum(ls, gs) + gamma * jnp.maximum(jnp.minimum(ls, next_Vs_row + done_row_processed), gs)
+        Vs_row = mask_lg * Vs_row
+
+        normed_gae_coeffs = gae_coeffs / jnp.sum(gae_coeffs, axis=0)
+        Qhs_GAE = jnp.sum(Vs_row * normed_gae_coeffs, axis=0)
+
+        # Setup Vs_row for next timestep.
+        Vs_row = jnp.roll(Vs_row, 1, axis=0)
+        Vs_row = Vs_row.at[0, :].set(Vs)
+
+        return (Vs_row, gae_coeffs, done_row), Qhs_GAE
+
+    done = jnp.array(done, dtype=int)
+    init_gae_coeffs = jnp.zeros((T + 1, nh))
+
+    init_Vs = jnp.zeros((T + 1, nh)).at[0, :].set(T_Vs[T, :])
+    init_carry = (init_Vs, init_gae_coeffs, jnp.zeros(nh, dtype=int))
+
+    ts = jnp.arange(T)[::-1]
+    inps = (ts, T_ls[:-1], T_gs[:-1], T_Vs[1:], done)
+
+    _, Qhs_GAEs = jax.lax.scan(loop, init_carry, inps, reverse=True)
+    return Qhs_GAEs - T_Vs[:-1], Qhs_GAEs
+
 
 @partial(jax.jit)
 def calculate_indexs(
@@ -393,6 +538,52 @@ def calculate_indexs3(
     end, indexs = jax.lax.scan(loop, init_carry, inps, reverse=True)
 
     return indexs, end[3]
+
+@partial(jax.jit)
+def calculate_indexs3_rr(
+    gamma: float,
+    reward: jnp.ndarray,
+    T_hs: jnp.ndarray,
+    last_value: jnp.ndarray,
+) -> jnp.ndarray:
+
+    Tp1, nh = T_hs.shape
+    T = Tp1 - 1
+
+    def loop(carry, inp):
+        ii, reach, reward = inp
+        (next_Vs_row, next_mask_1, done) = carry
+
+        Vs_row = next_mask_1 * (reward + gamma * next_Vs_row)
+        Vs_row = Vs_row.at[ii, :].set(reach)
+
+        # Vhs_row = next_Vhs_row.at[ii, :].set(reach)
+
+        V_total = Vs_row[::-1]
+
+        # V_total = jnp.maximum(Vs_row - energy[-ii-1, :], Vhs_row)[::-1]
+        # V_next = jnp.maximum(jnp.power(gamma, ii) * last_value + V_total[-1, :] - energy[-ii-1, :], last_value_reach)
+        # V_total_1 = jnp.concatenate((V_total, V_next))
+
+        V_total_1 = jnp.concatenate((V_total, last_value))
+
+        index_1 = jnp.argmin(V_total_1, axis=0)
+        done = done.at[index_1, jnp.arange(nh)].set(1.0)
+
+        next_mask_1 = jnp.roll(next_mask_1, 1)
+        next_mask_1 = next_mask_1.at[0, :].set(1.)
+
+        return (Vs_row, next_mask_1, done), index_1
+
+    ts = jnp.arange(T)[::-1]
+    init_Vs = jnp.ones((T, nh)) * jnp.inf
+    done = jnp.full((T+1, nh), 0.)
+    init_mask_1 = jnp.ones((T, 1)) * jnp.inf
+    init_carry = (init_Vs, init_mask_1, done)
+    inps = (ts, T_hs[:-1], reward)
+    end, indexs = jax.lax.scan(loop, init_carry, inps, reverse=True)
+
+    return indexs, end[-1]
 
 @partial(jax.jit)
 def calculate_advantage2(

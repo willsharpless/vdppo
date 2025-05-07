@@ -17,6 +17,21 @@ def calculate_consumption(traj_batch):
             energy.append(np.sum(traj_batch.reward[0: reach_idx[i], i]))
     return np.array(energy), cnt, idx
 
+def calculate_reachreach(traj_batch):
+    reach_idx_1 = (traj_batch.reach1 < 0).argmax(axis=0)
+    reach_idx_2 = (traj_batch.reach2 < 0).argmax(axis=0)
+    cnt_1 = 0
+    cnt_2 = 0
+    idx_1 = 0
+    idx_2 = 0
+    for i in range(reach_idx_1.shape[0]):
+        if reach_idx_1[i] == 0 and traj_batch.reach1[0, i] >= 0:
+            cnt_1 += 1
+            idx_1 = i
+        elif reach_idx_2[i] == 0 and traj_batch.reach2[0, i] >= 0:
+            cnt_2 += 1
+            idx_2 = i
+    return cnt_1, cnt_2, idx_1, idx_2
 
 def calculate_minimal_reach(reach):
     reach_idx = (reach < 0).argmax()
@@ -240,6 +255,58 @@ def plot_contour(train_state_energy, train_state_h, train_state_policy, info, ep
                      .format(info['init_energy'], info['final_energy']))
         plt.savefig('model/{}/reach/trajectory_{:0>4d}'.format(config["DIR"], epoch), dpi=300)
         plt.close("all")
+    elif config['EXP_NAME'] == 'HopperReachReach':
+        plt.figure(figsize=(12, 6))
+        fig, ax = plt.subplots(1, 1)
+        reach_idx_1 = info['reach_index_1']
+        reach_idx_2 = info['reach_index_2']
+        full_len = info['head_pos'].shape[0]
+        draw_circle = plt.Circle((2.0, 1.4), 0.1, edgecolor="green", linewidth=2, fill=False)
+        draw_circle2 = plt.Circle((-2.0, 1.4), 0.1, edgecolor="blue", linewidth=2, fill=False)
+        ax.add_patch(draw_circle)
+        ax.add_patch(draw_circle2)
+        for i in range(0, full_len, 16):
+            ax.plot(np.array([info['head_pos'][i, 0], info['jaw_pos'][i, 0]]),
+                     np.array([info['head_pos'][i, 1], info['jaw_pos'][i, 1]]), c='r')
+            ax.plot(np.array([info['jaw_pos'][i, 0], info['thg_pos'][i, 0]]),
+                     np.array([info['jaw_pos'][i, 1], info['thg_pos'][i, 1]]), c='g')
+            ax.plot(np.array([info['thg_pos'][i, 0], info['leg_pos'][i, 0]]),
+                     np.array([info['thg_pos'][i, 1], info['leg_pos'][i, 1]]), c='b')
+            ax.plot(np.array([info['leg_pos'][i, 0], info['foot_front_pos'][i, 0]]),
+                     np.array([info['leg_pos'][i, 1], info['foot_front_pos'][i, 1]]), c='b')
+            ax.plot(np.array([info['leg_pos'][i, 0], info['foot_back_pos'][i, 0]]),
+                     np.array([info['leg_pos'][i, 1], info['foot_back_pos'][i, 1]]), c='m')
+        if reach_idx_1 > 0:
+            i = reach_idx_1
+            ax.plot(np.array([info['head_pos'][i, 0], info['jaw_pos'][i, 0]]),
+                     np.array([info['head_pos'][i, 1], info['jaw_pos'][i, 1]]), c='g', linewidth=4)
+            ax.plot(np.array([info['jaw_pos'][i, 0], info['thg_pos'][i, 0]]),
+                     np.array([info['jaw_pos'][i, 1], info['thg_pos'][i, 1]]), c='g', linewidth=4)
+            ax.plot(np.array([info['thg_pos'][i, 0], info['leg_pos'][i, 0]]),
+                     np.array([info['thg_pos'][i, 1], info['leg_pos'][i, 1]]), c='g', linewidth=4)
+            ax.plot(np.array([info['leg_pos'][i, 0], info['foot_front_pos'][i, 0]]),
+                     np.array([info['leg_pos'][i, 1], info['foot_front_pos'][i, 1]]), c='g', linewidth=4)
+            ax.plot(np.array([info['leg_pos'][i, 0], info['foot_back_pos'][i, 0]]),
+                     np.array([info['leg_pos'][i, 1], info['foot_back_pos'][i, 1]]), c='g', linewidth=4)
+        if reach_idx_2 > 0:
+            i = reach_idx_2
+            ax.plot(np.array([info['head_pos'][i, 0], info['jaw_pos'][i, 0]]),
+                     np.array([info['head_pos'][i, 1], info['jaw_pos'][i, 1]]), c='b', linewidth=4)
+            ax.plot(np.array([info['jaw_pos'][i, 0], info['thg_pos'][i, 0]]),
+                     np.array([info['jaw_pos'][i, 1], info['thg_pos'][i, 1]]), c='b', linewidth=4)
+            ax.plot(np.array([info['thg_pos'][i, 0], info['leg_pos'][i, 0]]),
+                     np.array([info['thg_pos'][i, 1], info['leg_pos'][i, 1]]), c='b', linewidth=4)
+            ax.plot(np.array([info['leg_pos'][i, 0], info['foot_front_pos'][i, 0]]),
+                     np.array([info['leg_pos'][i, 1], info['foot_front_pos'][i, 1]]), c='b', linewidth=4)
+            ax.plot(np.array([info['leg_pos'][i, 0], info['foot_back_pos'][i, 0]]),
+                     np.array([info['leg_pos'][i, 1], info['foot_back_pos'][i, 1]]), c='b', linewidth=4)
+        ax.set_xlim((-2.5, 2.5))
+        ax.set_ylim((0, 1.6))
+        ax.set_aspect('equal')
+        ax.set_title("Reach Reach ?")
+        plt.savefig('model/{}/reach/trajectory_{:0>4d}'.format(config["DIR"], epoch), dpi=300)
+        # plt.close("all")
+        return fig
     elif config['EXP_NAME'] == 'HalfCheetahAvoid':
         plt.figure(figsize=(12, 6))
         fig, ax = plt.subplots(1, 1)
