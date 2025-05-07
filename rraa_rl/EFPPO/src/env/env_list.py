@@ -1,7 +1,7 @@
 from .reach_avoid.grid_avoid import GridAvoid
 from .reach_avoid.grid_constraint import GridConstraint
 from .reach_avoid.pendulum_constraint import PendulumConstraint
-from .reach_avoid.hopper_avoid_ceiling import HopperAvoidCeiling, HopperAvoidCeilingDeterministic
+from .reach_avoid.hopper_avoid_ceiling import HopperAvoidCeiling, HopperAvoidCeilingDeterministic, HopperAvoidCeilingWall
 from .reach_avoid.wind_field import WindField
 from .reach_avoid.half_cheetah_avoid import HalfCheetahAvoid, HalfCheetahAvoidDeterministic
 from .reach_avoid.safety_gym_avoid import PointAvoid
@@ -48,6 +48,15 @@ def get_env(config):
         vec2 = vec2.at[-1].set(400.)
         trans = partial(transform_observation, vec1, vec2)
         env = HopperAvoidCeilingDeterministic()
+        env = TransformObservation(env, trans)
+    elif config["EXP_NAME"] == 'HopperAvoidCeilingWall' and config["TEST_MODE"] == False:
+        vec1 = jnp.zeros(14, dtype=jnp.float32)
+        vec1 = vec1.at[0].set(1.)
+        vec1 = vec1.at[-1].set(400.)
+        vec2 = jnp.ones(14, dtype=jnp.float32)
+        vec2 = vec2.at[-1].set(400.)
+        trans = partial(transform_observation, vec1, vec2)
+        env = HopperAvoidCeilingWall()
         env = TransformObservation(env, trans)
     elif config["EXP_NAME"] == 'HalfCheetahAvoid':
         vec1 = jnp.zeros(20, dtype=jnp.float32)

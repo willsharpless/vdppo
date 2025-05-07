@@ -201,7 +201,7 @@ def plot_contour(train_state_energy, train_state_h, train_state_policy, info, ep
         ax.set_aspect('equal')
         plt.savefig('model/{}/reach/trajectory_{:0>4d}'.format(config["DIR"], epoch), dpi=300)
         plt.close("all")
-    elif config['EXP_NAME'] == 'HopperAvoidCeiling':
+    elif config['EXP_NAME'] == 'HopperAvoidCeiling' or config['EXP_NAME'] == 'HopperAvoidCeilingWall':
         plt.figure(figsize=(12, 6))
         fig, ax = plt.subplots(1, 1)
         reach_idx = info['reach_index']
@@ -228,6 +228,9 @@ def plot_contour(train_state_energy, train_state_h, train_state_policy, info, ep
                 np.array([info['leg_pos'][reach_idx, 1], info['foot_back_pos'][reach_idx, 1]]), c='m')
         draw_circle = plt.Circle((2.0, 1.4), 0.1, fill=False)
         draw_rectangle = plt.Rectangle((0.95, 1.3), 0.1, 0.2, facecolor="red", fill=True)
+        if config['EXP_NAME'] == 'HopperAvoidCeilingWall':
+            draw_rectangle2 = plt.Rectangle((2.35, -0.1), 1.6, 0.2, facecolor="red", fill=True)
+            ax.add_patch(draw_rectangle2)
         ax.add_patch(draw_circle)
         ax.add_patch(draw_rectangle)
         ax.set_xlim((-0.5, 2.5))

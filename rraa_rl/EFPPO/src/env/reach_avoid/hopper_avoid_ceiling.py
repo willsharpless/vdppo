@@ -214,3 +214,13 @@ class HopperAvoidCeilingDeterministic:
             high=1.0,
             shape=(self._env.action_size,),
         )
+
+class HopperAvoidCeilingWall(HopperAvoidCeiling):
+    def __init__(self, backend="positional"):
+        super().__init__(backend=backend)
+
+    @partial(jax.jit, static_argnums=(0,))
+    def is_avoid(self, head_pos):
+        avoid_1 = (head_pos[1] >= 1.3) & (head_pos[0] >= 0.95) & (head_pos[0] <= 1.05)
+        avoid_2 = (head_pos[0] >= 2.35) # dont hit head on wall
+        return avoid_1 | avoid_2
