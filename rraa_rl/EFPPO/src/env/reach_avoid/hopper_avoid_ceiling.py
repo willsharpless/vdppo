@@ -450,7 +450,8 @@ class HopperReach1:
         state = self._env.reset(key)
         head_pos, _, _, _, _, _ = self.calculate_position(state.obs)
         reach1_value = self.is_reach1(head_pos)
-        observation = jnp.concatenate([state.obs, jnp.array([reach1_value, 0.])])
+        reach2_value = self.is_reach2(head_pos)
+        observation = jnp.concatenate([state.obs, jnp.array([reach1_value, reach2_value])])
         env_state = EnvStateR1(state, reach1_value)
         return observation, env_state
 
@@ -460,10 +461,12 @@ class HopperReach1:
         next_state = self._env.step(state.state, u)
         head_pos, _, _, _, _, _ = self.calculate_position(next_state.obs)
         reach1_value = self.is_reach1(head_pos)
+        reach2_value = self.is_reach2(head_pos)
         head_pos, jaw_pos, thg_pos, leg_pos, foot_front_pos, foot_back_pos = self.calculate_position(state.state.obs)
         pos_dict = {"head_pos": head_pos, "jaw_pos": jaw_pos, "thg_pos": thg_pos, "leg_pos": leg_pos,
                     "foot_front_pos": foot_front_pos, "foot_back_pos": foot_back_pos}
-        observation = jnp.concatenate([next_state.obs, jnp.array([reach1_value, 0.])])
+        observation = jnp.concatenate([next_state.obs, jnp.array([reach1_value, reach2_value])]) 
+        # STILL NEED REACH2 FOR LEARNING APPROPRIATE MAP
         next_state_new = EnvStateR1(next_state, reach1_value)
         reward = 0. # used to be energy consumption? FIXME
 
@@ -493,13 +496,13 @@ class HopperReach1:
         value = jnp.where(has_reached_goal, -2.5, reach)
         return value * 100.0
     
-    # @partial(jax.jit, static_argnums=(0,))
-    # def is_reach2(self, head_pos):
-    #     target_center = [-2., 1.4]
-    #     reach = jnp.sqrt((head_pos[0] - target_center[0]) ** 2 + (head_pos[1] - target_center[1]) ** 2) - 0.1
-    #     has_reached_goal = jnp.sqrt((head_pos[0] - target_center[0]) ** 2 + (head_pos[1] - target_center[1]) ** 2) < 0.1
-    #     value = jnp.where(has_reached_goal, -2.5, reach)
-    #     return value * 100.0
+    @partial(jax.jit, static_argnums=(0,))
+    def is_reach2(self, head_pos):
+        target_center = [-2., 1.4]
+        reach = jnp.sqrt((head_pos[0] - target_center[0]) ** 2 + (head_pos[1] - target_center[1]) ** 2) - 0.1
+        has_reached_goal = jnp.sqrt((head_pos[0] - target_center[0]) ** 2 + (head_pos[1] - target_center[1]) ** 2) < 0.1
+        value = jnp.where(has_reached_goal, -2.5, reach)
+        return value * 100.0
 
     def observation_space(self, params):
         return spaces.Box(
@@ -531,8 +534,9 @@ class HopperReach2:
     def reset(self, key, params=None):
         state = self._env.reset(key)
         head_pos, _, _, _, _, _ = self.calculate_position(state.obs)
+        reach1_value = self.is_reach1(head_pos)
         reach2_value = self.is_reach2(head_pos)
-        observation = jnp.concatenate([state.obs, jnp.array([reach2_value, 0.])])
+        observation = jnp.concatenate([state.obs, jnp.array([reach1_value, reach2_value])])
         env_state = EnvStateR2(state, reach2_value)
         return observation, env_state
 
@@ -541,11 +545,12 @@ class HopperReach2:
         u = jnp.tanh(action)
         next_state = self._env.step(state.state, u)
         head_pos, _, _, _, _, _ = self.calculate_position(next_state.obs)
+        reach1_value = self.is_reach1(head_pos)
         reach2_value = self.is_reach2(head_pos)
         head_pos, jaw_pos, thg_pos, leg_pos, foot_front_pos, foot_back_pos = self.calculate_position(state.state.obs)
         pos_dict = {"head_pos": head_pos, "jaw_pos": jaw_pos, "thg_pos": thg_pos, "leg_pos": leg_pos,
                     "foot_front_pos": foot_front_pos, "foot_back_pos": foot_back_pos}
-        observation = jnp.concatenate([next_state.obs, jnp.array([reach2_value, 0.])])
+        observation = jnp.concatenate([next_state.obs, jnp.array([reach1_value, reach2_value])])
         next_state_new = EnvStateR2(next_state, reach2_value)
         reward = 0. # used to be energy consumption? FIXME
 
@@ -567,13 +572,13 @@ class HopperReach2:
                                    leg_pos[1] - 0.26 * jnp.sin(obs[2] - obs[3] - obs[4] - obs[5])])
         return head_pos, jaw_pos, thg_pos, leg_pos, foot_front_pos, foot_back_pos
 
-    # @partial(jax.jit, static_argnums=(0,))
-    # def is_reach1(self, head_pos):
-    #     target_center = [2., 1.4]
-    #     reach = jnp.sqrt((head_pos[0] - target_center[0]) ** 2 + (head_pos[1] - target_center[1]) ** 2) - 0.1
-    #     has_reached_goal = jnp.sqrt((head_pos[0] - target_center[0]) ** 2 + (head_pos[1] - target_center[1]) ** 2) < 0.1
-    #     value = jnp.where(has_reached_goal, -2.5, reach)
-    #     return value * 100.0
+    @partial(jax.jit, static_argnums=(0,))
+    def is_reach1(self, head_pos):
+        target_center = [2., 1.4]
+        reach = jnp.sqrt((head_pos[0] - target_center[0]) ** 2 + (head_pos[1] - target_center[1]) ** 2) - 0.1
+        has_reached_goal = jnp.sqrt((head_pos[0] - target_center[0]) ** 2 + (head_pos[1] - target_center[1]) ** 2) < 0.1
+        value = jnp.where(has_reached_goal, -2.5, reach)
+        return value * 100.0
     
     @partial(jax.jit, static_argnums=(0,))
     def is_reach2(self, head_pos):
@@ -710,7 +715,8 @@ class HopperReach1Deterministic:
         state = self._env.reset(key)
         head_pos, _, _, _, _, _ = self.calculate_position(state.obs)
         reach1_value = self.is_reach1(head_pos)
-        observation = jnp.concatenate([state.obs, jnp.array([reach1_value, 0.])])
+        reach2_value = self.is_reach2(head_pos)
+        observation = jnp.concatenate([state.obs, jnp.array([reach1_value, reach2_value])])
         env_state = EnvStateR1(state, reach1_value)
         return observation, env_state
 
@@ -720,10 +726,11 @@ class HopperReach1Deterministic:
         next_state = self._env.step(state.state, u)
         head_pos, _, _, _, _, _ = self.calculate_position(next_state.obs)
         reach1_value = self.is_reach1(head_pos)
+        reach2_value = self.is_reach2(head_pos)
         head_pos, jaw_pos, thg_pos, leg_pos, foot_front_pos, foot_back_pos = self.calculate_position(state.state.obs)
         pos_dict = {"head_pos": head_pos, "jaw_pos": jaw_pos, "thg_pos": thg_pos, "leg_pos": leg_pos,
                     "foot_front_pos": foot_front_pos, "foot_back_pos": foot_back_pos}
-        observation = jnp.concatenate([next_state.obs, jnp.array([reach1_value, 0.])])
+        observation = jnp.concatenate([next_state.obs, jnp.array([reach1_value, reach2_value])])
         next_state_new = EnvStateR1(next_state, reach1_value)
         reward = 0. # used to be energy consumption? FIXME
 
@@ -753,13 +760,13 @@ class HopperReach1Deterministic:
         value = jnp.where(has_reached_goal, -2.5, reach)
         return value * 100.0
     
-    # @partial(jax.jit, static_argnums=(0,))
-    # def is_reach2(self, head_pos):
-    #     target_center = [-2., 1.4]
-    #     reach = jnp.sqrt((head_pos[0] - target_center[0]) ** 2 + (head_pos[1] - target_center[1]) ** 2) - 0.1
-    #     has_reached_goal = jnp.sqrt((head_pos[0] - target_center[0]) ** 2 + (head_pos[1] - target_center[1]) ** 2) < 0.1
-    #     value = jnp.where(has_reached_goal, -2.5, reach)
-    #     return value * 100.0
+    @partial(jax.jit, static_argnums=(0,))
+    def is_reach2(self, head_pos):
+        target_center = [-2., 1.4]
+        reach = jnp.sqrt((head_pos[0] - target_center[0]) ** 2 + (head_pos[1] - target_center[1]) ** 2) - 0.1
+        has_reached_goal = jnp.sqrt((head_pos[0] - target_center[0]) ** 2 + (head_pos[1] - target_center[1]) ** 2) < 0.1
+        value = jnp.where(has_reached_goal, -2.5, reach)
+        return value * 100.0
 
     def observation_space(self, params):
         return spaces.Box(
@@ -791,8 +798,9 @@ class HopperReach2Deterministic:
     def reset(self, key, params=None):
         state = self._env.reset(key)
         head_pos, _, _, _, _, _ = self.calculate_position(state.obs)
+        reach1_value = self.is_reach1(head_pos)
         reach2_value = self.is_reach2(head_pos)
-        observation = jnp.concatenate([state.obs, jnp.array([reach2_value, 0.])])
+        observation = jnp.concatenate([state.obs, jnp.array([reach1_value, reach2_value])])
         env_state = EnvStateR2(state, reach2_value)
         return observation, env_state
 
@@ -801,11 +809,12 @@ class HopperReach2Deterministic:
         u = jnp.tanh(action)
         next_state = self._env.step(state.state, u)
         head_pos, _, _, _, _, _ = self.calculate_position(next_state.obs)
+        reach1_value = self.is_reach1(head_pos)
         reach2_value = self.is_reach2(head_pos)
         head_pos, jaw_pos, thg_pos, leg_pos, foot_front_pos, foot_back_pos = self.calculate_position(state.state.obs)
         pos_dict = {"head_pos": head_pos, "jaw_pos": jaw_pos, "thg_pos": thg_pos, "leg_pos": leg_pos,
                     "foot_front_pos": foot_front_pos, "foot_back_pos": foot_back_pos}
-        observation = jnp.concatenate([next_state.obs, jnp.array([reach2_value, 0.])])
+        observation = jnp.concatenate([next_state.obs, jnp.array([reach1_value, reach2_value])])
         next_state_new = EnvStateR2(next_state, reach2_value)
         reward = 0. # used to be energy consumption? FIXME
 
@@ -827,13 +836,13 @@ class HopperReach2Deterministic:
                                    leg_pos[1] - 0.26 * jnp.sin(obs[2] - obs[3] - obs[4] - obs[5])])
         return head_pos, jaw_pos, thg_pos, leg_pos, foot_front_pos, foot_back_pos
 
-    # @partial(jax.jit, static_argnums=(0,))
-    # def is_reach1(self, head_pos):
-    #     target_center = [2., 1.4]
-    #     reach = jnp.sqrt((head_pos[0] - target_center[0]) ** 2 + (head_pos[1] - target_center[1]) ** 2) - 0.1
-    #     has_reached_goal = jnp.sqrt((head_pos[0] - target_center[0]) ** 2 + (head_pos[1] - target_center[1]) ** 2) < 0.1
-    #     value = jnp.where(has_reached_goal, -2.5, reach)
-    #     return value * 100.0
+    @partial(jax.jit, static_argnums=(0,))
+    def is_reach1(self, head_pos):
+        target_center = [2., 1.4]
+        reach = jnp.sqrt((head_pos[0] - target_center[0]) ** 2 + (head_pos[1] - target_center[1]) ** 2) - 0.1
+        has_reached_goal = jnp.sqrt((head_pos[0] - target_center[0]) ** 2 + (head_pos[1] - target_center[1]) ** 2) < 0.1
+        value = jnp.where(has_reached_goal, -2.5, reach)
+        return value * 100.0
     
     @partial(jax.jit, static_argnums=(0,))
     def is_reach2(self, head_pos):

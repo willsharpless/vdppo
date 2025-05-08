@@ -62,6 +62,7 @@ class Transition_rr(NamedTuple):
     reach2: jnp.ndarray
     has_reached_1: jnp.ndarray
     has_reached_2: jnp.ndarray
+    policy_taken: jnp.ndarray
 
 class Transition_r1(NamedTuple):
     done: jnp.ndarray

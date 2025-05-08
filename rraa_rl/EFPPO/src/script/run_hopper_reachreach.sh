@@ -1,6 +1,6 @@
 python ./rraa_rl/EFPPO/src/rl/RR-PPO.py \
 --EXP_NAME=HopperReachReach \
---DIR=hopper_reachreach_idxsMAX_switchfix_augstate \
+--DIR=hopper_reachreach_idxsMAX_switchfix_augstate_obsfix \
 --LR=3e-4 \
 --NUM_ENVS=128 \
 --NUM_STEPS=400 \
@@ -20,4 +20,4 @@ python ./rraa_rl/EFPPO/src/rl/RR-PPO.py \
 --CUDA_USE=0,1,2,3 \
 --ANNEAL_LR \
 --ANNEAL_ENT \
---NAME=hopper_idxsMAX_switchfix_augstate
+--NAME=hopper_idxsMAX_switchfix_augstate_obsfix

@@ -10,7 +10,8 @@ class HopperDeterministic(Hopper):
         """Resets the environment to an initial state."""
         rng, rng1, rng2, rng3 = jax.random.split(rng, 4)
 
-        qpos = self.sys.init_q
+        # qpos = self.sys.init_q
+        qpos = jnp.array([2., 0., 0., 0., 0., 0.], dtype=jnp.float32)
         qvel = jax.random.uniform(
             rng2, (self.sys.qd_size(),), minval=0, maxval=0
         )

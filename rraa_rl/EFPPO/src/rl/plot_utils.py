@@ -39,6 +39,15 @@ def calculate_minimal_reach(reach):
         reach_idx = reach.shape[0]
     return reach_idx
 
+def plot_policy_decision(policy_decision_sample, epoch, config):
+    fig, ax = plt.subplots(1, 1)
+    ax.plot(policy_decision_sample, label='policy #')
+    plt.title("Policy Decision over Trajectory")
+    plt.xlabel("Trajectory Step")
+    plt.ylim((-0.1, 2.1))
+    plt.legend()
+    plt.savefig('model/{}/policy/policy_decision_{:0>4d}'.format(config['DIR'], epoch), dpi=300)
+    return fig
 
 def plot_target(target_reach, value_reach, reach, epoch, init_energy, done, config):
     fig, ax = plt.subplots(1, 1)

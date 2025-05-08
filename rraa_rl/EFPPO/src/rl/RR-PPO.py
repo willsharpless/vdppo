@@ -20,7 +20,7 @@ from typing import Any
 from rraa_rl.EFPPO.src.rl.EFPPO_utils import _ppo_vanilla_update, _env_step_rr_vanilla, _env_step_r1_vanilla, _env_step_r2_vanilla
 from rraa_rl.EFPPO.src.env.env_list import get_env
 from rraa_rl.EFPPO.src.model.actorcritic import Policy_Network, Value_Network, Policy_Network_Discrete
-from rraa_rl.EFPPO.src.rl.plot_utils import calculate_minimal_reach, calculate_consumption, calculate_reachreach, plot_target, plot_value_target, plot_contour, plot_contour_RRAA
+from rraa_rl.EFPPO.src.rl.plot_utils import calculate_minimal_reach, calculate_consumption, calculate_reachreach, plot_target, plot_value_target, plot_contour, plot_contour_RRAA, plot_policy_decision
 from rraa_rl.EFPPO.src.rl.utils import optimizer, get_BuRd, tree_index1, tree_index2
 from rraa_rl.EFPPO.src.rl.gae import (Transition_reach,
                               calculate_gae, calculate_gae2, calculate_gae3,
@@ -444,6 +444,9 @@ def train(envs, env_paramss, config, rng):
 
         fig = plot_contour_RRAA((info, info_1, info_2), timestep, config)
 
+        policy_decision_sample = traj_batch.policy_taken[:,idx]
+        fig2 = plot_policy_decision(policy_decision_sample, timestep, config)
+
         # plot_target(targets_h[:, idx], traj_batch.value_reach[:, idx], traj_batch.reach1[:, idx], traj_batch.reach2[:, idx],
         #             timestep, traj_batch.energy[0, idx], done[:, idx], config)
         # plot_value_target(targets_V[:, idx], traj_batch.value[:, idx], timestep,
@@ -459,6 +462,7 @@ def train(envs, env_paramss, config, rng):
                     "actor_2_loss": jnp.mean(loss_info_2["actor_loss"]), "value_2_loss": jnp.mean(loss_info_2["value_loss"]),
                     "reach_gamma": result['reach_gamma'][0], "entropy_weight": result['entropy_weight'][0],
                     'trajectory_sample':wandb.Image(fig),
+                    'policy_decision_sample':wandb.Image(fig2),
                         # 'trajectory_sample_R1':wandb.Image(fig1), 'trajectory_sample_R2':wandb.Image(fig2)
                     })
         plt.close("all")
@@ -470,7 +474,7 @@ def train(envs, env_paramss, config, rng):
 if __name__ == "__main__":
     config = vars(get_args(sys.argv[1:]))
 
-    debug = True
+    debug = False
     if debug:
         config["EXP_NAME"]="HopperReachReach"
         config["DIR"]="hopper_reachreach_debug"
@@ -527,13 +531,12 @@ if __name__ == "__main__":
         env_params_reach_2 = env_params_reach_2.replace(index=config['SECTION'])
     env_paramss = (env_params, env_params_reach_1, env_params_reach_2)
 
-    config["USE_WANDB"] = False # False for debugging
+    config["USE_WANDB"] = True # False for debugging
     if config["USE_WANDB"]:
         wandb.init(project='EC-EFPPO-{}'.format(config["EXP_NAME"]), name=config["NAME"], config=config)
 
-    load_decomposed = True # TODO
-    if load_decomposed:
-        config["LOAD_DECOMPOSED"] = True
+    config["LOAD_DECOMPOSED"] = False # TODO make args
+    if config["LOAD_DECOMPOSED"]:
         config["LOAD_DEC_DIR"] ="hopper_reachreach_idxsMAX_switchfix_augstate"
         config["LOAD_DEC_DIR_MODEL"] ="checkpoint_2303"
 
