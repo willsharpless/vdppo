@@ -20,4 +20,4 @@ python ./rraa_rl/EFPPO/src/rl/RR-PPO.py \
 --CUDA_USE=0,1,2,3 \
 --ANNEAL_LR \
 --ANNEAL_ENT \
---NAME=hopper_idxs_maxaccum
+--NAME=hopper_idxs_maxaccum_gae4reach

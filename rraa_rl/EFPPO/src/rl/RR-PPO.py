@@ -124,12 +124,11 @@ def train(envs, env_paramss, config, rng):
         #   other than it determines done (no unhelathy catcher in Oswin code)
         done = done[:-1, :]
 
-        advantages_V, targets_V = calculate_gae2(ent_gamma[1], config["GAE_LAMBDA"], traj_batch, done, last_val)
-        advantages_total, _ = calculate_gae_reach4(config["GAMMA_REACH_INIT"], config["GAE_LAMBDA"], l_tile_append, V_append, done)
+        advantages_V, targets_V = calculate_gae_reach4(ent_gamma[1], config["GAE_LAMBDA"], l_tile_append, V_append, done)
 
         # UPDATE COMPOSED NETWORK
         update_state = (train_state_policy, train_state_value,
-                        traj_batch, advantages_V, targets_V, advantages_total, rng)
+                        traj_batch, advantages_V, targets_V, advantages_V, rng)
 
         xs = jnp.ones(config["UPDATE_EPOCHS"]) * ent_gamma[0]
         update_state, loss_info = jax.lax.scan(
@@ -151,12 +150,11 @@ def train(envs, env_paramss, config, rng):
                                                jnp.expand_dims(last_val1, axis=1).T)
         done_1 = done_1[:-1, :]
 
-        advantages_V_reach1, targets_V_reach1 = calculate_gae2(ent_gamma[1], config["GAE_LAMBDA"], traj_batch_reach1, done_1, last_val1)
-        advantages_total_reach1, _ = calculate_gae_reach4(config["GAMMA_REACH_INIT"], config["GAE_LAMBDA"], reach1_append, V_reach1_append, done_1)
+        advantages_V_reach1, targets_V_reach1 = calculate_gae_reach4(ent_gamma[1], config["GAE_LAMBDA"], reach1_append, V_reach1_append, done_1)
 
         # UPDATE DECOMPOSED NETWORK - 1
         update_state_reach1 = (train_state_policy_reach1, train_state_value_reach1,
-                        traj_batch_reach1, advantages_V_reach1, targets_V_reach1, advantages_total_reach1, rng_1)
+                        traj_batch_reach1, advantages_V_reach1, targets_V_reach1, advantages_V_reach1, rng_1)
 
         xs = jnp.ones(config["UPDATE_EPOCHS"]) * ent_gamma[0]
         update_state_reach1, loss_info_1 = jax.lax.scan(
@@ -178,12 +176,11 @@ def train(envs, env_paramss, config, rng):
                                                jnp.expand_dims(last_val2, axis=1).T)
         done_2 = done_2[:-1, :]
 
-        advantages_V_reach2, targets_V_reach2 = calculate_gae2(ent_gamma[1], config["GAE_LAMBDA"], traj_batch_reach2, done_2, last_val2)
-        advantages_total_reach2, _ = calculate_gae_reach4(config["GAMMA_REACH_INIT"], config["GAE_LAMBDA"], reach2_append, V_reach2_append, done_2)
+        advantages_V_reach2, targets_V_reach2 = calculate_gae_reach4(ent_gamma[1], config["GAE_LAMBDA"], reach2_append, V_reach2_append, done_2)
 
         # UPDATE DECOMPOSED NETWORK - 2
         update_state_reach2 = (train_state_policy_reach2, train_state_value_reach2,
-                        traj_batch_reach2, advantages_V_reach2, targets_V_reach2, advantages_total_reach2, rng_2)
+                        traj_batch_reach2, advantages_V_reach2, targets_V_reach2, advantages_V_reach2, rng_2)
 
         xs = jnp.ones(config["UPDATE_EPOCHS"]) * ent_gamma[0]
         update_state_reach2, loss_info_2 = jax.lax.scan(
