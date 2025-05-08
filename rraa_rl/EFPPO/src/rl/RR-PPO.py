@@ -17,10 +17,10 @@ from arguments import get_args
 from functools import partial
 from typing import Any
 
-from rraa_rl.EFPPO.src.rl.EFPPO_utils import _ppo_vanilla_update, _env_step_rr_vanilla
+from rraa_rl.EFPPO.src.rl.EFPPO_utils import _ppo_vanilla_update, _env_step_rr_vanilla, _env_step_r1_vanilla, _env_step_r2_vanilla
 from rraa_rl.EFPPO.src.env.env_list import get_env
 from rraa_rl.EFPPO.src.model.actorcritic import Policy_Network, Value_Network, Policy_Network_Discrete
-from rraa_rl.EFPPO.src.rl.plot_utils import calculate_minimal_reach, calculate_consumption, calculate_reachreach, plot_target, plot_value_target, plot_contour
+from rraa_rl.EFPPO.src.rl.plot_utils import calculate_minimal_reach, calculate_consumption, calculate_reachreach, plot_target, plot_value_target, plot_contour, plot_contour_RRAA
 from rraa_rl.EFPPO.src.rl.utils import optimizer, get_BuRd, tree_index1, tree_index2
 from rraa_rl.EFPPO.src.rl.gae import (Transition_reach,
                               calculate_gae, calculate_gae2, calculate_gae3,
@@ -32,51 +32,70 @@ class TrainState(train_state.TrainState):
     variance: Any
     count: Any
 
-def train(env, env_params, config, rng):
+def train(envs, env_paramss, config, rng):
+    env, env_reach_1, env_reach_2 = envs # COMPOSED (RR) + 2 DECOMPOSED (R1 + R2)
+    env_params, env_params_reach_1, env_params_reach_2 = env_paramss
 
     def _train(train_state_total, ent_gamma):
 
         train_state_policy, train_state_value, \
             train_state_policy_reach1, train_state_value_reach1, \
             train_state_policy_reach2, train_state_value_reach2, \
-            rng, timestep = train_state_total
+            rng_og, timestep = train_state_total
 
-        # INIT ENV
-        rng, _rng = jax.random.split(rng)
+        # RESET ENV
+        rng, _rng = jax.random.split(rng_og)
         reset_rng = jax.random.split(_rng, config["NUM_ENVS"])
         obsv, env_state = jax.vmap(env.reset, in_axes=(0, None))(reset_rng, env_params)
-        # TODO: start decomposed env_state at terminal of composed
         rng, _rng = jax.random.split(rng)
         runner_state_standard = (train_state_policy, train_state_value, env_state, obsv, _rng)
         
         # SPECIAL DECOMPOSED STATES
         decomposed_state = (train_state_policy_reach1, train_state_value_reach1, train_state_policy_reach2, train_state_value_reach2)
-
-        force_combined = True #if timestep < 20 else False # ihibits switching until > 20 epochs
-        # force_combined = True # immediate switching
+        force_combined = False #if timestep < 20 else False # ihibits switching until > 20 epochs
         force_reach1, force_reach2 = False, False
         policy_controls = (force_combined, force_reach1, force_reach2)
         runner_state = (*runner_state_standard, decomposed_state, policy_controls)
-
-        force_reach1, force_reach2 = True, False
-        policy_controls_reach1 = (force_combined, force_reach1, force_reach2)
-        runner_state_reach1 = (*runner_state_standard, decomposed_state, policy_controls_reach1)
-
-        force_reach1, force_reach2 = False, True
-        policy_controls_reach2 = (force_combined, force_reach1, force_reach2)
-        runner_state_reach2 = (*runner_state_standard, decomposed_state, policy_controls_reach2)
 
         # COLLECT TRAJECTORY COMPOSED
         runner_state, traj_batch = jax.lax.scan(
             env_step, runner_state, None, config["NUM_STEPS"]
         )
 
-        # COLLECT TRAJECTORY DECOMPOSED
+        # RESET ENV - 1
+        rng, _rng = jax.random.split(rng_og)
+        reset_rng = jax.random.split(_rng, config["NUM_ENVS"])
+        obsv_reach_1, env_state_reach_1 = jax.vmap(env_reach_1.reset, in_axes=(0, None))(reset_rng, env_params_reach_1)
+        rng, _rng = jax.random.split(rng)
+        runner_state_standard_reach_1 = (train_state_policy, train_state_value, env_state_reach_1, obsv_reach_1, _rng)
+        
+        # SPECIAL DECOMPOSED STATES - 1
+        decomposed_state = (train_state_policy_reach1, train_state_value_reach1, train_state_policy_reach2, train_state_value_reach2)
+        force_reach1, force_reach2 = True, False
+        policy_controls_reach1 = (force_combined, force_reach1, force_reach2)
+        runner_state_reach1 = (*runner_state_standard_reach_1, decomposed_state, policy_controls_reach1)
+
+        # COLLECT TRAJECTORY DECOMPOSED - 1
         runner_state_reach1, traj_batch_reach1 = jax.lax.scan(
-            env_step, runner_state_reach1, None, config["NUM_STEPS"]
+            env_step_reach_1, runner_state_reach1, None, config["NUM_STEPS"]
         )
+
+        # RESET ENV - 2
+        rng, _rng = jax.random.split(rng_og)
+        reset_rng = jax.random.split(_rng, config["NUM_ENVS"])
+        obsv_reach_2, env_state_reach_2 = jax.vmap(env_reach_2.reset, in_axes=(0, None))(reset_rng, env_params_reach_2)
+        rng, _rng = jax.random.split(rng)
+        runner_state_standard_reach_2 = (train_state_policy, train_state_value, env_state_reach_2, obsv_reach_2, _rng)
+        
+        # SPECIAL DECOMPOSED STATES - 2
+        decomposed_state = (train_state_policy_reach1, train_state_value_reach1, train_state_policy_reach2, train_state_value_reach2)
+        force_reach1, force_reach2 = False, True
+        policy_controls_reach2 = (force_combined, force_reach1, force_reach2)
+        runner_state_reach2 = (*runner_state_standard_reach_2, decomposed_state, policy_controls_reach2)
+
+        # COLLECT TRAJECTORY DECOMPOSED - 2
         runner_state_reach2, traj_batch_reach2 = jax.lax.scan(
-            env_step, runner_state_reach2, None, config["NUM_STEPS"]
+            env_step_reach_2, runner_state_reach2, None, config["NUM_STEPS"]
         )
 
         # CALCULATE COMPOSED ADVANTAGE
@@ -95,10 +114,14 @@ def train(env, env_params, config, rng):
         V_reach2_append = jnp.concatenate((traj_batch.value_reach2, jnp.expand_dims(last_val2, axis=1).T))
 
         V_append = jnp.concatenate((traj_batch.value, jnp.expand_dims(last_val, axis=1).T))
+
+        # SPECIAL BRT TARGET FOR BRRT PROBLEM
         l_tile_append = jnp.minimum(jnp.maximum(reach1_append, V_reach2_append), jnp.maximum(reach2_append, V_reach1_append))
 
         indexs, done = calculate_indexs3_rr(config["GAMMA_ENERGY"], traj_batch.reward, l_tile_append,
-                                               jnp.expand_dims(last_val, axis=1).T)
+                                               jnp.expand_dims(last_val, axis=1).T) 
+        # NOTE are we totally sure this works, I dont really get og usage, 
+        #   other than it determines done (no unhelathy catcher in Oswin code)
         done = done[:-1, :]
 
         advantages_V, targets_V = calculate_gae2(config["GAMMA_ENERGY"], config["GAE_LAMBDA"], traj_batch, done, last_val)
@@ -118,11 +141,11 @@ def train(env, env_params, config, rng):
 
         # CALCULATE DECOMPOSED ADVANTAGES - 1
         (train_state_policy, train_state_value, env_state_1, last_obs_1, rng_1,
-          decomposed_state, policy_controls) = runner_state_reach1
+            decomposed_state, policy_controls) = runner_state_reach1
 
         last_val1 = train_state_value_reach1.apply_fn(train_state_value_reach1.params, last_obs_1)
         reach1_append = jnp.concatenate((traj_batch_reach1.reach1, jnp.expand_dims(env_state_1.reach1, axis=1).T))
-        V_reach1_append = jnp.concatenate((traj_batch_reach1.value_reach1, jnp.expand_dims(last_val1, axis=1).T))
+        V_reach1_append = jnp.concatenate((traj_batch_reach1.value, jnp.expand_dims(last_val1, axis=1).T))
 
         indexs, done_1 = calculate_indexs3_rr(config["GAMMA_ENERGY"], traj_batch_reach1.reward, reach1_append,
                                                jnp.expand_dims(last_val1, axis=1).T)
@@ -132,24 +155,24 @@ def train(env, env_params, config, rng):
         advantages_total_reach1, _ = calculate_gae_reach4(config["GAMMA_REACH_INIT"], config["GAE_LAMBDA"], reach1_append, V_reach1_append, done_1)
 
         # UPDATE DECOMPOSED NETWORK - 1
-        update_state = (train_state_policy_reach1, train_state_value_reach1,
+        update_state_reach1 = (train_state_policy_reach1, train_state_value_reach1,
                         traj_batch_reach1, advantages_V_reach1, targets_V_reach1, advantages_total_reach1, rng_1)
 
         xs = jnp.ones(config["UPDATE_EPOCHS"]) * ent_gamma[0]
-        update_state, loss_info_1 = jax.lax.scan(
-            update_epoch, update_state, xs, config["UPDATE_EPOCHS"]
+        update_state_reach1, loss_info_1 = jax.lax.scan(
+            update_epoch, update_state_reach1, xs, config["UPDATE_EPOCHS"]
         )
-        train_state_policy_reach1 = update_state[0]
-        train_state_value_reach1 = update_state[1]
-        rng_1 = update_state[-1]
+        train_state_policy_reach1 = update_state_reach1[0]
+        train_state_value_reach1 = update_state_reach1[1]
+        rng_1 = update_state_reach1[-1]
 
         # CALCULATE DECOMPOSED ADVANTAGES - 2
         (train_state_policy, train_state_value, env_state_2, last_obs_2, rng_2,
-          decomposed_state, policy_controls) = runner_state_reach1
+          decomposed_state, policy_controls) = runner_state_reach2
 
         last_val2 = train_state_value_reach2.apply_fn(train_state_value_reach2.params, last_obs_2)
         reach2_append = jnp.concatenate((traj_batch_reach2.reach2, jnp.expand_dims(env_state_2.reach2, axis=1).T))
-        V_reach2_append = jnp.concatenate((traj_batch_reach2.value_reach2, jnp.expand_dims(last_val2, axis=1).T))
+        V_reach2_append = jnp.concatenate((traj_batch_reach2.value, jnp.expand_dims(last_val2, axis=1).T))
 
         indexs, done_2 = calculate_indexs3_rr(config["GAMMA_ENERGY"], traj_batch_reach2.reward, reach2_append,
                                                jnp.expand_dims(last_val2, axis=1).T)
@@ -159,16 +182,16 @@ def train(env, env_params, config, rng):
         advantages_total_reach2, _ = calculate_gae_reach4(config["GAMMA_REACH_INIT"], config["GAE_LAMBDA"], reach2_append, V_reach2_append, done_2)
 
         # UPDATE DECOMPOSED NETWORK - 2
-        update_state = (train_state_policy_reach2, train_state_value_reach2,
+        update_state_reach2 = (train_state_policy_reach2, train_state_value_reach2,
                         traj_batch_reach2, advantages_V_reach2, targets_V_reach2, advantages_total_reach2, rng_2)
 
         xs = jnp.ones(config["UPDATE_EPOCHS"]) * ent_gamma[0]
-        update_state, loss_info_2 = jax.lax.scan(
-            update_epoch, update_state, xs, config["UPDATE_EPOCHS"]
+        update_state_reach2, loss_info_2 = jax.lax.scan(
+            update_epoch, update_state_reach2, xs, config["UPDATE_EPOCHS"]
         )
-        train_state_policy_reach2 = update_state[0]
-        train_state_value_reach2 = update_state[1]
-        rng_2= update_state[-1]
+        train_state_policy_reach2 = update_state_reach2[0]
+        train_state_value_reach2 = update_state_reach2[1]
+        rng_2 = update_state_reach2[-1]
 
         return ((train_state_policy, train_state_value, train_state_policy_reach1, train_state_value_reach1, train_state_policy_reach2, train_state_value_reach2, rng, timestep),
                 {"batch_info": (traj_batch, targets_V, done), "loss_info": loss_info,
@@ -178,6 +201,8 @@ def train(env, env_params, config, rng):
 
     update_epoch = partial(_ppo_vanilla_update, config)
     env_step = partial(_env_step_rr_vanilla, env, env_params)
+    env_step_reach_1 = partial(_env_step_r1_vanilla, env_reach_1, env_params_reach_1)
+    env_step_reach_2 = partial(_env_step_r2_vanilla, env_reach_2, env_params_reach_2)
     training = jax.jit(_train)
 
     tx = optimizer(config)
@@ -188,20 +213,20 @@ def train(env, env_params, config, rng):
             env.action_space(env_params).shape[0], activation=config["ACTIVATION"]
         )
         policy_network_reach1 = Policy_Network(
-            env.action_space(env_params).shape[0], activation=config["ACTIVATION"]
+            env_reach_1.action_space(env_params_reach_1).shape[0], activation=config["ACTIVATION"]
         )
         policy_network_reach2 = Policy_Network(
-            env.action_space(env_params).shape[0], activation=config["ACTIVATION"]
+            env_reach_2.action_space(env_params_reach_2).shape[0], activation=config["ACTIVATION"]
         )
     else:
         policy_network = Policy_Network_Discrete(
             env.action_space(env_params).n, activation=config["ACTIVATION"]
         )
         policy_network_reach1 = Policy_Network(
-            env.action_space(env_params).n, activation=config["ACTIVATION"]
+            env_reach_1.action_space(env_params_reach_1).n, activation=config["ACTIVATION"]
         )
         policy_network_reach2 = Policy_Network(
-            env.action_space(env_params).n, activation=config["ACTIVATION"]
+            env_reach_2.action_space(env_params_reach_2).n, activation=config["ACTIVATION"]
         )
 
     rng, _rng = jax.random.split(rng)
@@ -217,23 +242,25 @@ def train(env, env_params, config, rng):
     )
 
     # DECOMPOSED REACH POLICIES
-    network_params_policy_reach1 = policy_network_reach1.init(_rng, init_x)
+    init_x_reach_1 = jnp.zeros(env_reach_1.observation_space(env_params_reach_1).shape)
+    network_params_policy_reach1 = policy_network_reach1.init(_rng, init_x_reach_1)
     train_state_policy_reach1 = TrainState.create(
         apply_fn=policy_network_reach1.apply,
         params=network_params_policy_reach1,
         tx=tx,
-        mean=jnp.zeros(env.observation_space(env_params).shape),
-        variance=jnp.zeros(env.observation_space(env_params).shape),
+        mean=jnp.zeros(env_reach_1.observation_space(env_params_reach_1).shape),
+        variance=jnp.zeros(env_reach_1.observation_space(env_params_reach_1).shape),
         count=1e-4,
     )
 
-    network_params_policy_reach2 = policy_network_reach2.init(_rng, init_x)
+    init_x_reach_2 = jnp.zeros(env_reach_2.observation_space(env_params_reach_2).shape)
+    network_params_policy_reach2 = policy_network_reach2.init(_rng, init_x_reach_2)
     train_state_policy_reach2 = TrainState.create(
         apply_fn=policy_network_reach2.apply,
         params=network_params_policy_reach2,
         tx=tx,
-        mean=jnp.zeros(env.observation_space(env_params).shape),
-        variance=jnp.zeros(env.observation_space(env_params).shape),
+        mean=jnp.zeros(env_reach_2.observation_space(env_params_reach_2).shape),
+        variance=jnp.zeros(env_reach_2.observation_space(env_params_reach_2).shape),
         count=1e-4,
     )
 
@@ -254,27 +281,27 @@ def train(env, env_params, config, rng):
     # DECOMPOSED VALUE CRITICS
     value_network_reach1 = Value_Network(activation=config["ACTIVATION"])
     rng, _rng = jax.random.split(rng)
-    init_x = jnp.zeros(env.observation_space(env_params).shape)
+    init_x = jnp.zeros(env_reach_1.observation_space(env_params_reach_1).shape)
     network_params_reach1 = value_network_reach1.init(_rng, init_x)
     train_state_value_reach1 = TrainState.create(
         apply_fn=value_network_reach1.apply,
         params=network_params_reach1,
         tx=tx,
-        mean=jnp.zeros(env.observation_space(env_params).shape),
-        variance=jnp.zeros(env.observation_space(env_params).shape),
+        mean=jnp.zeros(env_reach_1.observation_space(env_params_reach_1).shape),
+        variance=jnp.zeros(env_reach_1.observation_space(env_params_reach_1).shape),
         count=1e-4,
     )
 
     value_network_reach2 = Value_Network(activation=config["ACTIVATION"])
     rng, _rng = jax.random.split(rng)
-    init_x = jnp.zeros(env.observation_space(env_params).shape)
+    init_x = jnp.zeros(env_reach_2.observation_space(env_params_reach_2).shape)
     network_params_reach2 = value_network_reach2.init(_rng, init_x)
     train_state_value_reach2 = TrainState.create(
         apply_fn=value_network_reach2.apply,
         params=network_params_reach2,
         tx=tx,
-        mean=jnp.zeros(env.observation_space(env_params).shape),
-        variance=jnp.zeros(env.observation_space(env_params).shape),
+        mean=jnp.zeros(env_reach_2.observation_space(env_params_reach_2).shape),
+        variance=jnp.zeros(env_reach_2.observation_space(env_params_reach_2).shape),
         count=1e-4,
     )
 
@@ -316,20 +343,28 @@ def train(env, env_params, config, rng):
         loss_info_2 = result['loss_info_2']
 
         result_traj = tree_index1(result['batch_info'], 0)
+        result_traj_1 = tree_index1(result['batch_1_info'], 0)
+        result_traj_2 = tree_index1(result['batch_2_info'], 0)
         
         traj_batch, targets_V, done = result_traj
+        traj_batch_1, targets_V_1, done_1 = result_traj_1
+        traj_batch_2, targets_V_2, done_2 = result_traj_2
 
         cnt_1, cnt_2, reach_idx_1, reach_idx_2 = calculate_reachreach(traj_batch)
+        cnt_11, cnt_21, reach_idx_11, reach_idx_21 = calculate_reachreach(traj_batch_1, reach_type="1")
+        cnt_12, cnt_22, reach_idx_12, reach_idx_22 = calculate_reachreach(traj_batch_2, reach_type="2")
 
         idx = 0
 
         # reach_idx = calculate_minimal_reach(traj_batch.reach[:, idx])
 
         info = tree_index2(traj_batch.info, idx)
-        # info['init_energy'] = traj_batch.energy[0, idx]
-        # info['final_energy'] = traj_batch.energy[reach_idx, idx]
-        info['reach_index_1'] = reach_idx_1
-        info['reach_index_2'] = reach_idx_2
+        info_1 = tree_index2(traj_batch_1.info, idx)
+        info_2 = tree_index2(traj_batch_2.info, idx)
+        info['reach_index_1'], info['reach_index_2'] = reach_idx_1, reach_idx_2
+        info_1['reach_index_1'], info_1['reach_index_2'] = reach_idx_11, reach_idx_21
+        info_2['reach_index_1'], info_2['reach_index_2'] = reach_idx_12, reach_idx_22
+
         if config['EXP_NAME'] == 'WindField' or config['EXP_NAME'] == 'WindFieldFull':
             info['u_air'] = env_params.u_air
             info['v_air'] = env_params.v_air
@@ -347,21 +382,25 @@ def train(env, env_params, config, rng):
                                     overwrite=True,
                                     keep=2)
 
-        fig = plot_contour(None, None, None, info, timestep, config)
+        fig = plot_contour_RRAA((info, info_1, info_2), timestep, config)
+
         # plot_target(targets_h[:, idx], traj_batch.value_reach[:, idx], traj_batch.reach1[:, idx], traj_batch.reach2[:, idx],
         #             timestep, traj_batch.energy[0, idx], done[:, idx], config)
         # plot_value_target(targets_V[:, idx], traj_batch.value[:, idx], timestep,
         #                   traj_batch.energy[0, idx], done[:, idx], config)
         t1 = time.time()
 
-        wandb.log({
-                #    "not reaching goal": cnt,
-                   "actor_loss": jnp.mean(loss_info["actor_loss"]), "value_loss": jnp.mean(loss_info["value_loss"]),
-                #    "entropy_loss": jnp.mean(loss_info["entropy_loss"]),
-                   "actor_1_loss": jnp.mean(loss_info_1["actor_loss"]), "value_1_loss": jnp.mean(loss_info_1["value_loss"]),
-                   "actor_2_loss": jnp.mean(loss_info_2["actor_loss"]), "value_2_loss": jnp.mean(loss_info_2["value_loss"]),
-                   "reach_gamma": result['reach_gamma'][0], "entropy_weight": result['entropy_weight'][0],
-                   'trajectory_sample':wandb.Image(fig)})
+        if config["USE_WANDB"]:
+            wandb.log({
+                    #    "not reaching goal": cnt,
+                    "actor_loss": jnp.mean(loss_info["actor_loss"]), "value_loss": jnp.mean(loss_info["value_loss"]),
+                    #    "entropy_loss": jnp.mean(loss_info["entropy_loss"]),
+                    "actor_1_loss": jnp.mean(loss_info_1["actor_loss"]), "value_1_loss": jnp.mean(loss_info_1["value_loss"]),
+                    "actor_2_loss": jnp.mean(loss_info_2["actor_loss"]), "value_2_loss": jnp.mean(loss_info_2["value_loss"]),
+                    "reach_gamma": result['reach_gamma'][0], "entropy_weight": result['entropy_weight'][0],
+                    'trajectory_sample':wandb.Image(fig),
+                        # 'trajectory_sample_R1':wandb.Image(fig1), 'trajectory_sample_R2':wandb.Image(fig2)
+                    })
         plt.close("all")
         # print("Earliest Reach {}: {}        {}".format(timestep, cnt, np.mean(consumption)))
         print("Time {}".format(t1-t0))
@@ -370,6 +409,32 @@ def train(env, env_params, config, rng):
 
 if __name__ == "__main__":
     config = vars(get_args(sys.argv[1:]))
+
+    debug = False
+    if debug:
+        config["EXP_NAME"]="HopperReachReach"
+        config["DIR"]="hopper_reachreach_debug"
+        config["LR"]=3e-4
+        config["NUM_ENVS"]=128
+        config["NUM_STEPS"]=400
+        config["TOTAL_TIMESTEPS"]=500_000_000
+        config["STEP_SCAN"]=4
+        config["UPDATE_EPOCHS"]=10
+        config["NUM_MINIBATCHES"]=32
+        config["GAMMA_ENERGY"]=1.0
+        config["GAMMA_REACH_INIT"]=0.995
+        config["GAMMA_REACH_FINAL"]=0.9995
+        config["GAE_LAMBDA"]=0.95
+        config["CLIP_EPS"]=0.2
+        config["ENT_COEF"]=0.0001
+        config["VF_COEF"]=2.0
+        config["MAX_GRAD_NORM"]=0.5
+        config["ACTIVATION"]="tanh"
+        config["CUDA_USE"]="0,1,2,3"
+        config["ANNEAL_LR"]=True,
+        config["ANNEAL_ENT"]=True
+        config["NAME"]="hopper_debug"
+
     config["NUM_UPDATES"] = int(
         config["TOTAL_TIMESTEPS"] // config["NUM_STEPS"] // config["NUM_ENVS"]
     )
@@ -388,10 +453,24 @@ if __name__ == "__main__":
         os.makedirs("model/{}/target".format(config['DIR']))
         os.makedirs("model/{}/value_target".format(config['DIR']))
         os.makedirs("model/{}/state_traj".format(config['DIR']))
-    env = get_env(config)
-    wandb.init(project='EC-EFPPO-{}'.format(config["EXP_NAME"]), name=config["NAME"], config=config)
+    
+    envs = get_env(config)
+    env, env_reach_1, env_reach_2 = envs
     env_params = env.default_params
+    env_params_reach_1 = env_reach_1.default_params
+    env_params_reach_2 = env_reach_2.default_params
+
     if config['EXP_NAME'] == 'WindField':
         env_params = env_params.replace(index=config['SECTION'])
+        env_params_reach_1 = env_params_reach_1.replace(index=config['SECTION'])
+        env_params_reach_2 = env_params_reach_2.replace(index=config['SECTION'])
+    env_paramss = (env_params, env_params_reach_1, env_params_reach_2)
+
+    config["USE_WANDB"] = True # debugging
+    if config["USE_WANDB"]:
+        wandb.init(project='EC-EFPPO-{}'.format(config["EXP_NAME"]), name=config["NAME"], config=config)
+
     rng = jax.random.PRNGKey(20)
-    out = train(env, env_params, config, rng)
+    out = train(envs, env_paramss, config, rng) # TODO assumes same env params (should be tuple if diff)
+    # NOTE passing multiple envs (composed + decomposed)
+    # TODO more elegant use one env w/ diff env_params, but this is safe for now

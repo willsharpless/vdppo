@@ -1,6 +1,6 @@
 import jax
 import jax.numpy as jnp
-from rraa_rl.EFPPO.src.rl.gae import Transition_reach, Transition_raa, Transition_rr, Transition_cppo, Transition_sac
+from rraa_rl.EFPPO.src.rl.gae import Transition_reach, Transition_raa, Transition_rr, Transition_r1, Transition_r2, Transition_cppo, Transition_sac
 
 def _env_step(env, env_params, runner_state, _):
     (train_state_policy, train_state_energy, train_state_h,
@@ -153,11 +153,11 @@ def _env_step_rr_vanilla(env, env_params, runner_state, _):
     value_reach2 = train_state_reach2_value.apply_fn(train_state_reach2_value.params, last_obs)
 
     ## TAKE SECOND REACH ACTION IF FIRST REACHED (WAS)
-    reach1 = last_env_state.reach1 > 0
-    reach2 = last_env_state.reach2 > 0
+    not_reach1 = last_env_state.reach1 > 0
+    not_reach2 = last_env_state.reach2 > 0
 
-    combined_mask = jnp.logical_or(jnp.logical_and(reach1, reach2), force_combined)
-    only_reach2_mask = jnp.logical_and(jnp.logical_not(reach1), reach2)
+    combined_mask = jnp.logical_or(jnp.logical_and(not_reach1, not_reach2), force_combined)
+    only_reach2_mask = jnp.logical_and(jnp.logical_not(not_reach1), not_reach2)
     only_reach1_mask = jnp.logical_not(jnp.logical_or(combined_mask, only_reach2_mask))
     # NOTE this is the reach-based switch, 
     # technically should switch when min V1 next > min V2 next etc.
@@ -198,6 +198,92 @@ def _env_step_rr_vanilla(env, env_params, runner_state, _):
     transition = Transition_rr(
         done, action, value, value_reach1, value_reach2, reward, log_prob, last_obs, info,
         last_env_state.reach1, last_env_state.reach2
+    )
+
+    runner_state = (train_state_policy, train_state_value, env_state, obsv, rng, decomposed_state, policy_contols)
+    return runner_state, transition
+
+def _env_step_r1_vanilla(env, env_params, runner_state, _):
+    (train_state_policy, train_state_value, last_env_state, last_obs, 
+        rng, decomposed_state, policy_contols) = runner_state
+    (train_state_reach1_policy, train_state_reach1_value,
+     train_state_reach2_policy, train_state_reach2_value) = decomposed_state
+    (force_combined, force_reach1, force_reach2) = policy_contols
+    
+    """
+    This env_step always takes the first decomposed policy (but has all same i/o).
+    
+    This should ofc be generalized to both decomposed, but TODO, requires fixing
+    HopperReach1/HopperReach2 to be general thing with multi params (HopperReachReach with
+    special params). Then can use both last_env.reach1 and last_env.reach2.
+
+    -WAS
+    """
+
+    # SELECT ACTION
+    rng, _rng = jax.random.split(rng)
+
+    pi_reach1 = train_state_reach1_policy.apply_fn(train_state_reach1_policy.params, last_obs)
+    value_reach1 = train_state_reach1_value.apply_fn(train_state_reach1_value.params, last_obs)
+
+    # SAMPLE ACTIONS
+    action = pi_reach1.sample(seed=_rng)
+    log_prob = pi_reach1.log_prob(action)
+
+    # STEP ENV
+    rng, _rng = jax.random.split(rng)
+    env_num = last_obs.shape[0]
+    rng_step = jax.random.split(_rng, env_num)
+    obsv, env_state, reward, done, info = jax.vmap(
+        env.step, in_axes=(0, 0, 0, None)
+    )(rng_step, last_env_state, action, env_params)
+
+    transition = Transition_r1(
+        done, action, value_reach1, reward, log_prob, last_obs, info,
+        last_env_state.reach1,
+    )
+
+    runner_state = (train_state_policy, train_state_value, env_state, obsv, rng, decomposed_state, policy_contols)
+    return runner_state, transition
+
+def _env_step_r2_vanilla(env, env_params, runner_state, _):
+    (train_state_policy, train_state_value, last_env_state, last_obs, 
+        rng, decomposed_state, policy_contols) = runner_state
+    (train_state_reach1_policy, train_state_reach1_value,
+     train_state_reach2_policy, train_state_reach2_value) = decomposed_state
+    (force_combined, force_reach1, force_reach2) = policy_contols
+    
+    """
+    This env_step always takes the second decomposed policy (but has all same i/o).
+    
+    This should ofc be generalized to both decomposed, but TODO, requires fixing
+    HopperReach1/HopperReach2 to be general thing with multi params (HopperReachReach with
+    special params). Then can use both last_env.reach1 and last_env.reach2.
+
+    -WAS
+    """
+
+    # SELECT ACTION
+    rng, _rng = jax.random.split(rng)
+
+    pi_reach2 = train_state_reach2_policy.apply_fn(train_state_reach2_policy.params, last_obs)
+    value_reach2 = train_state_reach2_value.apply_fn(train_state_reach2_value.params, last_obs)
+
+    # SAMPLE ACTIONS
+    action = pi_reach2.sample(seed=_rng)
+    log_prob = pi_reach2.log_prob(action)
+
+    # STEP ENV
+    rng, _rng = jax.random.split(rng)
+    env_num = last_obs.shape[0]
+    rng_step = jax.random.split(_rng, env_num)
+    obsv, env_state, reward, done, info = jax.vmap(
+        env.step, in_axes=(0, 0, 0, None)
+    )(rng_step, last_env_state, action, env_params)
+
+    transition = Transition_r2(
+        done, action, value_reach2, reward, log_prob, last_obs, info,
+        last_env_state.reach2,
     )
 
     runner_state = (train_state_policy, train_state_value, env_state, obsv, rng, decomposed_state, policy_contols)
