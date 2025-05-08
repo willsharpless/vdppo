@@ -574,18 +574,24 @@ def calculate_indexs3_rr(
         ii, reach, reward = inp
         (next_Vs_row, next_mask_1, done) = carry
 
+        # Vs_row = next_mask_1 * (reward + gamma * next_Vs_row) # OSWINS
         Vs_row = next_mask_1 * (reward + gamma * next_Vs_row)
-        Vs_row = Vs_row.at[ii, :].set(reach)
+        Vhs_row = Vs_row.at[ii, :].set(reach)
 
-        # Vhs_row = next_Vhs_row.at[ii, :].set(reach)
+        # ACCUMULATION VERSION LIKE OSWINS
+        V_total = jnp.maximum(Vs_row, Vhs_row)[::-1]
+        V_next = jnp.maximum(jnp.power(gamma, ii) * last_value + V_total[-1, :], last_value)
+        V_total_1 = jnp.concatenate((V_total, V_next))
 
-        V_total = Vs_row[::-1]
-
-        # V_total = jnp.maximum(Vs_row - energy[-ii-1, :], Vhs_row)[::-1]
-        # V_next = jnp.maximum(jnp.power(gamma, ii) * last_value + V_total[-1, :] - energy[-ii-1, :], last_value_reach)
+        # MIN ACCUMULATION
+        # V_total = jnp.minimum(Vs_row, Vhs_row)[::-1]
+        # V_next = jnp.minimum(jnp.power(gamma, ii) * last_value + V_total[-1, :], last_value)
         # V_total_1 = jnp.concatenate((V_total, V_next))
 
-        V_total_1 = jnp.concatenate((V_total, last_value))
+        # JUST REACH VERSION
+        # V_total = Vhs_row[::-1]
+        # Vhs_row = next_Vhs_row.at[ii, :].set(reach)
+        # V_total_1 = jnp.concatenate((V_total, last_value))
 
         index_1 = jnp.argmin(V_total_1, axis=0)
         done = done.at[index_1, jnp.arange(nh)].set(1.0)

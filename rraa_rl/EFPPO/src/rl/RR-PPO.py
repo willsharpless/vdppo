@@ -118,13 +118,13 @@ def train(envs, env_paramss, config, rng):
         # SPECIAL BRT TARGET FOR BRRT PROBLEM
         l_tile_append = jnp.minimum(jnp.maximum(reach1_append, V_reach2_append), jnp.maximum(reach2_append, V_reach1_append))
 
-        indexs, done = calculate_indexs3_rr(config["GAMMA_ENERGY"], traj_batch.reward, l_tile_append,
+        indexs, done = calculate_indexs3_rr(ent_gamma[1], traj_batch.reward, l_tile_append,
                                                jnp.expand_dims(last_val, axis=1).T) 
         # NOTE are we totally sure this works, I dont really get og usage, 
         #   other than it determines done (no unhelathy catcher in Oswin code)
         done = done[:-1, :]
 
-        advantages_V, targets_V = calculate_gae2(config["GAMMA_ENERGY"], config["GAE_LAMBDA"], traj_batch, done, last_val)
+        advantages_V, targets_V = calculate_gae2(ent_gamma[1], config["GAE_LAMBDA"], traj_batch, done, last_val)
         advantages_total, _ = calculate_gae_reach4(config["GAMMA_REACH_INIT"], config["GAE_LAMBDA"], l_tile_append, V_append, done)
 
         # UPDATE COMPOSED NETWORK
@@ -147,11 +147,11 @@ def train(envs, env_paramss, config, rng):
         reach1_append = jnp.concatenate((traj_batch_reach1.reach1, jnp.expand_dims(env_state_1.reach1, axis=1).T))
         V_reach1_append = jnp.concatenate((traj_batch_reach1.value, jnp.expand_dims(last_val1, axis=1).T))
 
-        indexs, done_1 = calculate_indexs3_rr(config["GAMMA_ENERGY"], traj_batch_reach1.reward, reach1_append,
+        indexs, done_1 = calculate_indexs3_rr(ent_gamma[1], traj_batch_reach1.reward, reach1_append,
                                                jnp.expand_dims(last_val1, axis=1).T)
         done_1 = done_1[:-1, :]
 
-        advantages_V_reach1, targets_V_reach1 = calculate_gae2(config["GAMMA_ENERGY"], config["GAE_LAMBDA"], traj_batch_reach1, done_1, last_val1)
+        advantages_V_reach1, targets_V_reach1 = calculate_gae2(ent_gamma[1], config["GAE_LAMBDA"], traj_batch_reach1, done_1, last_val1)
         advantages_total_reach1, _ = calculate_gae_reach4(config["GAMMA_REACH_INIT"], config["GAE_LAMBDA"], reach1_append, V_reach1_append, done_1)
 
         # UPDATE DECOMPOSED NETWORK - 1
@@ -174,11 +174,11 @@ def train(envs, env_paramss, config, rng):
         reach2_append = jnp.concatenate((traj_batch_reach2.reach2, jnp.expand_dims(env_state_2.reach2, axis=1).T))
         V_reach2_append = jnp.concatenate((traj_batch_reach2.value, jnp.expand_dims(last_val2, axis=1).T))
 
-        indexs, done_2 = calculate_indexs3_rr(config["GAMMA_ENERGY"], traj_batch_reach2.reward, reach2_append,
+        indexs, done_2 = calculate_indexs3_rr(ent_gamma[1], traj_batch_reach2.reward, reach2_append,
                                                jnp.expand_dims(last_val2, axis=1).T)
         done_2 = done_2[:-1, :]
 
-        advantages_V_reach2, targets_V_reach2 = calculate_gae2(config["GAMMA_ENERGY"], config["GAE_LAMBDA"], traj_batch_reach2, done_2, last_val2)
+        advantages_V_reach2, targets_V_reach2 = calculate_gae2(ent_gamma[1], config["GAE_LAMBDA"], traj_batch_reach2, done_2, last_val2)
         advantages_total_reach2, _ = calculate_gae_reach4(config["GAMMA_REACH_INIT"], config["GAE_LAMBDA"], reach2_append, V_reach2_append, done_2)
 
         # UPDATE DECOMPOSED NETWORK - 2
