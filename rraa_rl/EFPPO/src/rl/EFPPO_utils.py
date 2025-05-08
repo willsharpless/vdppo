@@ -146,27 +146,11 @@ def _env_step_rr_vanilla(env, env_params, runner_state, _):
     pi = train_state_policy.apply_fn(train_state_policy.params, last_obs)
     value = train_state_value.apply_fn(train_state_value.params, last_obs)
 
-    pi_reach1 = train_state_policy.apply_fn(train_state_reach1_policy.params, last_obs)
+    pi_reach1 = train_state_reach1_policy.apply_fn(train_state_reach1_policy.params, last_obs)
     value_reach1 = train_state_reach1_value.apply_fn(train_state_reach1_value.params, last_obs)
 
-    pi_reach2 = train_state_policy.apply_fn(train_state_reach2_policy.params, last_obs)
+    pi_reach2 = train_state_reach2_policy.apply_fn(train_state_reach2_policy.params, last_obs)
     value_reach2 = train_state_reach2_value.apply_fn(train_state_reach2_value.params, last_obs)
-
-    ## TAKE SECOND REACH ACTION IF FIRST REACHED (WAS)
-    not_reach1 = last_env_state.reach1 > 0
-    not_reach2 = last_env_state.reach2 > 0
-
-    combined_mask = jnp.logical_or(jnp.logical_and(not_reach1, not_reach2), force_combined)
-    only_reach2_mask = jnp.logical_and(jnp.logical_not(not_reach1), not_reach2)
-    only_reach1_mask = jnp.logical_not(jnp.logical_or(combined_mask, only_reach2_mask))
-    # NOTE this is the reach-based switch, 
-    # technically should switch when min V1 next > min V2 next etc.
-    
-    # OVERRIDE WITH FORCED REACH MODES (FOR ROLLING OUT DECOMPOSED)
-    only_reach1_mask = jnp.logical_or(only_reach1_mask, force_reach1)
-    only_reach2_mask = jnp.logical_or(only_reach2_mask, force_reach2)
-    combined_mask = jnp.logical_and(jnp.logical_not(only_reach1_mask),
-                                    jnp.logical_not(only_reach2_mask))
 
     # SAMPLE ACTIONS
     action_combined = pi.sample(seed=_rng)
@@ -177,15 +161,28 @@ def _env_step_rr_vanilla(env, env_params, runner_state, _):
     log_r1 = pi_reach1.log_prob(action_r1)
     log_r2 = pi_reach2.log_prob(action_r2)
 
-    action = (
-        jnp.where(combined_mask[:, None], action_combined,
-        jnp.where(only_reach2_mask[:, None], action_r2, action_r1))
-    )
+    # TAKE SECOND REACH ACTION IF FIRST REACHED (WAS)
+    reached1 = last_env_state.has_reached_1
+    reached2 = last_env_state.has_reached_2
 
-    log_prob = (
-        jnp.where(combined_mask, log_combined,
-        jnp.where(only_reach2_mask, log_r2, log_r1))
-    )
+    # Combined if either has NOT been reached
+    combined_mask = jnp.logical_or(jnp.logical_not(jnp.logical_and(reached1, reached2)), force_combined)
+
+    # Reached 1 (but not 2)
+    only_reach1_mask = jnp.logical_and(reached1, jnp.logical_not(reached2))
+
+    # All others fall back to action_r1 (ie., both reached)
+    action = jnp.where(combined_mask[:, None], action_combined,
+            jnp.where(only_reach1_mask[:, None], action_r2, action_r1))
+
+    log_prob = jnp.where(combined_mask, log_combined,
+                jnp.where(only_reach1_mask, log_r2, log_r1))
+    
+    value = jnp.where(combined_mask, value,
+                jnp.where(only_reach1_mask, value_reach1, value_reach2))
+    
+    # NOTE this is the reach-based switch, 
+    # technically should switch when min V1 next > min V2 next etc.
 
     # STEP ENV
     rng, _rng = jax.random.split(rng)
@@ -197,7 +194,8 @@ def _env_step_rr_vanilla(env, env_params, runner_state, _):
 
     transition = Transition_rr(
         done, action, value, value_reach1, value_reach2, reward, log_prob, last_obs, info,
-        last_env_state.reach1, last_env_state.reach2
+        last_env_state.reach1, last_env_state.reach2, 
+        last_env_state.has_reached_1, last_env_state.has_reached_2
     )
 
     runner_state = (train_state_policy, train_state_value, env_state, obsv, rng, decomposed_state, policy_contols)

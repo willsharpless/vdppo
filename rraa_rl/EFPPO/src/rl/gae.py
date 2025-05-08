@@ -60,6 +60,8 @@ class Transition_rr(NamedTuple):
     info: jnp.ndarray
     reach1: jnp.ndarray
     reach2: jnp.ndarray
+    has_reached_1: jnp.ndarray
+    has_reached_2: jnp.ndarray
 
 class Transition_r1(NamedTuple):
     done: jnp.ndarray

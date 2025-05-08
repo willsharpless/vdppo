@@ -45,6 +45,8 @@ class EnvStateRR:
     state: State
     reach1: float
     reach2: float
+    has_reached_1: float
+    has_reached_2: float
 
 @struct.dataclass
 class EnvParamsEmpty:
@@ -351,27 +353,37 @@ class HopperReachReach:
     def reset(self, key, params=None):
         state = self._env.reset(key)
         head_pos, _, _, _, _, _ = self.calculate_position(state.obs)
-        # is_avoid = self.is_avoid(head_pos)
-        # avoid_value = jnp.where(is_avoid, -1, 1)
+
         reach1_value = self.is_reach1(head_pos)
         reach2_value = self.is_reach2(head_pos)
+        
+        has_reached_1 = reach1_value < 0
+        has_reached_2 = reach2_value < 0
+
         observation = jnp.concatenate([state.obs, jnp.array([reach1_value, reach2_value])])
-        env_state = EnvStateRR(state, reach1_value, reach2_value)
+        env_state = EnvStateRR(state, reach1_value, reach2_value, has_reached_1, has_reached_2)
+        
         return observation, env_state
 
     @partial(jax.jit, static_argnums=(0,))
     def step(self, key, state, action, params=None):
         u = jnp.tanh(action)
+        
         next_state = self._env.step(state.state, u)
         head_pos, _, _, _, _, _ = self.calculate_position(next_state.obs)
+        
         reach1_value = self.is_reach1(head_pos)
         reach2_value = self.is_reach2(head_pos)
+
+        has_reached_1 = jnp.logical_or(reach1_value < 0, state.has_reached_1)
+        has_reached_2 = jnp.logical_or(reach2_value < 0, state.has_reached_2)
+
         head_pos, jaw_pos, thg_pos, leg_pos, foot_front_pos, foot_back_pos = self.calculate_position(state.state.obs)
         pos_dict = {"head_pos": head_pos, "jaw_pos": jaw_pos, "thg_pos": thg_pos, "leg_pos": leg_pos,
                     "foot_front_pos": foot_front_pos, "foot_back_pos": foot_back_pos}
         observation = jnp.concatenate([next_state.obs, jnp.array([reach1_value, reach2_value])])
-        next_state_new = EnvStateRR(next_state, reach1_value, reach2_value)
-        reward = 0. # used to be energy consumption? FIXME
+        next_state_new = EnvStateRR(next_state, reach1_value, reach2_value, has_reached_1, has_reached_2)
+        reward = 0. # used to be energy consumption? 0. works for HJR-RL I guess
 
         return observation, next_state_new, reward, next_state.done > 0.5, pos_dict
 
