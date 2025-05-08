@@ -2,7 +2,7 @@ from .reach_avoid.grid_avoid import GridAvoid
 from .reach_avoid.grid_constraint import GridConstraint
 from .reach_avoid.pendulum_constraint import PendulumConstraint
 from .reach_avoid.hopper_avoid_ceiling import HopperAvoidCeiling, HopperAvoidCeilingDeterministic, HopperAvoidCeilingWall
-from .reach_avoid.hopper_avoid_ceiling import HopperReachReach, HopperReachReachDeterministic, HopperReach1, HopperReach2
+from .reach_avoid.hopper_avoid_ceiling import HopperReachReach, HopperReachReachDeterministic, HopperReach1, HopperReach2, HopperReach1Deterministic, HopperReach2Deterministic
 from .reach_avoid.wind_field import WindField
 from .reach_avoid.half_cheetah_avoid import HalfCheetahAvoid, HalfCheetahAvoidDeterministic
 from .reach_avoid.safety_gym_avoid import PointAvoid
@@ -73,9 +73,9 @@ def get_env(config):
         env = HopperReachReachDeterministic()
         env = TransformObservation(env, trans)
 
-        env1 = HopperReach1() # TODO make determinstic
+        env1 = HopperReach1Deterministic() # TODO make determinstic
         env1 = TransformObservation(env1, trans)
-        env2 = HopperReach2() # TODO make determinstic
+        env2 = HopperReach2Deterministic() # TODO make determinstic
         env2 = TransformObservation(env2, trans)
         return (env, env1, env2)
     elif config["EXP_NAME"] == 'HopperAvoidCeilingWall':

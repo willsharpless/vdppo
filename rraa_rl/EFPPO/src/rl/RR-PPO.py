@@ -158,7 +158,7 @@ def train(envs, env_paramss, config, rng):
 
         xs = jnp.ones(config["UPDATE_EPOCHS"]) * ent_gamma[0]
         update_state_reach1, loss_info_1 = jax.lax.scan(
-            update_epoch, update_state_reach1, xs, config["UPDATE_EPOCHS"]
+            update_epoch_reach1, update_state_reach1, xs, config["UPDATE_EPOCHS"]
         )
         train_state_policy_reach1 = update_state_reach1[0]
         train_state_value_reach1 = update_state_reach1[1]
@@ -184,7 +184,7 @@ def train(envs, env_paramss, config, rng):
 
         xs = jnp.ones(config["UPDATE_EPOCHS"]) * ent_gamma[0]
         update_state_reach2, loss_info_2 = jax.lax.scan(
-            update_epoch, update_state_reach2, xs, config["UPDATE_EPOCHS"]
+            update_epoch_reach2, update_state_reach2, xs, config["UPDATE_EPOCHS"]
         )
         train_state_policy_reach2 = update_state_reach2[0]
         train_state_value_reach2 = update_state_reach2[1]
@@ -195,7 +195,8 @@ def train(envs, env_paramss, config, rng):
                  "batch_1_info": (traj_batch_reach1, targets_V_reach1, done_1), "loss_info_1": loss_info_1,
                  "batch_2_info": (traj_batch_reach2, targets_V_reach2, done_2), "loss_info_2": loss_info_2,
                  "reach_gamma": ent_gamma[1], "entropy_weight": ent_gamma[0]})
-
+    
+    # INIT JAX WRAPPERS
     update_epoch = partial(_ppo_vanilla_update, config)
     env_step = partial(_env_step_rr_vanilla, env, env_params)
     env_step_reach_1 = partial(_env_step_r1_vanilla, env_reach_1, env_params_reach_1)
@@ -238,29 +239,6 @@ def train(envs, env_paramss, config, rng):
         count=1e-4,
     )
 
-    # DECOMPOSED REACH POLICIES
-    init_x_reach_1 = jnp.zeros(env_reach_1.observation_space(env_params_reach_1).shape)
-    network_params_policy_reach1 = policy_network_reach1.init(_rng, init_x_reach_1)
-    train_state_policy_reach1 = TrainState.create(
-        apply_fn=policy_network_reach1.apply,
-        params=network_params_policy_reach1,
-        tx=tx,
-        mean=jnp.zeros(env_reach_1.observation_space(env_params_reach_1).shape),
-        variance=jnp.zeros(env_reach_1.observation_space(env_params_reach_1).shape),
-        count=1e-4,
-    )
-
-    init_x_reach_2 = jnp.zeros(env_reach_2.observation_space(env_params_reach_2).shape)
-    network_params_policy_reach2 = policy_network_reach2.init(_rng, init_x_reach_2)
-    train_state_policy_reach2 = TrainState.create(
-        apply_fn=policy_network_reach2.apply,
-        params=network_params_policy_reach2,
-        tx=tx,
-        mean=jnp.zeros(env_reach_2.observation_space(env_params_reach_2).shape),
-        variance=jnp.zeros(env_reach_2.observation_space(env_params_reach_2).shape),
-        count=1e-4,
-    )
-
     # INIT VALUE CRITIC NETWORK
     value_network = Value_Network(activation=config["ACTIVATION"])
     rng, _rng = jax.random.split(rng)
@@ -275,32 +253,117 @@ def train(envs, env_paramss, config, rng):
         count=1e-4,
     )
 
-    # DECOMPOSED VALUE CRITICS
-    value_network_reach1 = Value_Network(activation=config["ACTIVATION"])
-    rng, _rng = jax.random.split(rng)
-    init_x = jnp.zeros(env_reach_1.observation_space(env_params_reach_1).shape)
-    network_params_reach1 = value_network_reach1.init(_rng, init_x)
-    train_state_value_reach1 = TrainState.create(
-        apply_fn=value_network_reach1.apply,
-        params=network_params_reach1,
-        tx=tx,
-        mean=jnp.zeros(env_reach_1.observation_space(env_params_reach_1).shape),
-        variance=jnp.zeros(env_reach_1.observation_space(env_params_reach_1).shape),
-        count=1e-4,
-    )
+    # INIT DECOMPOSED ACTOR AND CRITICS
+    if not config["LOAD_DECOMPOSED"]:
+    
+        # DECOMPOSED POLICIES
+        init_x_reach_1 = jnp.zeros(env_reach_1.observation_space(env_params_reach_1).shape)
+        network_params_policy_reach1 = policy_network_reach1.init(_rng, init_x_reach_1)
+        train_state_policy_reach1 = TrainState.create(
+            apply_fn=policy_network_reach1.apply,
+            params=network_params_policy_reach1,
+            tx=tx,
+            mean=jnp.zeros(env_reach_1.observation_space(env_params_reach_1).shape),
+            variance=jnp.zeros(env_reach_1.observation_space(env_params_reach_1).shape),
+            count=1e-4,
+        )
 
-    value_network_reach2 = Value_Network(activation=config["ACTIVATION"])
-    rng, _rng = jax.random.split(rng)
-    init_x = jnp.zeros(env_reach_2.observation_space(env_params_reach_2).shape)
-    network_params_reach2 = value_network_reach2.init(_rng, init_x)
-    train_state_value_reach2 = TrainState.create(
-        apply_fn=value_network_reach2.apply,
-        params=network_params_reach2,
-        tx=tx,
-        mean=jnp.zeros(env_reach_2.observation_space(env_params_reach_2).shape),
-        variance=jnp.zeros(env_reach_2.observation_space(env_params_reach_2).shape),
-        count=1e-4,
-    )
+        init_x_reach_2 = jnp.zeros(env_reach_2.observation_space(env_params_reach_2).shape)
+        network_params_policy_reach2 = policy_network_reach2.init(_rng, init_x_reach_2)
+        train_state_policy_reach2 = TrainState.create(
+            apply_fn=policy_network_reach2.apply,
+            params=network_params_policy_reach2,
+            tx=tx,
+            mean=jnp.zeros(env_reach_2.observation_space(env_params_reach_2).shape),
+            variance=jnp.zeros(env_reach_2.observation_space(env_params_reach_2).shape),
+            count=1e-4,
+        )
+
+        # DECOMPOSED VALUE CRITICS
+        value_network_reach1 = Value_Network(activation=config["ACTIVATION"])
+        rng, _rng = jax.random.split(rng)
+        init_x = jnp.zeros(env_reach_1.observation_space(env_params_reach_1).shape)
+        network_params_reach1 = value_network_reach1.init(_rng, init_x)
+        train_state_value_reach1 = TrainState.create(
+            apply_fn=value_network_reach1.apply,
+            params=network_params_reach1,
+            tx=tx,
+            mean=jnp.zeros(env_reach_1.observation_space(env_params_reach_1).shape),
+            variance=jnp.zeros(env_reach_1.observation_space(env_params_reach_1).shape),
+            count=1e-4,
+        )
+
+        value_network_reach2 = Value_Network(activation=config["ACTIVATION"])
+        rng, _rng = jax.random.split(rng)
+        init_x = jnp.zeros(env_reach_2.observation_space(env_params_reach_2).shape)
+        network_params_reach2 = value_network_reach2.init(_rng, init_x)
+        train_state_value_reach2 = TrainState.create(
+            apply_fn=value_network_reach2.apply,
+            params=network_params_reach2,
+            tx=tx,
+            mean=jnp.zeros(env_reach_2.observation_space(env_params_reach_2).shape),
+            variance=jnp.zeros(env_reach_2.observation_space(env_params_reach_2).shape),
+            count=1e-4,
+        )
+
+    # LOAD DECOMPOSED ACTOR AND CRITICS
+    else:
+        raw_restored = checkpoints.restore_checkpoint(ckpt_dir=os.path.abspath('model/{}/{}'.format(
+            config["LOAD_DEC_DIR"], config["LOAD_DEC_DIR_MODEL"])), target=None)
+        
+        train_state_policy_reach1 = TrainState.create(
+            apply_fn=policy_network_reach1.apply,
+            params=raw_restored['policy_reach1_network']['params'],
+            mean=raw_restored['policy_reach1_network']["mean"],
+            variance=raw_restored['policy_reach1_network']["variance"],
+            count=raw_restored['policy_reach1_network']["count"],
+            tx=tx,
+        )
+        train_state_policy_reach2 = TrainState.create(
+            apply_fn=policy_network_reach1.apply,
+            params=raw_restored['policy_reach2_network']['params'],
+            mean=raw_restored['policy_reach2_network']["mean"],
+            variance=raw_restored['policy_reach2_network']["variance"],
+            count=raw_restored['policy_reach2_network']["count"],
+            tx=tx,
+        )
+
+        value_network_reach1 = Value_Network(activation=config["ACTIVATION"])
+        train_state_value_reach1 = TrainState.create(
+            apply_fn=value_network_reach1.apply,
+            params=raw_restored['value_reach1_network']['params'],
+            mean=raw_restored['value_reach1_network']["mean"],
+            variance=raw_restored['value_reach1_network']["variance"],
+            count=raw_restored['value_reach1_network']["count"],
+            tx=tx,
+        )
+        value_network_reach2 = Value_Network(activation=config["ACTIVATION"])
+        train_state_value_reach2 = TrainState.create(
+            apply_fn=value_network_reach2.apply,
+            params=raw_restored['value_reach2_network']['params'],
+            mean=raw_restored['value_reach2_network']["mean"],
+            variance=raw_restored['value_reach2_network']["variance"],
+            count=raw_restored['value_reach2_network']["count"],
+            tx=tx,
+        )
+
+    # IF TRAINING DECOMPOSED, USE PPO
+    if not config["LOAD_DECOMPOSED"]:
+        update_epoch_reach1 = partial(_ppo_vanilla_update, config)
+        update_epoch_reach2 = partial(_ppo_vanilla_update, config)
+
+    # IF LOADING PRESOLVED DECOMPOSED, NO TRAINING
+    else:
+        def _no_update(config, update_state, ent):
+            dummy_loss = {
+                "actor_loss": 0.0,
+                "value_loss": 0.0,
+                "entropy_loss": 0.0,
+            }
+            return update_state, dummy_loss
+
+        update_epoch_reach1 = partial(_no_update, config)
+        update_epoch_reach2 = partial(_no_update, config)
 
     total_timesteps = config["NUM_UPDATES"] // config["STEP_SCAN"]
 
@@ -407,7 +470,7 @@ def train(envs, env_paramss, config, rng):
 if __name__ == "__main__":
     config = vars(get_args(sys.argv[1:]))
 
-    debug = False
+    debug = True
     if debug:
         config["EXP_NAME"]="HopperReachReach"
         config["DIR"]="hopper_reachreach_debug"
@@ -431,6 +494,7 @@ if __name__ == "__main__":
         config["ANNEAL_LR"]=True,
         config["ANNEAL_ENT"]=True
         config["NAME"]="hopper_debug"
+        config["TEST_MODE"]=True # USES DETERMINISTIC MODELS
 
     config["NUM_UPDATES"] = int(
         config["TOTAL_TIMESTEPS"] // config["NUM_STEPS"] // config["NUM_ENVS"]
@@ -463,9 +527,15 @@ if __name__ == "__main__":
         env_params_reach_2 = env_params_reach_2.replace(index=config['SECTION'])
     env_paramss = (env_params, env_params_reach_1, env_params_reach_2)
 
-    config["USE_WANDB"] = True # False for debugging
+    config["USE_WANDB"] = False # False for debugging
     if config["USE_WANDB"]:
         wandb.init(project='EC-EFPPO-{}'.format(config["EXP_NAME"]), name=config["NAME"], config=config)
+
+    load_decomposed = True # TODO
+    if load_decomposed:
+        config["LOAD_DECOMPOSED"] = True
+        config["LOAD_DEC_DIR"] ="hopper_reachreach_idxsMAX_switchfix_augstate"
+        config["LOAD_DEC_DIR_MODEL"] ="checkpoint_2303"
 
     rng = jax.random.PRNGKey(20)
     out = train(envs, env_paramss, config, rng) # TODO assumes same env params (should be tuple if diff)
