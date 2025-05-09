@@ -463,7 +463,8 @@ if __name__ == "__main__":
 
     config["USE_WANDB"] = False #True # False for debugging
     if config["USE_WANDB"]:
-        wandb.init(project='EC-EFPPO-{}'.format(config["EXP_NAME"]), name=config["NAME"], config=config)
+        wandb.init(project='EC-EFPPO-{}'.format(config["EXP_NAME"]), name=config["NAME"], config=config,
+                   entity='braat_brrt')
 
     config["LOAD_DECOMPOSED"] = False # TODO make args
     if config["LOAD_DECOMPOSED"]:

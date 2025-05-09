@@ -536,9 +536,10 @@ if __name__ == "__main__":
         env_params_reach_2 = env_params_reach_2.replace(index=config['SECTION'])
     env_paramss = (env_params, env_params_reach_1, env_params_reach_2)
 
-    config["USE_WANDB"] = True # False for debugging
+    config["USE_WANDB"] = False # False for debugging
     if config["USE_WANDB"]:
-        wandb.init(project='EC-EFPPO-{}'.format(config["EXP_NAME"]), name=config["NAME"], config=config)
+        wandb.init(project='EC-EFPPO-{}'.format(config["EXP_NAME"]), name=config["NAME"], config=config,
+                   entity='braat_brrt')
 
     config["LOAD_DECOMPOSED"] = False # TODO make args
     if config["LOAD_DECOMPOSED"]:
