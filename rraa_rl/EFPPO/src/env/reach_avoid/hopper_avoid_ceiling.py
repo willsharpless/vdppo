@@ -49,6 +49,18 @@ class EnvStateRR:
     has_reached_2: float
 
 @struct.dataclass
+class EnvStateRAA:
+    state: State
+    avoid: float
+    reach: float
+    has_reached: float
+
+@struct.dataclass
+class EnvStateAvoidOnly:
+    state: State
+    avoid: float
+
+@struct.dataclass
 class EnvParamsEmpty:
     pass
 
@@ -866,4 +878,125 @@ class HopperReach2Deterministic:
             shape=(self._env.action_size,),
         )
 
-## TODO WAS: RRAA Hopper (should be like ReachReach + is_avoid)
+
+class HopperRAATemplate:
+    def __init__(self, backend="positional"):
+        env = HopperRandom(backend=backend,
+                           exclude_current_positions_from_observation=False,
+                           terminate_when_unhealthy=False)
+        env = EpisodeWrapper(env, episode_length=1000, action_repeat=2)
+        env = AutoResetWrapper(env)
+        self._env = env
+        self.action_size = env.action_size
+        self.observation_size = (env.observation_size,)
+        self.default_params = EnvParamsEmpty()   
+
+    @partial(jax.jit, static_argnums=(0,))
+    def reset(self, key, params=None):
+        raise NotImplementedError("reset() not implemented in base class")
+    
+    @partial(jax.jit, static_argnums=(0,))
+    def step(self, key, state, action, params=None):
+        raise NotImplementedError("step() not implemented in base class")
+
+    @partial(jax.jit, static_argnums=(0,))
+    def calculate_position(self, obs):
+        head_pos = jnp.array([obs[0] + 0.2 * jnp.sin(obs[2]),
+                              obs[1] + 0.2 * jnp.cos(obs[2])])
+        jaw_pos = jnp.array([obs[0] - 0.2 * jnp.sin(obs[2]),
+                             obs[1] - 0.2 * jnp.cos(obs[2])])
+        thg_pos = jnp.array([jaw_pos[0] - 0.45 * jnp.sin(obs[2] - obs[3]),
+                             jaw_pos[1] - 0.45 * jnp.cos(obs[2] - obs[3])])
+        leg_pos = jnp.array([thg_pos[0] - 0.5 * jnp.sin(obs[2] - obs[3] - obs[4]),
+                             thg_pos[1] - 0.5 * jnp.cos(obs[2] - obs[3] - obs[4])])
+        foot_back_pos = jnp.array([leg_pos[0] - 0.13 * jnp.cos(obs[2] - obs[3] - obs[4] - obs[5]),
+                                    leg_pos[1] + 0.13 * jnp.sin(obs[2] - obs[3] - obs[4] - obs[5])])
+        foot_front_pos = jnp.array([leg_pos[0] + 0.26 * jnp.cos(obs[2] - obs[3] - obs[4] - obs[5]),
+                                   leg_pos[1] - 0.26 * jnp.sin(obs[2] - obs[3] - obs[4] - obs[5])])
+        return head_pos, jaw_pos, thg_pos, leg_pos, foot_front_pos, foot_back_pos
+
+    @partial(jax.jit, static_argnums=(0,))
+    def is_reach(self, head_pos):
+        reach = jnp.sqrt((head_pos[0] - 2.0) ** 2 + (head_pos[1] - 1.4) ** 2) - 0.1
+        return reach
+
+    @partial(jax.jit, static_argnums=(0,))
+    def is_avoid(self, head_pos):
+        avoid_1 = (head_pos[1] >= 1.3) & (head_pos[0] >= 0.95) & (head_pos[0] <= 1.05)
+        avoid_2 = (head_pos[0] >= 2.35) # dont hit head on walls, bad dobby
+        return avoid_1 | avoid_2
+
+    def observation_space(self, params):
+        return spaces.Box(
+            low=-jnp.inf,
+            high=jnp.inf,
+            shape=(self._env.observation_size + 2,),
+        )
+
+    def action_space(self, params):
+        return spaces.Box(
+            low=-1.0,
+            high=1.0,
+            shape=(self._env.action_size,),
+        )
+
+
+class HopperAvoidOnly(HopperRAATemplate):
+    @partial(jax.jit, static_argnums=(0,))
+    def reset(self, key, params=None):
+        state = self._env.reset(key)
+        head_pos, _, _, _, _, _ = self.calculate_position(state.obs)
+        avoid_value = self.is_avoid(head_pos)
+        reach_value = self.is_reach(head_pos)
+        observation = jnp.concatenate([state.obs, jnp.array([avoid_value, reach_value])])
+        env_state = EnvStateAvoidOnly(state, avoid_value)
+        return observation, env_state
+    
+    @partial(jax.jit, static_argnums=(0,))
+    def step(self, key, state, action, params=None):
+        u = jnp.tanh(action)
+        next_state = self._env.step(state.state, u)
+        head_pos, _, _, _, _, _ = self.calculate_position(next_state.obs)
+        avoid_value = self.is_avoid(head_pos)
+        reach_value = self.is_reach(head_pos)
+        # TODO: Do we need is_reach(head_pos) here?
+        head_pos, jaw_pos, thg_pos, leg_pos, foot_front_pos, foot_back_pos = self.calculate_position(state.state.obs)
+        pos_dict = {"head_pos": head_pos, "jaw_pos": jaw_pos, "thg_pos": thg_pos, "leg_pos": leg_pos,
+                    "foot_front_pos": foot_front_pos, "foot_back_pos": foot_back_pos}
+        observation = jnp.concatenate([next_state.obs, jnp.array([avoid_value, reach_value])])  # TODO: add reach_value?
+        next_state_new = EnvStateAvoidOnly(next_state, avoid_value)
+        reward = 0. # used to be energy consumption? FIXME
+
+        return observation, next_state_new, reward, next_state.done > 0.5, pos_dict
+
+
+class HopperReachAvoid(HopperRAATemplate):
+    @partial(jax.jit, static_argnums=(0,))
+    def reset(self, key, params=None):
+        state = self._env.reset(key)
+        head_pos, _, _, _, _, _ = self.calculate_position(state.obs)
+        avoid_value = self.is_avoid(head_pos)
+        reach_value = self.is_reach(head_pos)
+
+        has_reached = reach_value < 0
+        observation = jnp.concatenate([state.obs, jnp.array([avoid_value, reach_value])])
+        env_state = EnvStateRAA(state, avoid_value, reach_value, has_reached)
+        return observation, env_state
+
+    @partial(jax.jit, static_argnums=(0,))
+    def step(self, key, state, action, params=None):
+        u = jnp.tanh(action)
+        next_state = self._env.step(state.state, u)
+        head_pos, _, _, _, _, _ = self.calculate_position(next_state.obs)
+        avoid_value = self.is_avoid(head_pos)
+        reach_value = self.is_reach(head_pos)
+
+        has_reached = jnp.logical_or(reach_value < 0, state.has_reached)
+        head_pos, jaw_pos, thg_pos, leg_pos, foot_front_pos, foot_back_pos = self.calculate_position(state.state.obs)
+        pos_dict = {"head_pos": head_pos, "jaw_pos": jaw_pos, "thg_pos": thg_pos, "leg_pos": leg_pos,
+                    "foot_front_pos": foot_front_pos, "foot_back_pos": foot_back_pos}
+        observation = jnp.concatenate([next_state.obs, jnp.array([avoid_value, reach_value])])
+        next_state_new = EnvStateRAA(next_state, avoid_value, reach_value, has_reached)
+        reward = 0.
+
+        return observation, next_state_new, reward, next_state.done > 0.5, pos_dict

@@ -1,6 +1,6 @@
 import jax
 import jax.numpy as jnp
-from rraa_rl.EFPPO.src.rl.gae import Transition_reach, Transition_raa, Transition_rr, Transition_r1, Transition_r2, Transition_cppo, Transition_sac
+from rraa_rl.EFPPO.src.rl.gae import Transition_reach, Transition_raa, Transition_rr, Transition_r1, Transition_r2, Transition_cppo, Transition_sac, Transition_a
 
 def _env_step(env, env_params, runner_state, _):
     (train_state_policy, train_state_energy, train_state_h,
@@ -80,51 +80,6 @@ def _env_step_raa_debug(env, env_params, runner_state, decomposed_state, _, forc
     )
     runner_state = (train_state_policy, train_state_energy, train_state_h,
                     env_state, obsv, rng)
-    return runner_state, transition
-
-def _env_step_raa_vanilla(env, env_params, runner_state, decomposed_state, _, force_avoid=False):
-    (train_state_policy, train_state_value, last_env_state, last_obs, rng) = runner_state
-    (train_state_avoid_policy, train_state_avoid_value) = decomposed_state
-
-    """
-    This env_step always takes avoid policy after reaching.
-
-    Note, requires a different Transition
-    -WAS
-    """
-
-    # SELECT ACTION
-    rng, _rng = jax.random.split(rng)
-    pi = train_state_policy.apply_fn(train_state_policy.params, last_obs)
-    value = train_state_value.apply_fn(train_state_value.params, last_obs)
-
-    pi_avoid = train_state_policy.apply_fn(train_state_avoid_policy.params, last_obs)
-    value_avoid = train_state_avoid_value.apply_fn(train_state_avoid_value.params, last_obs)
-
-    ## TAKE ALWAYS-AVOID ACTION IF REACHED (WAS)
-    if last_obs.last_env_state > 0 and not force_avoid: # havent reached
-        action = pi.sample(seed=_rng)
-        log_prob = pi.log_prob(action)
-    else:
-        action = pi_avoid.sample(seed=_rng)
-        log_prob = pi_avoid.log_prob(action)
-        value = value_avoid
-    # NOTE this is the reach-based switch, 
-    # technically should switch when min V next > avoid_value next
-
-    # STEP ENV
-    rng, _rng = jax.random.split(rng)
-    env_num = last_obs.shape[0]
-    rng_step = jax.random.split(_rng, env_num)
-    obsv, env_state, reward, done, info = jax.vmap(
-        env.step, in_axes=(0, 0, 0, None)
-    )(rng_step, last_env_state, action, env_params)
-
-    transition = Transition_raa(
-        done, action, value, reward, log_prob, last_obs, info,
-        last_env_state.reach
-    )
-    runner_state = (train_state_policy, train_state_value, env_state, obsv, rng)
     return runner_state, transition
 
 def _env_step_rr_vanilla(env, env_params, runner_state, _):
@@ -350,6 +305,90 @@ def _env_step_rraa_vanilla(env, env_params, runner_state, decomposed_state, _):
     )
     runner_state = (train_state_policy, train_state_value, env_state, obsv, rng)
     return runner_state, transition
+
+def _env_step_raa_vanilla(env, env_params, runner_state, _):
+    (train_state_policy, train_state_value, last_env_state, last_obs, 
+        rng, decomposed_state, policy_contols) = runner_state    
+    (train_state_policy_avoid, train_state_value_avoid) = decomposed_state
+    (force_combined, force_avoid) = policy_contols
+    # FIXME: force_avoid not used (same for force_reach_1 and force_reach_2 in env_step_rr_vanilla)
+
+    # SELECT ACTION
+    rng, _rng = jax.random.split(rng)
+    pi = train_state_policy.apply_fn(train_state_policy.params, last_obs)
+    value = train_state_value.apply_fn(train_state_value.params, last_obs)
+
+    pi_avoid = train_state_policy_avoid.apply_fn(train_state_policy_avoid.params, last_obs)
+    value_avoid = train_state_value_avoid.apply_fn(train_state_value_avoid.params, last_obs)
+
+    # SAMPLE ACTIONS
+    action_combined = pi.sample(seed=_rng)
+    action_avoid = pi_avoid.sample(seed=_rng)
+
+    log_combined = pi.log_prob(action_combined)
+    log_avoid = pi_avoid.log_prob(action_avoid)
+
+    # TAKE AVOID ACTION IF REACHED
+    reached = last_env_state.has_reached
+
+    combined_mask = jnp.logical_or(jnp.logical_not(reached), force_combined)
+    
+    action = jnp.where(combined_mask[:, None], action_combined, action_avoid)
+
+    log_prob = jnp.where(combined_mask, log_combined, log_avoid)
+
+    value = jnp.where(combined_mask, value, value_avoid)
+
+    policy_taken = jnp.where(combined_mask, 0 * value, 1 + 0 * value) # just for tracking
+
+    # STEP ENV
+    rng, _rng = jax.random.split(rng)
+    env_num = last_obs.shape[0]
+    rng_step = jax.random.split(_rng, env_num)
+    obsv, env_state, reward, done, info = jax.vmap(
+        env.step, in_axes=(0, 0, 0, None)
+    )(rng_step, last_env_state, action, env_params)
+
+    transition = Transition_raa(
+        done, action, value, reward, log_prob, last_obs, info, last_env_state.reach,
+        last_env_state.avoid, last_env_state.has_reached, policy_taken)
+    
+    runner_state = (train_state_policy, train_state_value, env_state, obsv, rng, decomposed_state, policy_contols)
+    return runner_state, transition
+
+def _env_step_a_vanilla(env, env_params, runner_state, _):
+    (train_state_policy, train_state_value, last_env_state, last_obs, 
+        rng, decomposed_state, policy_contols) = runner_state    
+    (train_state_policy_avoid, train_state_value_avoid) = decomposed_state
+    (force_combined, force_avoid) = policy_contols
+
+    """
+    This env_step always takes the avoid only policy (but has all same i/o).
+    """
+
+    # SELECT ACTION
+    rng, _rng = jax.random.split(rng)
+    pi_avoid = train_state_policy_avoid.apply_fn(train_state_policy_avoid.params, last_obs)
+    value_avoid = train_state_value_avoid.apply_fn(train_state_value_avoid.params, last_obs)
+
+    # SAMPLE ACTIONS
+    action = pi_avoid.sample(seed=_rng)
+    log_prob = pi_avoid.log_prob(action)
+
+    # STEP ENV
+    rng, _rng = jax.random.split(rng)
+    env_num = last_obs.shape[0]
+    rng_step = jax.random.split(_rng, env_num)
+    obsv, env_state, reward, done, info = jax.vmap(
+        env.step, in_axes=(0, 0, 0, None)
+    )(rng_step, last_env_state, action, env_params)
+
+    transition = Transition_a(
+        done, action, value_avoid, reward, log_prob, last_obs, info, last_env_state.avoid)
+    
+    runner_state = (train_state_policy, train_state_value, env_state, obsv, rng, decomposed_state, policy_contols)
+    return runner_state, transition
+
 
 def _env_step_cppo(env, env_params, runner_state, _):
     train_state_policy, train_state_value, train_state_cost, last_env_state, last_obs, rng = runner_state
