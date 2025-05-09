@@ -20,4 +20,5 @@ python ./rraa_rl/EFPPO/src/rl/RR-PPO.py \
 --CUDA_USE=0,1,2,3 \
 --ANNEAL_LR \
 --ANNEAL_ENT \
---NAME=hopper_idxsMAX_switchfix_augstate_obsfix
+--NAME=hopper_idxsMAX_switchfix_augstate_obsfix \
+--TEST_MODE
