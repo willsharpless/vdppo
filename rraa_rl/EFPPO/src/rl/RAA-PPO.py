@@ -19,7 +19,7 @@ from arguments import get_args
 from functools import partial
 from typing import Any
 
-from rraa_rl.EFPPO.src.rl.EFPPO_utils import _ppo_vanilla_update, _env_step_rr_vanilla, _env_step_r1_vanilla, _env_step_r2_vanilla
+from rraa_rl.EFPPO.src.rl.EFPPO_utils import _ppo_vanilla_update, _env_step_rr_vanilla, _env_step_r1_vanilla, _env_step_r2_vanilla, _env_step_raa_vanilla, _env_step_a_vanilla
 from rraa_rl.EFPPO.src.env.env_list import get_env
 from rraa_rl.EFPPO.src.model.actorcritic import Policy_Network, Value_Network, Policy_Network_Discrete
 from rraa_rl.EFPPO.src.rl.plot_utils import calculate_minimal_reach, calculate_consumption, calculate_reachreach, plot_target, plot_value_target, plot_contour, plot_contour_RRAA, plot_policy_decision
@@ -42,7 +42,7 @@ def train(envs, env_paramss, config, rng):
     def _train(train_state_total, ent_gamma):
 
         train_state_policy, train_state_value, \
-        train_state_policy_avoid, train_state_value_avoid = train_state_total
+        train_state_policy_avoid, train_state_value_avoid, \
         rng_og, timestep = train_state_total 
 
         ##################  Env step: Composed Env ##################
@@ -106,6 +106,11 @@ def train(envs, env_paramss, config, rng):
         indexs, done = calculate_indexs3_rr(ent_gamma[1], traj_batch.reward, l_tilde,
                                                jnp.expand_dims(last_val, axis=1).T) # NOTE are we totally sure this works, I dont really get og usage,
         done =  done[:-1, :] 
+
+        # Temp override: done is only the last step
+        new_done = jnp.zeros_like(done)
+        new_done = new_done.at[-1, :].set(1.0) # TODO: check where this last point actually is 
+        done = new_done
         # FIXME: FIXME FIXME FIXME FIXME FIXME FIXME FIXME FIXME - This is definitely wrong
 
         advantages_V, targets_V = calculate_gae_reachavoid4(ent_gamma[1], config["GAE_LAMBDA"], 
@@ -135,11 +140,17 @@ def train(envs, env_paramss, config, rng):
         last_val_avoid = train_state_value_avoid.apply_fn(train_state_value_avoid.params, last_obs_avoid)
 
         avoid_append = jnp.concatenate((traj_batch_avoid.avoid, jnp.expand_dims(env_state_avoid.avoid, axis=1).T)) # avoid function
-        V_avoid_append = jnp.concatenate((traj_batch_avoid.value_avoid, jnp.expand_dims(last_val_avoid, axis=1).T)) # avoid value function
+        V_avoid_append = jnp.concatenate((traj_batch_avoid.value, jnp.expand_dims(last_val_avoid, axis=1).T)) # avoid value function
 
         # FIXME: FIXME FIXME FIXME FIXME FIXME FIXME FIXME FIXME - This is definitely wrong
         indexs, done_avoid = calculate_indexs3_rr(ent_gamma[1], traj_batch_avoid.reward, avoid_append,
                                                jnp.expand_dims(last_val_avoid, axis=1).T) # NOTE are we totally sure this works, I dont really get og usage,
+        done_avoid = done_avoid[:-1, :]
+
+        # Temp override: done is only the last step
+        new_done_avoid = jnp.zeros_like(done_avoid)
+        new_done_avoid = new_done_avoid.at[-1, :].set(1.0) # TODO: check where this last point actually is 
+        done_avoid = new_done_avoid
         # FIXME: FIXME FIXME FIXME FIXME FIXME FIXME FIXME FIXME - This is definitely wrong
 
         advantages_V_avoid, targets_V_avoid = calculate_gae_avoid4(ent_gamma[1], config["GAE_LAMBDA"],
@@ -162,15 +173,15 @@ def train(envs, env_paramss, config, rng):
 
         ##########################################################################################
 
-        return ((train_state_policy, train_state_value, train_state_policy_reach1, train_state_value_reach1, train_state_policy_reach2, train_state_value_reach2, rng, timestep),
+        return ((train_state_policy, train_state_value, train_state_policy_avoid, train_state_value_avoid, rng, timestep),
                 {"batch_info": (traj_batch, targets_V, done), "loss_info": loss_info,
-                 "batch_avoid": (traj_batch_avoid, targets_V_avoid, done_avoid), "loss_info_1": loss_info_avoid,
+                 "batch_avoid_info": (traj_batch_avoid, targets_V_avoid, done_avoid), "loss_info_avoid": loss_info_avoid,
                  "reach_gamma": ent_gamma[1], "entropy_weight": ent_gamma[0]})
     
     # INIT JAX WRAPPERS
     update_epoch = partial(_ppo_vanilla_update, config)
     env_step = partial(_env_step_raa_vanilla, env, env_params)
-    env_step_avoid = partial(_env_step_avoid_vanilla, env_avoid, env_params_avoid)
+    env_step_avoid = partial(_env_step_a_vanilla, env_avoid, env_params_avoid)
     training = jax.jit(_train)
 
     tx = optimizer(config)
@@ -398,7 +409,7 @@ if __name__ == "__main__":
     debug = False
     if debug:
         config["EXP_NAME"]="HopperReachAlwaysAvoid"
-        config["DIR"]="hopper_reachalwaysavoid_debug"
+        config["DIR"]="hopper_reachalwaysavoid_ceilingwall_debug"
         config["LR"]=3e-4
         config["NUM_ENVS"]=128
         config["NUM_STEPS"]=400
