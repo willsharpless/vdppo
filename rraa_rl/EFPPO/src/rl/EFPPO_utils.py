@@ -349,9 +349,10 @@ def _env_step_raa_vanilla(env, env_params, runner_state, _):
         env.step, in_axes=(0, 0, 0, None)
     )(rng_step, last_env_state, action, env_params)
 
-    transition = Transition_raa(
-        done, action, value, reward, log_prob, last_obs, info, last_env_state.reach,
-        last_env_state.avoid, last_env_state.has_reached, policy_taken)
+    transition = Transition_raa(done=done, action=action, value=value, reward=reward, log_prob=log_prob, obs=last_obs, 
+                                info=info, reach=last_env_state.reach, avoid=last_env_state.avoid, 
+                                value_avoid=value_avoid, has_reached=last_env_state.has_reached, 
+                                policy_taken=policy_taken)
     
     runner_state = (train_state_policy, train_state_value, env_state, obsv, rng, decomposed_state, policy_contols)
     return runner_state, transition
