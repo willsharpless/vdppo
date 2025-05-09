@@ -213,10 +213,37 @@ def train(env, env_params, config, rng):
                 "actor_loss": jnp.mean(loss_info["actor_loss"]), "entropy_loss": jnp.mean(loss_info["entropy_loss"]),
                 "energy_loss": jnp.mean(loss_info["energy_loss"]), "reach_loss": jnp.mean(loss_info["reach_loss"]),
                 "reach_gamma": result['reach_gamma'][0], "entropy_weight": result['entropy_weight'][0],
-                "trajectory_sample": wandb.Image(fig_contour)})
+                "trajectory_sample": wandb.Image(fig_contour)}, step=timestep)
         plt.close("all")
         print("Earliest Reach {}: {}        {}".format(timestep, cnt, np.mean(consumption)))
         print("Time {}".format(t1-t0))
+
+        # Add in eval with deterministic checkpoint
+        if env_test is not None and timestep % 5 == 0:
+            # FIXME: Is it just running same initial state over and over?
+            reset_rng = jax.random.split(rng, config["NUM_ENVS"])  # FIXME: Have eval envs use a different seed than train envs
+            obsv, env_state = jax.vmap(env_test.reset, in_axes=(0, None))(reset_rng, env_params)
+            runner_state = (train_state_policy, train_state_energy, train_state_h, env_state, obsv, rng)
+
+            runner_state, traj_batch_eval = jax.lax.scan(
+                partial(_env_step, env_test, env_params), runner_state, None, config["NUM_STEPS"]
+            )
+
+            consumption_eval, cnt_eval, _ = calculate_consumption(traj_batch_eval)
+            reach_idx_eval = calculate_minimal_reach(traj_batch_eval.reach[:, 0])
+            idx = 0
+            info_eval = tree_index2(traj_batch_eval.info, idx)
+            info_eval['init_energy'] = traj_batch.energy[0, idx]
+            info_eval['final_energy'] = traj_batch.energy[reach_idx, idx]
+            info_eval['reach_index'] = reach_idx_eval
+            fig_eval = plot_contour(train_state_energy, train_state_h, train_state_policy, info_eval, timestep, config)
+            wandb.log({
+                "eval/not reaching goal": cnt_eval,
+                "eval/average energy consumption": np.mean(consumption_eval),
+                "eval/trajectory_sample": wandb.Image(fig_eval),
+            }, step=timestep)
+            plt.close("all")
+
 
     return
 
@@ -241,10 +268,15 @@ if __name__ == "__main__":
         os.makedirs("model/{}/value_target".format(config['DIR']))
         os.makedirs("model/{}/state_traj".format(config['DIR']))
     env = get_env(config)
-    wandb.init(project='EC-EFPPO-{}'.format(config["EXP_NAME"]), name=config["NAME"], config=config,
+    from copy import copy
+    config_test = copy(config)
+    config_test["TEST_MODE"] = True
+    env_test = get_env(config_test)
+    if True: 
+        wandb.init(project='EC-EFPPO-{}'.format(config["EXP_NAME"]), name=config["NAME"], config=config,
                 entity='braat_brrt')
     env_params = env.default_params
     if config['EXP_NAME'] == 'WindField':
         env_params = env_params.replace(index=config['SECTION'])
     rng = jax.random.PRNGKey(20)
-    out = train(env, env_params, config, rng)
+    out = train(env, env_params, config, rng, env_test=env_test)

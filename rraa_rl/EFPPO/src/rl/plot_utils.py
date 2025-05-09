@@ -225,35 +225,27 @@ def plot_contour(train_state_energy, train_state_h, train_state_policy, info, ep
         ax.set_aspect('equal')
         plt.savefig('model/{}/reach/trajectory_{:0>4d}'.format(config["DIR"], epoch), dpi=300)
         plt.close("all")
-    elif config['EXP_NAME'] == 'HopperAvoidCeiling' or config['EXP_NAME'] == 'HopperAvoidCeilingWall':
+    elif config['EXP_NAME'] == 'HopperAvoidCeiling' or config['EXP_NAME'] == 'HopperAvoidCeilingWall' or config['EXP_NAME'] == 'HopperAvoidCeilingWallEnergy':
         plt.figure(figsize=(12, 6))
         fig, ax = plt.subplots(1, 1)
         reach_idx = info['reach_index']
-        for i in range(0,reach_idx, 16):
+        indices = np.linspace(0, info['head_pos'].shape[0] - 1, 11, dtype=int)
+        for step_n, i in enumerate(indices):
+            alpha = (step_n + 1) / 11
             ax.plot(np.array([info['head_pos'][i, 0], info['jaw_pos'][i, 0]]),
-                     np.array([info['head_pos'][i, 1], info['jaw_pos'][i, 1]]), c='r')
+                     np.array([info['head_pos'][i, 1], info['jaw_pos'][i, 1]]), c='r', alpha=alpha)
             ax.plot(np.array([info['jaw_pos'][i, 0], info['thg_pos'][i, 0]]),
-                     np.array([info['jaw_pos'][i, 1], info['thg_pos'][i, 1]]), c='g')
+                     np.array([info['jaw_pos'][i, 1], info['thg_pos'][i, 1]]), c='g', alpha=alpha)
             ax.plot(np.array([info['thg_pos'][i, 0], info['leg_pos'][i, 0]]),
-                     np.array([info['thg_pos'][i, 1], info['leg_pos'][i, 1]]), c='b')
+                     np.array([info['thg_pos'][i, 1], info['leg_pos'][i, 1]]), c='b', alpha=alpha)
             ax.plot(np.array([info['leg_pos'][i, 0], info['foot_front_pos'][i, 0]]),
-                     np.array([info['leg_pos'][i, 1], info['foot_front_pos'][i, 1]]), c='b')
+                     np.array([info['leg_pos'][i, 1], info['foot_front_pos'][i, 1]]), c='b', alpha=alpha)
             ax.plot(np.array([info['leg_pos'][i, 0], info['foot_back_pos'][i, 0]]),
-                     np.array([info['leg_pos'][i, 1], info['foot_back_pos'][i, 1]]), c='m')
-        ax.plot(np.array([info['head_pos'][reach_idx, 0], info['jaw_pos'][reach_idx, 0]]),
-                np.array([info['head_pos'][reach_idx, 1], info['jaw_pos'][reach_idx, 1]]), c='r')
-        ax.plot(np.array([info['jaw_pos'][reach_idx, 0], info['thg_pos'][reach_idx, 0]]),
-                np.array([info['jaw_pos'][reach_idx, 1], info['thg_pos'][reach_idx, 1]]), c='g')
-        ax.plot(np.array([info['thg_pos'][reach_idx, 0], info['leg_pos'][reach_idx, 0]]),
-                np.array([info['thg_pos'][reach_idx, 1], info['leg_pos'][reach_idx, 1]]), c='b')
-        ax.plot(np.array([info['leg_pos'][reach_idx, 0], info['foot_front_pos'][reach_idx, 0]]),
-                np.array([info['leg_pos'][reach_idx, 1], info['foot_front_pos'][reach_idx, 1]]), c='b')
-        ax.plot(np.array([info['leg_pos'][reach_idx, 0], info['foot_back_pos'][reach_idx, 0]]),
-                np.array([info['leg_pos'][reach_idx, 1], info['foot_back_pos'][reach_idx, 1]]), c='m')
+                     np.array([info['leg_pos'][i, 1], info['foot_back_pos'][i, 1]]), c='m', alpha=alpha)
         draw_circle = plt.Circle((2.0, 1.4), 0.1, fill=False)
         draw_rectangle = plt.Rectangle((0.95, 1.3), 0.1, 0.2, facecolor="red", fill=True)
-        if config['EXP_NAME'] == 'HopperAvoidCeilingWall':
-            draw_rectangle2 = plt.Rectangle((2.35, -0.1), 1.6, 0.2, facecolor="red", fill=True)
+        if 'HopperAvoidCeilingWall' in config['EXP_NAME']:
+            draw_rectangle2 = plt.Rectangle((2.35, -0.1), 0.2, 1.6, facecolor="red", fill=True)
             ax.add_patch(draw_rectangle2)
         ax.add_patch(draw_circle)
         ax.add_patch(draw_rectangle)
