@@ -8,6 +8,7 @@ import jax
 import jax.numpy as jnp
 import numpy as np
 import pdb
+import matplotlib.pyplot as plt
 
 from flax.training import train_state
 from flax.training import checkpoints
@@ -202,17 +203,18 @@ def train(env, env_params, config, rng):
                                     overwrite=True,
                                     keep=2)
 
-        plot_contour(train_state_energy, train_state_h, train_state_policy, info, timestep, config)
+        fig_contour = plot_contour(train_state_energy, train_state_h, train_state_policy, info, timestep, config)
         plot_target(targets_h[:, idx], traj_batch.value_reach[:, idx], traj_batch.reach[:, idx],
                     timestep, traj_batch.energy[0, idx], done[:, idx], config)
         plot_value_target(targets_V[:, idx], traj_batch.value[:, idx], timestep,
                           traj_batch.energy[0, idx], done[:, idx], config)
         t1 = time.time()
-
         wandb.log({"not reaching goal": cnt, "average energy consumption": np.mean(consumption),
-                   "actor_loss": jnp.mean(loss_info["actor_loss"]), "entropy_loss": jnp.mean(loss_info["entropy_loss"]),
-                   "energy_loss": jnp.mean(loss_info["energy_loss"]), "reach_loss": jnp.mean(loss_info["reach_loss"]),
-                   "reach_gamma": result['reach_gamma'][0], "entropy_weight": result['entropy_weight'][0]})
+                "actor_loss": jnp.mean(loss_info["actor_loss"]), "entropy_loss": jnp.mean(loss_info["entropy_loss"]),
+                "energy_loss": jnp.mean(loss_info["energy_loss"]), "reach_loss": jnp.mean(loss_info["reach_loss"]),
+                "reach_gamma": result['reach_gamma'][0], "entropy_weight": result['entropy_weight'][0],
+                "trajectory_sample": wandb.Image(fig_contour)})
+        plt.close("all")
         print("Earliest Reach {}: {}        {}".format(timestep, cnt, np.mean(consumption)))
         print("Time {}".format(t1-t0))
 
@@ -239,7 +241,8 @@ if __name__ == "__main__":
         os.makedirs("model/{}/value_target".format(config['DIR']))
         os.makedirs("model/{}/state_traj".format(config['DIR']))
     env = get_env(config)
-    wandb.init(project='EC-EFPPO-{}'.format(config["EXP_NAME"]), name=config["NAME"], config=config)
+    wandb.init(project='EC-EFPPO-{}'.format(config["EXP_NAME"]), name=config["NAME"], config=config,
+                entity='braat_brrt')
     env_params = env.default_params
     if config['EXP_NAME'] == 'WindField':
         env_params = env_params.replace(index=config['SECTION'])

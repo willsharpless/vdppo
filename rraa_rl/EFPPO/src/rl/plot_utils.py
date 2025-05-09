@@ -263,7 +263,7 @@ def plot_contour(train_state_energy, train_state_h, train_state_policy, info, ep
         ax.set_title("Trajectory Plot Init Energy {:.2f} Final Energy {:.2f}"
                      .format(info['init_energy'], info['final_energy']))
         plt.savefig('model/{}/reach/trajectory_{:0>4d}'.format(config["DIR"], epoch), dpi=300)
-        plt.close("all")
+        # plt.close("all")
     elif config['EXP_NAME'] == 'HopperReachReach':
         plt.figure(figsize=(12, 6))
         fig, ax = plt.subplots(1, 1)
@@ -533,6 +533,8 @@ def plot_contour(train_state_energy, train_state_h, train_state_policy, info, ep
         ax.set_title("Trajectory Plot")
         plt.savefig('model/{}/reach/trajectory_{:0>4d}'.format(config["DIR"], epoch), dpi=300)
         plt.close("all")
+    
+    return fig
 
 
 def plot_contour_RRAA(multi_info, epoch, config):
