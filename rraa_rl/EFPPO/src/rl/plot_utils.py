@@ -33,6 +33,20 @@ def calculate_reachreach(traj_batch, reach_type="both"):
             idx_2 = i
     return cnt_1, cnt_2, idx_1, idx_2
 
+def calculate_reachalwaysavoid(traj_batch, idx, type="both"): 
+    assert(type in ["both", "avoid" ])
+
+    # First Avoid violation index
+    all_avoid_idx = (traj_batch.avoid < 0).argmax(axis=0)
+    avoid_idx = all_avoid_idx[idx]
+    reach_idx = None 
+    
+    if type == "both": 
+        # First Reach Index
+        all_reach_idx = (traj_batch.reach < 0).argmax(axis=0)
+        reach_idx = all_reach_idx[idx]
+    return reach_idx, avoid_idx 
+
 def calculate_minimal_reach(reach):
     reach_idx = (reach < 0).argmax()
     if reach_idx == 0 and reach[0] >= 0:
@@ -599,4 +613,79 @@ def plot_contour_RRAA(multi_info, epoch, config):
 
         plt.savefig('model/{}/reach/trajectory_{:0>4d}'.format(config["DIR"], epoch), dpi=300)
         return fig
-        # plt.close("all")
+    
+        
+    elif config['EXP_NAME'] == 'HopperReachAlwaysAvoid':
+        
+        info, info_avoid = multi_info 
+        plt.figure(figsize=(12, 6*2))
+        fig, axes = plt.subplots(2, 1)
+
+        def draw_hopper_raa(info, title, ax):
+            reach_idx = info['reach_index']
+            avoid_idx = info['avoid_index']
+            full_len = info['head_pos'].shape[0]
+
+            # Plot Reach  
+            draw_circle = plt.Circle((2.0, 1.4), 0.1, fill=False)
+
+            # Plot Avoid
+            draw_rectangle = plt.Rectangle((0.95, 1.3), 0.1, 0.2, facecolor="red", fill=True)
+            draw_rectangle2 = plt.Rectangle((2.35, -0.1), 0.2, 1.6, facecolor="red", fill=True)
+
+            ax.add_patch(draw_circle)
+            ax.add_patch(draw_rectangle)
+            ax.add_patch(draw_rectangle2)
+
+            indices = np.linspace(0, full_len, 11, dtype=int)
+            for step_n, i in enumerate(indices): 
+                # Plot Hopper Body 
+                ax.plot(np.array([info['head_pos'][i, 0], info['jaw_pos'][i, 0]]),
+                        np.array([info['head_pos'][i, 1], info['jaw_pos'][i, 1]]), c='r')
+                ax.plot(np.array([info['jaw_pos'][i, 0], info['thg_pos'][i, 0]]),
+                        np.array([info['jaw_pos'][i, 1], info['thg_pos'][i, 1]]), c='g')
+                ax.plot(np.array([info['thg_pos'][i, 0], info['leg_pos'][i, 0]]),
+                        np.array([info['thg_pos'][i, 1], info['leg_pos'][i, 1]]), c='b')
+                ax.plot(np.array([info['leg_pos'][i, 0], info['foot_front_pos'][i, 0]]),
+                        np.array([info['leg_pos'][i, 1], info['foot_front_pos'][i, 1]]), c='b')
+                ax.plot(np.array([info['leg_pos'][i, 0], info['foot_back_pos'][i, 0]]),
+                        np.array([info['leg_pos'][i, 1], info['foot_back_pos'][i, 1]]), c='m')
+                
+            # Plot First Reach in Green 
+            if reach_idx is not None and reach_idx > 0:
+                ax.plot(np.array([info['head_pos'][reach_idx, 0], info['jaw_pos'][reach_idx, 0]]),
+                        np.array([info['head_pos'][reach_idx, 1], info['jaw_pos'][reach_idx, 1]]), c='g', linewidth=4)
+                ax.plot(np.array([info['jaw_pos'][reach_idx, 0], info['thg_pos'][reach_idx, 0]]),
+                        np.array([info['jaw_pos'][reach_idx, 1], info['thg_pos'][reach_idx, 1]]), c='g', linewidth=4)
+                ax.plot(np.array([info['thg_pos'][reach_idx, 0], info['leg_pos'][reach_idx, 0]]),
+                        np.array([info['thg_pos'][reach_idx, 1], info['leg_pos'][reach_idx, 1]]), c='g', linewidth=4)
+                ax.plot(np.array([info['leg_pos'][reach_idx, 0], info['foot_front_pos'][reach_idx, 0]]),
+                        np.array([info['leg_pos'][reach_idx, 1], info['foot_front_pos'][reach_idx, 1]]), c='g', linewidth=4)
+                ax.plot(np.array([info['leg_pos'][reach_idx, 0], info['foot_back_pos'][reach_idx, 0]]),
+                        np.array([info['leg_pos'][reach_idx, 1], info['foot_back_pos'][reach_idx, 1]]), c='g', linewidth=4)
+                
+            # Plot Avoid Violation in Red
+            if avoid_idx is not None and avoid_idx > 0: 
+                ax.plot(np.array([info['head_pos'][avoid_idx, 0], info['jaw_pos'][avoid_idx, 0]]),
+                        np.array([info['head_pos'][avoid_idx, 1], info['jaw_pos'][avoid_idx, 1]]), c='r', linewidth=4)
+                ax.plot(np.array([info['jaw_pos'][avoid_idx, 0], info['thg_pos'][avoid_idx, 0]]),
+                        np.array([info['jaw_pos'][avoid_idx, 1], info['thg_pos'][avoid_idx, 1]]), c='r', linewidth=4)
+                ax.plot(np.array([info['thg_pos'][avoid_idx, 0], info['leg_pos'][avoid_idx, 0]]),
+                        np.array([info['thg_pos'][avoid_idx, 1], info['leg_pos'][avoid_idx, 1]]), c='r', linewidth=4)
+                ax.plot(np.array([info['leg_pos'][avoid_idx, 0], info['foot_front_pos'][avoid_idx, 0]]),
+                        np.array([info['leg_pos'][avoid_idx, 1], info['foot_front_pos'][avoid_idx, 1]]), c='r', linewidth=4)
+                ax.plot(np.array([info['leg_pos'][avoid_idx, 0], info['foot_back_pos'][avoid_idx, 0]]),
+                        np.array([info['leg_pos'][avoid_idx, 1], info['foot_back_pos'][avoid_idx, 1]]), c='r', linewidth=4) 
+                
+            ax.set_xlim((-2.5, 2.5))
+            ax.set_ylim((0, 1.6))
+            ax.set_aspect('equal')
+
+            ax.set_title(title)
+
+        # Draw Reach Avoid and Avoid Only 
+        draw_hopper_raa(info, "Reach Avoid", axes[0])
+        draw_hopper_raa(info_avoid, "Avoid Only", axes[1])
+
+        plt.savefig('model/{}/reach/trajectory_{:0>4d}'.format(config["DIR"], epoch), dpi=300)
+        return fig
