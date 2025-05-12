@@ -1,6 +1,6 @@
 import jax
 import jax.numpy as jnp
-from rraa_rl.EFPPO.src.rl.gae import Transition_reach, Transition_raa, Transition_rr, Transition_r1, Transition_r2, Transition_cppo, Transition_sac, Transition_a
+from rraa_rl.EFPPO.src.rl.gae import Transition_reach, Transition_raa, Transition_rr, Transition_r1, Transition_r2, Transition_cppo, Transition_sac, Transition_a, Transition_ra
 
 def _env_step(env, env_params, runner_state, _):
     (train_state_policy, train_state_energy, train_state_h,
@@ -390,6 +390,33 @@ def _env_step_a_vanilla(env, env_params, runner_state, _):
     runner_state = (train_state_policy, train_state_value, env_state, obsv, rng, decomposed_state, policy_contols)
     return runner_state, transition
 
+def _env_step_ra_vanilla(env, env_params, runner_state, _):
+    (train_state_policy, train_state_value, last_env_state, last_obs, rng) = runner_state    
+    # FIXME: force_avoid not used (same for force_reach_1 and force_reach_2 in env_step_rr_vanilla)
+
+    # SELECT ACTION
+    rng, _rng = jax.random.split(rng)
+    pi = train_state_policy.apply_fn(train_state_policy.params, last_obs)
+    value = train_state_value.apply_fn(train_state_value.params, last_obs)
+
+
+    # SAMPLE ACTIONS
+    action = pi.sample(seed=_rng)
+    log_prob = pi.log_prob(action)
+
+    # STEP ENV
+    rng, _rng = jax.random.split(rng)
+    env_num = last_obs.shape[0]
+    rng_step = jax.random.split(_rng, env_num)
+    obsv, env_state, reward, done, info = jax.vmap(
+        env.step, in_axes=(0, 0, 0, None)
+    )(rng_step, last_env_state, action, env_params)
+
+    transition = Transition_ra(done=done, action=action, value=value, reward=reward, log_prob=log_prob, obs=last_obs, 
+                                info=info, reach=last_env_state.reach, avoid=last_env_state.avoid)
+    
+    runner_state = (train_state_policy, train_state_value, env_state, obsv, rng)
+    return runner_state, transition
 
 def _env_step_cppo(env, env_params, runner_state, _):
     train_state_policy, train_state_value, train_state_cost, last_env_state, last_obs, rng = runner_state

@@ -22,7 +22,7 @@ from typing import Any
 from rraa_rl.EFPPO.src.rl.EFPPO_utils import _ppo_vanilla_update, _env_step_rr_vanilla, _env_step_r1_vanilla, _env_step_r2_vanilla, _env_step_raa_vanilla, _env_step_a_vanilla
 from rraa_rl.EFPPO.src.env.env_list import get_env
 from rraa_rl.EFPPO.src.model.actorcritic import Policy_Network, Value_Network, Policy_Network_Discrete
-from rraa_rl.EFPPO.src.rl.plot_utils import calculate_minimal_reach, calculate_consumption, calculate_reachreach, calculate_reachalwaysavoid, plot_target, plot_value_target, plot_contour, plot_contour_RRAA, plot_policy_decision
+from rraa_rl.EFPPO.src.rl.plot_utils import calculate_minimal_reach, calculate_consumption, calculate_reachreach, calculate_reachalwaysavoid, plot_target, plot_value_target, plot_contour, plot_contour_RRAA, plot_policy_decision, calculate_reach_avoid_stats
 from rraa_rl.EFPPO.src.rl.utils import optimizer, get_BuRd, tree_index1, tree_index2
 from rraa_rl.EFPPO.src.rl.gae import (Transition_reach,
                               calculate_gae, calculate_gae2, calculate_gae3,
@@ -35,7 +35,7 @@ class TrainState(train_state.TrainState):
     variance: Any
     count: Any
 
-def train(envs, env_paramss, config, rng):
+def train(envs, env_paramss, config, rng, env_test=None):
     env, env_avoid = envs # COMPOSED (RAA) + 1 DECOMPOSED (A)
     env_params, env_params_avoid = env_paramss
 
@@ -101,7 +101,6 @@ def train(envs, env_paramss, config, rng):
         V_append = jnp.concatenate((traj_batch.value, jnp.expand_dims(last_val, axis=1).T)) # V_append - whole thing RA value function
         
         l_tilde = jnp.maximum(reach_append, V_avoid_append) # l tilde - max(l(x), V_avoid(x))
-
         # FIXME: FIXME FIXME FIXME FIXME FIXME FIXME FIXME FIXME - This is definitely wrong
         indexs, done = calculate_indexs3_rr(ent_gamma[1], traj_batch.reward, l_tilde,
                                                jnp.expand_dims(last_val, axis=1).T) # NOTE are we totally sure this works, I dont really get og usage,
@@ -393,10 +392,59 @@ def train(envs, env_paramss, config, rng):
                     'trajectory_sample':wandb.Image(fig),
                     'policy_decision_sample':wandb.Image(fig2),
                         # 'trajectory_sample_R1':wandb.Image(fig1), 'trajectory_sample_R2':wandb.Image(fig2)
-                    })
+                    }, step=timestep)
         plt.close("all")
         # print("Earliest Reach {}: {}        {}".format(timestep, cnt, np.mean(consumption)))
         print("Time {}".format(t1-t0))
+
+        # Add in eval with deterministic checkpoint
+        if env_test is not None and timestep % 5 == 0:
+            rng_og = rng
+            rng, _rng = jax.random.split(rng_og)
+            reset_rng = jax.random.split(_rng, config["NUM_ENVS"])# FIXME: Have eval envs use a different seed than train envs
+            # FIXME: Is it just running same initial state over and over?
+            env_test_raa, env_test_avoid = env_test
+            obsv, env_state = jax.vmap(env_test_raa.reset, in_axes=(0, None))(reset_rng, env_params)
+            decomposed_state = (train_state_policy_avoid, train_state_value_avoid)
+            force_combined = False #if timestep < 20 else False # ihibits switching until > 20 epochs
+            force_avoid = False 
+            policy_controls = (force_combined, force_avoid)
+            runner_state_standard = (train_state_policy, train_state_value, env_state, obsv, _rng)
+            runner_state = (*runner_state_standard, decomposed_state, policy_controls)
+
+            rng, _rng = jax.random.split(rng_og)
+            reset_rng = jax.random.split(_rng, config["NUM_ENVS"])
+            obsv_avoid, env_state_avoid = jax.vmap(env_test_avoid.reset, in_axes=(0, None))(reset_rng, env_params_avoid)
+            runner_state_standard_avoid = (train_state_policy, train_state_value, env_state_avoid, obsv_avoid, _rng)
+            runner_state_avoid = (*runner_state_standard_avoid, decomposed_state, policy_controls)
+
+            runner_state, traj_batch_eval = jax.lax.scan(
+                partial(_env_step_raa_vanilla, env_test_raa, env_params), runner_state, None, config["NUM_STEPS"]
+            )
+
+            runner_state_avoid, traj_batch_avoid_eval = jax.lax.scan(
+                partial(_env_step_a_vanilla, env_test_avoid, env_params_avoid), runner_state_avoid, None, config["NUM_STEPS"]
+            )
+
+            idx = 0
+            reach_idx, avoid_idx = calculate_reachalwaysavoid(traj_batch_eval, idx, type="both")
+            reach_avoidonly_idx, avoid_avoidonly_idx = calculate_reachalwaysavoid(traj_batch_avoid_eval, idx, type="avoid")
+            info_eval = tree_index2(traj_batch_eval.info, idx)
+            info_avoid_eval = tree_index2(traj_batch_avoid_eval.info, idx)
+            info_eval['reach_index'] = reach_idx
+            info_eval['avoid_index'] = avoid_idx
+            info_avoid_eval['reach_index'] = reach_avoidonly_idx
+            info_avoid_eval['avoid_index'] = avoid_avoidonly_idx
+            fig_eval = plot_contour_RRAA((info_eval, info_avoid_eval), timestep, config)
+            cnt_never_reached, cnt_crashed, cnt_crash_after_reach = calculate_reach_avoid_stats(traj_batch_eval)
+            wandb.log({
+                "eval/not reaching goal": cnt_never_reached,
+                "eval/crashed": cnt_crashed,
+                "eval/crash after reach": cnt_crash_after_reach,
+                "eval/trajectory_sample": wandb.Image(fig_eval),
+            }, step=timestep)
+            plt.close("all")
+
 
     return
 
@@ -458,6 +506,11 @@ if __name__ == "__main__":
         env_params_avoid = env_params_avoid.replace(index=config['SECTION'])
     env_paramss = (env_params, env_params_avoid)
 
+    from copy import copy
+    config_test = copy(config)
+    config_test["TEST_MODE"] = True
+    env_test = get_env(config_test)
+
     config["USE_WANDB"] = True #True # False for debugging
     if config["USE_WANDB"]:
         wandb.init(project='EC-EFPPO-{}'.format(config["EXP_NAME"]), name=config["NAME"], config=config,
@@ -469,6 +522,6 @@ if __name__ == "__main__":
         config["LOAD_DEC_DIR_MODEL"] ="checkpoint_2303"
 
     rng = jax.random.PRNGKey(20)
-    out = train(envs, env_paramss, config, rng) # TODO assumes same env params (should be tuple if diff)
+    out = train(envs, env_paramss, config, rng, env_test=env_test) # TODO assumes same env params (should be tuple if diff)
     # NOTE passing multiple envs (composed + decomposed)
     # TODO more elegant use one env w/ diff env_params, but this is safe for now

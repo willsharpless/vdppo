@@ -86,13 +86,29 @@ def get_env(config):
         vec1 = vec1.at[0].set(1.)
         vec2 = jnp.ones(14, dtype=jnp.float32)
         trans = partial(transform_observation, vec1, vec2)
-        
-        env = HopperReachAvoid()
+        if config["TEST_MODE"] == False:
+            env = HopperReachAvoid()
+            env_avoid = HopperAvoidOnly() 
+        else:
+            env = HopperReachAvoid(deterministic=True)
+            env_avoid = HopperAvoidOnly(deterministic=True)
         env = TransformObservation(env, trans)
         
-        env_avoid = HopperAvoidOnly() 
         env_avoid = TransformObservation(env_avoid, trans)
         return (env, env_avoid)
+    
+    elif config["EXP_NAME"] == "HopperReachAvoid":
+        vec1 = jnp.zeros(14, dtype=jnp.float32)
+        vec1 = vec1.at[0].set(1.)
+        vec2 = jnp.ones(14, dtype=jnp.float32)
+        trans = partial(transform_observation, vec1, vec2)
+        if config["TEST_MODE"] == False:
+            env = HopperReachAvoid()
+        else:
+            env = HopperReachAvoid(deterministic=True)
+        env = TransformObservation(env, trans)
+
+        return (env)
 
     elif config["EXP_NAME"] == 'HopperAvoidCeilingWallEnergy' and config["TEST_MODE"] == False:
         vec1 = jnp.zeros(14, dtype=jnp.float32)

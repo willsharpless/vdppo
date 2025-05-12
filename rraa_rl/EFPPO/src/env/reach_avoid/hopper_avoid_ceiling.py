@@ -56,6 +56,13 @@ class EnvStateRAA:
     has_reached: float
 
 @struct.dataclass
+class EnvStateRA:
+    state: State
+    avoid: float
+    reach: float
+    has_reached: float
+
+@struct.dataclass
 class EnvStateAvoidOnly:
     state: State
     avoid: float
@@ -137,6 +144,7 @@ class HopperAvoidCeiling:
         value = jnp.where(has_reached_goal, -2.5, reach)
         is_avoid = (avoid_value == -1)
         value = jnp.where(is_avoid, 3.0, value)
+        value = jnp.where(has_reached_goal, -2.5, value)  # Don't penalize for not avoiding after reaching
         return value * 100.0
 
     @partial(jax.jit, static_argnums=(0,))
@@ -231,6 +239,7 @@ class HopperAvoidCeilingDeterministic:
         value = jnp.where(has_reached_goal, -2.5, reach)
         is_avoid = (avoid_value == -1)
         value = jnp.where(is_avoid, 3.0, value)
+        value = jnp.where(has_reached_goal, -2.5, value)  # Don't penalize for not avoiding after reaching
         return value * 100.0
 
     @partial(jax.jit, static_argnums=(0,))
@@ -803,10 +812,15 @@ class HopperReach2Deterministic:
 
 
 class HopperRAATemplate:
-    def __init__(self, backend="positional"):
-        env = HopperRandom(backend=backend,
-                           exclude_current_positions_from_observation=False,
-                           terminate_when_unhealthy=False)
+    def __init__(self, backend="positional", deterministic=False):
+        if deterministic:
+            env = HopperDeterministic(backend=backend,
+                                      exclude_current_positions_from_observation=False,
+                                      terminate_when_unhealthy=False)
+        else:
+            env = HopperRandom(backend=backend,
+                               exclude_current_positions_from_observation=False,
+                               terminate_when_unhealthy=False)
         env = EpisodeWrapper(env, episode_length=1000, action_repeat=2)
         env = AutoResetWrapper(env)
         self._env = env
@@ -923,3 +937,34 @@ class HopperReachAvoid(HopperRAATemplate):
         reward = 0.
 
         return observation, next_state_new, reward, next_state.done > 0.5, pos_dict
+
+
+# class HopperReachAvoidOnly(HopperRAATemplate):
+#     @partial(jax.jit, static_argnums=(0,))
+#     def reset(self, key, params=None):
+#         state = self._env.reset(key)
+#         head_pos, _, _, _, _, _ = self.calculate_position(state.obs)
+#         avoid_value = self.is_avoid(head_pos)
+#         reach_value = self.is_reach(head_pos)
+
+#         observation = jnp.concatenate([state.obs, jnp.array([avoid_value, reach_value])])
+#         env_state = EnvStateRA(state, avoid_value, reach_value)
+#         return observation, env_state
+
+#     @partial(jax.jit, static_argnums=(0,))
+#     def step(self, key, state, action, params=None):
+#         u = jnp.tanh(action)
+#         next_state = self._env.step(state.state, u)
+#         head_pos, _, _, _, _, _ = self.calculate_position(next_state.obs)
+#         avoid_value = self.is_avoid(head_pos)
+#         reach_value = self.is_reach(head_pos)
+
+#         has_reached = jnp.logical_or(reach_value < 0, state.has_reached)
+#         head_pos, jaw_pos, thg_pos, leg_pos, foot_front_pos, foot_back_pos = self.calculate_position(state.state.obs)
+#         pos_dict = {"head_pos": head_pos, "jaw_pos": jaw_pos, "thg_pos": thg_pos, "leg_pos": leg_pos,
+#                     "foot_front_pos": foot_front_pos, "foot_back_pos": foot_back_pos}
+#         observation = jnp.concatenate([next_state.obs, jnp.array([avoid_value, reach_value])])
+#         next_state_new = EnvStateRA(next_state, avoid_value, reach_value, has_reached)
+#         reward = 0.
+
+#         return observation, next_state_new, reward, next_state.done > 0.5, pos_dict

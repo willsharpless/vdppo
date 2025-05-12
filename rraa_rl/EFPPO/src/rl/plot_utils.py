@@ -17,6 +17,23 @@ def calculate_consumption(traj_batch):
             energy.append(np.sum(traj_batch.reward[0: reach_idx[i], i]))
     return np.array(energy), cnt, idx
 
+def calculate_reach_avoid_stats(traj_batch):
+    reach_idx = (traj_batch.reach < 0).argmax(axis=0)
+    cnt_never_reached = 0
+    cnt_crash = 0
+    cnt_crash_after_reach = 0
+    for i in range(reach_idx.shape[0]):
+        if reach_idx[i] == 0 and traj_batch.reach[0, i] >= 0:
+            cnt_never_reached += 1
+        else:
+            if np.any(traj_batch.avoid[reach_idx[i]+1:, i] > 0):
+                cnt_crash_after_reach += 1 
+    for i in range(traj_batch.avoid.shape[1]):
+        if np.any(traj_batch.avoid[:, i] > 0):
+            cnt_crash += 1
+    return cnt_never_reached, cnt_crash, cnt_crash_after_reach
+        
+
 def calculate_reachreach(traj_batch, reach_type="both"):
     reach_idx_1 = (traj_batch.reach1 < 0).argmax(axis=0) if reach_type in ["both", "1"] else None
     reach_idx_2 = (traj_batch.reach2 < 0).argmax(axis=0) if reach_type in ["both", "2"] else None
@@ -615,15 +632,15 @@ def plot_contour_RRAA(multi_info, epoch, config):
         return fig
     
         
-    elif config['EXP_NAME'] == 'HopperReachAlwaysAvoid':
+    elif config['EXP_NAME'] == 'HopperReachAlwaysAvoid' or config["EXP_NAME"] == "HopperReachAvoid":
         
         info, info_avoid = multi_info 
         plt.figure(figsize=(12, 6*2))
         fig, axes = plt.subplots(2, 1)
 
         def draw_hopper_raa(info, title, ax):
-            reach_idx = info['reach_index']
-            avoid_idx = info['avoid_index']
+            reach_idx = info.get('reach_index')
+            avoid_idx = info.get('avoid_index')
             full_len = info['head_pos'].shape[0]
 
             # Plot Reach  
@@ -638,18 +655,19 @@ def plot_contour_RRAA(multi_info, epoch, config):
             ax.add_patch(draw_rectangle2)
 
             indices = np.linspace(0, full_len, 11, dtype=int)
-            for step_n, i in enumerate(indices): 
+            for step_n, i in enumerate(indices):
+                alpha = (step_n + 1) / 11 
                 # Plot Hopper Body 
                 ax.plot(np.array([info['head_pos'][i, 0], info['jaw_pos'][i, 0]]),
-                        np.array([info['head_pos'][i, 1], info['jaw_pos'][i, 1]]), c='r')
+                        np.array([info['head_pos'][i, 1], info['jaw_pos'][i, 1]]), c='r', alpha=alpha)
                 ax.plot(np.array([info['jaw_pos'][i, 0], info['thg_pos'][i, 0]]),
-                        np.array([info['jaw_pos'][i, 1], info['thg_pos'][i, 1]]), c='g')
+                        np.array([info['jaw_pos'][i, 1], info['thg_pos'][i, 1]]), c='g', alpha=alpha)
                 ax.plot(np.array([info['thg_pos'][i, 0], info['leg_pos'][i, 0]]),
-                        np.array([info['thg_pos'][i, 1], info['leg_pos'][i, 1]]), c='b')
+                        np.array([info['thg_pos'][i, 1], info['leg_pos'][i, 1]]), c='b', alpha=alpha)
                 ax.plot(np.array([info['leg_pos'][i, 0], info['foot_front_pos'][i, 0]]),
-                        np.array([info['leg_pos'][i, 1], info['foot_front_pos'][i, 1]]), c='b')
+                        np.array([info['leg_pos'][i, 1], info['foot_front_pos'][i, 1]]), c='b', alpha=alpha)
                 ax.plot(np.array([info['leg_pos'][i, 0], info['foot_back_pos'][i, 0]]),
-                        np.array([info['leg_pos'][i, 1], info['foot_back_pos'][i, 1]]), c='m')
+                        np.array([info['leg_pos'][i, 1], info['foot_back_pos'][i, 1]]), c='m', alpha=alpha)
                 
             # Plot First Reach in Green 
             if reach_idx is not None and reach_idx > 0:
@@ -677,15 +695,17 @@ def plot_contour_RRAA(multi_info, epoch, config):
                 ax.plot(np.array([info['leg_pos'][avoid_idx, 0], info['foot_back_pos'][avoid_idx, 0]]),
                         np.array([info['leg_pos'][avoid_idx, 1], info['foot_back_pos'][avoid_idx, 1]]), c='r', linewidth=4) 
                 
-            ax.set_xlim((-2.5, 2.5))
-            ax.set_ylim((0, 1.6))
+            ax.set_xlim((-0.5, 2.5))
+            ax.set_ylim((0, 1.5))
             ax.set_aspect('equal')
 
             ax.set_title(title)
 
         # Draw Reach Avoid and Avoid Only 
         draw_hopper_raa(info, "Reach Avoid", axes[0])
-        draw_hopper_raa(info_avoid, "Avoid Only", axes[1])
+        if config['EXP_NAME'] == 'HopperReachAlwaysAvoid':
+            draw_hopper_raa(info_avoid, "Avoid Only", axes[1])
 
         plt.savefig('model/{}/reach/trajectory_{:0>4d}'.format(config["DIR"], epoch), dpi=300)
         return fig
+

@@ -32,7 +32,7 @@ class TrainState(train_state.TrainState):
     variance: Any
     count: Any
 
-def train(env, env_params, config, rng):
+def train(env, env_params, config, rng, env_test=None):
 
     def _train(train_state_total, ent_gamma):
 

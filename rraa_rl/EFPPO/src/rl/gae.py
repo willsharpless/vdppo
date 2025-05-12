@@ -62,6 +62,16 @@ class Transition_raa(NamedTuple):
     has_reached: jnp.ndarray
     policy_taken: jnp.ndarray
 
+class Transition_ra(NamedTuple):
+    done: jnp.ndarray
+    action: jnp.ndarray
+    value: jnp.ndarray
+    reward: jnp.ndarray
+    log_prob: jnp.ndarray
+    obs: jnp.ndarray
+    info: jnp.ndarray
+    reach: jnp.ndarray
+    avoid: jnp.ndarray
 
 class Transition_rr(NamedTuple):
     done: jnp.ndarray
