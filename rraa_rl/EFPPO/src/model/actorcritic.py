@@ -113,9 +113,96 @@ class Policy_Network(nn.Module):
         )(actor_mean)
 
         actor_logtstd = self.param("log_std", nn.initializers.zeros, (self.action_dim,))
-        pi = distrax.MultivariateNormalDiag(actor_mean, jnp.exp(actor_logtstd))
+        logstd = jnp.clip(actor_logtstd, -5.0, 2.0)
+        pi = distrax.MultivariateNormalDiag(actor_mean, jnp.exp(logstd))
 
         return pi
+    
+class Policy_Network_Learnable_Std(Policy_Network):
+    @nn.compact
+    def __call__(self, x):
+        if self.activation == "relu":
+            activation = nn.relu
+        else:
+            activation = nn.tanh
+
+        # Shared MLP trunk
+        h = nn.Dense(256, kernel_init=orthogonal(jnp.sqrt(2)), bias_init=constant(0.0))(x)
+        h = activation(h)
+        h = nn.Dense(256, kernel_init=orthogonal(jnp.sqrt(2)), bias_init=constant(0.0))(h)
+        h = activation(h)
+
+        # Mean head
+        actor_mean = nn.Dense(
+            self.action_dim, kernel_init=orthogonal(0.01), bias_init=constant(0.0)
+        )(h)
+
+        # Log std head (state-dependent)
+        actor_logstd = nn.Dense(
+            self.action_dim, kernel_init=orthogonal(0.01), bias_init=constant(0.0)
+        )(h)
+
+        # Optional: clamp log std
+        logstd = jnp.clip(actor_logstd, -5.0, 2.0)
+
+        pi = distrax.MultivariateNormalDiag(actor_mean, jnp.exp(logstd))
+        return pi
+    
+class MixtureWithApproxEntropy(distrax.MixtureSameFamily):
+    def entropy(self):
+        logits = self.mixture_distribution.logits  # (B, K)
+        probs = jax.nn.softmax(logits, axis=-1)    # (B, K)
+        component_entropy = self.components_distribution.entropy()  # (B, K)
+        return jnp.sum(probs * component_entropy, axis=-1)          # (B,)
+    
+    def mode(self):
+        logits = self.mixture_distribution.logits                   # (B, K)
+        means = self.components_distribution.distribution.loc       # (B, K, D)
+        idx = jnp.argmax(logits, axis=-1)                           # (B,)
+        return jnp.take_along_axis(means, idx[:, None, None], axis=1).squeeze(axis=1)  # (B, D)
+
+    @property
+    def loc(self):
+        return self.mode()
+
+class MoGPolicy_Network(nn.Module):
+    action_dim: int
+    num_components: int = 2
+    activation: str = "tanh"
+
+    @nn.compact
+    def __call__(self, x):
+        act = nn.relu if self.activation == "relu" else nn.tanh
+
+        # Shared trunk
+        h = nn.Dense(256, kernel_init=orthogonal(jnp.sqrt(2)))(x)
+        h = act(h)
+        h = nn.Dense(256, kernel_init=orthogonal(jnp.sqrt(2)))(h)
+        h = act(h)
+
+        # Output heads
+        means = nn.Dense(self.num_components * self.action_dim, kernel_init=orthogonal(0.01))(h)
+        log_stds = nn.Dense(self.num_components * self.action_dim, kernel_init=orthogonal(0.01))(h)
+        logits = nn.Dense(self.num_components, kernel_init=orthogonal(0.01))(h)
+
+        # Reshape: assume unbatched input
+        means = means.reshape(-1, self.num_components, self.action_dim)
+        log_stds = jnp.clip(log_stds.reshape(-1, self.num_components, self.action_dim), -5.0, 2.0)
+        stds = jnp.exp(log_stds)
+
+        # Component distributions
+        components = distrax.Independent(
+            distrax.Normal(loc=means, scale=stds), reinterpreted_batch_ndims=1
+        )
+
+        # Mixing distribution
+        logits = logits.reshape(-1, self.num_components)
+        mixture = distrax.Categorical(logits=logits)
+
+        # Final policy distribution
+        policy = MixtureWithApproxEntropy(mixture_distribution=mixture,
+                                          components_distribution=components)
+        return policy
 
 
 class Policy_Network_Discrete(nn.Module):

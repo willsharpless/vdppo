@@ -21,7 +21,7 @@ from typing import Any
 
 from rraa_rl.EFPPO.src.rl.EFPPO_utils import _ppo_vanilla_update, _env_step_rr_vanilla, _env_step_r1_vanilla, _env_step_r2_vanilla, _env_step_raa_vanilla, _env_step_a_vanilla, _env_step_ra_vanilla, _env_step_ra_vanilla_deterministic
 from rraa_rl.EFPPO.src.env.env_list import get_env
-from rraa_rl.EFPPO.src.model.actorcritic import Policy_Network, Value_Network, Policy_Network_Discrete
+from rraa_rl.EFPPO.src.model.actorcritic import Policy_Network, Value_Network, Policy_Network_Discrete, Policy_Network_Learnable_Std, MoGPolicy_Network
 from rraa_rl.EFPPO.src.rl.plot_utils import calculate_minimal_reach, calculate_consumption, calculate_reach_avoid_stats, calculate_reachreach, calculate_reachalwaysavoid, plot_target, plot_value_target, plot_contour, plot_contour_RRAA, plot_policy_decision
 from rraa_rl.EFPPO.src.rl.utils import optimizer, get_BuRd, tree_index1, tree_index2
 from rraa_rl.EFPPO.src.rl.gae import (Transition_reach,
@@ -115,7 +115,7 @@ def train(envs, env_paramss, config, rng, env_test=None):
 
     # INIT POLICY NETWORK
     if config["DISCRETE"] == False:
-        policy_network = Policy_Network(
+        policy_network = MoGPolicy_Network(
             env.action_space(env_params).shape[0], activation=config["ACTIVATION"]
         )
     else:
