@@ -22,7 +22,8 @@ from typing import Any
 from rraa_rl.EFPPO.src.rl.EFPPO_utils import _ppo_vanilla_update, _env_step_rr_vanilla, _env_step_r1_vanilla, _env_step_r2_vanilla, _env_step_raa_vanilla, _env_step_a_vanilla
 from rraa_rl.EFPPO.src.env.env_list import get_env
 from rraa_rl.EFPPO.src.model.actorcritic import Policy_Network, Value_Network, Policy_Network_Discrete
-from rraa_rl.EFPPO.src.rl.plot_utils import calculate_minimal_reach, calculate_consumption, calculate_reachreach, calculate_reachalwaysavoid, plot_target, plot_value_target, plot_contour, plot_contour_RRAA, plot_policy_decision, calculate_reach_avoid_stats
+from rraa_rl.EFPPO.src.rl.plot_utils import calculate_minimal_reach, calculate_consumption, calculate_reachreach, calculate_reachalwaysavoid, plot_target, plot_value_target, plot_contour, plot_contour_RRAA, plot_policy_decision, calculate_reach_avoid_stats, \
+    plot_video_contour_RRAA
 from rraa_rl.EFPPO.src.rl.utils import optimizer, get_BuRd, tree_index1, tree_index2
 from rraa_rl.EFPPO.src.rl.gae import (Transition_reach,
                               calculate_gae, calculate_gae2, calculate_gae3,
@@ -66,10 +67,29 @@ def train(envs, env_paramss, config, rng, env_test=None):
         )
 
         ##################  Env step: Avoid Env ##################
+
+        init_type = "standard" # "fullrandom" # "toinput" # "standard"
+
         # RESET ENV
         rng, _rng = jax.random.split(rng_og)
         reset_rng = jax.random.split(_rng, config["NUM_ENVS"])
-        obsv_avoid, env_state_avoid = jax.vmap(env_avoid.reset, in_axes=(0, None))(reset_rng, env_params_avoid) 
+
+        if init_type == "toinput":   
+            # Select random observations from standard rollout to use for initial avoid state 
+            traj_batch_observations = traj_batch.obs # avoid function
+            traj_batch_observations = jnp.transpose(traj_batch_observations, axes=(1, 0, 2))
+            rng, _rng = jax.random.split(rng)
+            random_index = jax.random.randint(_rng, shape=(), minval=0, maxval=traj_batch_observations.shape[1])
+            traj_batch_observations = traj_batch_observations[:, random_index, :]
+
+            obsv_avoid, env_state_avoid = jax.vmap(env_avoid.reset_toinput, in_axes=(0, 0, None))(reset_rng, traj_batch_observations, env_params_avoid) 
+        
+        elif init_type == "standard":
+            obsv_avoid, env_state_avoid = jax.vmap(env_avoid.reset, in_axes=(0, None))(reset_rng, env_params_avoid) # NOTE: old standard reset
+
+        elif init_type == "fullrandom":
+            obsv_avoid, env_state_avoid = jax.vmap(env_avoid.reset_fullrandom, in_axes=(0, None))(reset_rng, env_params_avoid) # NOTE: old standard reset
+        
         rng, _rng = jax.random.split(rng)
         runner_state_standard_avoid = (train_state_policy, train_state_value, env_state_avoid, obsv_avoid, _rng)
 
@@ -393,6 +413,13 @@ def train(envs, env_paramss, config, rng, env_test=None):
                     'policy_decision_sample':wandb.Image(fig2),
                         # 'trajectory_sample_R1':wandb.Image(fig1), 'trajectory_sample_R2':wandb.Image(fig2)
                     }, step=timestep)
+            
+            # Save video of trajectory 
+            video_freq = 25 
+            if timestep % video_freq == 0 or timestep == total_timesteps - 1: 
+                video_frames = plot_video_contour_RRAA((info, info_avoid), timestep, config, save_video=True)
+                # wandb.log({"trajectory_video": wandb.Video(np.array(video_frames), fps=10, format="mp4")})
+            
         plt.close("all")
         # print("Earliest Reach {}: {}        {}".format(timestep, cnt, np.mean(consumption)))
         print("Time {}".format(t1-t0))
@@ -498,6 +525,11 @@ if __name__ == "__main__":
     
     envs = get_env(config)
     env, env_avoid = envs
+
+    # rng = jax.random.PRNGKey(300)
+    # reset_obs_test = env_avoid.reset(rng)[0]
+    # env_avoid.reset_toinput(key=rng, reset_obs=reset_obs_test, params=env_avoid.default_params)
+
     env_params = env.default_params
     env_params_avoid = env_avoid.default_params
 

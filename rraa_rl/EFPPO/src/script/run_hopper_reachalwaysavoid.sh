@@ -20,5 +20,5 @@ python ./rraa_rl/EFPPO/src/rl/RAA-PPO.py \
 --CUDA_USE=0,1,2,3 \
 --ANNEAL_LR \
 --ANNEAL_ENT \
---NAME=hopper_reachreach_idxs0_rr \
+--NAME=hopper_reachalwaysavoid_idxs0_raa \
 # --TEST_MODE
