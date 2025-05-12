@@ -31,7 +31,8 @@ def calculate_reach_avoid_stats(traj_batch):
     for i in range(traj_batch.avoid.shape[1]):
         if np.any(traj_batch.avoid[:, i] > 0):
             cnt_crash += 1
-    return cnt_never_reached, cnt_crash, cnt_crash_after_reach
+    share_crash_after_reach = cnt_crash_after_reach / (traj_batch.avoid.shape[1] - cnt_never_reached) if (traj_batch.avoid.shape[1] - cnt_never_reached) > 0 else 0
+    return cnt_never_reached, cnt_crash, share_crash_after_reach
         
 
 def calculate_reachreach(traj_batch, reach_type="both"):
@@ -648,11 +649,13 @@ def plot_contour_RRAA(multi_info, epoch, config):
 
             # Plot Avoid
             draw_rectangle = plt.Rectangle((0.95, 1.3), 0.1, 0.2, facecolor="red", fill=True)
-            draw_rectangle2 = plt.Rectangle((2.35, -0.1), 0.2, 1.6, facecolor="red", fill=True)
+            draw_rectangle2 = plt.Rectangle((2.1, -0.1), 0.4, 1.6, facecolor="red", fill=True)
+            draw_rectangle3 = plt.Rectangle((-2., 0.), 4.5, 0.5, facecolor="red", fill=True)
 
             ax.add_patch(draw_circle)
             ax.add_patch(draw_rectangle)
             ax.add_patch(draw_rectangle2)
+            ax.add_patch(draw_rectangle3)
 
             indices = np.linspace(0, full_len, 11, dtype=int)
             for step_n, i in enumerate(indices):

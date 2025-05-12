@@ -390,7 +390,7 @@ def _env_step_a_vanilla(env, env_params, runner_state, _):
     runner_state = (train_state_policy, train_state_value, env_state, obsv, rng, decomposed_state, policy_contols)
     return runner_state, transition
 
-def _env_step_ra_vanilla(env, env_params, runner_state, _):
+def _env_step_ra_vanilla(env, env_params, runner_state, _, take_mean=False):
     (train_state_policy, train_state_value, last_env_state, last_obs, rng) = runner_state    
     # FIXME: force_avoid not used (same for force_reach_1 and force_reach_2 in env_step_rr_vanilla)
 
@@ -401,7 +401,10 @@ def _env_step_ra_vanilla(env, env_params, runner_state, _):
 
 
     # SAMPLE ACTIONS
-    action = pi.sample(seed=_rng)
+    if take_mean:
+        action = pi.loc
+    else:
+        action = pi.sample(seed=_rng)
     log_prob = pi.log_prob(action)
 
     # STEP ENV
@@ -417,6 +420,9 @@ def _env_step_ra_vanilla(env, env_params, runner_state, _):
     
     runner_state = (train_state_policy, train_state_value, env_state, obsv, rng)
     return runner_state, transition
+
+def _env_step_ra_vanilla_deterministic(env, env_params, runner_state, _, take_mean=True):
+    return _env_step_ra_vanilla(env, env_params, runner_state, _, take_mean=take_mean)
 
 def _env_step_cppo(env, env_params, runner_state, _):
     train_state_policy, train_state_value, train_state_cost, last_env_state, last_obs, rng = runner_state

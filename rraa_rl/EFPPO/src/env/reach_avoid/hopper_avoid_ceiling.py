@@ -859,9 +859,33 @@ class HopperRAATemplate:
 
     @partial(jax.jit, static_argnums=(0,))
     def is_avoid(self, head_pos):
-        avoid_1 = (head_pos[1] >= 1.3) & (head_pos[0] >= 0.95) & (head_pos[0] <= 1.05)
-        avoid_2 = (head_pos[0] >= 2.35) # dont hit head on walls, bad dobby
-        return avoid_1 | avoid_2
+        def signed_dist_box(head_pos):
+            x, y = head_pos
+
+            inside_x = (x >= 0.95) & (x <= 1.05)
+            inside_y = y >= 1.3
+            is_inside = inside_x & inside_y
+
+            # Inside: min distance to any boundary
+            dist_left   = x - 0.95
+            dist_right  = 1.05 - x
+            dist_bottom = y - 1.3
+            min_dist_inside = jnp.minimum(jnp.minimum(dist_left, dist_right), dist_bottom)
+
+            # Outside: Euclidean distance to box
+            dx_out = jnp.maximum(jnp.maximum(0.95 - x, x - 1.05), 0.0)
+            dy_out = jnp.maximum(1.3 - y, 0)
+            dist_outside = jnp.sqrt(dx_out ** 2 + dy_out ** 2)
+
+            return jnp.where(is_inside, min_dist_inside, -dist_outside)
+        dist_box = signed_dist_box(head_pos)
+        dist_wall = head_pos[0] - 2.1
+        dist_floor = 0.5 - head_pos[1]
+        return jnp.maximum(jnp.maximum(dist_box, dist_wall), dist_floor)
+        # avoid_1 = (head_pos[1] >= 1.3) & (head_pos[0] >= 0.95) & (head_pos[0] <= 1.05)
+        # avoid_2 = (head_pos[0] >= 2.35) # dont hit head on walls, bad dobby
+        # avoid_3 = (head_pos[1] <= 0.5)
+        # return avoid_1 | avoid_2 | avoid_3
 
     def observation_space(self, params):
         return spaces.Box(

@@ -19,7 +19,7 @@ from arguments import get_args
 from functools import partial
 from typing import Any
 
-from rraa_rl.EFPPO.src.rl.EFPPO_utils import _ppo_vanilla_update, _env_step_rr_vanilla, _env_step_r1_vanilla, _env_step_r2_vanilla, _env_step_raa_vanilla, _env_step_a_vanilla, _env_step_ra_vanilla
+from rraa_rl.EFPPO.src.rl.EFPPO_utils import _ppo_vanilla_update, _env_step_rr_vanilla, _env_step_r1_vanilla, _env_step_r2_vanilla, _env_step_raa_vanilla, _env_step_a_vanilla, _env_step_ra_vanilla, _env_step_ra_vanilla_deterministic
 from rraa_rl.EFPPO.src.env.env_list import get_env
 from rraa_rl.EFPPO.src.model.actorcritic import Policy_Network, Value_Network, Policy_Network_Discrete
 from rraa_rl.EFPPO.src.rl.plot_utils import calculate_minimal_reach, calculate_consumption, calculate_reach_avoid_stats, calculate_reachreach, calculate_reachalwaysavoid, plot_target, plot_value_target, plot_contour, plot_contour_RRAA, plot_policy_decision
@@ -223,7 +223,6 @@ def train(envs, env_paramss, config, rng, env_test=None):
             rng_og = rng
             rng, _rng = jax.random.split(rng_og)
             reset_rng = jax.random.split(_rng, config["NUM_ENVS"])# FIXME: Have eval envs use a different seed than train envs
-            # FIXME: Is it just running same initial state over and over?
             obsv, env_state = jax.vmap(env_test.reset, in_axes=(0, None))(reset_rng, env_params)
             
             runner_state = (train_state_policy, train_state_value, env_state, obsv, _rng)
@@ -241,10 +240,33 @@ def train(envs, env_paramss, config, rng, env_test=None):
             wandb.log({
                 "eval/not reaching goal": cnt_never_reached,
                 "eval/crashed": cnt_crashed,
-                "eval/crash after reach": cnt_crash_after_reach,
+                "eval/share crash after reach": cnt_crash_after_reach,
                 "eval/trajectory_sample": wandb.Image(fig_eval),
             }, step=timestep)
             plt.close("all")
+            # FIXME: Below highly inefficient (rolling out 128 envs with deterministic policy)
+            rng_og = rng
+            rng, _rng = jax.random.split(rng_og)
+            reset_rng = jax.random.split(_rng, config["NUM_ENVS"])# FIXME: Have eval envs use a different seed than train envs
+            # FIXME: Is it just running same initial state over and over?
+            obsv, env_state = jax.vmap(env_test.reset, in_axes=(0, None))(reset_rng, env_params)
+            
+            runner_state = (train_state_policy, train_state_value, env_state, obsv, _rng)
+
+            runner_state, traj_batch_eval = jax.lax.scan(
+                partial(_env_step_ra_vanilla_deterministic, env_test, env_params), runner_state, None, config["NUM_STEPS"]
+            )
+
+            idx = 0
+            reach_idx = calculate_minimal_reach(traj_batch_eval.reach[:, idx])
+            info_eval = tree_index2(traj_batch_eval.info, idx)
+            info_eval['reach_index'] = reach_idx
+            fig_eval = plot_contour_RRAA((info_eval, None), timestep, config)
+            wandb.log({
+                "eval/deter trajectory_sample": wandb.Image(fig_eval),
+            }, step=timestep)
+            plt.close("all")
+
     return
 
 if __name__ == "__main__":
