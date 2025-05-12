@@ -5,6 +5,9 @@ from gymnax.environments import spaces
 from brax.envs.wrappers.training import EpisodeWrapper, AutoResetWrapper
 from flax import struct
 from brax.envs.base import State
+from copy import deepcopy 
+from dataclasses import replace
+from jax import numpy as jp
 
 from .hopper_random import HopperRandom
 from .hopper_deterministic import HopperDeterministic
@@ -911,6 +914,127 @@ class HopperAvoidOnly(HopperRAATemplate):
         reach_value = self.is_reach(head_pos)
         observation = jnp.concatenate([state.obs, jnp.array([avoid_value, reach_value])])
         env_state = EnvStateAvoidOnly(state, avoid_value)
+        return observation, env_state
+    
+    @partial(jax.jit, static_argnums=(0,))
+    def reset_fullrandom(self, key, params=None):
+        # Resets the environment to a fully random state 
+        coord_range_0 = [0, 1.5] # 0: z coord 
+        coord_range_1 = [-jnp.pi, jnp.pi]# 1: angle of top 
+        coord_range_2 = [-jnp.pi, jnp.pi]# 2: angle of thigh 
+        coord_range_3 = [-jnp.pi, jnp.pi]# 3: angle of leg 
+        coord_range_4 = [-jnp.pi, jnp.pi]# 4: angle of foot 
+        coord_range_5 = [-1.5, 1.5]# 5: velocity of x top 
+        coord_range_6 = [-1.5, 1.5]# 6: velocity of z top 
+        coord_range_7 = [-jnp.pi, jnp.pi]# 7: angular velocity of angle of top 
+        coord_range_8 = [-jnp.pi, jnp.pi]# 8: angular velocity of angle of thigh
+        coord_range_9 = [-jnp.pi, jnp.pi]# 9: angular velocity of angle of leg
+        coord_range_10 = [-jnp.pi, jnp.pi]# 10: angular velocity of angle of foot
+
+        # random pos 
+        qpos = jnp.array([
+            jax.random.uniform(key, minval=coord_range_0[0], maxval=coord_range_0[1]),
+            jax.random.uniform(key, minval=coord_range_1[0], maxval=coord_range_1[1]),
+            jax.random.uniform(key, minval=coord_range_2[0], maxval=coord_range_2[1]),
+            jax.random.uniform(key, minval=coord_range_3[0], maxval=coord_range_3[1]),
+            jax.random.uniform(key, minval=coord_range_4[0], maxval=coord_range_4[1]),
+            jax.random.uniform(key, minval=coord_range_4[0], maxval=coord_range_4[1]) # Doubled up: not sure what this actually is ? 
+        ])
+
+        # random vel 
+        qvel = jnp.array([
+            jax.random.uniform(key, minval=coord_range_5[0], maxval=coord_range_5[1]),
+            jax.random.uniform(key, minval=coord_range_6[0], maxval=coord_range_6[1]),
+            jax.random.uniform(key, minval=coord_range_7[0], maxval=coord_range_7[1]),
+            jax.random.uniform(key, minval=coord_range_8[0], maxval=coord_range_8[1]),
+            jax.random.uniform(key, minval=coord_range_9[0], maxval=coord_range_9[1]),
+            jax.random.uniform(key, minval=coord_range_10[0], maxval=coord_range_10[1])
+        ])
+
+        pipeline_state = self._env.pipeline_init(qpos, qvel)
+        obs = self._env._get_obs(pipeline_state)
+        reward, done, zero = jp.zeros(3)
+        metrics = {
+            'reward_forward': zero,
+            'reward_ctrl': zero,
+            'reward_healthy': zero,
+            'x_position': zero,
+            'x_velocity': zero,
+        }
+        state = State(pipeline_state, obs, reward, done, metrics)
+        # Episode Metrics 
+        rng = key 
+        state.info['steps'] = jp.zeros(rng.shape[:-1])
+        state.info['truncation'] = jp.zeros(rng.shape[:-1])
+        # Keep separate record of episode done as state.info['done'] can be erased
+        # by AutoResetWrapper
+        state.info['episode_done'] = jp.zeros(rng.shape[:-1])
+        episode_metrics = dict()
+        episode_metrics['sum_reward'] = jp.zeros(rng.shape[:-1])
+        episode_metrics['length'] = jp.zeros(rng.shape[:-1])
+        for metric_name in state.metrics.keys():
+            episode_metrics[metric_name] = jp.zeros(rng.shape[:-1])
+        state.info['episode_metrics'] = episode_metrics
+        state.info['first_pipeline_state'] = state.pipeline_state
+        state.info['first_obs'] = state.obs
+
+        head_pos, _, _, _, _, _ = self.calculate_position(state.obs)
+        avoid_value = self.is_avoid(head_pos)
+        reach_value = self.is_reach(head_pos)
+        observation = jnp.concatenate([state.obs, jnp.array([avoid_value, reach_value])])
+        env_state = EnvStateAvoidOnly(state, avoid_value)
+
+        return observation, env_state
+        # raise NotImplementedError("reset_fullrandom() not implemented in base class")
+    
+    @partial(jax.jit, static_argnums=(0,))
+    def reset_toinput(self, key, reset_obs, params=None):
+        # Reset the environment to a specific observation
+        
+        # # NOTE: OLD ATTEMPT - RUNS BUT MAY NOT WORK ? 
+        # old_state = self._env.reset(key)
+        # old_state = replace(old_state, obs=reset_obs[:12]) # set the obs
+
+        # Derived from Reset function in: 
+        # 1. brax.envs.hopper 
+        # 2. brax.envs.wrappers.training (EpisodeWrapper)
+        # 3. brax.envs.wrappers.auto_reset (AutoResetWrapper)
+        reset_obs = deepcopy(reset_obs[:12])
+        qpos = reset_obs[:6]
+        qvel = reset_obs[6:12]
+        pipeline_state = self._env.pipeline_init(qpos, qvel)
+        obs = self._env._get_obs(pipeline_state)
+        reward, done, zero = jp.zeros(3)
+        metrics = {
+            'reward_forward': zero,
+            'reward_ctrl': zero,
+            'reward_healthy': zero,
+            'x_position': zero,
+            'x_velocity': zero,
+        }
+        state = State(pipeline_state, obs, reward, done, metrics)
+        # Episode Metrics 
+        rng = key 
+        state.info['steps'] = jp.zeros(rng.shape[:-1])
+        state.info['truncation'] = jp.zeros(rng.shape[:-1])
+        # Keep separate record of episode done as state.info['done'] can be erased
+        # by AutoResetWrapper
+        state.info['episode_done'] = jp.zeros(rng.shape[:-1])
+        episode_metrics = dict()
+        episode_metrics['sum_reward'] = jp.zeros(rng.shape[:-1])
+        episode_metrics['length'] = jp.zeros(rng.shape[:-1])
+        for metric_name in state.metrics.keys():
+            episode_metrics[metric_name] = jp.zeros(rng.shape[:-1])
+        state.info['episode_metrics'] = episode_metrics
+        state.info['first_pipeline_state'] = state.pipeline_state
+        state.info['first_obs'] = state.obs
+
+        head_pos, _, _, _, _, _ = self.calculate_position(state.obs)
+        avoid_value = self.is_avoid(head_pos)
+        reach_value = self.is_reach(head_pos)
+        observation = jnp.concatenate([state.obs, jnp.array([avoid_value, reach_value])])
+        env_state = EnvStateAvoidOnly(state, avoid_value)
+
         return observation, env_state
     
     @partial(jax.jit, static_argnums=(0,))
