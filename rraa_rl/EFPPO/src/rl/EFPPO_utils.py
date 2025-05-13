@@ -722,12 +722,12 @@ def _ecefppo_update(config, update_state, ent):
 
 def _ppo_vanilla_update(config, update_state, ent):
     (train_state_policy, train_state_value, traj_batch,
-     advantages_V, targets_V, advantages_total, rng) = update_state
+     advantages_V, targets_V, advantages_total, composed_policy_mask, rng) = update_state
     rng, _rng = jax.random.split(rng)
 
     def _update_minbatch(train_state, batch_info):
         train_state_policy, train_state_value = train_state
-        traj_batch, advantages_V, targets_V, advantages_total = batch_info
+        traj_batch, advantages_V, targets_V, advantages_total, composed_policy_mask = batch_info
 
         def _loss_fn_value(params, traj_batch, targets_V):
             # RERUN NETWORK
@@ -740,7 +740,7 @@ def _ppo_vanilla_update(config, update_state, ent):
             value_losses = jnp.square(value - targets_V)
             value_losses_clipped = jnp.square(value_pred_clipped - targets_V)
             value_loss_V = (
-                    0.5 * jnp.maximum(value_losses, value_losses_clipped).mean()
+                    0.5 * (jnp.maximum(value_losses, value_losses_clipped) * composed_policy_mask).mean()
             )
 
             total_loss = config["VF_COEF"] * value_loss_V
@@ -763,7 +763,7 @@ def _ppo_vanilla_update(config, update_state, ent):
                     )
                     * gae
             )
-            loss_actor = jnp.maximum(loss_actor1, loss_actor2)
+            loss_actor = jnp.maximum(loss_actor1, loss_actor2) * composed_policy_mask
             loss_actor = loss_actor.mean()
             entropy = pi.entropy().mean()
 
@@ -796,7 +796,7 @@ def _ppo_vanilla_update(config, update_state, ent):
             batch_size == config["NUM_STEPS"] * config["NUM_ENVS"]
     ), "batch size must be equal to number of steps * number of envs"
     permutation = jax.random.permutation(_rng, batch_size)
-    batch = (traj_batch, advantages_V, targets_V, advantages_total)
+    batch = (traj_batch, advantages_V, targets_V, advantages_total, composed_policy_mask)
     batch = jax.tree_util.tree_map(
         lambda x: x.reshape((batch_size,) + x.shape[2:]), batch
     )
@@ -813,7 +813,7 @@ def _ppo_vanilla_update(config, update_state, ent):
         _update_minbatch, (train_state_policy, train_state_value), minibatches
     )
     update_state = (train_state_policy, train_state_value,
-                    traj_batch, advantages_V, targets_V, advantages_total, rng)
+                    traj_batch, advantages_V, targets_V, advantages_total, composed_policy_mask, rng)
     return update_state, total_loss
 
 def _raa_ppo_extracritics_update(config, update_state, ent):

@@ -1,6 +1,6 @@
 python ./rraa_rl/EFPPO/src/rl/RR-PPO.py \
 --EXP_NAME=HopperReachReach \
---DIR=hopper_reachreach_halfwidth_R10_MoG \
+--DIR=hopper_reachreach_halfwidth_R10_MoG_compPPOfix \
 --LR=3e-4 \
 --NUM_ENVS=128 \
 --NUM_STEPS=400 \
@@ -20,4 +20,4 @@ python ./rraa_rl/EFPPO/src/rl/RR-PPO.py \
 --CUDA_USE=0,1,2,3 \
 --ANNEAL_LR \
 --ANNEAL_ENT \
---NAME=hopper_reachreach_halfwidth_R10_MoG
+--NAME=hopper_reachreach_halfwidth_R10_MoG_compPPOfix
