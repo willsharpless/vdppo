@@ -156,8 +156,8 @@ def train(envs, env_paramss, config, rng, env_test=None):
 
         ################## Compute Advantages: Avoid Env ##################
 
-        # CALCULATE COMPOSED ADVANTAGE - AVOID
-        (train_state_policy, train_state_value, env_state_avoid, last_obs_avoid, rng_avoid, 
+        # # CALCULATE COMPOSED ADVANTAGE - AVOID
+        (_, _, env_state_avoid, last_obs_avoid, rng_avoid, 
          decomposed_state, policy_controls) = runner_state_avoid
         
         last_val_avoid = train_state_value_avoid.apply_fn(train_state_value_avoid.params, last_obs_avoid)
