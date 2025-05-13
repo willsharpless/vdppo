@@ -67,6 +67,10 @@ class TransformObservation(GymnaxWrapper):
              params: Optional[environment.EnvParams] = None):
         obs, state, reward, done, info = self._env.step(key, state, action, params)
         return self.transform_obs(obs), state, reward, done, info
+    
+    def set_untransform_obs(self, untransform_obs):
+        self.untransform_obs = untransform_obs
+        return 
 
 
 class FlattenObservationWrapper(GymnaxWrapper):

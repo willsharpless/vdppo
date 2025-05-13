@@ -68,7 +68,7 @@ def train(envs, env_paramss, config, rng, env_test=None):
 
         ##################  Env step: Avoid Env ##################
 
-        init_type = "standard" # "fullrandom" # "toinput" # "standard"
+        init_type = "toinput" # "fullrandom" # "toinput" # "standard"
 
         # RESET ENV
         rng, _rng = jax.random.split(rng_og)
@@ -76,13 +76,17 @@ def train(envs, env_paramss, config, rng, env_test=None):
 
         if init_type == "toinput":   
             # Select random observations from standard rollout to use for initial avoid state 
-            traj_batch_observations = traj_batch.obs # avoid function
-            traj_batch_observations = jnp.transpose(traj_batch_observations, axes=(1, 0, 2))
-            rng, _rng = jax.random.split(rng)
-            random_index = jax.random.randint(_rng, shape=(), minval=0, maxval=traj_batch_observations.shape[1])
-            traj_batch_observations = traj_batch_observations[:, random_index, :]
+            traj_batch_observations = traj_batch.obs #traj_batch.obs # avoid function
 
-            obsv_avoid, env_state_avoid = jax.vmap(env_avoid.reset_toinput, in_axes=(0, 0, None))(reset_rng, traj_batch_observations, env_params_avoid) 
+            untrans_traj_batch_observations = env.untransform_obs(traj_batch_observations)
+
+            untrans_traj_batch_observations = jnp.transpose(untrans_traj_batch_observations, axes=(1, 0, 2))
+            rng, _rng = jax.random.split(rng)
+            # FIXME: rather than having just one random_index we should have a different one per trajectory - do later
+            random_index = jax.random.randint(_rng, shape=(), minval=0, maxval=untrans_traj_batch_observations.shape[1])
+            untrans_traj_batch_observations = untrans_traj_batch_observations[:, random_index, :]
+
+            obsv_avoid, env_state_avoid = jax.vmap(env_avoid.reset_toinput, in_axes=(0, 0, None))(reset_rng, untrans_traj_batch_observations, env_params_avoid) 
         
         elif init_type == "standard":
             obsv_avoid, env_state_avoid = jax.vmap(env_avoid.reset, in_axes=(0, None))(reset_rng, env_params_avoid) # NOTE: old standard reset
@@ -414,11 +418,12 @@ def train(envs, env_paramss, config, rng, env_test=None):
                         # 'trajectory_sample_R1':wandb.Image(fig1), 'trajectory_sample_R2':wandb.Image(fig2)
                     }, step=timestep)
             
-            # Save video of trajectory 
-            video_freq = 25 
-            if timestep % video_freq == 0 or timestep == total_timesteps - 1: 
-                video_frames = plot_video_contour_RRAA((info, info_avoid), timestep, config, save_video=True)
-                # wandb.log({"trajectory_video": wandb.Video(np.array(video_frames), fps=10, format="mp4")})
+        # Save video of trajectory 
+        video_freq = 25 
+        save_video = config["USE_WANDB"] #True 
+        if timestep % video_freq == 0 or timestep == total_timesteps - 1: 
+            video_frames = plot_video_contour_RRAA((info, info_avoid), timestep, config, save_video=save_video, log_wandb=config["USE_WANDB"])
+            # wandb.log({"trajectory_video": wandb.Video(np.array(video_frames), fps=10, format="mp4")})
             
         plt.close("all")
         # print("Earliest Reach {}: {}        {}".format(timestep, cnt, np.mean(consumption)))
@@ -471,7 +476,7 @@ def train(envs, env_paramss, config, rng, env_test=None):
                 "eval/crash after reach": cnt_crash_after_reach,
                 "eval/trajectory_sample": wandb.Image(fig_eval),
                 }, step=timestep)
-                video_frames = plot_video_contour_RRAA((info_eval, info_avoid_eval), timestep, config, save_video=True, prefix="eval/")
+                video_frames = plot_video_contour_RRAA((info_eval, info_avoid_eval), timestep, config, save_video=True, prefix="eval/", log_wandb=config["USE_WANDB"])
 
             plt.close("all")
             # FIXME: Below highly inefficient (rolling out 128 envs with deterministic policy)

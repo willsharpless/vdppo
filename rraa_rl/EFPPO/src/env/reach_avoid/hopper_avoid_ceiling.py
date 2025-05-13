@@ -1040,6 +1040,10 @@ class HopperAvoidOnly(HopperRAATemplate):
         # 2. brax.envs.wrappers.training (EpisodeWrapper)
         # 3. brax.envs.wrappers.auto_reset (AutoResetWrapper)
         reset_obs = deepcopy(reset_obs[:12])
+
+        og_reset_obs = deepcopy(reset_obs)
+        reset_obs = reset_obs.at[1].set(og_reset_obs[1] - 1.25) # FIXME: don't know where this comes from exactly figure it out
+
         qpos = reset_obs[:6]
         qvel = reset_obs[6:12]
         pipeline_state = self._env.pipeline_init(qpos, qvel)
