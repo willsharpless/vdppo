@@ -19,7 +19,7 @@ from arguments import get_args
 from functools import partial
 from typing import Any
 
-from rraa_rl.EFPPO.src.rl.EFPPO_utils import _ppo_vanilla_update, _env_step_rr_vanilla, _env_step_r1_vanilla, _env_step_r2_vanilla, _env_step_raa_vanilla, _env_step_a_vanilla
+from rraa_rl.EFPPO.src.rl.EFPPO_utils import _ppo_vanilla_update, _env_step_rr_vanilla, _env_step_r1_vanilla, _env_step_r2_vanilla, _env_step_raa_vanilla, _env_step_a_vanilla, _env_step_raa_vanilla_deterministic, _env_step_a_vanilla_deterministic
 from rraa_rl.EFPPO.src.env.env_list import get_env
 from rraa_rl.EFPPO.src.model.actorcritic import Policy_Network, Value_Network, Policy_Network_Discrete
 from rraa_rl.EFPPO.src.rl.plot_utils import calculate_minimal_reach, calculate_consumption, calculate_reachreach, calculate_reachalwaysavoid, plot_target, plot_value_target, plot_contour, plot_contour_RRAA, plot_policy_decision, calculate_reach_avoid_stats, \
@@ -471,6 +471,55 @@ def train(envs, env_paramss, config, rng, env_test=None):
                 "eval/crash after reach": cnt_crash_after_reach,
                 "eval/trajectory_sample": wandb.Image(fig_eval),
                 }, step=timestep)
+                video_frames = plot_video_contour_RRAA((info_eval, info_avoid_eval), timestep, config, save_video=True, prefix="eval/")
+
+            plt.close("all")
+            # FIXME: Below highly inefficient (rolling out 128 envs with deterministic policy)
+
+
+            rng_og = rng
+            rng, _rng = jax.random.split(rng_og)
+            reset_rng = jax.random.split(_rng, config["NUM_ENVS"])# FIXME: Have eval envs use a different seed than train envs
+            # FIXME: Is it just running same initial state over and over?
+            env_test_raa, env_test_avoid = env_test
+            obsv, env_state = jax.vmap(env_test_raa.reset, in_axes=(0, None))(reset_rng, env_params)
+            decomposed_state = (train_state_policy_avoid, train_state_value_avoid)
+            force_combined = False #if timestep < 20 else False # ihibits switching until > 20 epochs
+            force_avoid = False 
+            policy_controls = (force_combined, force_avoid)
+            runner_state_standard = (train_state_policy, train_state_value, env_state, obsv, _rng)
+            runner_state = (*runner_state_standard, decomposed_state, policy_controls)
+
+            rng, _rng = jax.random.split(rng_og)
+            reset_rng = jax.random.split(_rng, config["NUM_ENVS"])
+            obsv_avoid, env_state_avoid = jax.vmap(env_test_avoid.reset, in_axes=(0, None))(reset_rng, env_params_avoid)
+            runner_state_standard_avoid = (train_state_policy, train_state_value, env_state_avoid, obsv_avoid, _rng)
+            runner_state_avoid = (*runner_state_standard_avoid, decomposed_state, policy_controls)
+
+            runner_state, traj_batch_eval = jax.lax.scan(
+                partial(_env_step_raa_vanilla_deterministic, env_test_raa, env_params), runner_state, None, config["NUM_STEPS"]
+            )
+
+            runner_state_avoid, traj_batch_avoid_eval = jax.lax.scan(
+                partial(_env_step_a_vanilla_deterministic, env_test_avoid, env_params_avoid), runner_state_avoid, None, config["NUM_STEPS"]
+            )
+
+            idx = 0
+            reach_idx, avoid_idx = calculate_reachalwaysavoid(traj_batch_eval, idx, type="both")
+            reach_avoidonly_idx, avoid_avoidonly_idx = calculate_reachalwaysavoid(traj_batch_avoid_eval, idx, type="avoid")
+            info_eval = tree_index2(traj_batch_eval.info, idx)
+            info_avoid_eval = tree_index2(traj_batch_avoid_eval.info, idx)
+            info_eval['reach_index'] = reach_idx
+            info_eval['avoid_index'] = avoid_idx
+            info_avoid_eval['reach_index'] = reach_avoidonly_idx
+            info_avoid_eval['avoid_index'] = avoid_avoidonly_idx
+            fig_eval = plot_contour_RRAA((info_eval, info_avoid_eval), timestep, config)
+            cnt_never_reached, cnt_crashed, cnt_crash_after_reach = calculate_reach_avoid_stats(traj_batch_eval)
+            if config["USE_WANDB"]:
+                wandb.log({
+                "eval/deter/trajectory_sample": wandb.Image(fig_eval),
+                }, step=timestep)
+                video_frames = plot_video_contour_RRAA((info_eval, info_avoid_eval), timestep, config, save_video=True, prefix="eval/deter/")
             plt.close("all")
 
 

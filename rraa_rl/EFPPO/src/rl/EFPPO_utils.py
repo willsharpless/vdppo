@@ -306,7 +306,7 @@ def _env_step_rraa_vanilla(env, env_params, runner_state, decomposed_state, _):
     runner_state = (train_state_policy, train_state_value, env_state, obsv, rng)
     return runner_state, transition
 
-def _env_step_raa_vanilla(env, env_params, runner_state, _):
+def _env_step_raa_vanilla(env, env_params, runner_state, _, take_mean=False):
     (train_state_policy, train_state_value, last_env_state, last_obs, 
         rng, decomposed_state, policy_contols) = runner_state    
     (train_state_policy_avoid, train_state_value_avoid) = decomposed_state
@@ -322,8 +322,12 @@ def _env_step_raa_vanilla(env, env_params, runner_state, _):
     value_avoid = train_state_value_avoid.apply_fn(train_state_value_avoid.params, last_obs)
 
     # SAMPLE ACTIONS
-    action_combined = pi.sample(seed=_rng)
-    action_avoid = pi_avoid.sample(seed=_rng)
+    if take_mean:
+        action_combined = pi.loc
+        action_avoid = pi_avoid.loc
+    else:
+        action_combined = pi.sample(seed=_rng)
+        action_avoid = pi_avoid.sample(seed=_rng)
 
     log_combined = pi.log_prob(action_combined)
     log_avoid = pi_avoid.log_prob(action_avoid)
@@ -357,7 +361,10 @@ def _env_step_raa_vanilla(env, env_params, runner_state, _):
     runner_state = (train_state_policy, train_state_value, env_state, obsv, rng, decomposed_state, policy_contols)
     return runner_state, transition
 
-def _env_step_a_vanilla(env, env_params, runner_state, _):
+def _env_step_raa_vanilla_deterministic(env, env_params, runner_state, _, take_mean=True):
+    return _env_step_raa_vanilla(env, env_params, runner_state, _, take_mean=take_mean)
+
+def _env_step_a_vanilla(env, env_params, runner_state, _, take_mean=False):
     (train_state_policy, train_state_value, last_env_state, last_obs, 
         rng, decomposed_state, policy_contols) = runner_state    
     (train_state_policy_avoid, train_state_value_avoid) = decomposed_state
@@ -373,7 +380,10 @@ def _env_step_a_vanilla(env, env_params, runner_state, _):
     value_avoid = train_state_value_avoid.apply_fn(train_state_value_avoid.params, last_obs)
 
     # SAMPLE ACTIONS
-    action = pi_avoid.sample(seed=_rng)
+    if take_mean:
+        action = pi_avoid.loc
+    else:
+        action = pi_avoid.sample(seed=_rng)
     log_prob = pi_avoid.log_prob(action)
 
     # STEP ENV
@@ -389,6 +399,9 @@ def _env_step_a_vanilla(env, env_params, runner_state, _):
     
     runner_state = (train_state_policy, train_state_value, env_state, obsv, rng, decomposed_state, policy_contols)
     return runner_state, transition
+
+def _env_step_a_vanilla_deterministic(env, env_params, runner_state, _, take_mean=True):
+    return _env_step_a_vanilla(env, env_params, runner_state, _, take_mean=take_mean)
 
 def _env_step_ra_vanilla(env, env_params, runner_state, _, take_mean=False):
     (train_state_policy, train_state_value, last_env_state, last_obs, rng) = runner_state    

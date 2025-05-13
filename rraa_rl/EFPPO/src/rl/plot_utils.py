@@ -716,7 +716,7 @@ def plot_contour_RRAA(multi_info, epoch, config):
         plt.savefig('model/{}/reach/trajectory_{:0>4d}'.format(config["DIR"], epoch), dpi=300)
         return fig
     
-def plot_video_contour_RRAA(multi_info, epoch, config, save_video=False):
+def plot_video_contour_RRAA(multi_info, epoch, config, save_video=False, prefix=""):
     start_time = time()
     if config['EXP_NAME'] == 'HopperReachAlwaysAvoid':
         
@@ -811,12 +811,13 @@ def plot_video_contour_RRAA(multi_info, epoch, config, save_video=False):
         if save_video: 
             # video_path = 'model/{}/reach/trajectory_{:0>4d}.mp4'.format(config["DIR"], epoch)
             # frames[0].save(video_path, save_all=True, append_images=frames[1:], duration=100, loop=0)
-
-            video_path = 'model/{}/reach/trajectory_{:0>4d}.mp4'.format(config["DIR"], epoch)
+            # mod prefix from / to _
+            prefix_underscore = prefix.replace("/", "_")
+            video_path = 'model/{}/reach/trajectory_{}{:0>4d}.mp4'.format(config["DIR"], prefix_underscore, epoch)
             print("\n\nSaving video to: ", video_path)
             imageio.mimsave(video_path, frames, fps=30)
-
-            wandb.log({"trajectory_video": wandb.Video(video_path, fps=10, format="mp4")})
+            wandb_name = f"{prefix}trajectory"
+            wandb.log({wandb_name: wandb.Video(video_path, fps=10, format="mp4")}, step=epoch)
         
         end_time = time()
         print("Time taken to plot and push video: ", end_time - start_time)
