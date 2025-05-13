@@ -37,7 +37,19 @@ def calculate_reach_avoid_stats(traj_batch):
             cnt_crash += 1
     share_crash_after_reach = cnt_crash_after_reach / (traj_batch.avoid.shape[1] - cnt_never_reached) if (traj_batch.avoid.shape[1] - cnt_never_reached) > 0 else 0
     return cnt_never_reached, cnt_crash, share_crash_after_reach
-        
+
+def calculate_reachavoid(traj_batch):
+    reach_idx = (traj_batch.reach < 0).argmax(axis=0)
+    crash_idx = (traj_batch.avoid > 0).argmax(axis=0)
+    reach_idx = np.where(np.any((traj_batch.reach < 0) == 1, axis=0), reach_idx, np.inf)
+    crash_idx = np.where(np.any((traj_batch.avoid > 0) == 1, axis=0), crash_idx, np.inf)
+    # Find indices where reach < inf and avoid = inf
+    reach_and_avoid_idx = np.where(crash_idx == np.inf, reach_idx, np.inf)
+
+    reach_perc = ((reach_idx < np.inf).sum() / reach_idx.__len__()).item()
+    crash_perc = ((crash_idx < np.inf).sum() / crash_idx.__len__()).item()
+    reach_avoid_perc = ((reach_and_avoid_idx < np.inf).sum() / reach_and_avoid_idx.__len__()).item()
+    return (reach_perc, crash_perc, reach_avoid_perc)
 
 def calculate_reachreach(traj_batch, reach_type="both"):
     reach_idx_1 = (traj_batch.reach1 < 0).argmax(axis=0) if reach_type in ["both", "1"] else None

@@ -23,7 +23,7 @@ from rraa_rl.EFPPO.src.rl.EFPPO_utils import _ppo_vanilla_update, _env_step_rr_v
 from rraa_rl.EFPPO.src.env.env_list import get_env
 from rraa_rl.EFPPO.src.model.actorcritic import Policy_Network, Value_Network, Policy_Network_Discrete
 from rraa_rl.EFPPO.src.rl.plot_utils import calculate_minimal_reach, calculate_consumption, calculate_reachreach, calculate_reachalwaysavoid, plot_target, plot_value_target, plot_contour, plot_contour_RRAA, plot_policy_decision, calculate_reach_avoid_stats, \
-    plot_video_contour_RRAA
+    plot_video_contour_RRAA, calculate_reachavoid
 from rraa_rl.EFPPO.src.rl.utils import optimizer, get_BuRd, tree_index1, tree_index2
 from rraa_rl.EFPPO.src.rl.gae import (Transition_reach,
                               calculate_gae, calculate_gae2, calculate_gae3,
@@ -371,6 +371,8 @@ def train(envs, env_paramss, config, rngs, env_test=None):
         info = tree_index2(traj_batch.info, idx)
         info_avoid = tree_index2(traj_batch_avoid.info, idx)
 
+        (reach_perc, crash_perc, reach_avoid_perc) = calculate_reachavoid(traj_batch)
+
         info['reach_index'] = reach_idx
         info['avoid_index'] = avoid_idx
         info_avoid['reach_index'] = reach_avoidonly_idx
@@ -390,6 +392,9 @@ def train(envs, env_paramss, config, rngs, env_test=None):
                                             "value_network":train_state_value,
                                             "policy_avoid_network":train_state_policy_avoid, 
                                             "value_avoid_network":train_state_value_avoid,
+                                            "crashed [%]": crash_perc,
+                                            "reached [%]": reach_perc,
+                                            "reached_avoid [%]": reach_avoid_perc,
                                             },
                                     step=timestep,
                                     overwrite=True,
@@ -471,12 +476,16 @@ def train(envs, env_paramss, config, rngs, env_test=None):
             info_avoid_eval['avoid_index'] = avoid_avoidonly_idx
             fig_eval = plot_contour_RRAA((info_eval, info_avoid_eval), timestep, config)
             cnt_never_reached, cnt_crashed, cnt_crash_after_reach = calculate_reach_avoid_stats(traj_batch_eval)
+            (reach_perc, crash_perc, reach_avoid_perc) = calculate_reachavoid(traj_batch_eval)
             if config["USE_WANDB"]:
                 wandb.log({
                 "eval/not reaching goal": cnt_never_reached,
                 "eval/crashed": cnt_crashed,
                 "eval/crash after reach": cnt_crash_after_reach,
                 "eval/trajectory_sample": wandb.Image(fig_eval),
+                "eval/crashed [%]": crash_perc,
+                "eval/reached [%]": reach_perc,
+                "eval/reached_avoid [%]": reach_avoid_perc,
                 }, step=timestep)
                 video_frames = plot_video_contour_RRAA((info_eval, info_avoid_eval), timestep, config, save_video=True, prefix="eval/", log_wandb=config["USE_WANDB"])
 
