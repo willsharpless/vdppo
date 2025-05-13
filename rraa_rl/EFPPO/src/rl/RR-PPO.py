@@ -124,6 +124,18 @@ def train(envs, env_paramss, config, rng):
         #                                        V_append)
         done = done[:-1, :]
 
+        # FILTER UNHEALTHY
+        # head_height = traj_batch.obs[:,:,1] + 0.2 * jnp.cos(traj_batch.obs[:,:,2]) # from calculate_position
+        # head_threshold = 1. # aggresive to start
+        # done = jnp.where(head_height < head_threshold, jnp.ones_like(done), done)
+
+        # head_height = traj_batch.obs[:,:,1] + 0.2 * jnp.cos(traj_batch.obs[:,:,2]) # from calculate_position
+        # jaw_height = traj_batch.obs[:,:,1] - 0.2 * jnp.cos(traj_batch.obs[:,:,2])
+        # thg_height = jaw_height - 0.45 * jnp.cos(traj_batch.obs[:,:,2] - traj_batch.obs[:,:,3])
+        # done = jnp.where(head_height < 0., jnp.ones_like(done), done)
+        # done = jnp.where(jaw_height < 0., jnp.ones_like(done), done)
+        # done = jnp.where(thg_height < 0., jnp.ones_like(done), done)
+
         advantages_V, targets_V = calculate_gae_reach4(ent_gamma[1], config["GAE_LAMBDA"], l_tile_append, V_append, done)
 
         # UPDATE COMPOSED NETWORK
@@ -139,8 +151,7 @@ def train(envs, env_paramss, config, rng):
         rng = update_state[-1]
 
         # CALCULATE DECOMPOSED ADVANTAGES - 1
-        (train_state_policy, train_state_value, env_state_1, last_obs_1, rng_1,
-            decomposed_state, policy_controls) = runner_state_reach1
+        (_, _, env_state_1, last_obs_1, rng_1, decomposed_state, policy_controls) = runner_state_reach1
 
         last_val1 = train_state_value_reach1.apply_fn(train_state_value_reach1.params, last_obs_1)
         reach1_append = jnp.concatenate((traj_batch_reach1.reach1, jnp.expand_dims(env_state_1.reach1, axis=1).T))
@@ -168,8 +179,7 @@ def train(envs, env_paramss, config, rng):
         rng_1 = update_state_reach1[-1]
 
         # CALCULATE DECOMPOSED ADVANTAGES - 2
-        (train_state_policy, train_state_value, env_state_2, last_obs_2, rng_2,
-          decomposed_state, policy_controls) = runner_state_reach2
+        (_, _, env_state_2, last_obs_2, rng_2, decomposed_state, policy_controls) = runner_state_reach2
 
         last_val2 = train_state_value_reach2.apply_fn(train_state_value_reach2.params, last_obs_2)
         reach2_append = jnp.concatenate((traj_batch_reach2.reach2, jnp.expand_dims(env_state_2.reach2, axis=1).T))
@@ -212,7 +222,8 @@ def train(envs, env_paramss, config, rng):
 
     # INIT POLICY NETWORK
     if config["DISCRETE"] == False:
-        policy_network = MoGPolicy_Network(
+        policy_network = MoGPolicy_Network( # MoG
+        # policy_network = Policy_Network(
             env.action_space(env_params).shape[0], activation=config["ACTIVATION"]
         )
         policy_network_reach1 = Policy_Network(
@@ -509,7 +520,6 @@ if __name__ == "__main__":
         config["ANNEAL_LR"]=True,
         config["ANNEAL_ENT"]=True
         config["NAME"]="hopper_debug"
-        # config["TEST_MODE"]=True # USES DETERMINISTIC MODELS
         # config["TEST_MODE"]=True # USES DETERMINISTIC MODELS
 
     config["NUM_UPDATES"] = int(
