@@ -392,9 +392,6 @@ def train(envs, env_paramss, config, rngs, env_test=None):
                                             "value_network":train_state_value,
                                             "policy_avoid_network":train_state_policy_avoid, 
                                             "value_avoid_network":train_state_value_avoid,
-                                            "crashed [%]": crash_perc,
-                                            "reached [%]": reach_perc,
-                                            "reached_avoid [%]": reach_avoid_perc,
                                             },
                                     step=timestep,
                                     overwrite=True,
@@ -421,6 +418,9 @@ def train(envs, env_paramss, config, rngs, env_test=None):
                     "reach_gamma": result['reach_gamma'][0], "entropy_weight": result['entropy_weight'][0],
                     'trajectory_sample':wandb.Image(fig),
                     'policy_decision_sample':wandb.Image(fig2),
+                    "crashed [%]": crash_perc,
+                    "reached [%]": reach_perc,
+                    "reached_avoid [%]": reach_avoid_perc,
                         # 'trajectory_sample_R1':wandb.Image(fig1), 'trajectory_sample_R2':wandb.Image(fig2)
                     }, step=timestep)
             
