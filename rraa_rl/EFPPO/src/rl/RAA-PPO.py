@@ -464,12 +464,13 @@ def train(envs, env_paramss, config, rng, env_test=None):
             info_avoid_eval['avoid_index'] = avoid_avoidonly_idx
             fig_eval = plot_contour_RRAA((info_eval, info_avoid_eval), timestep, config)
             cnt_never_reached, cnt_crashed, cnt_crash_after_reach = calculate_reach_avoid_stats(traj_batch_eval)
-            wandb.log({
+            if config["USE_WANDB"]:
+                wandb.log({
                 "eval/not reaching goal": cnt_never_reached,
                 "eval/crashed": cnt_crashed,
                 "eval/crash after reach": cnt_crash_after_reach,
                 "eval/trajectory_sample": wandb.Image(fig_eval),
-            }, step=timestep)
+                }, step=timestep)
             plt.close("all")
 
 
