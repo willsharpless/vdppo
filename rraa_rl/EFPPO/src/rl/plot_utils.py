@@ -652,14 +652,16 @@ def plot_contour_RRAA(multi_info, epoch, config):
             draw_circle = plt.Circle((2.0, 1.4), 0.1, fill=False)
 
             # Plot Avoid
-            draw_rectangle = plt.Rectangle((0.95, 1.3), 0.1, 0.2, facecolor="red", fill=True)
-            draw_rectangle2 = plt.Rectangle((2.35, -0.1), 0.4, 1.6, facecolor="red", fill=True)
+            draw_rectangle = plt.Rectangle((0.95, 1.3), 0.1, 0.3, facecolor="red", fill=True)
+            draw_rectangle2 = plt.Rectangle((2.35, -0.1), 0.4, 1.7, facecolor="red", fill=True)
             draw_rectangle3 = plt.Rectangle((-2., 0.), 4.5, 0.5, facecolor="red", fill=True)
+            draw_rectangle4 = plt.Rectangle((-0.5, -0.1), 0.5, 1.7, facecolor="red", fill=True)
 
             ax.add_patch(draw_circle)
             ax.add_patch(draw_rectangle)
             ax.add_patch(draw_rectangle2)
             ax.add_patch(draw_rectangle3)
+            ax.add_patch(draw_rectangle4)
 
             indices = np.linspace(0, full_len, 11, dtype=int)
             for step_n, i in enumerate(indices):
@@ -732,14 +734,16 @@ def plot_video_contour_RRAA(multi_info, epoch, config, save_video=False, prefix=
             draw_circle = plt.Circle((2.0, 1.4), 0.1, fill=False)
 
             # Plot Avoid
-            draw_rectangle = plt.Rectangle((0.95, 1.3), 0.1, 0.2, facecolor="red", fill=True)
-            draw_rectangle2 = plt.Rectangle((2.35, -0.1), 0.4, 1.6, facecolor="red", fill=True)
+            draw_rectangle = plt.Rectangle((0.95, 1.3), 0.1, 0.3, facecolor="red", fill=True)
+            draw_rectangle2 = plt.Rectangle((2.35, -0.1), 0.4, 1.7, facecolor="red", fill=True)
             draw_rectangle3 = plt.Rectangle((-2., 0.), 4.5, 0.5, facecolor="red", fill=True)
+            draw_rectangle4 = plt.Rectangle((-0.5, -0.1), 0.5, 1.7, facecolor="red", fill=True)
 
             ax.add_patch(draw_circle)
             ax.add_patch(draw_rectangle)
             ax.add_patch(draw_rectangle2)
             ax.add_patch(draw_rectangle3)
+            ax.add_patch(draw_rectangle4)
 
             # Plot Hopper Body 
             ax.plot(np.array([info['head_pos'][step, 0], info['jaw_pos'][step, 0]]),
@@ -779,7 +783,7 @@ def plot_video_contour_RRAA(multi_info, epoch, config, save_video=False, prefix=
                 ax.plot(np.array([info['leg_pos'][avoid_idx, 0], info['foot_back_pos'][avoid_idx, 0]]),
                         np.array([info['leg_pos'][avoid_idx, 1], info['foot_back_pos'][avoid_idx, 1]]), c='r', linewidth=4) 
                 
-            ax.set_xlim((-2.5, 2.5))
+            ax.set_xlim((-0.5, 2.5))
             ax.set_ylim((0, 1.6))
             ax.set_aspect('equal')
 
