@@ -523,7 +523,7 @@ def _env_step_rr_deterministic(env, env_params, runner_state, _):
     value_reach2 = train_state_value_reach2.apply_fn(train_state_value_reach2.params, last_obs)
 
     # SAMPLE ACTIONS
-    action_combined = pi.loc
+    action_combined = pi.mode()
     action_r1 = pi_reach1.loc
     action_r2 = pi_reach2.loc
 

@@ -1,7 +1,7 @@
 python ./rraa_rl/EFPPO/src/rl/evaluation_random_RR.py \
 --EXP_NAME=HopperReachReach \
---DIR=hopper_reachreach_halfwidth_R10 \
---DIR_MODEL=checkpoint_975 \
+--DIR=hopper_reachreach_halfwidth_R10_MoG_long \
+--DIR_MODEL=checkpoint_194 \
 --NUM_ENVS=128 \
---NUM_STEPS=3000 \
+--NUM_STEPS=4000 \
 --ACTIVATION=tanh \

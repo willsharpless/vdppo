@@ -16,7 +16,7 @@ import imageio
 
 from rraa_rl.EFPPO.src.rl.arguments import get_args
 from rraa_rl.EFPPO.src.env.env_list import get_env
-from rraa_rl.EFPPO.src.model.actorcritic import Policy_Network, Value_Network, ActorCritic_Continuous, Policy_Network_Discrete
+from rraa_rl.EFPPO.src.model.actorcritic import Policy_Network, Value_Network, ActorCritic_Continuous, Policy_Network_Discrete, MoGPolicy_Network
 from rraa_rl.EFPPO.src.rl.EFPPO_utils import _env_step_rr_vanilla, _env_step_rr_deterministic
 # from rraa_rl.EFPPO.src.rl.plot_utils import calculate_reachreach
 from rraa_rl.EFPPO.src.rl.root_finding import Bisection
@@ -223,7 +223,8 @@ def test(envs, env_paramss, config, rng_og):
 
     ## LOAD POLICY NETWORKS
     if config["DISCRETE"] == False:
-        policy_network = Policy_Network(
+        # policy_network = Policy_Network(
+        policy_network = MoGPolicy_Network(
             env.action_space(env_params).shape[0], activation=config["ACTIVATION"]
         )
         policy_network_reach1 = Policy_Network(
@@ -347,4 +348,4 @@ if __name__ == "__main__":
 
     os.makedirs(f"model/{config['DIR']}/test", exist_ok=True)
     val_fig = plot_RR_value(result_traj_batch, result_traj_batch_deterministic, config)
-    traj_fig = plot_traj_sample(result_traj_batch, result_traj_batch_deterministic, config, sample_size=5, make_video=True)
+    traj_fig = plot_traj_sample(result_traj_batch, result_traj_batch_deterministic, config, sample_size=5, make_video=False)
