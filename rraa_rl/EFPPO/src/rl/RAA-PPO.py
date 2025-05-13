@@ -36,7 +36,7 @@ class TrainState(train_state.TrainState):
     variance: Any
     count: Any
 
-def train(envs, env_paramss, config, rng, env_test=None):
+def train(envs, env_paramss, config, rngs, env_test=None):
     env, env_avoid = envs # COMPOSED (RAA) + 1 DECOMPOSED (A)
     env_params, env_params_avoid = env_paramss
 
@@ -44,15 +44,16 @@ def train(envs, env_paramss, config, rng, env_test=None):
 
         train_state_policy, train_state_value, \
         train_state_policy_avoid, train_state_value_avoid, \
-        rng_og, timestep = train_state_total 
+        rngs, timestep = train_state_total 
 
         ##################  Env step: Composed Env ##################
         # RESET ENV
-        rng, _rng = jax.random.split(rng_og)
-        reset_rng = jax.random.split(_rng, config["NUM_ENVS"])
-        obsv, env_state = jax.vmap(env.reset, in_axes=(0, None))(reset_rng, env_params)
-        rng, _rng = jax.random.split(rng)
-        runner_state_standard = (train_state_policy, train_state_value, env_state, obsv, _rng)
+        rng_composed, rng_avoid = rngs
+        rng_composed, _rng_composed = jax.random.split(rng_composed)
+        reset_rng_composed = jax.random.split(_rng_composed, config["NUM_ENVS"])
+        obsv, env_state = jax.vmap(env.reset, in_axes=(0, None))(reset_rng_composed, env_params)
+        rng_composed, _rng_composed = jax.random.split(rng_composed)
+        runner_state_standard = (train_state_policy, train_state_value, env_state, obsv, _rng_composed)
 
         # SPECIAL DECOMPOSED STATES
         decomposed_state = (train_state_policy_avoid, train_state_value_avoid)
@@ -71,8 +72,8 @@ def train(envs, env_paramss, config, rng, env_test=None):
         init_type = "toinput" # "fullrandom" # "toinput" # "standard"
 
         # RESET ENV
-        rng, _rng = jax.random.split(rng_og)
-        reset_rng = jax.random.split(_rng, config["NUM_ENVS"])
+        rng_avoid, _rng_avoid = jax.random.split(rng_avoid)
+        reset_rng_avoid = jax.random.split(_rng_avoid, config["NUM_ENVS"])
 
         if init_type == "toinput":   
             # Select random observations from standard rollout to use for initial avoid state 
@@ -81,21 +82,21 @@ def train(envs, env_paramss, config, rng, env_test=None):
             untrans_traj_batch_observations = env.untransform_obs(traj_batch_observations)
 
             untrans_traj_batch_observations = jnp.transpose(untrans_traj_batch_observations, axes=(1, 0, 2))
-            rng, _rng = jax.random.split(rng)
+            rng_avoid, _rng_avoid = jax.random.split(rng_avoid)
             # FIXME: rather than having just one random_index we should have a different one per trajectory - do later
-            random_index = jax.random.randint(_rng, shape=(), minval=0, maxval=untrans_traj_batch_observations.shape[1])
+            random_index = jax.random.randint(_rng_avoid, shape=(), minval=0, maxval=untrans_traj_batch_observations.shape[1])
             untrans_traj_batch_observations = untrans_traj_batch_observations[:, random_index, :]
 
-            obsv_avoid, env_state_avoid = jax.vmap(env_avoid.reset_toinput, in_axes=(0, 0, None))(reset_rng, untrans_traj_batch_observations, env_params_avoid) 
+            obsv_avoid, env_state_avoid = jax.vmap(env_avoid.reset_toinput, in_axes=(0, 0, None))(reset_rng_avoid, untrans_traj_batch_observations, env_params_avoid) 
         
         elif init_type == "standard":
-            obsv_avoid, env_state_avoid = jax.vmap(env_avoid.reset, in_axes=(0, None))(reset_rng, env_params_avoid) # NOTE: old standard reset
+            obsv_avoid, env_state_avoid = jax.vmap(env_avoid.reset, in_axes=(0, None))(reset_rng_avoid, env_params_avoid) # NOTE: old standard reset
 
         elif init_type == "fullrandom":
-            obsv_avoid, env_state_avoid = jax.vmap(env_avoid.reset_fullrandom, in_axes=(0, None))(reset_rng, env_params_avoid) # NOTE: old standard reset
+            obsv_avoid, env_state_avoid = jax.vmap(env_avoid.reset_fullrandom, in_axes=(0, None))(reset_rng_avoid, env_params_avoid) # NOTE: old standard reset
         
-        rng, _rng = jax.random.split(rng)
-        runner_state_standard_avoid = (train_state_policy, train_state_value, env_state_avoid, obsv_avoid, _rng)
+        rng_avoid, _rng_avoid = jax.random.split(rng_avoid)
+        runner_state_standard_avoid = (train_state_policy, train_state_value, env_state_avoid, obsv_avoid, _rng_avoid)
 
         # SPECIAL DECOMPOSED STATES - AVOID
         decomposed_state = (train_state_policy_avoid, train_state_value_avoid)
@@ -111,8 +112,7 @@ def train(envs, env_paramss, config, rng, env_test=None):
         ################## Compute Advantages: Composed Env ##################
 
         # CALCULATE COMPOSED ADVANTAGE
-        (train_state_policy, train_state_value, env_state, last_obs, rng, 
-         decomposed_state, policy_controls) = runner_state
+        (train_state_policy, train_state_value, env_state, last_obs, rng_composed, decomposed_state, policy_controls) = runner_state  # FIXME: TEMP TEMP
 
         last_val = train_state_value.apply_fn(train_state_value.params, last_obs)
         last_val_avoid = train_state_value_avoid.apply_fn(train_state_value_avoid.params, last_obs)
@@ -144,7 +144,7 @@ def train(envs, env_paramss, config, rng, env_test=None):
 
         # UPDATE COMPOSED NETWORK
         update_state = (train_state_policy, train_state_value, 
-                        traj_batch, advantages_V, targets_V, advantages_V, rng)
+                        traj_batch, advantages_V, targets_V, advantages_V, rng_composed)
         
         xs = jnp.ones(config["UPDATE_EPOCHS"]) * ent_gamma[0]
         update_state, loss_info = jax.lax.scan(
@@ -152,7 +152,7 @@ def train(envs, env_paramss, config, rng, env_test=None):
         )
         train_state_policy = update_state[0]
         train_state_value = update_state[1]
-        rng = update_state[-1]
+        rng_composed = update_state[-1]
 
         ################## Compute Advantages: Avoid Env ##################
 
@@ -196,7 +196,7 @@ def train(envs, env_paramss, config, rng, env_test=None):
 
         ##########################################################################################
 
-        return ((train_state_policy, train_state_value, train_state_policy_avoid, train_state_value_avoid, rng, timestep),
+        return ((train_state_policy, train_state_value, train_state_policy_avoid, train_state_value_avoid, (rng_composed, rng_avoid), timestep),
                 {"batch_info": (traj_batch, targets_V, done), "loss_info": loss_info,
                  "batch_avoid_info": (traj_batch_avoid, targets_V_avoid, done_avoid), "loss_info_avoid": loss_info_avoid,
                  "reach_gamma": ent_gamma[1], "entropy_weight": ent_gamma[0]})
@@ -224,10 +224,10 @@ def train(envs, env_paramss, config, rng, env_test=None):
         policy_network_avoid = Policy_Network(
             env_avoid.action_space(env_params_avoid).n, activation=config["ACTIVATION"]
         )
-
-    rng, _rng = jax.random.split(rng)
+    rng_composed, rng_avoid = rngs
+    rng_composed, _rng_composed = jax.random.split(rng_composed)
     init_x = jnp.zeros(env.observation_space(env_params).shape)
-    network_params_policy = policy_network.init(_rng, init_x)
+    network_params_policy = policy_network.init(_rng_composed, init_x)
     train_state_policy = TrainState.create(
         apply_fn=policy_network.apply,
         params=network_params_policy,
@@ -239,9 +239,9 @@ def train(envs, env_paramss, config, rng, env_test=None):
 
     # INIT VALUE CRITIC NETWORK
     value_network = Value_Network(activation=config["ACTIVATION"])
-    rng, _rng = jax.random.split(rng)
+    rng_composed, _rng_composed = jax.random.split(rng_composed)
     init_x = jnp.zeros(env.observation_space(env_params).shape)
-    network_params = value_network.init(_rng, init_x)
+    network_params = value_network.init(_rng_composed, init_x)
     train_state_value = TrainState.create(
         apply_fn=value_network.apply,
         params=network_params,
@@ -255,8 +255,9 @@ def train(envs, env_paramss, config, rng, env_test=None):
     if not config["LOAD_DECOMPOSED"]:
     
         # DECOMPOSED POLICIES
+        rng_avoid, _rng_avoid = jax.random.split(rng_avoid)
         init_x_avoid = jnp.zeros(env_avoid.observation_space(env_params_avoid).shape)
-        network_params_policy_avoid = policy_network_avoid.init(_rng, init_x_avoid)
+        network_params_policy_avoid = policy_network_avoid.init(_rng_avoid, init_x_avoid)
         train_state_policy_avoid = TrainState.create(
             apply_fn=policy_network_avoid.apply,
             params=network_params_policy_avoid,
@@ -268,9 +269,9 @@ def train(envs, env_paramss, config, rng, env_test=None):
 
         # DECOMPOSED VALUE CRITICS
         value_network_avoid = Value_Network(activation=config["ACTIVATION"])
-        rng, _rng = jax.random.split(rng)
+        rng_avoid, _rng_avoid = jax.random.split(rng_avoid)
         init_x = jnp.zeros(env_avoid.observation_space(env_params_avoid).shape)
-        network_params_avoid = value_network_avoid.init(_rng, init_x)
+        network_params_avoid = value_network_avoid.init(_rng_avoid, init_x)
         train_state_value_avoid = TrainState.create(
             apply_fn=value_network_avoid.apply,
             params=network_params_avoid,
@@ -345,13 +346,13 @@ def train(envs, env_paramss, config, rng, env_test=None):
         update_state, result = jax.lax.scan(
             training, (train_state_policy, train_state_value,
                        train_state_policy_avoid, train_state_value_avoid,
-                       rng, timestep),
+                       (rng_composed, rng_avoid), timestep),
             xs, config["STEP_SCAN"]
         )
 
         (train_state_policy, train_state_value, 
             train_state_policy_avoid, train_state_value_avoid, 
-            rng, timestep) = update_state
+            (rng_composed, rng_avoid), timestep) = update_state
 
         loss_info = result['loss_info']
         loss_info_avoid = result['loss_info_avoid']
@@ -431,23 +432,24 @@ def train(envs, env_paramss, config, rng, env_test=None):
 
         # Add in eval with deterministic checkpoint
         if env_test is not None and timestep % 5 == 0:
-            rng_og = rng
-            rng, _rng = jax.random.split(rng_og)
-            reset_rng = jax.random.split(_rng, config["NUM_ENVS"])# FIXME: Have eval envs use a different seed than train envs
+            rng_composed, _rng_composed = jax.random.split(rng_composed)
+            reset_rng_composed = jax.random.split(_rng_composed, config["NUM_ENVS"])# FIXME: Have eval envs use a different seed than train envs
             # FIXME: Is it just running same initial state over and over?
             env_test_raa, env_test_avoid = env_test
-            obsv, env_state = jax.vmap(env_test_raa.reset, in_axes=(0, None))(reset_rng, env_params)
+            obsv, env_state = jax.vmap(env_test_raa.reset, in_axes=(0, None))(reset_rng_composed, env_params)
             decomposed_state = (train_state_policy_avoid, train_state_value_avoid)
             force_combined = False #if timestep < 20 else False # ihibits switching until > 20 epochs
             force_avoid = False 
             policy_controls = (force_combined, force_avoid)
-            runner_state_standard = (train_state_policy, train_state_value, env_state, obsv, _rng)
+            rng_composed, _rng_composed = jax.random.split(rng_composed)
+            runner_state_standard = (train_state_policy, train_state_value, env_state, obsv, _rng_composed)
             runner_state = (*runner_state_standard, decomposed_state, policy_controls)
 
-            rng, _rng = jax.random.split(rng_og)
-            reset_rng = jax.random.split(_rng, config["NUM_ENVS"])
-            obsv_avoid, env_state_avoid = jax.vmap(env_test_avoid.reset, in_axes=(0, None))(reset_rng, env_params_avoid)
-            runner_state_standard_avoid = (train_state_policy, train_state_value, env_state_avoid, obsv_avoid, _rng)
+            rng_avoid, _rng_avoid = jax.random.split(rng_avoid)
+            reset_rng_avoid = jax.random.split(_rng_avoid, config["NUM_ENVS"])
+            obsv_avoid, env_state_avoid = jax.vmap(env_test_avoid.reset, in_axes=(0, None))(reset_rng_avoid, env_params_avoid)
+            rng_avoid, _rng_avoid = jax.random.split(rng_avoid)
+            runner_state_standard_avoid = (train_state_policy, train_state_value, env_state_avoid, obsv_avoid, _rng_avoid)
             runner_state_avoid = (*runner_state_standard_avoid, decomposed_state, policy_controls)
 
             runner_state, traj_batch_eval = jax.lax.scan(
@@ -482,23 +484,24 @@ def train(envs, env_paramss, config, rng, env_test=None):
             # FIXME: Below highly inefficient (rolling out 128 envs with deterministic policy)
 
 
-            rng_og = rng
-            rng, _rng = jax.random.split(rng_og)
-            reset_rng = jax.random.split(_rng, config["NUM_ENVS"])# FIXME: Have eval envs use a different seed than train envs
+            rng_composed, _rng_composed = jax.random.split(rng_composed)
+            reset_rng_composed = jax.random.split(_rng_composed, config["NUM_ENVS"])# FIXME: Have eval envs use a different seed than train envs
             # FIXME: Is it just running same initial state over and over?
             env_test_raa, env_test_avoid = env_test
-            obsv, env_state = jax.vmap(env_test_raa.reset, in_axes=(0, None))(reset_rng, env_params)
+            obsv, env_state = jax.vmap(env_test_raa.reset, in_axes=(0, None))(reset_rng_composed, env_params)
             decomposed_state = (train_state_policy_avoid, train_state_value_avoid)
             force_combined = False #if timestep < 20 else False # ihibits switching until > 20 epochs
             force_avoid = False 
             policy_controls = (force_combined, force_avoid)
-            runner_state_standard = (train_state_policy, train_state_value, env_state, obsv, _rng)
+            rng_composed, _rng_composed = jax.random.split(rng_composed)
+            runner_state_standard = (train_state_policy, train_state_value, env_state, obsv, _rng_composed)
             runner_state = (*runner_state_standard, decomposed_state, policy_controls)
 
-            rng, _rng = jax.random.split(rng_og)
-            reset_rng = jax.random.split(_rng, config["NUM_ENVS"])
-            obsv_avoid, env_state_avoid = jax.vmap(env_test_avoid.reset, in_axes=(0, None))(reset_rng, env_params_avoid)
-            runner_state_standard_avoid = (train_state_policy, train_state_value, env_state_avoid, obsv_avoid, _rng)
+            rng_avoid, _rng_avoid = jax.random.split(rng_avoid)
+            reset_rng_avoid = jax.random.split(_rng_avoid, config["NUM_ENVS"])
+            obsv_avoid, env_state_avoid = jax.vmap(env_test_avoid.reset, in_axes=(0, None))(reset_rng_avoid, env_params_avoid)
+            rng_avoid, _rng_avoid = jax.random.split(rng_avoid)
+            runner_state_standard_avoid = (train_state_policy, train_state_value, env_state_avoid, obsv_avoid, _rng_avoid)
             runner_state_avoid = (*runner_state_standard_avoid, decomposed_state, policy_controls)
 
             runner_state, traj_batch_eval = jax.lax.scan(
@@ -581,10 +584,6 @@ if __name__ == "__main__":
     envs = get_env(config)
     env, env_avoid = envs
 
-    # rng = jax.random.PRNGKey(300)
-    # reset_obs_test = env_avoid.reset(rng)[0]
-    # env_avoid.reset_toinput(key=rng, reset_obs=reset_obs_test, params=env_avoid.default_params)
-
     env_params = env.default_params
     env_params_avoid = env_avoid.default_params
 
@@ -608,7 +607,8 @@ if __name__ == "__main__":
         config["LOAD_DEC_DIR"] ="hopper_reachalwaysavoid_idxsMAX_switchfix_augstate"
         config["LOAD_DEC_DIR_MODEL"] ="checkpoint_2303"
 
-    rng = jax.random.PRNGKey(20)
-    out = train(envs, env_paramss, config, rng, env_test=env_test) # TODO assumes same env params (should be tuple if diff)
+    rng_composed = jax.random.PRNGKey(20)
+    rng_avoid = jax.random.PRNGKey(20)  # FIXME: Maybe?
+    out = train(envs, env_paramss, config, (rng_composed, rng_avoid), env_test=env_test) # TODO assumes same env params (should be tuple if diff)
     # NOTE passing multiple envs (composed + decomposed)
     # TODO more elegant use one env w/ diff env_params, but this is safe for now
