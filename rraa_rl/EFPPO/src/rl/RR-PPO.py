@@ -326,7 +326,6 @@ def train(envs, env_paramss, config, rng):
         )
         train_state_policy_reach2 = TrainState.create(
             apply_fn=policy_network_reach2.apply,
-            apply_fn=policy_network_reach2.apply,
             params=raw_restored['policy_reach2_network']['params'],
             mean=raw_restored['policy_reach2_network']["mean"],
             variance=raw_restored['policy_reach2_network']["variance"],
