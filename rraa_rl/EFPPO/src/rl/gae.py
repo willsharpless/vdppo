@@ -577,14 +577,22 @@ def calculate_indexs3_rr(
         ii, reach, reward = inp
         (next_Vs_row, next_mask_1, done) = carry
 
-        # Vs_row = next_mask_1 * (reward + gamma * next_Vs_row) # OSWINS
+        # Vs_row = (1 - gamma) * reach + gamma * jnp.min(reach, next_Vs_row) # DOESNT WORK W JAX
         Vs_row = next_mask_1 * (reward + gamma * next_Vs_row)
-        Vhs_row = Vs_row.at[ii, :].set(reach)
+        Vs_row = Vs_row.at[ii, :].set(reach)
 
-        # ACCUMULATION VERSION LIKE OSWINS
-        V_total = jnp.maximum(Vs_row, Vhs_row)[::-1]
+        V_total = Vs_row[::-1]
         V_next = jnp.maximum(jnp.power(gamma, ii) * last_value + V_total[-1, :], last_value)
         V_total_1 = jnp.concatenate((V_total, V_next))
+
+        # Vs_row = next_mask_1 * (reward + gamma * next_Vs_row) # OSWINS
+        # Vs_row = next_mask_1 * (reward + gamma * next_Vs_row)
+        # Vhs_row = Vs_row.at[ii, :].set(reach)
+
+        # # ACCUMULATION VERSION LIKE OSWINS
+        # V_total = jnp.maximum(Vs_row, Vhs_row)[::-1]
+        # V_next = jnp.maximum(jnp.power(gamma, ii) * last_value + V_total[-1, :], last_value)
+        # V_total_1 = jnp.concatenate((V_total, V_next))
 
         # MIN ACCUMULATION
         # V_total = jnp.minimum(Vs_row, Vhs_row)[::-1]
@@ -597,7 +605,7 @@ def calculate_indexs3_rr(
         # V_total_1 = jnp.concatenate((V_total, last_value))
 
         index_1 = jnp.argmin(V_total_1, axis=0)
-        done = done.at[index_1, jnp.arange(nh)].set(1.0)
+        # done = done.at[index_1, jnp.arange(nh)].set(1.0) # NO DONE
 
         next_mask_1 = jnp.roll(next_mask_1, 1)
         next_mask_1 = next_mask_1.at[0, :].set(1.)

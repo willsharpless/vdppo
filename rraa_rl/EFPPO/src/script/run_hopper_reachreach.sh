@@ -1,10 +1,10 @@
 python ./rraa_rl/EFPPO/src/rl/RR-PPO.py \
 --EXP_NAME=HopperReachReach \
---DIR=hopper_reachreach_idxsMAX_switchfix_augstate_obsfix \
+--DIR=hopper_reachreach_halfwidth_R10 \
 --LR=3e-4 \
 --NUM_ENVS=128 \
 --NUM_STEPS=400 \
---TOTAL_TIMESTEPS=500_000_000 \
+--TOTAL_TIMESTEPS=200_000_000 \
 --STEP_SCAN=4 \
 --UPDATE_EPOCHS=10 \
 --NUM_MINIBATCHES=32 \
@@ -20,4 +20,4 @@ python ./rraa_rl/EFPPO/src/rl/RR-PPO.py \
 --CUDA_USE=0,1,2,3 \
 --ANNEAL_LR \
 --ANNEAL_ENT \
---NAME=hopper_idxsMAX_switchfix_augstate_obsfix
+--NAME=hopper_reachreach_halfwidth_R10

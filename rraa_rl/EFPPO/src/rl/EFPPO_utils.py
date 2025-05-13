@@ -423,6 +423,83 @@ def _env_step_deterministic(env, env_params, runner_state, _):
 
     return runner_state, transition
 
+def _env_step_rr_deterministic(env, env_params, runner_state, _):
+    (train_state_policy, train_state_value, last_env_state, last_obs, 
+        rng, decomposed_state, policy_contols) = runner_state
+    (train_state_policy_reach1, train_state_value_reach1,
+     train_state_policy_reach2, train_state_value_reach2) = decomposed_state
+    (force_combined, force_reach1, force_reach2) = policy_contols
+    
+    """
+    This env_step always takes the next second policy after reaching first. 
+    Also uses a deterministic action.
+
+    Note, requires a different Transition.
+    -WAS
+    """
+
+    # SELECT ACTION
+    rng, _rng = jax.random.split(rng)
+    pi = train_state_policy.apply_fn(train_state_policy.params, last_obs)
+    value = train_state_value.apply_fn(train_state_value.params, last_obs)
+
+    pi_reach1 = train_state_policy_reach1.apply_fn(train_state_policy_reach1.params, last_obs)
+    value_reach1 = train_state_value_reach1.apply_fn(train_state_value_reach1.params, last_obs)
+
+    pi_reach2 = train_state_policy_reach2.apply_fn(train_state_policy_reach2.params, last_obs)
+    value_reach2 = train_state_value_reach2.apply_fn(train_state_value_reach2.params, last_obs)
+
+    # SAMPLE ACTIONS
+    action_combined = pi.loc
+    action_r1 = pi_reach1.loc
+    action_r2 = pi_reach2.loc
+
+    log_combined = pi.log_prob(action_combined)
+    log_r1 = pi_reach1.log_prob(action_r1)
+    log_r2 = pi_reach2.log_prob(action_r2)
+
+    # TAKE SECOND REACH ACTION IF FIRST REACHED (WAS)
+    reached1 = last_env_state.has_reached_1
+    reached2 = last_env_state.has_reached_2
+
+    # Combined if either has NOT been reached
+    combined_mask = jnp.logical_or(jnp.logical_not(jnp.logical_or(reached1, reached2)), force_combined)
+
+    # Reached 1 (but not 2)
+    only_reach1_mask = jnp.logical_and(reached1, jnp.logical_not(reached2))
+
+    # All others fall back to action_r1 (ie. both reached)
+    action = jnp.where(combined_mask[:, None], action_combined,
+            jnp.where(only_reach1_mask[:, None], action_r2, action_r1))
+
+    log_prob = jnp.where(combined_mask, log_combined,
+                jnp.where(only_reach1_mask, log_r2, log_r1))
+    
+    value = jnp.where(combined_mask, value,
+                jnp.where(only_reach1_mask, value_reach2, value_reach1))
+    
+    policy_taken = jnp.where(combined_mask, 0*value,
+                jnp.where(only_reach1_mask, 2 + 0*value, 1 + 0*value)) # just for tracking
+    
+    # NOTE this is the reach-based switch, 
+    # technically should switch when min V1 next > min V2 next etc.
+
+    # STEP ENV
+    rng, _rng = jax.random.split(rng)
+    env_num = last_obs.shape[0]
+    rng_step = jax.random.split(_rng, env_num)
+    obsv, env_state, reward, done, info = jax.vmap(
+        env.step, in_axes=(0, 0, 0, None)
+    )(rng_step, last_env_state, action, env_params)
+
+    transition = Transition_rr(
+        done, action, value, value_reach1, value_reach2, reward, log_prob, last_obs, info,
+        last_env_state.reach1, last_env_state.reach2, 
+        last_env_state.has_reached_1, last_env_state.has_reached_2, policy_taken
+    )
+
+    runner_state = (train_state_policy, train_state_value, env_state, obsv, rng, decomposed_state, policy_contols)
+    return runner_state, transition
 
 def _env_step_test(env, env_params, runner_state, _):
     (train_state_policy, last_env_state, last_obs, rng) = runner_state
