@@ -25,7 +25,7 @@ from rraa_rl.EFPPO.src.rl.utils import optimizer, get_BuRd, tree_index1, tree_in
 from rraa_rl.EFPPO.src.rl.gae import (Transition_reach,
                               calculate_gae, calculate_gae2, calculate_gae3,
                               calculate_gae_reach, calculate_gae_reach2, calculate_gae_reach3, calculate_gae_reach4,
-                              calculate_indexs, calculate_indexs2, calculate_indexs3, calculate_indexs3_rr)
+                              calculate_indexs, calculate_indexs2, calculate_indexs3, calculate_indexs3_rr, calculate_indexs_rr)
 
 class TrainState(train_state.TrainState):
     mean: Any
@@ -120,8 +120,8 @@ def train(envs, env_paramss, config, rng):
 
         indexs, done = calculate_indexs3_rr(ent_gamma[1], traj_batch.reward, l_tile_append,
                                                jnp.expand_dims(last_val, axis=1).T) 
-        # NOTE are we totally sure this works, I dont really get og usage, 
-        #   other than it determines done (no unhelathy catcher in Oswin code)
+        # indexs, done = calculate_indexs_rr(ent_gamma[1], traj_batch.reward, l_tile_append,
+        #                                        V_append)
         done = done[:-1, :]
 
         advantages_V, targets_V = calculate_gae_reach4(ent_gamma[1], config["GAE_LAMBDA"], l_tile_append, V_append, done)
@@ -148,6 +148,9 @@ def train(envs, env_paramss, config, rng):
 
         indexs, done_1 = calculate_indexs3_rr(ent_gamma[1], traj_batch_reach1.reward, reach1_append,
                                                jnp.expand_dims(last_val1, axis=1).T)
+        # indexs, done_1 = calculate_indexs_rr(ent_gamma[1], traj_batch_reach1.reward, reach1_append,
+        #                                        V_reach1_append)
+
         done_1 = done_1[:-1, :]
 
         advantages_V_reach1, targets_V_reach1 = calculate_gae_reach4(ent_gamma[1], config["GAE_LAMBDA"], reach1_append, V_reach1_append, done_1)
@@ -174,6 +177,8 @@ def train(envs, env_paramss, config, rng):
 
         indexs, done_2 = calculate_indexs3_rr(ent_gamma[1], traj_batch_reach2.reward, reach2_append,
                                                jnp.expand_dims(last_val2, axis=1).T)
+        # indexs, done_2 = calculate_indexs_rr(ent_gamma[1], traj_batch_reach2.reward, reach2_append,
+        #                                        V_reach2_append)
         done_2 = done_2[:-1, :]
 
         advantages_V_reach2, targets_V_reach2 = calculate_gae_reach4(ent_gamma[1], config["GAE_LAMBDA"], reach2_append, V_reach2_append, done_2)
@@ -320,6 +325,7 @@ def train(envs, env_paramss, config, rng):
             tx=tx,
         )
         train_state_policy_reach2 = TrainState.create(
+            apply_fn=policy_network_reach2.apply,
             apply_fn=policy_network_reach2.apply,
             params=raw_restored['policy_reach2_network']['params'],
             mean=raw_restored['policy_reach2_network']["mean"],
@@ -505,6 +511,7 @@ if __name__ == "__main__":
         config["ANNEAL_ENT"]=True
         config["NAME"]="hopper_debug"
         # config["TEST_MODE"]=True # USES DETERMINISTIC MODELS
+        # config["TEST_MODE"]=True # USES DETERMINISTIC MODELS
 
     config["NUM_UPDATES"] = int(
         config["TOTAL_TIMESTEPS"] // config["NUM_STEPS"] // config["NUM_ENVS"]
@@ -539,7 +546,8 @@ if __name__ == "__main__":
 
     config["USE_WANDB"] = not debug # False for debugging
     if config["USE_WANDB"]:
-        wandb.init(project='EC-EFPPO-{}'.format(config["EXP_NAME"]), name=config["NAME"], config=config)
+        wandb.init(project='EC-EFPPO-{}'.format(config["EXP_NAME"]), name=config["NAME"], config=config,
+                   entity='braat_brrt')
 
     config["LOAD_DECOMPOSED"] = False # TODO make arg
     if config["LOAD_DECOMPOSED"]:

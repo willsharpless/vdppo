@@ -1,8 +1,9 @@
 from .reach_avoid.grid_avoid import GridAvoid
 from .reach_avoid.grid_constraint import GridConstraint
 from .reach_avoid.pendulum_constraint import PendulumConstraint
-from .reach_avoid.hopper_avoid_ceiling import HopperAvoidCeiling, HopperAvoidCeilingDeterministic, HopperAvoidCeilingWall
-from .reach_avoid.hopper_avoid_ceiling import HopperReachReach, HopperReachReachDeterministic, HopperReach1, HopperReach2, HopperReach1Deterministic, HopperReach2Deterministic
+from .reach_avoid.hopper_avoid_ceiling import HopperAvoidCeiling, HopperAvoidCeilingDeterministic, HopperAvoidCeilingWallEnergy, HopperAvoidCeilingWallEnergyDeterministic
+from .reach_avoid.hopper_avoid_ceiling import HopperReachReach, HopperReachReachDeterministic, HopperReach1, HopperReach2, HopperReach1Deterministic, HopperReach2Deterministic, \
+    HopperAvoidOnly, HopperReachAvoid
 from .reach_avoid.wind_field import WindField
 from .reach_avoid.half_cheetah_avoid import HalfCheetahAvoid, HalfCheetahAvoidDeterministic
 from .reach_avoid.safety_gym_avoid import PointAvoid
@@ -78,14 +79,54 @@ def get_env(config):
         env2 = HopperReach2Deterministic() # TODO make determinstic
         env2 = TransformObservation(env2, trans)
         return (env, env1, env2)
-    elif config["EXP_NAME"] == 'HopperAvoidCeilingWall':
+        
+    elif config["EXP_NAME"] == "HopperReachAlwaysAvoid": 
+        # TODO: Add a determinist and random version after you create the environments - change based on mode? 
         vec1 = jnp.zeros(14, dtype=jnp.float32)
         vec1 = vec1.at[0].set(1.)
-        # vec1 = vec1.at[-1].set(400.)
         vec2 = jnp.ones(14, dtype=jnp.float32)
-        # vec2 = vec2.at[-1].set(400.)
         trans = partial(transform_observation, vec1, vec2)
-        env = HopperAvoidCeilingWall()
+        if config["TEST_MODE"] == False:
+            env = HopperReachAvoid()
+            env_avoid = HopperAvoidOnly() 
+        else:
+            env = HopperReachAvoid(deterministic=True)
+            env_avoid = HopperAvoidOnly(deterministic=True)
+        env = TransformObservation(env, trans)
+        
+        env_avoid = TransformObservation(env_avoid, trans)
+        return (env, env_avoid)
+    
+    elif config["EXP_NAME"] == "HopperReachAvoid":
+        vec1 = jnp.zeros(14, dtype=jnp.float32)
+        vec1 = vec1.at[0].set(1.)
+        vec2 = jnp.ones(14, dtype=jnp.float32)
+        trans = partial(transform_observation, vec1, vec2)
+        if config["TEST_MODE"] == False:
+            env = HopperReachAvoid()
+        else:
+            env = HopperReachAvoid(deterministic=True)
+        env = TransformObservation(env, trans)
+
+        return (env)
+
+    elif config["EXP_NAME"] == 'HopperAvoidCeilingWallEnergy' and config["TEST_MODE"] == False:
+        vec1 = jnp.zeros(14, dtype=jnp.float32)
+        vec1 = vec1.at[0].set(1.)
+        vec1 = vec1.at[-1].set(400.)
+        vec2 = jnp.ones(14, dtype=jnp.float32)
+        vec2 = vec2.at[-1].set(400.)
+        trans = partial(transform_observation, vec1, vec2)
+        env = HopperAvoidCeilingWallEnergy()
+        env = TransformObservation(env, trans)
+    elif config["EXP_NAME"] == 'HopperAvoidCeilingWallEnergy' and config["TEST_MODE"] == True:
+        vec1 = jnp.zeros(14, dtype=jnp.float32)
+        vec1 = vec1.at[0].set(1.)
+        vec1 = vec1.at[-1].set(400.)
+        vec2 = jnp.ones(14, dtype=jnp.float32)
+        vec2 = vec2.at[-1].set(400.)
+        trans = partial(transform_observation, vec1, vec2)
+        env = HopperAvoidCeilingWallEnergyDeterministic()
         env = TransformObservation(env, trans)
     # TODO DEFINE OTHERS
     elif config["EXP_NAME"] == 'HalfCheetahAvoid':

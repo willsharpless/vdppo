@@ -37,16 +37,41 @@ class Transition_reach(NamedTuple):
     info: jnp.ndarray
     reach: jnp.ndarray
 
+
+class Transition_a(NamedTuple):
+    done: jnp.ndarray
+    action: jnp.ndarray
+    value: jnp.ndarray
+    reward: jnp.ndarray
+    log_prob: jnp.ndarray
+    obs: jnp.ndarray
+    info: jnp.ndarray
+    avoid: jnp.ndarray
+
 class Transition_raa(NamedTuple):
     done: jnp.ndarray
     action: jnp.ndarray
     value: jnp.ndarray
-    value_reach: jnp.ndarray
     reward: jnp.ndarray
     log_prob: jnp.ndarray
     obs: jnp.ndarray
     info: jnp.ndarray
     reach: jnp.ndarray
+    avoid: jnp.ndarray
+    value_avoid: jnp.ndarray 
+    has_reached: jnp.ndarray
+    policy_taken: jnp.ndarray
+
+class Transition_ra(NamedTuple):
+    done: jnp.ndarray
+    action: jnp.ndarray
+    value: jnp.ndarray
+    reward: jnp.ndarray
+    log_prob: jnp.ndarray
+    obs: jnp.ndarray
+    info: jnp.ndarray
+    reach: jnp.ndarray
+    avoid: jnp.ndarray
 
 class Transition_rr(NamedTuple):
     done: jnp.ndarray
@@ -578,7 +603,9 @@ def calculate_indexs3_rr(
         (next_Vs_row, next_mask_1, done) = carry
 
         # Vs_row = (1 - gamma) * reach + gamma * jnp.min(reach, next_Vs_row) # DOESNT WORK W JAX
+        # Vs_row = (1 - gamma) * reach + gamma * jnp.min(reach, next_Vs_row) # DOESNT WORK W JAX
         Vs_row = next_mask_1 * (reward + gamma * next_Vs_row)
+        Vs_row = Vs_row.at[ii, :].set(reach)
         Vs_row = Vs_row.at[ii, :].set(reach)
 
         V_total = Vs_row[::-1]
@@ -618,6 +645,51 @@ def calculate_indexs3_rr(
     init_mask_1 = jnp.ones((T, 1)) * jnp.inf
     init_carry = (init_Vs, init_mask_1, done)
     inps = (ts, T_hs[:-1], reward)
+    end, indexs = jax.lax.scan(loop, init_carry, inps, reverse=True)
+
+    return indexs, end[-1]
+
+@partial(jax.jit)
+def calculate_indexs_rr(
+    gamma: float,
+    reward: jnp.ndarray,
+    T_hs: jnp.ndarray,
+    T_Vs: jnp.ndarray,
+) -> jnp.ndarray:
+
+    Tp1, nh = T_Vs.shape
+    T = Tp1 - 1
+
+    def loop(carry, inp):
+        ii, reach, Vs = inp
+        (next_Vs_row, next_mask, done) = carry
+
+        # DP for Vh and reward.
+        disc_to_h = (1 - gamma) * reach + gamma * next_Vs_row
+        Vs_row = next_mask * jnp.minimum(reach, disc_to_h)
+        # Vhs_row = next_mask * jnp.minimum(reach, disc_to_h)
+        # Vs_row = next_mask * (reward + gamma * next_Vs_row)
+        index = jnp.argmin(Vs_row, axis=0)
+        done = done.at[index, jnp.arange(nh)].set(1.0)
+
+        # Setup Vs_row for next timestep.
+        # Vhs_row = Vhs_row.at[ii + 1, :].set(Vhs)
+        Vs_row = Vs_row.at[ii + 1, :].set(Vs)
+        next_mask = jnp.roll(next_mask, 1)
+        next_mask = next_mask.at[0, :].set(1.)
+
+        return (Vs_row, next_mask, done), index
+
+    ts = jnp.arange(T)[::-1]
+    init_Vs = jnp.ones((T + 1, nh)) * jnp.inf
+    # init_Vhs = jnp.ones((T + 1, nh)) * jnp.inf
+    init_mask = jnp.ones((T + 1, 1)) * jnp.inf
+    init_Vs = init_Vs.at[0, :].set(T_Vs[T, :])
+    # init_Vhs = init_Vhs.at[0, :].set(T_Vhs[T, :])
+    init_mask = init_mask.at[0, :].set(1.)
+    done = jnp.full((T+1, nh), 0.)
+    init_carry = (init_Vs, init_mask, done)
+    inps = (ts, T_hs[:-1], T_Vs[1:])
     end, indexs = jax.lax.scan(loop, init_carry, inps, reverse=True)
 
     return indexs, end[-1]

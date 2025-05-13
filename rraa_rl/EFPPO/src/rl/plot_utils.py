@@ -3,6 +3,10 @@ import matplotlib.pyplot as plt
 from matplotlib.colors import CenteredNorm
 
 from rraa_rl.EFPPO.src.rl.utils import get_BuRd
+from PIL import Image
+import imageio
+import wandb 
+from time import time 
 
 def calculate_consumption(traj_batch):
     reach_idx = (traj_batch.reach < 0).argmax(axis=0)
@@ -16,6 +20,24 @@ def calculate_consumption(traj_batch):
         else:
             energy.append(np.sum(traj_batch.reward[0: reach_idx[i], i]))
     return np.array(energy), cnt, idx
+
+def calculate_reach_avoid_stats(traj_batch):
+    reach_idx = (traj_batch.reach < 0).argmax(axis=0)
+    cnt_never_reached = 0
+    cnt_crash = 0
+    cnt_crash_after_reach = 0
+    for i in range(reach_idx.shape[0]):
+        if reach_idx[i] == 0 and traj_batch.reach[0, i] >= 0:
+            cnt_never_reached += 1
+        else:
+            if np.any(traj_batch.avoid[reach_idx[i]+1:, i] > 0):
+                cnt_crash_after_reach += 1 
+    for i in range(traj_batch.avoid.shape[1]):
+        if np.any(traj_batch.avoid[:, i] > 0):
+            cnt_crash += 1
+    share_crash_after_reach = cnt_crash_after_reach / (traj_batch.avoid.shape[1] - cnt_never_reached) if (traj_batch.avoid.shape[1] - cnt_never_reached) > 0 else 0
+    return cnt_never_reached, cnt_crash, share_crash_after_reach
+        
 
 def calculate_reachreach(traj_batch, reach_type="both"):
     
@@ -34,6 +56,20 @@ def calculate_reachreach(traj_batch, reach_type="both"):
     reach_percs = (reach_1_perc, reach_2_perc, reach_perc)
     reach_idxs = (reach_idx_1, reach_idx_2, reach_idx)
     return reach_percs, reach_idxs
+
+def calculate_reachalwaysavoid(traj_batch, idx, type="both"): 
+    assert(type in ["both", "avoid" ])
+
+    # First Avoid violation index
+    all_avoid_idx = (traj_batch.avoid < 0).argmax(axis=0)
+    avoid_idx = all_avoid_idx[idx]
+    reach_idx = None 
+    
+    if type == "both": 
+        # First Reach Index
+        all_reach_idx = (traj_batch.reach < 0).argmax(axis=0)
+        reach_idx = all_reach_idx[idx]
+    return reach_idx, avoid_idx 
 
 def calculate_minimal_reach(reach):
     reach_idx = (reach < 0).argmax()
@@ -227,35 +263,27 @@ def plot_contour(train_state_energy, train_state_h, train_state_policy, info, ep
         ax.set_aspect('equal')
         plt.savefig('model/{}/reach/trajectory_{:0>4d}'.format(config["DIR"], epoch), dpi=300)
         plt.close("all")
-    elif config['EXP_NAME'] == 'HopperAvoidCeiling' or config['EXP_NAME'] == 'HopperAvoidCeilingWall':
+    elif config['EXP_NAME'] == 'HopperAvoidCeiling' or config['EXP_NAME'] == 'HopperAvoidCeilingWall' or config['EXP_NAME'] == 'HopperAvoidCeilingWallEnergy':
         plt.figure(figsize=(12, 6))
         fig, ax = plt.subplots(1, 1)
         reach_idx = info['reach_index']
-        for i in range(0,reach_idx, 16):
+        indices = np.linspace(0, info['head_pos'].shape[0] - 1, 11, dtype=int)
+        for step_n, i in enumerate(indices):
+            alpha = (step_n + 1) / 11
             ax.plot(np.array([info['head_pos'][i, 0], info['jaw_pos'][i, 0]]),
-                     np.array([info['head_pos'][i, 1], info['jaw_pos'][i, 1]]), c='r')
+                     np.array([info['head_pos'][i, 1], info['jaw_pos'][i, 1]]), c='r', alpha=alpha)
             ax.plot(np.array([info['jaw_pos'][i, 0], info['thg_pos'][i, 0]]),
-                     np.array([info['jaw_pos'][i, 1], info['thg_pos'][i, 1]]), c='g')
+                     np.array([info['jaw_pos'][i, 1], info['thg_pos'][i, 1]]), c='g', alpha=alpha)
             ax.plot(np.array([info['thg_pos'][i, 0], info['leg_pos'][i, 0]]),
-                     np.array([info['thg_pos'][i, 1], info['leg_pos'][i, 1]]), c='b')
+                     np.array([info['thg_pos'][i, 1], info['leg_pos'][i, 1]]), c='b', alpha=alpha)
             ax.plot(np.array([info['leg_pos'][i, 0], info['foot_front_pos'][i, 0]]),
-                     np.array([info['leg_pos'][i, 1], info['foot_front_pos'][i, 1]]), c='b')
+                     np.array([info['leg_pos'][i, 1], info['foot_front_pos'][i, 1]]), c='b', alpha=alpha)
             ax.plot(np.array([info['leg_pos'][i, 0], info['foot_back_pos'][i, 0]]),
-                     np.array([info['leg_pos'][i, 1], info['foot_back_pos'][i, 1]]), c='m')
-        ax.plot(np.array([info['head_pos'][reach_idx, 0], info['jaw_pos'][reach_idx, 0]]),
-                np.array([info['head_pos'][reach_idx, 1], info['jaw_pos'][reach_idx, 1]]), c='r')
-        ax.plot(np.array([info['jaw_pos'][reach_idx, 0], info['thg_pos'][reach_idx, 0]]),
-                np.array([info['jaw_pos'][reach_idx, 1], info['thg_pos'][reach_idx, 1]]), c='g')
-        ax.plot(np.array([info['thg_pos'][reach_idx, 0], info['leg_pos'][reach_idx, 0]]),
-                np.array([info['thg_pos'][reach_idx, 1], info['leg_pos'][reach_idx, 1]]), c='b')
-        ax.plot(np.array([info['leg_pos'][reach_idx, 0], info['foot_front_pos'][reach_idx, 0]]),
-                np.array([info['leg_pos'][reach_idx, 1], info['foot_front_pos'][reach_idx, 1]]), c='b')
-        ax.plot(np.array([info['leg_pos'][reach_idx, 0], info['foot_back_pos'][reach_idx, 0]]),
-                np.array([info['leg_pos'][reach_idx, 1], info['foot_back_pos'][reach_idx, 1]]), c='m')
+                     np.array([info['leg_pos'][i, 1], info['foot_back_pos'][i, 1]]), c='m', alpha=alpha)
         draw_circle = plt.Circle((2.0, 1.4), 0.1, fill=False)
         draw_rectangle = plt.Rectangle((0.95, 1.3), 0.1, 0.2, facecolor="red", fill=True)
-        if config['EXP_NAME'] == 'HopperAvoidCeilingWall':
-            draw_rectangle2 = plt.Rectangle((2.35, -0.1), 1.6, 0.2, facecolor="red", fill=True)
+        if 'HopperAvoidCeilingWall' in config['EXP_NAME']:
+            draw_rectangle2 = plt.Rectangle((2.35, -0.1), 0.2, 1.6, facecolor="red", fill=True)
             ax.add_patch(draw_rectangle2)
         ax.add_patch(draw_circle)
         ax.add_patch(draw_rectangle)
@@ -265,7 +293,7 @@ def plot_contour(train_state_energy, train_state_h, train_state_policy, info, ep
         ax.set_title("Trajectory Plot Init Energy {:.2f} Final Energy {:.2f}"
                      .format(info['init_energy'], info['final_energy']))
         plt.savefig('model/{}/reach/trajectory_{:0>4d}'.format(config["DIR"], epoch), dpi=300)
-        plt.close("all")
+        # plt.close("all")
     elif config['EXP_NAME'] == 'HopperReachReach':
         plt.figure(figsize=(12, 6))
         fig, ax = plt.subplots(1, 1)
@@ -535,6 +563,8 @@ def plot_contour(train_state_energy, train_state_h, train_state_policy, info, ep
         ax.set_title("Trajectory Plot")
         plt.savefig('model/{}/reach/trajectory_{:0>4d}'.format(config["DIR"], epoch), dpi=300)
         plt.close("all")
+    
+    return fig
 
 
 def plot_contour_RRAA(multi_info, epoch, config, policy_decision_sample=None):
@@ -626,4 +656,190 @@ def plot_contour_RRAA(multi_info, epoch, config, policy_decision_sample=None):
 
         plt.savefig('model/{}/reach/trajectory_{:0>4d}'.format(config["DIR"], epoch), dpi=300)
         return fig
-        # plt.close("all")
+    
+        
+    elif config['EXP_NAME'] == 'HopperReachAlwaysAvoid' or config["EXP_NAME"] == "HopperReachAvoid":
+        
+        info, info_avoid = multi_info 
+        plt.figure(figsize=(12, 6*2))
+        fig, axes = plt.subplots(2, 1)
+
+        def draw_hopper_raa(info, title, ax):
+            reach_idx = info.get('reach_index')
+            avoid_idx = info.get('avoid_index')
+            full_len = info['head_pos'].shape[0]
+
+            # Plot Reach  
+            draw_circle = plt.Circle((2.0, 1.4), 0.1, fill=False)
+
+            # Plot Avoid
+            draw_rectangle = plt.Rectangle((0.95, 1.3), 0.1, 0.2, facecolor="red", fill=True)
+            draw_rectangle2 = plt.Rectangle((2.1, -0.1), 0.4, 1.6, facecolor="red", fill=True)
+            draw_rectangle3 = plt.Rectangle((-2., 0.), 4.5, 0.5, facecolor="red", fill=True)
+
+            ax.add_patch(draw_circle)
+            ax.add_patch(draw_rectangle)
+            ax.add_patch(draw_rectangle2)
+            ax.add_patch(draw_rectangle3)
+
+            indices = np.linspace(0, full_len, 11, dtype=int)
+            for step_n, i in enumerate(indices):
+                alpha = (step_n + 1) / 11 
+                # Plot Hopper Body 
+                ax.plot(np.array([info['head_pos'][i, 0], info['jaw_pos'][i, 0]]),
+                        np.array([info['head_pos'][i, 1], info['jaw_pos'][i, 1]]), c='r', alpha=alpha)
+                ax.plot(np.array([info['jaw_pos'][i, 0], info['thg_pos'][i, 0]]),
+                        np.array([info['jaw_pos'][i, 1], info['thg_pos'][i, 1]]), c='g', alpha=alpha)
+                ax.plot(np.array([info['thg_pos'][i, 0], info['leg_pos'][i, 0]]),
+                        np.array([info['thg_pos'][i, 1], info['leg_pos'][i, 1]]), c='b', alpha=alpha)
+                ax.plot(np.array([info['leg_pos'][i, 0], info['foot_front_pos'][i, 0]]),
+                        np.array([info['leg_pos'][i, 1], info['foot_front_pos'][i, 1]]), c='b', alpha=alpha)
+                ax.plot(np.array([info['leg_pos'][i, 0], info['foot_back_pos'][i, 0]]),
+                        np.array([info['leg_pos'][i, 1], info['foot_back_pos'][i, 1]]), c='m', alpha=alpha)
+                
+            # Plot First Reach in Green 
+            if reach_idx is not None and reach_idx > 0:
+                ax.plot(np.array([info['head_pos'][reach_idx, 0], info['jaw_pos'][reach_idx, 0]]),
+                        np.array([info['head_pos'][reach_idx, 1], info['jaw_pos'][reach_idx, 1]]), c='g', linewidth=4)
+                ax.plot(np.array([info['jaw_pos'][reach_idx, 0], info['thg_pos'][reach_idx, 0]]),
+                        np.array([info['jaw_pos'][reach_idx, 1], info['thg_pos'][reach_idx, 1]]), c='g', linewidth=4)
+                ax.plot(np.array([info['thg_pos'][reach_idx, 0], info['leg_pos'][reach_idx, 0]]),
+                        np.array([info['thg_pos'][reach_idx, 1], info['leg_pos'][reach_idx, 1]]), c='g', linewidth=4)
+                ax.plot(np.array([info['leg_pos'][reach_idx, 0], info['foot_front_pos'][reach_idx, 0]]),
+                        np.array([info['leg_pos'][reach_idx, 1], info['foot_front_pos'][reach_idx, 1]]), c='g', linewidth=4)
+                ax.plot(np.array([info['leg_pos'][reach_idx, 0], info['foot_back_pos'][reach_idx, 0]]),
+                        np.array([info['leg_pos'][reach_idx, 1], info['foot_back_pos'][reach_idx, 1]]), c='g', linewidth=4)
+                
+            # Plot Avoid Violation in Red
+            if avoid_idx is not None and avoid_idx > 0: 
+                ax.plot(np.array([info['head_pos'][avoid_idx, 0], info['jaw_pos'][avoid_idx, 0]]),
+                        np.array([info['head_pos'][avoid_idx, 1], info['jaw_pos'][avoid_idx, 1]]), c='r', linewidth=4)
+                ax.plot(np.array([info['jaw_pos'][avoid_idx, 0], info['thg_pos'][avoid_idx, 0]]),
+                        np.array([info['jaw_pos'][avoid_idx, 1], info['thg_pos'][avoid_idx, 1]]), c='r', linewidth=4)
+                ax.plot(np.array([info['thg_pos'][avoid_idx, 0], info['leg_pos'][avoid_idx, 0]]),
+                        np.array([info['thg_pos'][avoid_idx, 1], info['leg_pos'][avoid_idx, 1]]), c='r', linewidth=4)
+                ax.plot(np.array([info['leg_pos'][avoid_idx, 0], info['foot_front_pos'][avoid_idx, 0]]),
+                        np.array([info['leg_pos'][avoid_idx, 1], info['foot_front_pos'][avoid_idx, 1]]), c='r', linewidth=4)
+                ax.plot(np.array([info['leg_pos'][avoid_idx, 0], info['foot_back_pos'][avoid_idx, 0]]),
+                        np.array([info['leg_pos'][avoid_idx, 1], info['foot_back_pos'][avoid_idx, 1]]), c='r', linewidth=4) 
+                
+            ax.set_xlim((-0.5, 2.5))
+            ax.set_ylim((0, 1.5))
+            ax.set_aspect('equal')
+
+            ax.set_title(title)
+
+        # Draw Reach Avoid and Avoid Only 
+        draw_hopper_raa(info, "Reach Avoid", axes[0])
+        if config['EXP_NAME'] == 'HopperReachAlwaysAvoid':
+            draw_hopper_raa(info_avoid, "Avoid Only", axes[1])
+
+        plt.savefig('model/{}/reach/trajectory_{:0>4d}'.format(config["DIR"], epoch), dpi=300)
+        return fig
+    
+def plot_video_contour_RRAA(multi_info, epoch, config, save_video=False):
+    start_time = time()
+    if config['EXP_NAME'] == 'HopperReachAlwaysAvoid':
+        
+        info, info_avoid = multi_info 
+
+        def draw_hopper_raa(step, info, title, ax):
+
+            reach_idx = info.get('reach_index')
+            avoid_idx = info.get('avoid_index')
+            full_len = info['head_pos'].shape[0]
+
+            # Plot Reach  
+            draw_circle = plt.Circle((2.0, 1.4), 0.1, fill=False)
+
+            # Plot Avoid
+            draw_rectangle = plt.Rectangle((0.95, 1.3), 0.1, 0.2, facecolor="red", fill=True)
+            draw_rectangle2 = plt.Rectangle((2.1, -0.1), 0.4, 1.6, facecolor="red", fill=True)
+            draw_rectangle3 = plt.Rectangle((-2., 0.), 4.5, 0.5, facecolor="red", fill=True)
+
+            ax.add_patch(draw_circle)
+            ax.add_patch(draw_rectangle)
+            ax.add_patch(draw_rectangle2)
+            ax.add_patch(draw_rectangle3)
+
+            # Plot Hopper Body 
+            ax.plot(np.array([info['head_pos'][step, 0], info['jaw_pos'][step, 0]]),
+                    np.array([info['head_pos'][step, 1], info['jaw_pos'][step, 1]]), c='r')
+            ax.plot(np.array([info['jaw_pos'][step, 0], info['thg_pos'][step, 0]]),
+                    np.array([info['jaw_pos'][step, 1], info['thg_pos'][step, 1]]), c='g')
+            ax.plot(np.array([info['thg_pos'][step, 0], info['leg_pos'][step, 0]]),
+                    np.array([info['thg_pos'][step, 1], info['leg_pos'][step, 1]]), c='b')
+            ax.plot(np.array([info['leg_pos'][step, 0], info['foot_front_pos'][step, 0]]),
+                    np.array([info['leg_pos'][step, 1], info['foot_front_pos'][step, 1]]), c='b')
+            ax.plot(np.array([info['leg_pos'][step, 0], info['foot_back_pos'][step, 0]]),
+                    np.array([info['leg_pos'][step, 1], info['foot_back_pos'][step, 1]]), c='m')
+                
+            # Plot First Reach in Green 
+            if reach_idx is not None and reach_idx > 0:
+                ax.plot(np.array([info['head_pos'][reach_idx, 0], info['jaw_pos'][reach_idx, 0]]),
+                        np.array([info['head_pos'][reach_idx, 1], info['jaw_pos'][reach_idx, 1]]), c='g', linewidth=4)
+                ax.plot(np.array([info['jaw_pos'][reach_idx, 0], info['thg_pos'][reach_idx, 0]]),
+                        np.array([info['jaw_pos'][reach_idx, 1], info['thg_pos'][reach_idx, 1]]), c='g', linewidth=4)
+                ax.plot(np.array([info['thg_pos'][reach_idx, 0], info['leg_pos'][reach_idx, 0]]),
+                        np.array([info['thg_pos'][reach_idx, 1], info['leg_pos'][reach_idx, 1]]), c='g', linewidth=4)
+                ax.plot(np.array([info['leg_pos'][reach_idx, 0], info['foot_front_pos'][reach_idx, 0]]),
+                        np.array([info['leg_pos'][reach_idx, 1], info['foot_front_pos'][reach_idx, 1]]), c='g', linewidth=4)
+                ax.plot(np.array([info['leg_pos'][reach_idx, 0], info['foot_back_pos'][reach_idx, 0]]),
+                        np.array([info['leg_pos'][reach_idx, 1], info['foot_back_pos'][reach_idx, 1]]), c='g', linewidth=4)
+                
+            # Plot Avoid Violation in Red
+            if avoid_idx is not None and avoid_idx > 0: 
+                ax.plot(np.array([info['head_pos'][avoid_idx, 0], info['jaw_pos'][avoid_idx, 0]]),
+                        np.array([info['head_pos'][avoid_idx, 1], info['jaw_pos'][avoid_idx, 1]]), c='r', linewidth=4)
+                ax.plot(np.array([info['jaw_pos'][avoid_idx, 0], info['thg_pos'][avoid_idx, 0]]),
+                        np.array([info['jaw_pos'][avoid_idx, 1], info['thg_pos'][avoid_idx, 1]]), c='r', linewidth=4)
+                ax.plot(np.array([info['thg_pos'][avoid_idx, 0], info['leg_pos'][avoid_idx, 0]]),
+                        np.array([info['thg_pos'][avoid_idx, 1], info['leg_pos'][avoid_idx, 1]]), c='r', linewidth=4)
+                ax.plot(np.array([info['leg_pos'][avoid_idx, 0], info['foot_front_pos'][avoid_idx, 0]]),
+                        np.array([info['leg_pos'][avoid_idx, 1], info['foot_front_pos'][avoid_idx, 1]]), c='r', linewidth=4)
+                ax.plot(np.array([info['leg_pos'][avoid_idx, 0], info['foot_back_pos'][avoid_idx, 0]]),
+                        np.array([info['leg_pos'][avoid_idx, 1], info['foot_back_pos'][avoid_idx, 1]]), c='r', linewidth=4) 
+                
+            ax.set_xlim((-2.5, 2.5))
+            ax.set_ylim((0, 1.6))
+            ax.set_aspect('equal')
+
+            ax.set_title(title)
+        
+
+        frames = []
+        full_len = info['head_pos'].shape[0]
+        num_frames = full_len//2
+        indices = np.linspace(0, full_len, num_frames, dtype=int)
+        for step_n in indices: 
+            # plt.figure(figsize=(12, 6*2))
+            fig, axes = plt.subplots(2, 1, figsize=(4, 4), dpi=100)  # Smaller and square figure
+            draw_hopper_raa(step_n, info, "Reach Avoid", axes[0])
+            draw_hopper_raa(step_n, info_avoid, "Avoid Only", axes[1])
+            
+            # Render the figure to an image (smaller size)
+            fig.canvas.draw()
+            frame = np.frombuffer(fig.canvas.buffer_rgba(), dtype=np.uint8)
+            frame = frame.reshape(fig.canvas.get_width_height()[::-1] + (4,))  # RGBA (4 channels)
+            frames.append(frame)
+            
+            plt.close(fig)
+            plt.close("all")
+        
+
+        # Save frames as a video using PIL - don't do this in general
+        frames = [Image.fromarray(frame) for frame in frames]
+        if save_video: 
+            # video_path = 'model/{}/reach/trajectory_{:0>4d}.mp4'.format(config["DIR"], epoch)
+            # frames[0].save(video_path, save_all=True, append_images=frames[1:], duration=100, loop=0)
+
+            video_path = 'model/{}/reach/trajectory_{:0>4d}.mp4'.format(config["DIR"], epoch)
+            print("\n\nSaving video to: ", video_path)
+            imageio.mimsave(video_path, frames, fps=30)
+
+            wandb.log({"trajectory_video": wandb.Video(video_path, fps=10, format="mp4")})
+        
+        end_time = time()
+        print("Time taken to plot and push video: ", end_time - start_time)
+        return frames
+
