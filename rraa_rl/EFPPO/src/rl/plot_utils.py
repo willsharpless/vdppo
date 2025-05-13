@@ -653,7 +653,7 @@ def plot_contour_RRAA(multi_info, epoch, config):
 
             # Plot Avoid
             draw_rectangle = plt.Rectangle((0.95, 1.3), 0.1, 0.2, facecolor="red", fill=True)
-            draw_rectangle2 = plt.Rectangle((2.1, -0.1), 0.4, 1.6, facecolor="red", fill=True)
+            draw_rectangle2 = plt.Rectangle((2.35, -0.1), 0.4, 1.6, facecolor="red", fill=True)
             draw_rectangle3 = plt.Rectangle((-2., 0.), 4.5, 0.5, facecolor="red", fill=True)
 
             ax.add_patch(draw_circle)
@@ -733,7 +733,7 @@ def plot_video_contour_RRAA(multi_info, epoch, config, save_video=False, prefix=
 
             # Plot Avoid
             draw_rectangle = plt.Rectangle((0.95, 1.3), 0.1, 0.2, facecolor="red", fill=True)
-            draw_rectangle2 = plt.Rectangle((2.1, -0.1), 0.4, 1.6, facecolor="red", fill=True)
+            draw_rectangle2 = plt.Rectangle((2.35, -0.1), 0.4, 1.6, facecolor="red", fill=True)
             draw_rectangle3 = plt.Rectangle((-2., 0.), 4.5, 0.5, facecolor="red", fill=True)
 
             ax.add_patch(draw_circle)

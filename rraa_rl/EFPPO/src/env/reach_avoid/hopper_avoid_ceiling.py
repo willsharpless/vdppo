@@ -882,7 +882,7 @@ class HopperRAATemplate:
 
             return jnp.where(is_inside, min_dist_inside, -dist_outside)
         dist_box = signed_dist_box(head_pos)
-        dist_wall = head_pos[0] - 2.1
+        dist_wall = head_pos[0] - 2.35
         dist_floor = 0.5 - head_pos[1]
         return jnp.maximum(jnp.maximum(dist_box, dist_wall), dist_floor)
         # avoid_1 = (head_pos[1] >= 1.3) & (head_pos[0] >= 0.95) & (head_pos[0] <= 1.05)
