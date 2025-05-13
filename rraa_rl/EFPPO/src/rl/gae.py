@@ -372,7 +372,7 @@ def calculate_gae_avoid4(
         mask_h = mask[:, None]
 
         # DP for Vh.
-        done_row_processed = jnp.where(jnp.isnan(done_row * jnp.inf), 0, done_row * jnp.inf)
+        done_row_processed = jnp.where(jnp.isnan(done_row * jnp.inf), 0, done_row * -jnp.inf) # MAXIMUM NEEDS -INF
         disc_to_h = (1 - gamma) * hs + gamma * (next_Vhs_row + done_row_processed)
 
         Vhs_row = jnp.maximum(hs, disc_to_h) # AVOID IS MAXIMUM

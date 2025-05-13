@@ -985,7 +985,46 @@ class HopperAvoidOnly(HopperRAATemplate):
         env_state = EnvStateAvoidOnly(state, avoid_value)
 
         return observation, env_state
-        # raise NotImplementedError("reset_fullrandom() not implemented in base class")
+    
+    @partial(jax.jit, static_argnums=(0,))
+    def reset_zeros(self, key, params=None):
+        qpos = jnp.array([0.0, 0., 0., 0., 0., 0.], dtype=jnp.float32)
+        qvel = jnp.array([0.0, 0., 0., 0., 0., 0.], dtype=jnp.float32)
+
+        pipeline_state = self._env.pipeline_init(qpos, qvel)
+        obs = self._env._get_obs(pipeline_state)
+        reward, done, zero = jp.zeros(3)
+        metrics = {
+            'reward_forward': zero,
+            'reward_ctrl': zero,
+            'reward_healthy': zero,
+            'x_position': zero,
+            'x_velocity': zero,
+        }
+        state = State(pipeline_state, obs, reward, done, metrics)
+        # Episode Metrics 
+        rng = key 
+        state.info['steps'] = jp.zeros(rng.shape[:-1])
+        state.info['truncation'] = jp.zeros(rng.shape[:-1])
+        # Keep separate record of episode done as state.info['done'] can be erased
+        # by AutoResetWrapper
+        state.info['episode_done'] = jp.zeros(rng.shape[:-1])
+        episode_metrics = dict()
+        episode_metrics['sum_reward'] = jp.zeros(rng.shape[:-1])
+        episode_metrics['length'] = jp.zeros(rng.shape[:-1])
+        for metric_name in state.metrics.keys():
+            episode_metrics[metric_name] = jp.zeros(rng.shape[:-1])
+        state.info['episode_metrics'] = episode_metrics
+        state.info['first_pipeline_state'] = state.pipeline_state
+        state.info['first_obs'] = state.obs
+
+        head_pos, _, _, _, _, _ = self.calculate_position(state.obs)
+        avoid_value = self.is_avoid(head_pos)
+        reach_value = self.is_reach(head_pos)
+        observation = jnp.concatenate([state.obs, jnp.array([avoid_value, reach_value])])
+        env_state = EnvStateAvoidOnly(state, avoid_value)
+
+        return observation, env_state
     
     @partial(jax.jit, static_argnums=(0,))
     def reset_toinput(self, key, reset_obs, params=None):
