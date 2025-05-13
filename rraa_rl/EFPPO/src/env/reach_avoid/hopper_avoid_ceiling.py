@@ -409,15 +409,15 @@ class HopperReachReach:
         reach = jnp.sqrt((head_pos[0] - target_center[0]) ** 2 + (head_pos[1] - target_center[1]) ** 2) - 0.1
         has_reached_goal = jnp.sqrt((head_pos[0] - target_center[0]) ** 2 + (head_pos[1] - target_center[1]) ** 2) < 0.1
         value = jnp.where(has_reached_goal, -2.5, reach)
-        return value * 100.0
+        return value * 10
     
     @partial(jax.jit, static_argnums=(0,))
     def is_reach2(self, head_pos):
-        target_center = [-2., 1.4]
+        target_center = [0., 1.4]
         reach = jnp.sqrt((head_pos[0] - target_center[0]) ** 2 + (head_pos[1] - target_center[1]) ** 2) - 0.1
         has_reached_goal = jnp.sqrt((head_pos[0] - target_center[0]) ** 2 + (head_pos[1] - target_center[1]) ** 2) < 0.1
         value = jnp.where(has_reached_goal, -2.5, reach)
-        return value * 100.0
+        return value * 10
 
     def observation_space(self, params):
         return spaces.Box(
@@ -494,15 +494,15 @@ class HopperReach1:
         reach = jnp.sqrt((head_pos[0] - target_center[0]) ** 2 + (head_pos[1] - target_center[1]) ** 2) - 0.1
         has_reached_goal = jnp.sqrt((head_pos[0] - target_center[0]) ** 2 + (head_pos[1] - target_center[1]) ** 2) < 0.1
         value = jnp.where(has_reached_goal, -2.5, reach)
-        return value * 100.0
+        return value * 10
     
     @partial(jax.jit, static_argnums=(0,))
     def is_reach2(self, head_pos):
-        target_center = [-2., 1.4]
+        target_center = [0., 1.4]
         reach = jnp.sqrt((head_pos[0] - target_center[0]) ** 2 + (head_pos[1] - target_center[1]) ** 2) - 0.1
         has_reached_goal = jnp.sqrt((head_pos[0] - target_center[0]) ** 2 + (head_pos[1] - target_center[1]) ** 2) < 0.1
         value = jnp.where(has_reached_goal, -2.5, reach)
-        return value * 100.0
+        return value * 10
 
     def observation_space(self, params):
         return spaces.Box(
@@ -578,15 +578,15 @@ class HopperReach2:
         reach = jnp.sqrt((head_pos[0] - target_center[0]) ** 2 + (head_pos[1] - target_center[1]) ** 2) - 0.1
         has_reached_goal = jnp.sqrt((head_pos[0] - target_center[0]) ** 2 + (head_pos[1] - target_center[1]) ** 2) < 0.1
         value = jnp.where(has_reached_goal, -2.5, reach)
-        return value * 100.0
+        return value * 10
     
     @partial(jax.jit, static_argnums=(0,))
     def is_reach2(self, head_pos):
-        target_center = [-2., 1.4]
+        target_center = [0., 1.4]
         reach = jnp.sqrt((head_pos[0] - target_center[0]) ** 2 + (head_pos[1] - target_center[1]) ** 2) - 0.1
         has_reached_goal = jnp.sqrt((head_pos[0] - target_center[0]) ** 2 + (head_pos[1] - target_center[1]) ** 2) < 0.1
         value = jnp.where(has_reached_goal, -2.5, reach)
-        return value * 100.0
+        return value * 10
 
     def observation_space(self, params):
         return spaces.Box(
@@ -678,7 +678,7 @@ class HopperReachReachDeterministic:
     
     @partial(jax.jit, static_argnums=(0,))
     def is_reach2(self, head_pos):
-        target_center = [-2., 1.4]
+        target_center = [0., 1.4]
         reach = jnp.sqrt((head_pos[0] - target_center[0]) ** 2 + (head_pos[1] - target_center[1]) ** 2) - 0.1
         has_reached_goal = jnp.sqrt((head_pos[0] - target_center[0]) ** 2 + (head_pos[1] - target_center[1]) ** 2) < 0.1
         value = jnp.where(has_reached_goal, -2.5, reach)
@@ -762,7 +762,7 @@ class HopperReach1Deterministic:
     
     @partial(jax.jit, static_argnums=(0,))
     def is_reach2(self, head_pos):
-        target_center = [-2., 1.4]
+        target_center = [0., 1.4]
         reach = jnp.sqrt((head_pos[0] - target_center[0]) ** 2 + (head_pos[1] - target_center[1]) ** 2) - 0.1
         has_reached_goal = jnp.sqrt((head_pos[0] - target_center[0]) ** 2 + (head_pos[1] - target_center[1]) ** 2) < 0.1
         value = jnp.where(has_reached_goal, -2.5, reach)
@@ -846,7 +846,7 @@ class HopperReach2Deterministic:
     
     @partial(jax.jit, static_argnums=(0,))
     def is_reach2(self, head_pos):
-        target_center = [-2., 1.4]
+        target_center = [0., 1.4]
         reach = jnp.sqrt((head_pos[0] - target_center[0]) ** 2 + (head_pos[1] - target_center[1]) ** 2) - 0.1
         has_reached_goal = jnp.sqrt((head_pos[0] - target_center[0]) ** 2 + (head_pos[1] - target_center[1]) ** 2) < 0.1
         value = jnp.where(has_reached_goal, -2.5, reach)

@@ -320,7 +320,7 @@ def train(envs, env_paramss, config, rng):
             tx=tx,
         )
         train_state_policy_reach2 = TrainState.create(
-            apply_fn=policy_network_reach1.apply,
+            apply_fn=policy_network_reach2.apply,
             params=raw_restored['policy_reach2_network']['params'],
             mean=raw_restored['policy_reach2_network']["mean"],
             variance=raw_restored['policy_reach2_network']["variance"],
@@ -410,9 +410,12 @@ def train(envs, env_paramss, config, rng):
         traj_batch_1, targets_V_1, done_1 = result_traj_1
         traj_batch_2, targets_V_2, done_2 = result_traj_2
 
-        cnt_1, cnt_2, reach_idx_1, reach_idx_2 = calculate_reachreach(traj_batch)
-        cnt_11, cnt_21, reach_idx_11, reach_idx_21 = calculate_reachreach(traj_batch_1, reach_type="1")
-        cnt_12, cnt_22, reach_idx_12, reach_idx_22 = calculate_reachreach(traj_batch_2, reach_type="2")
+        ((reach_1_perc, reach_2_perc, reach_perc),
+            (reach_idx_1, reach_idx_2, reach_idx)) = calculate_reachreach(traj_batch)
+        ((reach_1_perc_1, _, _),
+            (reach_idx_1_1, _, _)) = calculate_reachreach(traj_batch_1, reach_type="1")
+        ((_, reach_2_perc_2, _),
+            (_, reach_idx_2_2, _)) = calculate_reachreach(traj_batch_2, reach_type="2")
 
         idx = 0
 
@@ -421,9 +424,9 @@ def train(envs, env_paramss, config, rng):
         info = tree_index2(traj_batch.info, idx)
         info_1 = tree_index2(traj_batch_1.info, idx)
         info_2 = tree_index2(traj_batch_2.info, idx)
-        info['reach_index_1'], info['reach_index_2'] = reach_idx_1, reach_idx_2
-        info_1['reach_index_1'], info_1['reach_index_2'] = reach_idx_11, reach_idx_21
-        info_2['reach_index_1'], info_2['reach_index_2'] = reach_idx_12, reach_idx_22
+        info['reach_index_1'], info['reach_index_2'] = reach_idx_1[idx], reach_idx_2[idx]
+        info_1['reach_index_1'], info_1['reach_index_2'] = reach_idx_1_1[idx], np.array(-1)
+        info_2['reach_index_1'], info_2['reach_index_2'] = np.array(-1), reach_idx_2_2[idx]
 
         if config['EXP_NAME'] == 'WindField' or config['EXP_NAME'] == 'WindFieldFull':
             info['u_air'] = env_params.u_air
@@ -442,9 +445,10 @@ def train(envs, env_paramss, config, rng):
                                     overwrite=True,
                                     keep=2)
 
-        fig = plot_contour_RRAA((info, info_1, info_2), timestep, config)
-
         policy_decision_sample = traj_batch.policy_taken[:,idx]
+        # fig = plot_contour_RRAA((info, info_1, info_2), timestep, config)
+        fig = plot_contour_RRAA((info, info_1, info_2), timestep, config, policy_decision_sample=policy_decision_sample)
+
         fig2 = plot_policy_decision(policy_decision_sample, timestep, config)
 
         # plot_target(targets_h[:, idx], traj_batch.value_reach[:, idx], traj_batch.reach1[:, idx], traj_batch.reach2[:, idx],
@@ -463,7 +467,9 @@ def train(envs, env_paramss, config, rng):
                     "reach_gamma": result['reach_gamma'][0], "entropy_weight": result['entropy_weight'][0],
                     'trajectory_sample':wandb.Image(fig),
                     'policy_decision_sample':wandb.Image(fig2),
-                        # 'trajectory_sample_R1':wandb.Image(fig1), 'trajectory_sample_R2':wandb.Image(fig2)
+                    "Dec. Reach 1 Success %": reach_1_perc_1,
+                    "Dec. Reach 2 Success %": reach_2_perc_2,
+                    "Reach-Reach Success %": reach_perc,
                     })
         plt.close("all")
         # print("Earliest Reach {}: {}        {}".format(timestep, cnt, np.mean(consumption)))
@@ -474,14 +480,14 @@ def train(envs, env_paramss, config, rng):
 if __name__ == "__main__":
     config = vars(get_args(sys.argv[1:]))
 
-    debug = False
+    debug = True
     if debug:
         config["EXP_NAME"]="HopperReachReach"
         config["DIR"]="hopper_reachreach_debug"
         config["LR"]=3e-4
         config["NUM_ENVS"]=128
         config["NUM_STEPS"]=400
-        config["TOTAL_TIMESTEPS"]=500_000_000
+        config["TOTAL_TIMESTEPS"]=50_000_000
         config["STEP_SCAN"]=4
         config["UPDATE_EPOCHS"]=10
         config["NUM_MINIBATCHES"]=32
@@ -498,7 +504,7 @@ if __name__ == "__main__":
         config["ANNEAL_LR"]=True,
         config["ANNEAL_ENT"]=True
         config["NAME"]="hopper_debug"
-        config["TEST_MODE"]=True # USES DETERMINISTIC MODELS
+        # config["TEST_MODE"]=True # USES DETERMINISTIC MODELS
 
     config["NUM_UPDATES"] = int(
         config["TOTAL_TIMESTEPS"] // config["NUM_STEPS"] // config["NUM_ENVS"]
@@ -531,14 +537,14 @@ if __name__ == "__main__":
         env_params_reach_2 = env_params_reach_2.replace(index=config['SECTION'])
     env_paramss = (env_params, env_params_reach_1, env_params_reach_2)
 
-    config["USE_WANDB"] = True # False for debugging
+    config["USE_WANDB"] = not debug # False for debugging
     if config["USE_WANDB"]:
         wandb.init(project='EC-EFPPO-{}'.format(config["EXP_NAME"]), name=config["NAME"], config=config)
 
-    config["LOAD_DECOMPOSED"] = False # TODO make args
+    config["LOAD_DECOMPOSED"] = False # TODO make arg
     if config["LOAD_DECOMPOSED"]:
-        config["LOAD_DEC_DIR"] ="hopper_reachreach_idxsMAX_switchfix_augstate"
-        config["LOAD_DEC_DIR_MODEL"] ="checkpoint_2303"
+        config["LOAD_DEC_DIR"] ="hopper_reachreach_idxsMAX_switchfix_augstate_obsfix_long"
+        config["LOAD_DEC_DIR_MODEL"] ="checkpoint_859"
 
     rng = jax.random.PRNGKey(20)
     out = train(envs, env_paramss, config, rng) # TODO assumes same env params (should be tuple if diff)

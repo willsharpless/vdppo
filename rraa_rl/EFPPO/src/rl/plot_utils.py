@@ -18,20 +18,22 @@ def calculate_consumption(traj_batch):
     return np.array(energy), cnt, idx
 
 def calculate_reachreach(traj_batch, reach_type="both"):
+    
+    # Compute first reaching idx
     reach_idx_1 = (traj_batch.reach1 < 0).argmax(axis=0) if reach_type in ["both", "1"] else None
     reach_idx_2 = (traj_batch.reach2 < 0).argmax(axis=0) if reach_type in ["both", "2"] else None
-    cnt_1 = 0
-    cnt_2 = 0
-    idx_1 = 0
-    idx_2 = 0
-    for i in range(traj_batch.done.shape[0]):
-        if reach_type in ["both", "1"] and reach_idx_1[i] == 0 and traj_batch.reach1[0, i] <= 0:
-            cnt_1 += 1
-            idx_1 = i
-        elif reach_type in ["both", "2"] and reach_idx_2[i] == 0 and traj_batch.reach2[0, i] <= 0:
-            cnt_2 += 1
-            idx_2 = i
-    return cnt_1, cnt_2, idx_1, idx_2
+    reach_idx_1 = np.where(np.any((traj_batch.reach1 < 0) == 1, axis=0), reach_idx_1, np.inf) if reach_type in ["both", "1"] else None
+    reach_idx_2 = np.where(np.any((traj_batch.reach2 < 0) == 1, axis=0), reach_idx_2, np.inf) if reach_type in ["both", "2"] else None
+    reach_idx = np.maximum(reach_idx_1, reach_idx_2) if reach_type in ["both"] else None
+
+    # Compute Percentage
+    reach_1_perc = ((reach_idx_1 < np.inf).sum() / reach_idx_1.__len__()).item() if reach_type in ["both", "1"] else None
+    reach_2_perc = ((reach_idx_2 < np.inf).sum() / reach_idx_2.__len__()).item() if reach_type in ["both", "2"] else None
+    reach_perc = ((reach_idx < np.inf).sum() / reach_idx.__len__()).item() if reach_type in ["both"] else None
+
+    reach_percs = (reach_1_perc, reach_2_perc, reach_perc)
+    reach_idxs = (reach_idx_1, reach_idx_2, reach_idx)
+    return reach_percs, reach_idxs
 
 def calculate_minimal_reach(reach):
     reach_idx = (reach < 0).argmax()
@@ -535,73 +537,92 @@ def plot_contour(train_state_energy, train_state_h, train_state_policy, info, ep
         plt.close("all")
 
 
-def plot_contour_RRAA(multi_info, epoch, config):
+def plot_contour_RRAA(multi_info, epoch, config, policy_decision_sample=None):
 
     if config['EXP_NAME'] == 'HopperReachReach':
 
         info, info_1, info_2 = multi_info
-        plt.figure(figsize=(12, 18))
-        fig, axes = plt.subplots(3, 1)
 
-        def draw_hopper_rr(info, title, ax, target_type="both"):
+        if policy_decision_sample is None:
+            plt.figure(figsize=(7, 5), constrained_layout=True)
+            fig, axes = plt.subplots(3, 1)
+        else:
+            plt.figure(figsize=(7, 7), constrained_layout=True)
+            fig, axes = plt.subplots(4, 1)
+
+        def draw_hopper_rr(info, title, ax, target_type="both", plot_until="success", plot_freq=16):
             reach_idx_1 = info['reach_index_1']
             reach_idx_2 = info['reach_index_2']
             full_len = info['head_pos'].shape[0]
             draw_circle = plt.Circle((2.0, 1.4), 0.1, edgecolor="green", linewidth=2, fill=False)
-            draw_circle2 = plt.Circle((-2.0, 1.4), 0.1, edgecolor="blue", linewidth=2, fill=False)
+            # draw_circle2 = plt.Circle((-2.0, 1.4), 0.1, edgecolor="blue", linewidth=2, fill=False)
+            draw_circle2 = plt.Circle((0., 1.4), 0.1, edgecolor="blue", linewidth=2, fill=False)
             
+            if plot_until == "success":
+                full_len = np.maximum(reach_idx_1, reach_idx_2)
+                full_len = info['head_pos'].shape[0] if full_len.item() == np.inf else int(full_len.item())
+            else:
+                full_len = info['head_pos'].shape[0]
+            reach_idx_1 = int(reach_idx_1.item()) if reach_idx_1.item() != np.inf else -1
+            reach_idx_2 = int(reach_idx_2.item()) if reach_idx_2.item() != np.inf else -1
+
             if target_type == "both":
                 ax.add_patch(draw_circle)
                 ax.add_patch(draw_circle2)
-            elif target_type == "1":
+            elif target_type == "R1":
                 ax.add_patch(draw_circle)
-            elif target_type == "2":
+            elif target_type == "R2":
                 ax.add_patch(draw_circle2)
             
-            for i in range(0, full_len, 16):
+            def draw_body(ax, info, i, alpha, color_mode="normal"):
+                if color_mode == "R1":
+                    c1, c2, c3, c4, c5 = 'g', 'g', 'g', 'g', 'g'
+                    linewidth=3
+                elif color_mode == "R2":
+                    c1, c2, c3, c4, c5 = 'b', 'b', 'b', 'b', 'b'
+                    linewidth=3
+                else:
+                    c1, c2, c3, c4, c5 = 'r', 'g', 'b', 'b', 'm'
+                    linewidth=1
                 ax.plot(np.array([info['head_pos'][i, 0], info['jaw_pos'][i, 0]]),
-                        np.array([info['head_pos'][i, 1], info['jaw_pos'][i, 1]]), c='r')
+                        np.array([info['head_pos'][i, 1], info['jaw_pos'][i, 1]]), c=c1, alpha=alpha, linewidth=linewidth)
                 ax.plot(np.array([info['jaw_pos'][i, 0], info['thg_pos'][i, 0]]),
-                        np.array([info['jaw_pos'][i, 1], info['thg_pos'][i, 1]]), c='g')
+                        np.array([info['jaw_pos'][i, 1], info['thg_pos'][i, 1]]), c=c2, alpha=alpha, linewidth=linewidth)
                 ax.plot(np.array([info['thg_pos'][i, 0], info['leg_pos'][i, 0]]),
-                        np.array([info['thg_pos'][i, 1], info['leg_pos'][i, 1]]), c='b')
+                        np.array([info['thg_pos'][i, 1], info['leg_pos'][i, 1]]), c=c3, alpha=alpha, linewidth=linewidth)
                 ax.plot(np.array([info['leg_pos'][i, 0], info['foot_front_pos'][i, 0]]),
-                        np.array([info['leg_pos'][i, 1], info['foot_front_pos'][i, 1]]), c='b')
+                        np.array([info['leg_pos'][i, 1], info['foot_front_pos'][i, 1]]), c=c4, alpha=alpha, linewidth=linewidth)
                 ax.plot(np.array([info['leg_pos'][i, 0], info['foot_back_pos'][i, 0]]),
-                        np.array([info['leg_pos'][i, 1], info['foot_back_pos'][i, 1]]), c='m')
-            if reach_idx_1 > 0 and (target_type == "both" or target_type == "1"):
-                i = reach_idx_1
-                ax.plot(np.array([info['head_pos'][i, 0], info['jaw_pos'][i, 0]]),
-                        np.array([info['head_pos'][i, 1], info['jaw_pos'][i, 1]]), c='g', linewidth=4)
-                ax.plot(np.array([info['jaw_pos'][i, 0], info['thg_pos'][i, 0]]),
-                        np.array([info['jaw_pos'][i, 1], info['thg_pos'][i, 1]]), c='g', linewidth=4)
-                ax.plot(np.array([info['thg_pos'][i, 0], info['leg_pos'][i, 0]]),
-                        np.array([info['thg_pos'][i, 1], info['leg_pos'][i, 1]]), c='g', linewidth=4)
-                ax.plot(np.array([info['leg_pos'][i, 0], info['foot_front_pos'][i, 0]]),
-                        np.array([info['leg_pos'][i, 1], info['foot_front_pos'][i, 1]]), c='g', linewidth=4)
-                ax.plot(np.array([info['leg_pos'][i, 0], info['foot_back_pos'][i, 0]]),
-                        np.array([info['leg_pos'][i, 1], info['foot_back_pos'][i, 1]]), c='g', linewidth=4)
-            if reach_idx_2 > 0 and (target_type == "both" or target_type == "2"):
-                i = reach_idx_2
-                ax.plot(np.array([info['head_pos'][i, 0], info['jaw_pos'][i, 0]]),
-                        np.array([info['head_pos'][i, 1], info['jaw_pos'][i, 1]]), c='b', linewidth=4)
-                ax.plot(np.array([info['jaw_pos'][i, 0], info['thg_pos'][i, 0]]),
-                        np.array([info['jaw_pos'][i, 1], info['thg_pos'][i, 1]]), c='b', linewidth=4)
-                ax.plot(np.array([info['thg_pos'][i, 0], info['leg_pos'][i, 0]]),
-                        np.array([info['thg_pos'][i, 1], info['leg_pos'][i, 1]]), c='b', linewidth=4)
-                ax.plot(np.array([info['leg_pos'][i, 0], info['foot_front_pos'][i, 0]]),
-                        np.array([info['leg_pos'][i, 1], info['foot_front_pos'][i, 1]]), c='b', linewidth=4)
-                ax.plot(np.array([info['leg_pos'][i, 0], info['foot_back_pos'][i, 0]]),
-                        np.array([info['leg_pos'][i, 1], info['foot_back_pos'][i, 1]]), c='b', linewidth=4)
-            ax.set_xlim((-2.5, 2.5))
-            ax.set_ylim((0, 1.6))
-            ax.set_aspect('equal')
+                        np.array([info['leg_pos'][i, 1], info['foot_back_pos'][i, 1]]), c=c5, alpha=alpha, linewidth=linewidth)
+            
+            for i in range(0, full_len, plot_freq):
+                alpha = 0.3 + 0.3 * (i/full_len)
+                draw_body(ax, info, i, alpha)
+
+            if reach_idx_1 > -1 and (target_type == "both" or target_type == "R1"):
+                draw_body(ax, info, reach_idx_1, 0.9, color_mode = "R1")
+
+            if reach_idx_2 > -1 and (target_type == "both" or target_type == "R2"):
+                draw_body(ax, info, reach_idx_2, 0.9, color_mode = "R2")
+
+            # ax.set_xlim((-2.5, 2.5))
+            ax.set_xlim((-0.5, 2.5))
+            ax.set_ylim((-0.1, 1.6))
+            # ax.set_aspect('equal')
             
             ax.set_title(title)
         
         draw_hopper_rr(info, "Reach Reach", axes[0], target_type="both")
-        draw_hopper_rr(info_1, "Reach 1", axes[1], target_type="1")
-        draw_hopper_rr(info_2, "Reach 2", axes[2], target_type="2")
+        draw_hopper_rr(info_1, "Reach 1", axes[1], target_type="R1")
+        draw_hopper_rr(info_2, "Reach 2", axes[2], target_type="R2")
+
+        if policy_decision_sample is not None:
+            axes[3].plot(policy_decision_sample, label='policy #')
+            axes[3].set_title("Policy Decision over Trajectory")
+            axes[3].set_xlabel("Trajectory Step")
+            axes[3].set_ylim((-0.1, 2.1))
+            # axes[3].set_box_aspect(1.6 / 3.0)
+            axes[3].legend()
 
         plt.savefig('model/{}/reach/trajectory_{:0>4d}'.format(config["DIR"], epoch), dpi=300)
         return fig
