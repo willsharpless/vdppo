@@ -151,7 +151,7 @@ def train(envs, env_paramss, config, rng):
         rng = update_state[-1]
 
         # CALCULATE DECOMPOSED ADVANTAGES - 1
-        (_, _, env_state_1, last_obs_1, rng_1, decomposed_state, policy_controls) = runner_state_reach1
+        (_, _, env_state_1, last_obs_1, rng_1, _, _) = runner_state_reach1
 
         last_val1 = train_state_value_reach1.apply_fn(train_state_value_reach1.params, last_obs_1)
         reach1_append = jnp.concatenate((traj_batch_reach1.reach1, jnp.expand_dims(env_state_1.reach1, axis=1).T))
@@ -179,7 +179,7 @@ def train(envs, env_paramss, config, rng):
         rng_1 = update_state_reach1[-1]
 
         # CALCULATE DECOMPOSED ADVANTAGES - 2
-        (_, _, env_state_2, last_obs_2, rng_2, decomposed_state, policy_controls) = runner_state_reach2
+        (_, _, env_state_2, last_obs_2, rng_2, _, _) = runner_state_reach2
 
         last_val2 = train_state_value_reach2.apply_fn(train_state_value_reach2.params, last_obs_2)
         reach2_append = jnp.concatenate((traj_batch_reach2.reach2, jnp.expand_dims(env_state_2.reach2, axis=1).T))
