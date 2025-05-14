@@ -311,6 +311,59 @@ class HopperReachReach:
         env_state = EnvStateRR(state, reach1_value, reach2_value, has_reached_1, has_reached_2)
         
         return observation, env_state
+    
+    @partial(jax.jit, static_argnums=(0,))
+    def reset_toinput(self, key, reset_obs, params=None): 
+        # Derived from Reset function in: 
+        # 1. brax.envs.hopper 
+        # 2. brax.envs.wrappers.training (EpisodeWrapper)
+        # 3. brax.envs.wrappers.auto_reset (AutoResetWrapper)
+        reset_obs = deepcopy(reset_obs[:12])
+
+        og_reset_obs = deepcopy(reset_obs)
+        reset_obs = reset_obs.at[1].set(og_reset_obs[1] - 1.25) # FIXME: don't know where this comes from exactly figure it out
+
+        qpos = reset_obs[:6]
+        qvel = reset_obs[6:12]
+        pipeline_state = self._env.pipeline_init(qpos, qvel)
+        obs = self._env._get_obs(pipeline_state)
+        reward, done, zero = jp.zeros(3)
+        metrics = {
+            'reward_forward': zero,
+            'reward_ctrl': zero,
+            'reward_healthy': zero,
+            'x_position': zero,
+            'x_velocity': zero,
+        }
+        state = State(pipeline_state, obs, reward, done, metrics)
+        # Episode Metrics 
+        rng = key 
+        state.info['steps'] = jp.zeros(rng.shape[:-1])
+        state.info['truncation'] = jp.zeros(rng.shape[:-1])
+        # Keep separate record of episode done as state.info['done'] can be erased
+        # by AutoResetWrapper
+        state.info['episode_done'] = jp.zeros(rng.shape[:-1])
+        episode_metrics = dict()
+        episode_metrics['sum_reward'] = jp.zeros(rng.shape[:-1])
+        episode_metrics['length'] = jp.zeros(rng.shape[:-1])
+        for metric_name in state.metrics.keys():
+            episode_metrics[metric_name] = jp.zeros(rng.shape[:-1])
+        state.info['episode_metrics'] = episode_metrics
+        state.info['first_pipeline_state'] = state.pipeline_state
+        state.info['first_obs'] = state.obs
+
+        head_pos, _, _, _, _, _ = self.calculate_position(state.obs)
+
+        reach1_value = self.is_reach1(head_pos)
+        reach2_value = self.is_reach2(head_pos)
+        
+        has_reached_1 = reach1_value < 0
+        has_reached_2 = reach2_value < 0
+
+        observation = jnp.concatenate([state.obs, jnp.array([reach1_value, reach2_value])])
+        env_state = EnvStateRR(state, reach1_value, reach2_value, has_reached_1, has_reached_2)
+        
+        return observation, env_state
 
     @partial(jax.jit, static_argnums=(0,))
     def step(self, key, state, action, params=None):
@@ -401,6 +454,53 @@ class HopperReach1:
         observation = jnp.concatenate([state.obs, jnp.array([reach1_value, reach2_value])])
         env_state = EnvStateR1(state, reach1_value)
         return observation, env_state
+    
+    @partial(jax.jit, static_argnums=(0,))
+    def reset_toinput(self, key, reset_obs, params=None): 
+        # Derived from Reset function in: 
+        # 1. brax.envs.hopper 
+        # 2. brax.envs.wrappers.training (EpisodeWrapper)
+        # 3. brax.envs.wrappers.auto_reset (AutoResetWrapper)
+        reset_obs = deepcopy(reset_obs[:12])
+
+        og_reset_obs = deepcopy(reset_obs)
+        reset_obs = reset_obs.at[1].set(og_reset_obs[1] - 1.25) # FIXME: don't know where this comes from exactly figure it out
+
+        qpos = reset_obs[:6]
+        qvel = reset_obs[6:12]
+        pipeline_state = self._env.pipeline_init(qpos, qvel)
+        obs = self._env._get_obs(pipeline_state)
+        reward, done, zero = jp.zeros(3)
+        metrics = {
+            'reward_forward': zero,
+            'reward_ctrl': zero,
+            'reward_healthy': zero,
+            'x_position': zero,
+            'x_velocity': zero,
+        }
+        state = State(pipeline_state, obs, reward, done, metrics)
+        # Episode Metrics 
+        rng = key 
+        state.info['steps'] = jp.zeros(rng.shape[:-1])
+        state.info['truncation'] = jp.zeros(rng.shape[:-1])
+        # Keep separate record of episode done as state.info['done'] can be erased
+        # by AutoResetWrapper
+        state.info['episode_done'] = jp.zeros(rng.shape[:-1])
+        episode_metrics = dict()
+        episode_metrics['sum_reward'] = jp.zeros(rng.shape[:-1])
+        episode_metrics['length'] = jp.zeros(rng.shape[:-1])
+        for metric_name in state.metrics.keys():
+            episode_metrics[metric_name] = jp.zeros(rng.shape[:-1])
+        state.info['episode_metrics'] = episode_metrics
+        state.info['first_pipeline_state'] = state.pipeline_state
+        state.info['first_obs'] = state.obs
+
+        head_pos, _, _, _, _, _ = self.calculate_position(state.obs)
+        reach1_value = self.is_reach1(head_pos)
+        reach2_value = self.is_reach2(head_pos)
+        observation = jnp.concatenate([state.obs, jnp.array([reach1_value, reach2_value])])
+        env_state = EnvStateR1(state, reach1_value)
+        return observation, env_state
 
     @partial(jax.jit, static_argnums=(0,))
     def step(self, key, state, action, params=None):
@@ -480,6 +580,53 @@ class HopperReach2:
     @partial(jax.jit, static_argnums=(0,))
     def reset(self, key, params=None):
         state = self._env.reset(key)
+        head_pos, _, _, _, _, _ = self.calculate_position(state.obs)
+        reach1_value = self.is_reach1(head_pos)
+        reach2_value = self.is_reach2(head_pos)
+        observation = jnp.concatenate([state.obs, jnp.array([reach1_value, reach2_value])])
+        env_state = EnvStateR2(state, reach2_value)
+        return observation, env_state
+    
+    @partial(jax.jit, static_argnums=(0,))
+    def reset_toinput(self, key, reset_obs, params=None): 
+        # Derived from Reset function in: 
+        # 1. brax.envs.hopper 
+        # 2. brax.envs.wrappers.training (EpisodeWrapper)
+        # 3. brax.envs.wrappers.auto_reset (AutoResetWrapper)
+        reset_obs = deepcopy(reset_obs[:12])
+
+        og_reset_obs = deepcopy(reset_obs)
+        reset_obs = reset_obs.at[1].set(og_reset_obs[1] - 1.25) # FIXME: don't know where this comes from exactly figure it out
+
+        qpos = reset_obs[:6]
+        qvel = reset_obs[6:12]
+        pipeline_state = self._env.pipeline_init(qpos, qvel)
+        obs = self._env._get_obs(pipeline_state)
+        reward, done, zero = jp.zeros(3)
+        metrics = {
+            'reward_forward': zero,
+            'reward_ctrl': zero,
+            'reward_healthy': zero,
+            'x_position': zero,
+            'x_velocity': zero,
+        }
+        state = State(pipeline_state, obs, reward, done, metrics)
+        # Episode Metrics 
+        rng = key 
+        state.info['steps'] = jp.zeros(rng.shape[:-1])
+        state.info['truncation'] = jp.zeros(rng.shape[:-1])
+        # Keep separate record of episode done as state.info['done'] can be erased
+        # by AutoResetWrapper
+        state.info['episode_done'] = jp.zeros(rng.shape[:-1])
+        episode_metrics = dict()
+        episode_metrics['sum_reward'] = jp.zeros(rng.shape[:-1])
+        episode_metrics['length'] = jp.zeros(rng.shape[:-1])
+        for metric_name in state.metrics.keys():
+            episode_metrics[metric_name] = jp.zeros(rng.shape[:-1])
+        state.info['episode_metrics'] = episode_metrics
+        state.info['first_pipeline_state'] = state.pipeline_state
+        state.info['first_obs'] = state.obs
+
         head_pos, _, _, _, _, _ = self.calculate_position(state.obs)
         reach1_value = self.is_reach1(head_pos)
         reach2_value = self.is_reach2(head_pos)

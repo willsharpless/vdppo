@@ -62,10 +62,26 @@ def train(envs, env_paramss, config, rng):
             env_step, runner_state, None, config["NUM_STEPS"]
         )
 
+        init_type = "toinput" # "standard", "toinput"
         # RESET ENV - 1
         rng, _rng = jax.random.split(rng_og)
         reset_rng = jax.random.split(_rng, config["NUM_ENVS"])
-        obsv_reach_1, env_state_reach_1 = jax.vmap(env_reach_1.reset, in_axes=(0, None))(reset_rng, env_params_reach_1)
+
+        if init_type == "standard": 
+            obsv_reach_1, env_state_reach_1 = jax.vmap(env_reach_1.reset, in_axes=(0, None))(reset_rng, env_params_reach_1)
+        elif init_type == "toinput": 
+            # Select random observations from standard rollout to use for initial avoid state 
+            traj_batch_observations_full = traj_batch.obs 
+            untrans_traj_batch_observations_full = env.untransform_obs(traj_batch_observations_full)
+            untrans_traj_batch_observations_full = jnp.transpose(untrans_traj_batch_observations_full, axes=(1, 0, 2))
+            rng_reach1, _rng_reach1 = jax.random.split(rng)
+
+            # Multiple random indices
+            random_index = jax.random.randint(_rng_reach1, shape=(untrans_traj_batch_observations_full.shape[0],), minval=0, maxval=untrans_traj_batch_observations_full.shape[1])
+            untrans_traj_batch_observations = jax.vmap(lambda obs, idx: obs[idx])(untrans_traj_batch_observations_full, random_index)
+
+            obsv_reach_1, env_state_reach_1 = jax.vmap(env_reach_1.reset_toinput, in_axes=(0, 0, None))(reset_rng, untrans_traj_batch_observations, env_params_reach_1) 
+        
         rng, _rng = jax.random.split(rng)
         runner_state_standard_reach_1 = (train_state_policy, train_state_value, env_state_reach_1, obsv_reach_1, _rng)
         
@@ -83,7 +99,19 @@ def train(envs, env_paramss, config, rng):
         # RESET ENV - 2
         rng, _rng = jax.random.split(rng_og)
         reset_rng = jax.random.split(_rng, config["NUM_ENVS"])
-        obsv_reach_2, env_state_reach_2 = jax.vmap(env_reach_2.reset, in_axes=(0, None))(reset_rng, env_params_reach_2)
+
+        if init_type == "standard":
+            obsv_reach_2, env_state_reach_2 = jax.vmap(env_reach_2.reset, in_axes=(0, None))(reset_rng, env_params_reach_2)
+        elif init_type == "toinput": 
+            # Select random observations from standard rollout to use for initial avoid state 
+            rng_reach2, _rng_reach2 = jax.random.split(rng)
+
+            # Multiple random indices
+            random_index = jax.random.randint(_rng_reach2, shape=(untrans_traj_batch_observations_full.shape[0],), minval=0, maxval=untrans_traj_batch_observations_full.shape[1])
+            untrans_traj_batch_observations = jax.vmap(lambda obs, idx: obs[idx])(untrans_traj_batch_observations_full, random_index)
+
+            obsv_reach_2, env_state_reach_2 = jax.vmap(env_reach_2.reset_toinput, in_axes=(0, 0, None))(reset_rng, untrans_traj_batch_observations, env_params_reach_2) 
+        
         rng, _rng = jax.random.split(rng)
         runner_state_standard_reach_2 = (train_state_policy, train_state_value, env_state_reach_2, obsv_reach_2, _rng)
         

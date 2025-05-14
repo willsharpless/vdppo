@@ -61,6 +61,8 @@ def get_env(config):
         vec2 = jnp.ones(14, dtype=jnp.float32)
         # vec2 = vec2.at[-1].set(400.) # INIT ENERGY?
         trans = partial(transform_observation, vec1, vec2)
+        untrans = partial(untransform_observation, vec1, vec2)
+
         env = HopperReachReach()
         env = TransformObservation(env, trans)
         
@@ -68,12 +70,18 @@ def get_env(config):
         env1 = TransformObservation(env1, trans)
         env2 = HopperReach2() # TODO make determinstic
         env2 = TransformObservation(env2, trans)
+
+        env.set_untransform_obs(untrans)
+        env1.set_untransform_obs(untrans)
+        env2.set_untransform_obs(untrans)
         return (env, env1, env2)
     elif config["EXP_NAME"] == 'HopperReachReach' and config["TEST_MODE"] == True:
         vec1 = jnp.zeros(14, dtype=jnp.float32)
         vec1 = vec1.at[0].set(1.)
         vec2 = jnp.ones(14, dtype=jnp.float32)
         trans = partial(transform_observation, vec1, vec2)
+        untrans = partial(untransform_observation, vec1, vec2)
+
         env = HopperReachReachDeterministic()
         env = TransformObservation(env, trans)
 
@@ -81,6 +89,10 @@ def get_env(config):
         env1 = TransformObservation(env1, trans)
         env2 = HopperReach2Deterministic() # TODO make determinstic
         env2 = TransformObservation(env2, trans)
+
+        env.set_untransform_obs(untrans)
+        env1.set_untransform_obs(untrans)
+        env2.set_untransform_obs(untrans)
         return (env, env1, env2)
         
     elif config["EXP_NAME"] == "HopperReachAlwaysAvoid": 
