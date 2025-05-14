@@ -842,4 +842,112 @@ def plot_video_contour_RRAA(multi_info, epoch, config, save_video=False):
         end_time = time()
         print("Time taken to plot and push video: ", end_time - start_time)
         return frames
+    
+    if config['EXP_NAME'] == 'HopperReachReach':
+        info, info_1, info_2 = multi_info
 
+        def draw_hopper_rr(step, info, reach_idx_1, reach_idx_2, title, ax, target_type="both"):
+
+            # reach_idx_1 = info['reach_index_1']
+            # reach_idx_2 = info['reach_index_2']
+            draw_circle = plt.Circle((2.0, 1.4), 0.1, edgecolor="green", linewidth=2, fill=False)
+            # draw_circle2 = plt.Circle((-2.0, 1.4), 0.1, edgecolor="blue", linewidth=2, fill=False)
+            draw_circle2 = plt.Circle((0., 1.4), 0.1, edgecolor="blue", linewidth=2, fill=False)
+
+            if target_type == "both":
+                ax.add_patch(draw_circle)
+                ax.add_patch(draw_circle2)
+            elif target_type == "R1":
+                ax.add_patch(draw_circle)
+            elif target_type == "R2":
+                ax.add_patch(draw_circle2)
+            
+            def draw_body(ax, info, i, alpha, color_mode="normal"):
+                if color_mode == "R1":
+                    c1, c2, c3, c4, c5 = 'g', 'g', 'g', 'g', 'g'
+                    linewidth=3
+                elif color_mode == "R2":
+                    c1, c2, c3, c4, c5 = 'b', 'b', 'b', 'b', 'b'
+                    linewidth=3
+                else:
+                    c1, c2, c3, c4, c5 = 'r', 'g', 'b', 'b', 'm'
+                    linewidth=1
+                ax.plot(np.array([info['head_pos'][i, 0], info['jaw_pos'][i, 0]]),
+                        np.array([info['head_pos'][i, 1], info['jaw_pos'][i, 1]]), c=c1, alpha=alpha, linewidth=linewidth)
+                ax.plot(np.array([info['jaw_pos'][i, 0], info['thg_pos'][i, 0]]),
+                        np.array([info['jaw_pos'][i, 1], info['thg_pos'][i, 1]]), c=c2, alpha=alpha, linewidth=linewidth)
+                ax.plot(np.array([info['thg_pos'][i, 0], info['leg_pos'][i, 0]]),
+                        np.array([info['thg_pos'][i, 1], info['leg_pos'][i, 1]]), c=c3, alpha=alpha, linewidth=linewidth)
+                ax.plot(np.array([info['leg_pos'][i, 0], info['foot_front_pos'][i, 0]]),
+                        np.array([info['leg_pos'][i, 1], info['foot_front_pos'][i, 1]]), c=c4, alpha=alpha, linewidth=linewidth)
+                ax.plot(np.array([info['leg_pos'][i, 0], info['foot_back_pos'][i, 0]]),
+                        np.array([info['leg_pos'][i, 1], info['foot_back_pos'][i, 1]]), c=c5, alpha=alpha, linewidth=linewidth)
+            
+            draw_body(ax, info, step, 0.9)
+
+            if step >= reach_idx_1 and reach_idx_1 > -1 and (target_type == "both" or target_type == "R1"):
+                draw_body(ax, info, reach_idx_1, 0.9, color_mode = "R1")
+
+            if step >= reach_idx_2 and reach_idx_2 > -1 and (target_type == "both" or target_type == "R2"):
+                draw_body(ax, info, reach_idx_2, 0.9, color_mode = "R2")
+
+            # ax.set_xlim((-2.5, 2.5))
+            ax.set_xlim((-0.5, 2.5))
+            ax.set_ylim((0., 1.6))
+            ax.set_aspect('equal')
+            
+            ax.set_title(title)
+
+        # DEFINE VIDEO LENGTH TO DUAL-REACHING OR FULL TRAJ
+        reach_idx_1 = info['reach_index_1']
+        reach_idx_2 = info['reach_index_2']
+
+        full_len = np.maximum(reach_idx_1, reach_idx_2)
+        full_len = info['head_pos'].shape[0] if full_len.item() == np.inf else int(full_len.item())
+        reach_idx_1 = int(reach_idx_1.item()) if reach_idx_1.item() != np.inf else -1
+        reach_idx_2 = int(reach_idx_2.item()) if reach_idx_2.item() != np.inf else -1
+        
+        frames = []
+        num_frames = full_len//2
+        indices = np.linspace(0, full_len, num_frames, dtype=int)
+        reach_idx_1_reach1 = info_1['reach_index_1'].item()
+        reach_idx_2_reach2 = info_2['reach_index_2'].item()
+        for step_n in indices: 
+
+            fig, axes = plt.subplots(3, 1, figsize=(6, 4), dpi=100)
+
+            draw_hopper_rr(step_n, info, reach_idx_1, reach_idx_2, "Reach Reach", axes[0], target_type="both")
+
+            # AFTER DECOMPOSED REACH, DRAW LAST POINT
+            if step_n >= reach_idx_1_reach1:
+                reach_idx_1_reach1 = step_n
+            if step_n >= reach_idx_2_reach2:
+                reach_idx_2_reach2 = step_n
+
+            draw_hopper_rr(step_n, info_1, reach_idx_1_reach1, -1, "Reach 1", axes[1], target_type="R1")
+            draw_hopper_rr(step_n, info_2, -1, reach_idx_2_reach2, "Reach 2", axes[2], target_type="R2")
+            
+            # Render the figure to an image (smaller size)
+            fig.canvas.draw()
+            frame = np.frombuffer(fig.canvas.buffer_rgba(), dtype=np.uint8)
+            frame = frame.reshape(fig.canvas.get_width_height()[::-1] + (4,))  # RGBA (4 channels)
+            frames.append(frame)
+            
+            plt.close(fig)
+            plt.close("all")
+        
+        # Save frames as a video using PIL - don't do this in general
+        frames = [Image.fromarray(frame) for frame in frames]
+        if save_video: 
+            # video_path = 'model/{}/reach/trajectory_{:0>4d}.mp4'.format(config["DIR"], epoch)
+            # frames[0].save(video_path, save_all=True, append_images=frames[1:], duration=100, loop=0)
+
+            video_path = 'model/{}/reach/trajectory_{:0>4d}.mp4'.format(config["DIR"], epoch)
+            print("\n\nSaving video to: ", video_path)
+            imageio.mimsave(video_path, frames, fps=30)
+
+            wandb.log({"trajectory_video": wandb.Video(video_path, fps=10, format="mp4")})
+        
+        end_time = time()
+        print("Time taken to plot and push video: ", end_time - start_time)
+        return frames

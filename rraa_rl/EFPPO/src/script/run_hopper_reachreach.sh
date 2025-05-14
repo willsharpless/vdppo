@@ -1,6 +1,6 @@
 CUDA_VISIBLE_DEVICES=1 python ./rraa_rl/EFPPO/src/rl/RR-PPO.py \
 --EXP_NAME=HopperReachReach \
---DIR=hopper_reachreach_halfwidth_R10_MoG_OWfix \
+--DIR=hopper_reachreach_halfwidth_R10_MoG_OWfix_retest \
 --LR=3e-4 \
 --NUM_ENVS=128 \
 --NUM_STEPS=400 \
@@ -20,4 +20,4 @@ CUDA_VISIBLE_DEVICES=1 python ./rraa_rl/EFPPO/src/rl/RR-PPO.py \
 --CUDA_USE=1 \
 --ANNEAL_LR \
 --ANNEAL_ENT \
---NAME=hopper_reachreach_halfwidth_R10_MoG_OWfix
+--NAME=hopper_reachreach_halfwidth_R10_MoG_OWfix_retest
