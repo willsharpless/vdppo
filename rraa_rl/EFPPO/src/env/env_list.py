@@ -20,6 +20,9 @@ import jax.numpy as jnp
 def transform_observation(mean, variance, obs):
     return (obs - mean) / variance
 
+def untransform_observation(mean, variance, obs):
+    return obs * variance + mean
+
 def get_env(config):
     if config["EXP_NAME"] == 'GridConstraint':
         trans = partial(transform_observation, jnp.array([0., 0., 100.]), jnp.array([1., 1., 100.]))
@@ -85,7 +88,10 @@ def get_env(config):
         vec1 = jnp.zeros(14, dtype=jnp.float32)
         vec1 = vec1.at[0].set(1.)
         vec2 = jnp.ones(14, dtype=jnp.float32)
+        
         trans = partial(transform_observation, vec1, vec2)
+        untrans = partial(untransform_observation, vec1, vec2)
+
         if config["TEST_MODE"] == False:
             env = HopperReachAvoid()
             env_avoid = HopperAvoidOnly() 
@@ -93,8 +99,10 @@ def get_env(config):
             env = HopperReachAvoid(deterministic=True)
             env_avoid = HopperAvoidOnly(deterministic=True)
         env = TransformObservation(env, trans)
-        
         env_avoid = TransformObservation(env_avoid, trans)
+
+        env.set_untransform_obs(untrans)
+        env_avoid.set_untransform_obs(untrans)
         return (env, env_avoid)
     
     elif config["EXP_NAME"] == "HopperReachAvoid":

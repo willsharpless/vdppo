@@ -35,9 +35,21 @@ def calculate_reach_avoid_stats(traj_batch):
     for i in range(traj_batch.avoid.shape[1]):
         if np.any(traj_batch.avoid[:, i] > 0):
             cnt_crash += 1
-    share_crash_after_reach = cnt_crash_after_reach / (traj_batch.avoid.shape[1] - cnt_never_reached) if (traj_batch.avoid.shape[1] - cnt_never_reached) > 0 else 0
+    share_crash_after_reach = cnt_crash_after_reach / (traj_batch.avoid.shape[0] - cnt_never_reached) if (traj_batch.avoid.shape[0] - cnt_never_reached) > 0 else 0
     return cnt_never_reached, cnt_crash, share_crash_after_reach
-        
+
+def calculate_reachavoid(traj_batch):
+    reach_idx = (traj_batch.reach < 0).argmax(axis=0)
+    crash_idx = (traj_batch.avoid > 0).argmax(axis=0)
+    reach_idx = np.where(np.any((traj_batch.reach < 0) == 1, axis=0), reach_idx, np.inf)
+    crash_idx = np.where(np.any((traj_batch.avoid > 0) == 1, axis=0), crash_idx, np.inf)
+    # Find indices where reach < inf and avoid = inf
+    reach_and_avoid_idx = np.where(crash_idx == np.inf, reach_idx, np.inf)
+
+    reach_perc = ((reach_idx < np.inf).sum() / reach_idx.__len__()).item()
+    crash_perc = ((crash_idx < np.inf).sum() / crash_idx.__len__()).item()
+    reach_avoid_perc = ((reach_and_avoid_idx < np.inf).sum() / reach_and_avoid_idx.__len__()).item()
+    return (reach_perc, crash_perc, reach_avoid_perc)
 
 def calculate_reachreach(traj_batch, reach_type="both"):
     
@@ -283,7 +295,7 @@ def plot_contour(train_state_energy, train_state_h, train_state_policy, info, ep
         draw_circle = plt.Circle((2.0, 1.4), 0.1, fill=False)
         draw_rectangle = plt.Rectangle((0.95, 1.3), 0.1, 0.2, facecolor="red", fill=True)
         if 'HopperAvoidCeilingWall' in config['EXP_NAME']:
-            draw_rectangle2 = plt.Rectangle((2.35, -0.1), 0.2, 1.6, facecolor="red", fill=True)
+            draw_rectangle2 = plt.Rectangle((2.1, -0.1), 0.2, 1.6, facecolor="red", fill=True)
             ax.add_patch(draw_rectangle2)
         ax.add_patch(draw_circle)
         ax.add_patch(draw_rectangle)
@@ -673,14 +685,16 @@ def plot_contour_RRAA(multi_info, epoch, config, policy_decision_sample=None):
             draw_circle = plt.Circle((2.0, 1.4), 0.1, fill=False)
 
             # Plot Avoid
-            draw_rectangle = plt.Rectangle((0.95, 1.3), 0.1, 0.2, facecolor="red", fill=True)
-            draw_rectangle2 = plt.Rectangle((2.1, -0.1), 0.4, 1.6, facecolor="red", fill=True)
+            draw_rectangle = plt.Rectangle((0.95, 1.3), 0.1, 0.3, facecolor="red", fill=True)
+            draw_rectangle2 = plt.Rectangle((2.1, -0.1), 0.4, 1.7, facecolor="red", fill=True)
             draw_rectangle3 = plt.Rectangle((-2., 0.), 4.5, 0.5, facecolor="red", fill=True)
+            draw_rectangle4 = plt.Rectangle((-0.5, -0.1), 0.5, 1.7, facecolor="red", fill=True)
 
             ax.add_patch(draw_circle)
             ax.add_patch(draw_rectangle)
             ax.add_patch(draw_rectangle2)
             ax.add_patch(draw_rectangle3)
+            ax.add_patch(draw_rectangle4)
 
             indices = np.linspace(0, full_len, 11, dtype=int)
             for step_n, i in enumerate(indices):
@@ -737,7 +751,7 @@ def plot_contour_RRAA(multi_info, epoch, config, policy_decision_sample=None):
         plt.savefig('model/{}/reach/trajectory_{:0>4d}'.format(config["DIR"], epoch), dpi=300)
         return fig
     
-def plot_video_contour_RRAA(multi_info, epoch, config, save_video=False):
+def plot_video_contour_RRAA(multi_info, epoch, config, save_video=False, prefix="", log_wandb=True):
     start_time = time()
     if config['EXP_NAME'] == 'HopperReachAlwaysAvoid':
         
@@ -753,14 +767,16 @@ def plot_video_contour_RRAA(multi_info, epoch, config, save_video=False):
             draw_circle = plt.Circle((2.0, 1.4), 0.1, fill=False)
 
             # Plot Avoid
-            draw_rectangle = plt.Rectangle((0.95, 1.3), 0.1, 0.2, facecolor="red", fill=True)
-            draw_rectangle2 = plt.Rectangle((2.1, -0.1), 0.4, 1.6, facecolor="red", fill=True)
+            draw_rectangle = plt.Rectangle((0.95, 1.3), 0.1, 0.3, facecolor="red", fill=True)
+            draw_rectangle2 = plt.Rectangle((2.1, -0.1), 0.4, 1.7, facecolor="red", fill=True)
             draw_rectangle3 = plt.Rectangle((-2., 0.), 4.5, 0.5, facecolor="red", fill=True)
+            draw_rectangle4 = plt.Rectangle((-0.5, -0.1), 0.5, 1.7, facecolor="red", fill=True)
 
             ax.add_patch(draw_circle)
             ax.add_patch(draw_rectangle)
             ax.add_patch(draw_rectangle2)
             ax.add_patch(draw_rectangle3)
+            ax.add_patch(draw_rectangle4)
 
             # Plot Hopper Body 
             ax.plot(np.array([info['head_pos'][step, 0], info['jaw_pos'][step, 0]]),
@@ -800,7 +816,7 @@ def plot_video_contour_RRAA(multi_info, epoch, config, save_video=False):
                 ax.plot(np.array([info['leg_pos'][avoid_idx, 0], info['foot_back_pos'][avoid_idx, 0]]),
                         np.array([info['leg_pos'][avoid_idx, 1], info['foot_back_pos'][avoid_idx, 1]]), c='r', linewidth=4) 
                 
-            ax.set_xlim((-2.5, 2.5))
+            ax.set_xlim((-0.5, 2.5))
             ax.set_ylim((0, 1.6))
             ax.set_aspect('equal')
 
@@ -832,12 +848,14 @@ def plot_video_contour_RRAA(multi_info, epoch, config, save_video=False):
         if save_video: 
             # video_path = 'model/{}/reach/trajectory_{:0>4d}.mp4'.format(config["DIR"], epoch)
             # frames[0].save(video_path, save_all=True, append_images=frames[1:], duration=100, loop=0)
-
-            video_path = 'model/{}/reach/trajectory_{:0>4d}.mp4'.format(config["DIR"], epoch)
+            # mod prefix from / to _
+            prefix_underscore = prefix.replace("/", "_")
+            video_path = 'model/{}/reach/trajectory_{}{:0>4d}.mp4'.format(config["DIR"], prefix_underscore, epoch)
             print("\n\nSaving video to: ", video_path)
             imageio.mimsave(video_path, frames, fps=30)
-
-            wandb.log({"trajectory_video": wandb.Video(video_path, fps=10, format="mp4")})
+            if log_wandb: 
+                wandb_name = f"{prefix}trajectory"
+                wandb.log({wandb_name: wandb.Video(video_path, fps=10, format="mp4")}, step=epoch)
         
         end_time = time()
         print("Time taken to plot and push video: ", end_time - start_time)
