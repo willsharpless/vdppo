@@ -110,3 +110,80 @@ class HopperAvoidCeilingBaseline:
             high=1.0,
             shape=(self._env.action_size,),
         )
+
+
+###################### Baselines for CPPO - RRAA ######################
+
+class HopperReachReach_unaugmented(HopperAvoidCeilingBaseline): 
+    """
+    Hopper Avoid Ceiling Baseline environment for CPPO baseline
+    Unaugmented state base
+
+    reward format: gamma * (max (r1, r2)) - max(last r1, last r2)
+    reward format: gamma * (r1 + r2) - (last r1 + last r2)
+    """
+
+    def is_reach(): 
+        raise NotImplementedError("This function is not implemented for this environment.")
+    
+    def is_avoid():
+        raise NotImplementedError("This function is not implemented for this environment.")
+    
+    def step(): 
+        raise NotImplementedError("This function is not implemented for this environment.")
+    
+
+class HopperReachReach_unaugmented_max(HopperReachReach_unaugmented): 
+    """
+    Hopper Avoid Ceiling Baseline environment for CPPO baseline
+    Unaugmented state base
+
+    reward format: gamma * (max (r1, r2)) - max(last r1, last r2)
+    """
+    def step(): 
+        raise NotImplementedError("This function is not implemented for this environment.")
+    
+
+class HopperReachReach_unaugmented_sum(HopperReachReach_unaugmented):
+    """
+    Hopper Avoid Ceiling Baseline environment for CPPO baseline
+    Unaugmented state base
+
+    reward format: gamma * (r1 + r2) - (last r1 + last r2)
+    """
+    def step(): 
+        raise NotImplementedError("This function is not implemented for this environment.")
+    
+
+class HopperReachReach_augmented_max: 
+    """
+    Hopper Avoid Ceiling baseline environment for CPPO baseline
+    Augmented state base
+    
+    reward format: gamma * (max (r1, r2)) - max(last r1, last r2)
+    r1 = min(r1, r1 last) as augmented state 
+    r2 = min(r2, r2 last) as augmented state
+    """
+    def __init__(): 
+        raise NotImplementedError("This function is not implemented for this environment.")
+    
+    def reset(): 
+        raise NotImplementedError("This function is not implemented for this environment.")
+    
+    def step(): 
+        raise NotImplementedError("This function is not implemented for this environment.")
+    
+    def is_reach():
+        raise NotImplementedError("This function is not implemented for this environment.")
+    
+    def is_avoid():
+        raise NotImplementedError("This function is not implemented for this environment.")
+    
+    def calculate_position():
+        raise NotImplementedError("This function is not implemented for this environment.")
+    
+    def observation_space():
+        raise NotImplementedError("This function is not implemented for this environment.")
+    
+    def action_space():
+        raise NotImplementedError("This function is not implemented for this environment.")
