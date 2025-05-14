@@ -670,7 +670,9 @@ def plot_contour_RRAA(multi_info, epoch, config, policy_decision_sample=None):
         return fig
     
         
-    elif config['EXP_NAME'] == 'HopperReachAlwaysAvoid' or config["EXP_NAME"] == "HopperReachAvoid":
+    elif config['EXP_NAME'] == 'HopperReachAlwaysAvoid' or config["EXP_NAME"] == "HopperReachAvoid" or \
+         config['EXP_NAME'] == 'HopperReachAlwaysAvoid_CPPO' or \
+         config['EXP_NAME'] == 'HopperAvoidCeilingBaseline': 
         
         info, info_avoid = multi_info 
         plt.figure(figsize=(12, 6*2))
@@ -753,7 +755,9 @@ def plot_contour_RRAA(multi_info, epoch, config, policy_decision_sample=None):
     
 def plot_video_contour_RRAA(multi_info, epoch, config, save_video=False, prefix="", log_wandb=True):
     start_time = time()
-    if config['EXP_NAME'] == 'HopperReachAlwaysAvoid':
+    if config['EXP_NAME'] == 'HopperReachAlwaysAvoid' or \
+        config['EXP_NAME'] == 'HopperReachAlwaysAvoid_CPPO' or \
+         config['EXP_NAME'] == 'HopperAvoidCeilingBaseline': 
         
         info, info_avoid = multi_info 
 
@@ -831,7 +835,8 @@ def plot_video_contour_RRAA(multi_info, epoch, config, save_video=False, prefix=
             # plt.figure(figsize=(12, 6*2))
             fig, axes = plt.subplots(2, 1, figsize=(4, 4), dpi=100)  # Smaller and square figure
             draw_hopper_raa(step_n, info, "Reach Avoid", axes[0])
-            draw_hopper_raa(step_n, info_avoid, "Avoid Only", axes[1])
+            if config['EXP_NAME'] == 'HopperReachAlwaysAvoid':
+                draw_hopper_raa(step_n, info_avoid, "Avoid Only", axes[1])
             
             # Render the figure to an image (smaller size)
             fig.canvas.draw()
@@ -854,8 +859,9 @@ def plot_video_contour_RRAA(multi_info, epoch, config, save_video=False, prefix=
             print("\n\nSaving video to: ", video_path)
             imageio.mimsave(video_path, frames, fps=30)
             if log_wandb: 
-                wandb_name = f"{prefix}trajectory"
-                wandb.log({wandb_name: wandb.Video(video_path, fps=10, format="mp4")}, step=epoch)
+                wandb_name = f"{prefix}trajectory video"
+                print("Logging video to wandb: ", wandb_name)
+                wandb.log({wandb_name: wandb.Video(video_path, format="mp4")}, step=epoch)
         
         end_time = time()
         print("Time taken to plot and push video: ", end_time - start_time)
