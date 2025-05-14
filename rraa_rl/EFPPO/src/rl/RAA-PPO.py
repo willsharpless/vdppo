@@ -83,9 +83,14 @@ def train(envs, env_paramss, config, rngs, env_test=None):
 
             untrans_traj_batch_observations = jnp.transpose(untrans_traj_batch_observations, axes=(1, 0, 2))
             rng_avoid, _rng_avoid = jax.random.split(rng_avoid)
-            # FIXME: rather than having just one random_index we should have a different one per trajectory - do later
-            random_index = jax.random.randint(_rng_avoid, shape=(), minval=0, maxval=untrans_traj_batch_observations.shape[1])
-            untrans_traj_batch_observations = untrans_traj_batch_observations[:, random_index, :]
+            
+            # Single random index
+            # random_index = jax.random.randint(_rng_avoid, shape=(), minval=0, maxval=untrans_traj_batch_observations.shape[1])
+            # untrans_traj_batch_observations = untrans_traj_batch_observations[:, random_index, :]
+
+            # Multiple random indices
+            random_index = jax.random.randint(_rng_avoid, shape=(untrans_traj_batch_observations.shape[0],), minval=0, maxval=untrans_traj_batch_observations.shape[1])
+            untrans_traj_batch_observations = jax.vmap(lambda obs, idx: obs[idx])(untrans_traj_batch_observations, random_index)
 
             obsv_avoid, env_state_avoid = jax.vmap(env_avoid.reset_toinput, in_axes=(0, 0, None))(reset_rng_avoid, untrans_traj_batch_observations, env_params_avoid) 
         
@@ -371,6 +376,7 @@ def train(envs, env_paramss, config, rngs, env_test=None):
         info = tree_index2(traj_batch.info, idx)
         info_avoid = tree_index2(traj_batch_avoid.info, idx)
 
+        cnt_never_reached, cnt_crashed, cnt_crash_after_reach = calculate_reach_avoid_stats(traj_batch)
         (reach_perc, crash_perc, reach_avoid_perc) = calculate_reachavoid(traj_batch)
 
         info['reach_index'] = reach_idx
@@ -421,11 +427,14 @@ def train(envs, env_paramss, config, rngs, env_test=None):
                     "crashed [%]": crash_perc,
                     "reached [%]": reach_perc,
                     "reached_avoid [%]": reach_avoid_perc,
+                    "cnt crashed ": cnt_crashed,
+                    "cnt not reaching goal ": cnt_never_reached,
+                    "cnt crash after reach ": cnt_crash_after_reach,
                         # 'trajectory_sample_R1':wandb.Image(fig1), 'trajectory_sample_R2':wandb.Image(fig2)
                     }, step=timestep)
             
         # Save video of trajectory 
-        video_freq = 25 
+        video_freq = 5 #25 
         save_video = config["USE_WANDB"] #True 
         if timestep % video_freq == 0 or timestep == total_timesteps - 1: 
             video_frames = plot_video_contour_RRAA((info, info_avoid), timestep, config, save_video=save_video, log_wandb=config["USE_WANDB"])
