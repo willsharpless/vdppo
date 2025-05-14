@@ -35,7 +35,7 @@ def calculate_reach_avoid_stats(traj_batch):
     for i in range(traj_batch.avoid.shape[1]):
         if np.any(traj_batch.avoid[:, i] > 0):
             cnt_crash += 1
-    share_crash_after_reach = cnt_crash_after_reach / (traj_batch.avoid.shape[1] - cnt_never_reached) if (traj_batch.avoid.shape[1] - cnt_never_reached) > 0 else 0
+    share_crash_after_reach = cnt_crash_after_reach / (traj_batch.avoid.shape[0] - cnt_never_reached) if (traj_batch.avoid.shape[1] - cnt_never_reached) > 0 else 0
     return cnt_never_reached, cnt_crash, share_crash_after_reach
 
 def calculate_reachavoid(traj_batch):
