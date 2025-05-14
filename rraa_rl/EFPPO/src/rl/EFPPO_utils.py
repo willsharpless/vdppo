@@ -740,7 +740,7 @@ def _ppo_vanilla_update(config, update_state, ent):
             value_losses = jnp.square(value - targets_V)
             value_losses_clipped = jnp.square(value_pred_clipped - targets_V)
             value_loss_V = (
-                    0.5 * (jnp.maximum(value_losses, value_losses_clipped) * composed_policy_mask).mean()
+                    0.5 * (jnp.maximum(value_losses, value_losses_clipped) * composed_policy_mask).sum() / composed_policy_mask.sum()
             )
 
             total_loss = config["VF_COEF"] * value_loss_V
@@ -753,7 +753,10 @@ def _ppo_vanilla_update(config, update_state, ent):
 
             # CALCULATE ACTOR LOSS
             ratio = jnp.exp(log_prob - traj_batch.log_prob)
-            gae = (gae - gae.mean()) / (gae.std() + 1e-8)
+            gae_mean = (gae * composed_policy_mask).sum() / composed_policy_mask.sum()
+            gae_centered = gae - gae_mean
+            gae_std = jnp.sqrt((jnp.square(gae_centered) * composed_policy_mask).sum() / composed_policy_mask.sum())
+            gae = gae_centered / (gae_std + 1e-8)
             loss_actor1 = ratio * gae
             loss_actor2 = (
                     jnp.clip(
@@ -763,15 +766,16 @@ def _ppo_vanilla_update(config, update_state, ent):
                     )
                     * gae
             )
-            loss_actor = jnp.maximum(loss_actor1, loss_actor2) * composed_policy_mask
-            loss_actor = loss_actor.mean()
-            entropy = pi.entropy().mean()
+            loss_actor = jnp.maximum(loss_actor1, loss_actor2)
+            loss_actor = (loss_actor * composed_policy_mask).sum() / composed_policy_mask.sum()
+            entropy = pi.entropy()
+            entropy_mean = (entropy * composed_policy_mask).sum() / composed_policy_mask.sum()
 
             total_loss = (
                     loss_actor
-                    - ent * entropy
+                    - ent * entropy_mean
             )
-            return total_loss, (loss_actor, entropy)
+            return total_loss, (loss_actor, entropy_mean)
 
         grad_fn = jax.value_and_grad(_loss_fn_policy, has_aux=True)
         total_loss_policy, grads = grad_fn(
