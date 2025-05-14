@@ -35,7 +35,7 @@ def calculate_reach_avoid_stats(traj_batch):
     for i in range(traj_batch.avoid.shape[1]):
         if np.any(traj_batch.avoid[:, i] > 0):
             cnt_crash += 1
-    share_crash_after_reach = cnt_crash_after_reach / (traj_batch.avoid.shape[1] - cnt_never_reached) if (traj_batch.avoid.shape[1] - cnt_never_reached) > 0 else 0
+    share_crash_after_reach = cnt_crash_after_reach / (traj_batch.avoid.shape[0] - cnt_never_reached) if (traj_batch.avoid.shape[0] - cnt_never_reached) > 0 else 0
     return cnt_never_reached, cnt_crash, share_crash_after_reach
 
 def calculate_reachavoid(traj_batch):
@@ -293,7 +293,7 @@ def plot_contour(train_state_energy, train_state_h, train_state_policy, info, ep
         draw_circle = plt.Circle((2.0, 1.4), 0.1, fill=False)
         draw_rectangle = plt.Rectangle((0.95, 1.3), 0.1, 0.2, facecolor="red", fill=True)
         if 'HopperAvoidCeilingWall' in config['EXP_NAME']:
-            draw_rectangle2 = plt.Rectangle((2.35, -0.1), 0.2, 1.6, facecolor="red", fill=True)
+            draw_rectangle2 = plt.Rectangle((2.1, -0.1), 0.2, 1.6, facecolor="red", fill=True)
             ax.add_patch(draw_rectangle2)
         ax.add_patch(draw_circle)
         ax.add_patch(draw_rectangle)
@@ -665,7 +665,7 @@ def plot_contour_RRAA(multi_info, epoch, config):
 
             # Plot Avoid
             draw_rectangle = plt.Rectangle((0.95, 1.3), 0.1, 0.3, facecolor="red", fill=True)
-            draw_rectangle2 = plt.Rectangle((2.35, -0.1), 0.4, 1.7, facecolor="red", fill=True)
+            draw_rectangle2 = plt.Rectangle((2.1, -0.1), 0.4, 1.7, facecolor="red", fill=True)
             draw_rectangle3 = plt.Rectangle((-2., 0.), 4.5, 0.5, facecolor="red", fill=True)
             draw_rectangle4 = plt.Rectangle((-0.5, -0.1), 0.5, 1.7, facecolor="red", fill=True)
 
@@ -747,7 +747,7 @@ def plot_video_contour_RRAA(multi_info, epoch, config, save_video=False, prefix=
 
             # Plot Avoid
             draw_rectangle = plt.Rectangle((0.95, 1.3), 0.1, 0.3, facecolor="red", fill=True)
-            draw_rectangle2 = plt.Rectangle((2.35, -0.1), 0.4, 1.7, facecolor="red", fill=True)
+            draw_rectangle2 = plt.Rectangle((2.1, -0.1), 0.4, 1.7, facecolor="red", fill=True)
             draw_rectangle3 = plt.Rectangle((-2., 0.), 4.5, 0.5, facecolor="red", fill=True)
             draw_rectangle4 = plt.Rectangle((-0.5, -0.1), 0.5, 1.7, facecolor="red", fill=True)
 

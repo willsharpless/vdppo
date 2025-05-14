@@ -11,7 +11,7 @@ class HopperDeterministic(Hopper):
         rng, rng1, rng2, rng3 = jax.random.split(rng, 4)
 
         # qpos = self.sys.init_q
-        qpos = jnp.array([1.5, 0., 0., 0., 0., 0.], dtype=jnp.float32)
+        qpos = jnp.array([0.5, 0., 0., 0., 0., 0.], dtype=jnp.float32)
         qvel = jax.random.uniform(
             rng2, (self.sys.qd_size(),), minval=0, maxval=0
         )

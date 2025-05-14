@@ -858,7 +858,7 @@ class HopperRAATemplate:
     @partial(jax.jit, static_argnums=(0,))
     def is_reach(self, head_pos):
         reach = jnp.sqrt((head_pos[0] - 2.0) ** 2 + (head_pos[1] - 1.4) ** 2) - 0.1
-        return 10.0 * reach
+        return reach
 
     @partial(jax.jit, static_argnums=(0,))
     def is_avoid(self, head_pos):
@@ -882,7 +882,7 @@ class HopperRAATemplate:
 
             return jnp.where(is_inside, min_dist_inside, -dist_outside)
         dist_box = signed_dist_box(head_pos)
-        dist_wall = head_pos[0] - 2.35
+        dist_wall = head_pos[0] - 2.1
         dist_floor = 0.5 - head_pos[1]
         dist_wall_left = 0.0 - head_pos[0]
         return jnp.maximum(jnp.maximum(jnp.maximum(dist_box, dist_wall), dist_floor), dist_wall_left)
