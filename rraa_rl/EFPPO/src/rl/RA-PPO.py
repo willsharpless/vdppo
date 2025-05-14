@@ -88,8 +88,9 @@ def train(envs, env_paramss, config, rng, env_test=None):
                                                             done=done)
 
         # UPDATE COMPOSED NETWORK
+        dummy_mask = jnp.ones(traj_batch.avoid.shape)
         update_state = (train_state_policy, train_state_value, 
-                        traj_batch, advantages_V, targets_V, advantages_V, rng)
+                        traj_batch, advantages_V, targets_V, advantages_V, dummy_mask, rng)
         
         xs = jnp.ones(config["UPDATE_EPOCHS"]) * ent_gamma[0]
         update_state, loss_info = jax.lax.scan(

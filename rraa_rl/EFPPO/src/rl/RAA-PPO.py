@@ -148,8 +148,9 @@ def train(envs, env_paramss, config, rngs, env_test=None):
                                                             done=done)
 
         # UPDATE COMPOSED NETWORK
+        composed_policy_mask = jnp.where(traj_batch.policy_taken == 0, 1., 0.)
         update_state = (train_state_policy, train_state_value, 
-                        traj_batch, advantages_V, targets_V, advantages_V, rng_composed)
+                        traj_batch, advantages_V, targets_V, advantages_V, composed_policy_mask, rng_composed)
         
         xs = jnp.ones(config["UPDATE_EPOCHS"]) * ent_gamma[0]
         update_state, loss_info = jax.lax.scan(
@@ -187,9 +188,9 @@ def train(envs, env_paramss, config, rngs, env_test=None):
                                                             done=done_avoid)
         
         # UPDATE DECOMPOSED NETWORK - AVOID
-
+        dummy_mask = jnp.ones(traj_batch_avoid.avoid.shape)
         update_state_avoid = (train_state_policy_avoid, train_state_value_avoid, 
-                              traj_batch_avoid, advantages_V_avoid, targets_V_avoid, advantages_V_avoid, rng_avoid)
+                              traj_batch_avoid, advantages_V_avoid, targets_V_avoid, advantages_V_avoid, dummy_mask, rng_avoid)
         xs = jnp.ones(config["UPDATE_EPOCHS"]) * ent_gamma[0]
         update_state_avoid, loss_info_avoid = jax.lax.scan(
             update_epoch_avoid, update_state_avoid, xs, config["UPDATE_EPOCHS"]
