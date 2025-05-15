@@ -298,12 +298,12 @@ class HopperReachReachBaseline_base:
 
 
     @partial(jax.jit, static_argnums=(0,))
-    def compute_cost(self, curr_reach1_value, curr_reach2_value, prev_reach1_value=None, prev_reach2_value=None): 
+    def compute_cost(self, curr_min_reach1_value, curr_min_reach2_value, prev_min_reach1_value=None, prev_min_reach2_value=None): 
         # Compute cost for constrained MDP 
-        if prev_reach1_value is None or prev_reach2_value is None:
-            cost = jnp.maximum(curr_reach1_value, curr_reach2_value)
+        if prev_min_reach1_value is None or prev_min_reach2_value is None:
+            cost = jnp.maximum(curr_min_reach1_value, curr_min_reach2_value)
         else: 
-            cost = jnp.maximum(jnp.minimum(curr_reach1_value, prev_reach1_value), jnp.minimum(curr_reach2_value, prev_reach2_value))
+            cost = jnp.maximum(jnp.minimum(curr_min_reach1_value, prev_min_reach1_value), jnp.minimum(curr_min_reach2_value, prev_min_reach2_value))
         return cost 
 
     @partial(jax.jit, static_argnums=(0,))
@@ -340,7 +340,7 @@ class HopperReachReachBaseline_base:
         min_reach1 = reach1_value
         min_reach2 = reach2_value
 
-        cost = self.compute_cost(reach1_value, reach2_value, prev_reach1_value=None, prev_reach2_value=None)
+        cost = self.compute_cost(min_reach1, min_reach2, prev_min_reach1_value=None, prev_min_reach2_value=None)
 
         env_state = EnvStateRR(state, reach1_value, reach2_value, has_reached_1, has_reached_2, min_reach1, min_reach2, cost)
         observation = self.compute_observation(env_state) 
@@ -360,7 +360,7 @@ class HopperReachReachBaseline_base:
         min_reach1 = jnp.minimum(state.min_reach1, reach1_value)
         min_reach2 = jnp.minimum(state.min_reach2, reach2_value)
         
-        cost = self.compute_cost(reach1_value, reach2_value, state.reach1, state.reach2)
+        cost = self.compute_cost(min_reach1, min_reach2, state.min_reach1, state.min_reach2)
         
         head_pos, jaw_pos, thg_pos, leg_pos, foot_front_pos, foot_back_pos = self.calculate_position(state.state.obs)
         pos_dict = {"head_pos": head_pos, "jaw_pos": jaw_pos, "thg_pos": thg_pos, "leg_pos": leg_pos,
