@@ -62,7 +62,8 @@ def train(envs, env_paramss, config, rng):
             env_step, runner_state, None, config["NUM_STEPS"]
         )
 
-        init_type = "toinput" # "standard", "toinput"
+        # init_type = "toinput" # "standard", "toinput"
+        init_type = "standard"
         # RESET ENV - 1
         rng, _rng = jax.random.split(rng_og)
         reset_rng = jax.random.split(_rng, config["NUM_ENVS"])
@@ -535,28 +536,29 @@ if __name__ == "__main__":
 
     debug = False
     if debug:
-        config["EXP_NAME"]="HopperReachReach"
-        config["DIR"]="hopper_reachreach_debug"
+        config["EXP_NAME"]="F16ReachReach"
+        config["DIR"]="F16_rr_debug"
         config["LR"]=3e-4
-        config["NUM_ENVS"]=128
-        config["NUM_STEPS"]=400
-        config["TOTAL_TIMESTEPS"]=50_000_000
-        config["STEP_SCAN"]=4
+        config["NUM_ENVS"]=256
+        config["NUM_STEPS"]=200
+        config["TOTAL_TIMESTEPS"]=200_000_000
+        config["STEP_SCAN"]=10
         config["UPDATE_EPOCHS"]=10
-        config["NUM_MINIBATCHES"]=32
+        config["NUM_MINIBATCHES"]=64
         config["GAMMA_ENERGY"]=1.0
         config["GAMMA_REACH_INIT"]=0.995
         config["GAMMA_REACH_FINAL"]=0.9995
         config["GAE_LAMBDA"]=0.95
         config["CLIP_EPS"]=0.2
-        config["ENT_COEF"]=0.0001
+        config["ENT_COEF"]=0.001
         config["VF_COEF"]=2.0
         config["MAX_GRAD_NORM"]=0.5
         config["ACTIVATION"]="tanh"
         config["CUDA_USE"]="0,1,2,3"
         config["ANNEAL_LR"]=True,
         config["ANNEAL_ENT"]=True
-        config["NAME"]="hopper_debug"
+        config["NAME"]="F16_rr_debug"
+
         # config["TEST_MODE"]=True # USES DETERMINISTIC MODELS
 
     config["NUM_UPDATES"] = int(

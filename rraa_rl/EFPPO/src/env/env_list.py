@@ -179,6 +179,45 @@ def get_env(config):
         trans = partial(transform_observation, vec1, vec2)
         env = F16Avoid()
         env = TransformObservation(env, trans)
+    
+    elif config["EXP_NAME"] == 'F16ReachAlwaysAvoid':
+        from .reach_avoid.F16_RAA import F16ReachAvoid, F16AvoidOnly
+        vec1 = jnp.zeros(26, dtype=jnp.float32)
+        vec1 = vec1.at[-1].set(400.)
+        vec2 = jnp.ones(26, dtype=jnp.float32)
+        vec2 = vec2.at[-1].set(400.)
+        trans = partial(transform_observation, vec1, vec2)
+
+        env = F16ReachAvoid()
+        env_avoid = F16AvoidOnly()
+
+        env = TransformObservation(env, trans)
+        env_avoid = TransformObservation(env_avoid, trans)
+
+        # env.set_untransform_obs(untrans) # Not implemented
+        # env_avoid.set_untransform_obs(untrans)
+        return (env, env_avoid)
+    
+    elif config["EXP_NAME"] == 'F16ReachReach':
+        from .reach_avoid.F16_RR import F16ReachReach, F16Reach1, F16Reach2
+        vec1 = jnp.zeros(26, dtype=jnp.float32)
+        vec1 = vec1.at[-1].set(400.)
+        vec2 = jnp.ones(26, dtype=jnp.float32)
+        vec2 = vec2.at[-1].set(400.)
+        trans = partial(transform_observation, vec1, vec2)
+
+        env = F16ReachReach()
+        env1 = F16Reach1()
+        env2 = F16Reach2()
+
+        env = TransformObservation(env, trans)
+        env1= TransformObservation(env1, trans)
+        env2= TransformObservation(env2, trans)
+
+        # env.set_untransform_obs(untrans) # Not implemented
+        # env_avoid.set_untransform_obs(untrans)
+        return (env, env1, env2)
+
     elif config["EXP_NAME"] == 'PointAvoid':
         vec1 = jnp.zeros(9, dtype=jnp.float32)
         vec1 = vec1.at[-1].set(400.)

@@ -751,6 +751,73 @@ def plot_contour_RRAA(multi_info, epoch, config, policy_decision_sample=None):
         plt.savefig('model/{}/reach/trajectory_{:0>4d}'.format(config["DIR"], epoch), dpi=300)
         return fig
     
+    elif config['EXP_NAME'] == 'F16ReachReach' or config['EXP_NAME'] == 'F16ReachAlwaysAvoid':
+        
+        if config['EXP_NAME'] == 'F16ReachReach':
+            info, info_1, info_2 = multi_info
+        else:
+            info, info_avoid = multi_info
+
+        # reach_idx = info['reach_index'] #FIXME just plotting entire trajectory
+        plt.figure(figsize=(24, 6))
+        fig, ax = plt.subplots(1, 1)
+        ax.scatter(info['pos_y'][0], info['pos_x'][0], s=10, c='black')
+        ax.plot(info['pos_y'], info['pos_x'])
+
+        #FIXME not drawing any obstacles/targets yet
+        # draw_rectangle_1 = plt.Rectangle((-200., 475.), 200., 50., facecolor="red", fill=True)
+        # ax.add_patch(draw_rectangle_1)
+        # draw_rectangle_2 = plt.Rectangle((0., 975.), 200., 50., facecolor="red", fill=True)
+        # ax.add_patch(draw_rectangle_2)
+        # draw_rectangle_3 = plt.Rectangle((-200., 1475.), 200., 50., facecolor="red", fill=True)
+        # ax.add_patch(draw_rectangle_3)
+        # draw_rectangle_4 = plt.Rectangle((-200., 1975.), 400., 25., facecolor="yellow", fill=True)
+        # ax.add_patch(draw_rectangle_4)
+
+        ax.set_xlim((200., -200.))
+        ax.set_ylim((0., 2000.))
+        ax.set_xlabel("Position East")
+        ax.set_ylabel("Position North")
+        ax.set_aspect('equal')
+        # ax.set_title("Trajectory Plot Init Energy {:.2f} Final Energy {:.2f}"
+        #              .format(info['init_energy'], info['final_energy']))
+        plt.savefig('model/{}/reach/trajectory_{:0>4d}_0'.format(config["DIR"], epoch), dpi=300)
+        plt.close("all")
+        plt.figure(figsize=(12, 6))
+        fig, ax = plt.subplots(1, 1)
+        ax.scatter(info['pos_x'][0], info['height'][0], s=10, c='black')
+        ax.plot(info['pos_x'], info['height'])
+        ax.set_xlim((0., 2000.))
+        ax.set_ylim((0., 1100.))
+        ax.set_xlabel("Position North")
+        ax.set_ylabel("Height")
+        ax.set_aspect('equal')
+        # ax.set_title("Trajectory Plot Init Energy {:.2f} Final Energy {:.2f}"
+        #              .format(info['init_energy'], info['final_energy']))
+        plt.savefig('model/{}/reach/trajectory_{:0>4d}_1'.format(config["DIR"], epoch), dpi=300)
+        plt.close("all")
+        plt.figure(figsize=(30, 10))
+        fig, ax = plt.subplots(3, 2, layout='constrained')
+        ax[0, 0].plot(info['state'][:, 0], label='velocity')
+        ax[0, 0].legend()
+        ax[0, 1].plot(info['state'][:, 1], label='alpha')
+        ax[0, 1].plot(info['state'][:, 2], label='beta')
+        ax[0, 1].legend()
+        ax[1, 0].plot(info['state'][:, 3], label='phi')
+        ax[1, 0].plot(info['state'][:, 4], label='theta')
+        ax[1, 0].plot(info['state'][:, 5], label='psi')
+        ax[1, 0].legend()
+        ax[1, 1].plot(info['state'][:, 6], label='P')
+        ax[1, 1].plot(info['state'][:, 7], label='Q')
+        ax[1, 1].plot(info['state'][:, 8], label='R')
+        ax[1, 1].legend()
+        ax[2, 0].plot(info['state'][:, -3], label='NZ_INT')
+        ax[2, 0].plot(info['state'][:, -2], label='PS_INT')
+        ax[2, 0].plot(info['state'][:, -1], label='NYR_INT')
+        ax[2, 0].legend()
+        plt.savefig('model/{}/state_traj/trajectory_{:0>4d}'.format(config["DIR"], epoch), dpi=300)
+        plt.close("all")
+    
 def plot_video_contour_RRAA(multi_info, epoch, config, save_video=False, prefix="", log_wandb=True):
     start_time = time()
     if config['EXP_NAME'] == 'HopperReachAlwaysAvoid':
