@@ -125,7 +125,7 @@ class HopperAvoidCeilingBaseline:
     
 ###################### Baselines for CPPO - Reach Reach: RAA ######################
 
-class HopperReachAlwaysAvoid_unaugmented(HopperAvoidCeilingBaseline): 
+class HopperReachAlwaysAvoidBaseline_augmented: 
     """
     Hopper Avoid Ceiling Baseline environment for CPPO baseline
     Unaugmented state base
@@ -146,14 +146,24 @@ class HopperReachAlwaysAvoid_unaugmented(HopperAvoidCeilingBaseline):
         self.default_params = EnvParams()
 
     @partial(jax.jit, static_argnums=(0,))
+    def compute_observation(self, state, last_state=None): 
+        # Compute observation for constrained MDP
+        if last_state is None:
+            return jnp.concatenate([state.state.obs, jnp.array([state.reach])])
+        else: 
+            return jnp.concatenate([state.state.obs, jnp.array([jnp.minimum(state.reach, last_state.reach)])])
+
+    @partial(jax.jit, static_argnums=(0,))
     def reset(self, key, params=None):
         state = self._env.reset(key)
         head_pos, _, _, _, _, _ = self.calculate_position(state.obs)
         avoid_value = self.is_avoid(head_pos)
         reach_value = self.is_reach(head_pos)
         cost = avoid_value 
-        observation = state.obs
+        
         env_state = EnvState(state, reach_value, avoid_value, cost)
+        observation = self.compute_observation(state=env_state, last_state=None)
+
         return observation, env_state
     
     @partial(jax.jit, static_argnums=(0,))
@@ -174,6 +184,8 @@ class HopperReachAlwaysAvoid_unaugmented(HopperAvoidCeilingBaseline):
         observation = next_state.obs
 
         next_state_new = EnvState(next_state, reach_value, avoid_value, cost)
+
+        observation = self.compute_observation(state=next_state_new, last_state=state)
 
         done = False # NOTE: Force dones to false for always avoid - make last done true outside #(state.avoid > 0) | (state.reach < 0)
         return observation, next_state_new, reward, done, pos_dict
@@ -241,7 +253,7 @@ class HopperReachAlwaysAvoid_unaugmented(HopperAvoidCeilingBaseline):
         return spaces.Box(
             low=-jnp.inf,
             high=jnp.inf,
-            shape=(self._env.observation_size),
+            shape=(self._env.observation_size + 1),
         )
 
     def action_space(self, params):
@@ -250,41 +262,6 @@ class HopperReachAlwaysAvoid_unaugmented(HopperAvoidCeilingBaseline):
             high=1.0,
             shape=(self._env.action_size,),
         )
-
-    
-class HopperReachAlwaysAvoid_augmented_max:
-    """
-    Hopper Avoid Ceiling baseline environment for CPPO baseline
-    Augmented state base
-    
-    reward format: gamma * (max (r1, r2)) - max(last r1, last r2)
-    r1 = min(r1, r1 last) as augmented state 
-    r2 = min(r2, r2 last) as augmented state
-    """
-    def __init__(): 
-        raise NotImplementedError("This function is not implemented for this environment.")
-    
-    def reset(): 
-        raise NotImplementedError("This function is not implemented for this environment.")
-    
-    def step(): 
-        raise NotImplementedError("This function is not implemented for this environment.")
-    
-    def is_reach():
-        raise NotImplementedError("This function is not implemented for this environment.")
-    
-    def is_avoid():
-        raise NotImplementedError("This function is not implemented for this environment.")
-    
-    def calculate_position():
-        raise NotImplementedError("This function is not implemented for this environment.")
-    
-    def observation_space():
-        raise NotImplementedError("This function is not implemented for this environment.")
-    
-    def action_space():
-        raise NotImplementedError("This function is not implemented for this environment.")
-    
 
 
 ###################### Baselines for CPPO - Reach Reach: RR ######################
