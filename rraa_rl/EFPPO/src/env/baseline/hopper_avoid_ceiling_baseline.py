@@ -303,7 +303,8 @@ class HopperReachReachBaseline_base:
         if prev_min_reach1_value is None or prev_min_reach2_value is None:
             cost = jnp.maximum(curr_min_reach1_value, curr_min_reach2_value)
         else: 
-            cost = jnp.maximum(jnp.minimum(curr_min_reach1_value, prev_min_reach1_value), jnp.minimum(curr_min_reach2_value, prev_min_reach2_value))
+            cost = jnp.minimum(curr_min_reach1_value, prev_min_reach1_value) + jnp.minimum(curr_min_reach2_value, prev_min_reach2_value)
+            # cost = jnp.maximum(jnp.minimum(curr_min_reach1_value, prev_min_reach1_value), jnp.minimum(curr_min_reach2_value, prev_min_reach2_value))
         return cost 
 
     @partial(jax.jit, static_argnums=(0,))
@@ -398,7 +399,8 @@ class HopperReachReachBaseline_base:
         reach = jnp.sqrt((head_pos[0] - target_center[0]) ** 2 + (head_pos[1] - target_center[1]) ** 2) - 0.1
         has_reached_goal = jnp.sqrt((head_pos[0] - target_center[0]) ** 2 + (head_pos[1] - target_center[1]) ** 2) < 0.1
         value = jnp.where(has_reached_goal, -2.5, reach)
-        return value * 100
+        return value * 10
+
     
     @partial(jax.jit, static_argnums=(0,))
     def is_reach2(self, head_pos):
@@ -406,7 +408,7 @@ class HopperReachReachBaseline_base:
         reach = jnp.sqrt((head_pos[0] - target_center[0]) ** 2 + (head_pos[1] - target_center[1]) ** 2) - 0.1
         has_reached_goal = jnp.sqrt((head_pos[0] - target_center[0]) ** 2 + (head_pos[1] - target_center[1]) ** 2) < 0.1
         value = jnp.where(has_reached_goal, -2.5, reach)
-        return value * 100
+        return value * 10
     
 
     def action_space(self, params):
