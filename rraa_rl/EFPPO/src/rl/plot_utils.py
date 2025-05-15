@@ -581,7 +581,9 @@ def plot_contour(train_state_energy, train_state_h, train_state_policy, info, ep
 
 def plot_contour_RRAA(multi_info, epoch, config, policy_decision_sample=None):
 
-    if config['EXP_NAME'] == 'HopperReachReach':
+    if config['EXP_NAME'] == 'HopperReachReach' \
+        or config["EXP_NAME"] == 'HopperReachReach_max_CPPO' \
+        or config["EXP_NAME"] == 'HopperReachReach_sum_CPPO':
 
         info, info_1, info_2 = multi_info
 
@@ -655,8 +657,9 @@ def plot_contour_RRAA(multi_info, epoch, config, policy_decision_sample=None):
             ax.set_title(title)
         
         draw_hopper_rr(info, "Reach Reach", axes[0], target_type="both")
-        draw_hopper_rr(info_1, "Reach 1", axes[1], target_type="R1")
-        draw_hopper_rr(info_2, "Reach 2", axes[2], target_type="R2")
+        if config['EXP_NAME'] == 'HopperReachReach':
+            draw_hopper_rr(info_1, "Reach 1", axes[1], target_type="R1")
+            draw_hopper_rr(info_2, "Reach 2", axes[2], target_type="R2")
 
         if policy_decision_sample is not None:
             axes[3].plot(policy_decision_sample, label='policy #')
@@ -867,7 +870,9 @@ def plot_video_contour_RRAA(multi_info, epoch, config, save_video=False, prefix=
         print("Time taken to plot and push video: ", end_time - start_time)
         return frames
     
-    if config['EXP_NAME'] == 'HopperReachReach':
+    if config['EXP_NAME'] == 'HopperReachReach' \
+        or config["EXP_NAME"] == 'HopperReachReach_max_CPPO' \
+        or config["EXP_NAME"] == 'HopperReachReach_sum_CPPO':
         info, info_1, info_2 = multi_info
 
         def draw_hopper_rr(step, info, reach_idx_1, reach_idx_2, title, ax, target_type="both"):
@@ -928,29 +933,33 @@ def plot_video_contour_RRAA(multi_info, epoch, config, save_video=False, prefix=
 
         full_len = np.maximum(reach_idx_1, reach_idx_2)
         full_len = info['head_pos'].shape[0] if full_len.item() == np.inf else int(full_len.item())
+        # full_len = info['head_pos'].shape[0]
         reach_idx_1 = int(reach_idx_1.item()) if reach_idx_1.item() != np.inf else -1
         reach_idx_2 = int(reach_idx_2.item()) if reach_idx_2.item() != np.inf else -1
         
         frames = []
         num_frames = full_len//2
         indices = np.linspace(0, full_len, num_frames, dtype=int)
-        reach_idx_1_reach1 = info_1['reach_index_1'].item()
-        reach_idx_2_reach2 = info_2['reach_index_2'].item()
+        if config['EXP_NAME'] == 'HopperReachReach':
+            reach_idx_1_reach1 = info_1['reach_index_1'].item()
+            reach_idx_2_reach2 = info_2['reach_index_2'].item()
+            
         for step_n in indices: 
 
             fig, axes = plt.subplots(3, 1, figsize=(6, 4), dpi=100)
 
             draw_hopper_rr(step_n, info, reach_idx_1, reach_idx_2, "Reach Reach", axes[0], target_type="both")
 
-            # AFTER DECOMPOSED REACH, DRAW LAST POINT
-            if step_n >= reach_idx_1_reach1:
-                reach_idx_1_reach1 = step_n
-            if step_n >= reach_idx_2_reach2:
-                reach_idx_2_reach2 = step_n
+            if config['EXP_NAME'] == 'HopperReachReach':
+                # AFTER DECOMPOSED REACH, DRAW LAST POINT
+                if step_n >= reach_idx_1_reach1:
+                    reach_idx_1_reach1 = step_n
+                if step_n >= reach_idx_2_reach2:
+                    reach_idx_2_reach2 = step_n
 
-            draw_hopper_rr(step_n, info_1, reach_idx_1_reach1, -1, "Reach 1", axes[1], target_type="R1")
-            draw_hopper_rr(step_n, info_2, -1, reach_idx_2_reach2, "Reach 2", axes[2], target_type="R2")
-            
+                draw_hopper_rr(step_n, info_1, reach_idx_1_reach1, -1, "Reach 1", axes[1], target_type="R1")
+                draw_hopper_rr(step_n, info_2, -1, reach_idx_2_reach2, "Reach 2", axes[2], target_type="R2")
+                
             # Render the figure to an image (smaller size)
             fig.canvas.draw()
             frame = np.frombuffer(fig.canvas.buffer_rgba(), dtype=np.uint8)
@@ -965,12 +974,15 @@ def plot_video_contour_RRAA(multi_info, epoch, config, save_video=False, prefix=
         if save_video: 
             # video_path = 'model/{}/reach/trajectory_{:0>4d}.mp4'.format(config["DIR"], epoch)
             # frames[0].save(video_path, save_all=True, append_images=frames[1:], duration=100, loop=0)
-
-            video_path = 'model/{}/reach/trajectory_{:0>4d}.mp4'.format(config["DIR"], epoch)
+            # mod prefix from / to _
+            prefix_underscore = prefix.replace("/", "_")
+            video_path = 'model/{}/reach/trajectory_{}{:0>4d}.mp4'.format(config["DIR"], prefix_underscore, epoch)
             print("\n\nSaving video to: ", video_path)
             imageio.mimsave(video_path, frames, fps=30)
-
-            wandb.log({"trajectory_video": wandb.Video(video_path, fps=10, format="mp4")})
+            if log_wandb: 
+                wandb_name = f"{prefix}trajectory video"
+                print("Logging video to wandb: ", wandb_name)
+                wandb.log({wandb_name: wandb.Video(video_path, format="mp4")}, step=epoch)
         
         end_time = time()
         print("Time taken to plot and push video: ", end_time - start_time)
