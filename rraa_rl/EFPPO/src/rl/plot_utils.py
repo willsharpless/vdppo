@@ -782,7 +782,10 @@ def plot_contour_RRAA(multi_info, epoch, config, policy_decision_sample=None):
         # ax.set_title("Trajectory Plot Init Energy {:.2f} Final Energy {:.2f}"
         #              .format(info['init_energy'], info['final_energy']))
         plt.savefig('model/{}/reach/trajectory_{:0>4d}_0'.format(config["DIR"], epoch), dpi=300)
+        if config["USE_WANDB"]: 
+            wandb.log({"trajectory_view1": wandb.Image(fig)}, step=epoch)
         plt.close("all")
+
         plt.figure(figsize=(12, 6))
         fig, ax = plt.subplots(1, 1)
         ax.scatter(info['pos_x'][0], info['height'][0], s=10, c='black')
@@ -795,6 +798,8 @@ def plot_contour_RRAA(multi_info, epoch, config, policy_decision_sample=None):
         # ax.set_title("Trajectory Plot Init Energy {:.2f} Final Energy {:.2f}"
         #              .format(info['init_energy'], info['final_energy']))
         plt.savefig('model/{}/reach/trajectory_{:0>4d}_1'.format(config["DIR"], epoch), dpi=300)
+        if config["USE_WANDB"]: 
+            wandb.log({"trajectory_view2": wandb.Image(fig)}, step=epoch)
         plt.close("all")
         plt.figure(figsize=(30, 10))
         fig, ax = plt.subplots(3, 2, layout='constrained')
@@ -816,7 +821,10 @@ def plot_contour_RRAA(multi_info, epoch, config, policy_decision_sample=None):
         ax[2, 0].plot(info['state'][:, -1], label='NYR_INT')
         ax[2, 0].legend()
         plt.savefig('model/{}/state_traj/trajectory_{:0>4d}'.format(config["DIR"], epoch), dpi=300)
+        if config["USE_WANDB"]: 
+            wandb.log({"trajectory_view3": wandb.Image(fig)}, step=epoch)
         plt.close("all")
+        return None
     
 def plot_video_contour_RRAA(multi_info, epoch, config, save_video=False, prefix="", log_wandb=True):
     start_time = time()

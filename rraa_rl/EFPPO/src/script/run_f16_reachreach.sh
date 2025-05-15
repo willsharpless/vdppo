@@ -1,7 +1,7 @@
 CUDA_VISIBLE_DEVICES=1 python ./rraa_rl/EFPPO/src/rl/RR-PPO.py \
 --EXP_NAME=F16ReachReach \
 --DIR=f16_rr \
---LR=3e-4 \
+--LR=3e-5 \
 --NUM_ENVS=256 \
 --NUM_STEPS=200 \
 --TOTAL_TIMESTEPS=200_000_000 \

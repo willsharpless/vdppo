@@ -513,17 +513,22 @@ def train(envs, env_paramss, config, rng):
                     "actor_1_loss": jnp.mean(loss_info_1["actor_loss"]), "value_1_loss": jnp.mean(loss_info_1["value_loss"]),
                     "actor_2_loss": jnp.mean(loss_info_2["actor_loss"]), "value_2_loss": jnp.mean(loss_info_2["value_loss"]),
                     "reach_gamma": result['reach_gamma'][0], "entropy_weight": result['entropy_weight'][0],
-                    'trajectory_sample':wandb.Image(fig),
-                    'policy_decision_sample':wandb.Image(fig2),
                     "Dec. Reach 1 Success %": reach_1_perc_1,
                     "Dec. Reach 2 Success %": reach_2_perc_2,
                     "Reach-Reach Success %": reach_perc,
                     })
             
+            if config["EXP_NAME"]=="HopperReachReach":
+                wandb.log({
+                    'trajectory_sample':wandb.Image(fig),
+                    'policy_decision_sample':wandb.Image(fig2),
+                })
+            
             # Save video of trajectory 
-            video_freq = 25 
-            if timestep % video_freq == 0 or timestep == total_timesteps - 1: 
-                video_frames = plot_video_contour_RRAA((info, info_1, info_2), timestep, config, save_video=True)
+            if config["EXP_NAME"]=="HopperReachReach":
+                video_freq = 25 
+                if timestep % video_freq == 0 or timestep == total_timesteps - 1: 
+                    video_frames = plot_video_contour_RRAA((info, info_1, info_2), timestep, config, save_video=True)
 
         plt.close("all")
         print(f"ITER TIME : {t1-t0:2.1f}s    SUCCESS : (DEC. R1)  {100*reach_1_perc_1:2.1f}%  (DEC. R2)  {100*reach_2_perc_2:2.1f}%  (COM. RR)  {100*reach_perc:2.1f}%")
