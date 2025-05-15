@@ -153,7 +153,7 @@ class HopperReachAlwaysAvoid_unaugmented(HopperAvoidCeilingBaseline):
         reach_value = self.is_reach(head_pos)
         cost = avoid_value 
         observation = state.obs
-        env_state = EnvState(state, reach_value, avoid_value, 0.)
+        env_state = EnvState(state, reach_value, avoid_value, cost)
         return observation, env_state
     
     @partial(jax.jit, static_argnums=(0,))
