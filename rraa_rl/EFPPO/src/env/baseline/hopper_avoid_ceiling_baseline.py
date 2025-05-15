@@ -471,10 +471,5 @@ class HopperReachReachBaseline_augmented_sum(HopperReachReachBaseline_base):
             high=jnp.inf,
             shape=(self._env.observation_size + 2),
         )
-
-    @partial(jax.jit, static_argnums=(0,))
-    def compute_reward(self, curr_reach1_value, curr_reach2_value, prev_reach1_value, prev_reach2_value, params): 
-        # Sum Reward: gamma * (r1 + r2) - (last r1 + last r2)
-        return params.gamma * (curr_reach1_value + curr_reach2_value) - (prev_reach1_value + prev_reach2_value)
     
 
