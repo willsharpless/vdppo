@@ -252,7 +252,7 @@ class F16ReachAvoid(environment.Environment):
         # )
         # state = EnvState(state=state, time=0, energy=init_energy, reach=reach_value, avoid=avoid_value)
 
-        reach_value = self.is_reach1(state, params)
+        reach_value = self.is_reach(state, params)
         avoid_value = self.is_avoid(state, params)
         
         has_reached = reach_value < 0
@@ -583,7 +583,7 @@ class F16AvoidOnly(environment.Environment):
         # )
         # state = EnvState(state=state, time=0, energy=init_energy, reach=reach_value, avoid=avoid_value)
 
-        reach_value = self.is_reach1(state, params)
+        reach_value = self.is_reach(state, params)
         avoid_value = self.is_avoid(state, params)
         
         time = 0
