@@ -277,7 +277,7 @@ class F16ReachReach(environment.Environment):
 
     def is_reach1(self, state, params: EnvParams) -> float:
         """Get to positon 1200 NORTH and 150 EAST """
-        target_center = [1200., 150.]
+        target_center = [1200., 50.]
 
         # has_reached_goal = jnp.fabs(state[self.PN] - target_center[0]) < 25.
         # reach = (jnp.fabs(state[self.PN] - 2000.) - 25.) / 5.
@@ -294,7 +294,7 @@ class F16ReachReach(environment.Environment):
     
     def is_reach2(self, state, params: EnvParams) -> float:
         """Get to positon 1200 NORTH and -150 EAST """
-        target_center = [1200., -150.]
+        target_center = [600., -50.]
 
         # has_reached_goal = jnp.fabs(state[self.PN] - target_center[0]) < 25.
         # reach = (jnp.fabs(state[self.PN] - 2000.) - 25.) / 5.
@@ -624,7 +624,7 @@ class F16Reach1(environment.Environment):
 
     def is_reach1(self, state, params: EnvParams) -> float:
         """Get to positon 1200 NORTH and 150 EAST """
-        target_center = [1200., 150.]
+        target_center = [1200., 50.]
 
         # has_reached_goal = jnp.fabs(state[self.PN] - target_center[0]) < 25.
         # reach = (jnp.fabs(state[self.PN] - 2000.) - 25.) / 5.
@@ -641,7 +641,7 @@ class F16Reach1(environment.Environment):
     
     def is_reach2(self, state, params: EnvParams) -> float:
         """Get to positon 1200 NORTH and -150 EAST """
-        target_center = [1200., -150.]
+        target_center = [600., -50.]
 
         # has_reached_goal = jnp.fabs(state[self.PN] - target_center[0]) < 25.
         # reach = (jnp.fabs(state[self.PN] - 2000.) - 25.) / 5.
@@ -971,7 +971,7 @@ class F16Reach2(environment.Environment):
 
     def is_reach1(self, state, params: EnvParams) -> float:
         """Get to positon 1200 NORTH and 150 EAST """
-        target_center = [1200., 150.]
+        target_center = [1200., 50.]
 
         # has_reached_goal = jnp.fabs(state[self.PN] - target_center[0]) < 25.
         # reach = (jnp.fabs(state[self.PN] - 2000.) - 25.) / 5.
@@ -988,7 +988,7 @@ class F16Reach2(environment.Environment):
     
     def is_reach2(self, state, params: EnvParams) -> float:
         """Get to positon 1200 NORTH and -150 EAST """
-        target_center = [1200., -150.]
+        target_center = [600., -50.]
 
         # has_reached_goal = jnp.fabs(state[self.PN] - target_center[0]) < 25.
         # reach = (jnp.fabs(state[self.PN] - 2000.) - 25.) / 5.
