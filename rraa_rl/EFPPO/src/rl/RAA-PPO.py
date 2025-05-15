@@ -69,7 +69,7 @@ def train(envs, env_paramss, config, rngs, env_test=None):
 
         ##################  Env step: Avoid Env ##################
 
-        init_type = "toinput" # "fullrandom" # "toinput" # "standard"
+        init_type = "standard" # "fullrandom" # "toinput" # "standard"
 
         # RESET ENV
         rng_avoid, _rng_avoid = jax.random.split(rng_avoid)
@@ -423,8 +423,8 @@ def train(envs, env_paramss, config, rngs, env_test=None):
                     #    "entropy_loss": jnp.mean(loss_info["entropy_loss"]),
                     "actor_avoid_loss": jnp.mean(loss_info_avoid["actor_loss"]), "value_avoid_loss": jnp.mean(loss_info_avoid["value_loss"]),
                     "reach_gamma": result['reach_gamma'][0], "entropy_weight": result['entropy_weight'][0],
-                    'trajectory_sample':wandb.Image(fig),
-                    'policy_decision_sample':wandb.Image(fig2),
+                    # 'trajectory_sample':wandb.Image(fig),
+                    # 'policy_decision_sample':wandb.Image(fig2),
                     "crashed [%]": crash_perc,
                     "reached [%]": reach_perc,
                     "reached_avoid [%]": reach_avoid_perc,
@@ -434,19 +434,26 @@ def train(envs, env_paramss, config, rngs, env_test=None):
                         # 'trajectory_sample_R1':wandb.Image(fig1), 'trajectory_sample_R2':wandb.Image(fig2)
                     }, step=timestep)
             
-        # Save video of trajectory 
-        video_freq = 5 #25 
-        save_video = config["USE_WANDB"] #True 
-        if timestep % video_freq == 0 or timestep == total_timesteps - 1: 
-            video_frames = plot_video_contour_RRAA((info, info_avoid), timestep, config, save_video=save_video, log_wandb=config["USE_WANDB"])
-            # wandb.log({"trajectory_video": wandb.Video(np.array(video_frames), fps=10, format="mp4")})
+            if "Hopper" in config["EXP_NAME"]:
+                wandb.log({
+                    'trajectory_sample':wandb.Image(fig),
+                    'policy_decision_sample':wandb.Image(fig2),
+                })
             
+        # Save video of trajectory 
+        if "Hopper" in config["EXP_NAME"]:
+            video_freq = 5 #25 
+            save_video = config["USE_WANDB"] #True 
+            if timestep % video_freq == 0 or timestep == total_timesteps - 1: 
+                video_frames = plot_video_contour_RRAA((info, info_avoid), timestep, config, save_video=save_video, log_wandb=config["USE_WANDB"])
+                # wandb.log({"trajectory_video": wandb.Video(np.array(video_frames), fps=10, format="mp4")})
+                
         plt.close("all")
         # print("Earliest Reach {}: {}        {}".format(timestep, cnt, np.mean(consumption)))
         print("Time {}".format(t1-t0))
 
         # Add in eval with deterministic checkpoint
-        if env_test is not None and timestep % 5 == 0:
+        if env_test is not None and timestep % 5 == 0 and "Hopper" in config["EXP_NAME"]:
             rng_composed, _rng_composed = jax.random.split(rng_composed)
             reset_rng_composed = jax.random.split(_rng_composed, config["NUM_ENVS"])# FIXME: Have eval envs use a different seed than train envs
             # FIXME: Is it just running same initial state over and over?
@@ -555,31 +562,31 @@ def train(envs, env_paramss, config, rngs, env_test=None):
 if __name__ == "__main__":
     config = vars(get_args(sys.argv[1:]))
 
-    debug = False
+    debug = True
     if debug:
-        config["EXP_NAME"]="HopperReachAlwaysAvoid"
-        config["DIR"]="hopper_reachalwaysavoid_ceilingwall_debug"
+        config["EXP_NAME"]="F16ReachAlwaysAvoid"
+        config["DIR"]="F16_raa_debug"
         config["LR"]=3e-4
-        config["NUM_ENVS"]=128
-        config["NUM_STEPS"]=400
-        config["TOTAL_TIMESTEPS"]=500_000_000
-        config["STEP_SCAN"]=4
+        config["NUM_ENVS"]=256
+        config["NUM_STEPS"]=200
+        config["TOTAL_TIMESTEPS"]=100_000_000
+        config["STEP_SCAN"]=10
         config["UPDATE_EPOCHS"]=10
-        config["NUM_MINIBATCHES"]=32
+        config["NUM_MINIBATCHES"]=64
         config["GAMMA_ENERGY"]=1.0
         config["GAMMA_REACH_INIT"]=0.995
         config["GAMMA_REACH_FINAL"]=0.9995
         config["GAE_LAMBDA"]=0.95
         config["CLIP_EPS"]=0.2
-        config["ENT_COEF"]=0.0001
+        config["ENT_COEF"]=0.001
         config["VF_COEF"]=2.0
         config["MAX_GRAD_NORM"]=0.5
         config["ACTIVATION"]="tanh"
         config["CUDA_USE"]="0,1,2,3"
         config["ANNEAL_LR"]=True,
         config["ANNEAL_ENT"]=True
-        config["NAME"]="hopper_debug"
-        config["TEST_MODE"]=True # USES DETERMINISTIC MODELS
+        config["NAME"]="F16_raa_debug"
+        # config["TEST_MODE"]=True # USES DETERMINISTIC MODELS
 
     config["NUM_UPDATES"] = int(
         config["TOTAL_TIMESTEPS"] // config["NUM_STEPS"] // config["NUM_ENVS"]
@@ -616,7 +623,7 @@ if __name__ == "__main__":
     config_test["TEST_MODE"] = True
     env_test = get_env(config_test)
 
-    config["USE_WANDB"] = True #True # False for debugging
+    config["USE_WANDB"] = not debug #True # False for debugging
     if config["USE_WANDB"]:
         wandb.init(project='EC-EFPPO-{}'.format(config["EXP_NAME"]), name=config["NAME"], config=config,
                    entity='braat_brrt')
