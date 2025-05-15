@@ -788,8 +788,17 @@ def plot_contour_RRAA(multi_info, epoch, config, policy_decision_sample=None):
 
         plt.figure(figsize=(12, 6))
         fig, ax = plt.subplots(1, 1)
+        if config['EXP_NAME'] == 'F16ReachReach':
+            pass
+        else:
+            draw_rectangle_1 = plt.Rectangle((1250., -0.1), 500., 1200., facecolor="green", fill=True, alpha = 0.4)
+            ax.add_patch(draw_rectangle_1)
+            draw_rectangle_2 = plt.Rectangle((2000 - 25, -0.1), 100., 1200., facecolor="red", fill=True, alpha = 0.4)
+            ax.add_patch(draw_rectangle_2)
+            draw_rectangle_2 = plt.Rectangle((-0.1, -0.1), 2000.1, 2., facecolor="red", fill=True, alpha = 0.4)
+            ax.add_patch(draw_rectangle_2)
         ax.scatter(info['pos_x'][0], info['height'][0], s=10, c='black')
-        ax.plot(info['pos_x'], info['height'])
+        ax.plot(info['pos_x'], info['height'])        
         ax.set_xlim((0., 2000.))
         ax.set_ylim((0., 1100.))
         ax.set_xlabel("Position North")

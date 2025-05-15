@@ -190,6 +190,8 @@ class F16ReachAvoid(environment.Environment):
         
         has_reached = reach_value < 0
 
+        a_state_new = jnp.where(avoid_value <= 0, a_state_new, state.state)
+
         # next_state_new = EnvStateRR(state.state, state.time + 1, avoid_value, reach_value, has_reached)
         next_state_new = EnvStateRA(a_state_new, state.time + 1, avoid_value, reach_value, has_reached)
 
@@ -222,23 +224,42 @@ class F16ReachAvoid(environment.Environment):
 
         _MAX_ALT_SAMPLE = 800.0
         bounds = np.array(
+            # [
+            #     (150.0, 550.0),  # vt
+            #     (-0.17453292519943295 / 10, 0.7853981633974483 / 10),  # alpha (rad)
+            #     (-0.5235987755982988 / 10, 0.5235987755982988 / 10),  # beta (rad)
+            #     (-np.pi / 4, np.pi / 4),  # phi roll
+            #     (-1.0, 1.0),  # theta pitch
+            #     (-1e-4, 1e-4),  # psi yaw
+            #     (-0.5, 0.5),  # P
+            #     (-0.5, 0.5),  # Q
+            #     (-0.5, 0.5),  # R
+            #     (0.0, 1900.0),  # pos_n
+            #     (-200.0, 200.0),  # pos_e
+            #     (300.0, _MAX_ALT_SAMPLE),  # alt.
+            #     (0.0, 10.0),  # power. Consider sampling wider range.
+            #     (-2.0, 2.0),  # nz_int
+            #     (-2.0, 2.0),  # ps_int
+            #     (-2.0, 2.0),  # nyr_int
+            # ]
             [
-                (150.0, 550.0),  # vt
-                (-0.17453292519943295 / 10, 0.7853981633974483 / 10),  # alpha (rad)
-                (-0.5235987755982988 / 10, 0.5235987755982988 / 10),  # beta (rad)
-                (-np.pi / 4, np.pi / 4),  # phi roll
-                (-1.0, 1.0),  # theta pitch
+                # NOTE WAS: REDUCED
+                (250.0, 450.1),  # vt
+                (-0.17453292519943295 / 20, 0.7853981633974483 / 20),  # alpha (rad)
+                (-0.5235987755982988 / 20, 0.5235987755982988 / 20),  # beta (rad)
+                (-np.pi / 8, np.pi / 8),  # phi roll
+                (-0.5, 0.5),  # theta pitch
                 (-1e-4, 1e-4),  # psi yaw
-                (-0.5, 0.5),  # P
-                (-0.5, 0.5),  # Q
-                (-0.5, 0.5),  # R
-                (0.0, 1900.0),  # pos_n
+                (-0.25, 0.25),  # P
+                (-0.25, 0.25),  # Q
+                (-0.25, 0.25),  # R
+                (0.0, 1000.0),  # pos_n
                 (-200.0, 200.0),  # pos_e
-                (300.0, _MAX_ALT_SAMPLE),  # alt.
+                (400.0, 700.0),  # alt.
                 (0.0, 10.0),  # power. Consider sampling wider range.
-                (-2.0, 2.0),  # nz_int
-                (-2.0, 2.0),  # ps_int
-                (-2.0, 2.0),  # nyr_int
+                (-1.0, 1.0),  # nz_int
+                (-1.0, 1.0),  # ps_int
+                (-1.0, 1.0),  # nyr_int
             ]
         )
 
@@ -281,7 +302,8 @@ class F16ReachAvoid(environment.Environment):
         # has_reached_goal = jnp.fabs(state[self.PN] - target_center[0]) < 25.
         # reach = (jnp.fabs(state[self.PN] - 2000.) - 25.) / 5.
 
-        reach = (jnp.fabs(state[self.PN] - target_center[0]) - 25.) / 5
+        # reach = (jnp.fabs(state[self.PN] - target_center[0]) - 25.) / 5
+        reach = (jnp.fabs(state[self.PN] - target_center[0]) - 250.) / 5
         has_reached_goal = reach < 0
 
         value = jnp.where(has_reached_goal, -300., reach)
@@ -308,7 +330,7 @@ class F16ReachAvoid(environment.Environment):
 
         value_geof = (state[self.PN] - 2000) / 5
         value_grnd = -state[self.H] / 5
-        value_corr = (jnp.fabs(state[self.PE]) - 200.) / 5
+        value_corr = (jnp.fabs(state[self.PE]) - 500.) / 5
 
         return jnp.maximum(jnp.maximum(value_geof, value_grnd), value_corr)
 
@@ -519,7 +541,9 @@ class F16AvoidOnly(environment.Environment):
         # NOTE: but A_STATE is the updated dynamics? => update only if at avoid set?? wtf??
 
         reach_value = self.is_reach(a_state_new, params)
-        avoid_value = self.is_avoid(a_state_new, params) 
+        avoid_value = self.is_avoid(a_state_new, params)
+
+        a_state_new = jnp.where(avoid_value <= 0, a_state_new, state.state)
         
         # next_state_new = EnvStateRR(state.state, state.time + 1, avoid_value, reach_value, has_reached)
         next_state_new = EnvStateAvoidOnly(a_state_new, state.time + 1, avoid_value)
@@ -553,23 +577,42 @@ class F16AvoidOnly(environment.Environment):
 
         _MAX_ALT_SAMPLE = 800.0
         bounds = np.array(
+            # [
+            #     (150.0, 550.0),  # vt
+            #     (-0.17453292519943295 / 10, 0.7853981633974483 / 10),  # alpha (rad)
+            #     (-0.5235987755982988 / 10, 0.5235987755982988 / 10),  # beta (rad)
+            #     (-np.pi / 4, np.pi / 4),  # phi roll
+            #     (-1.0, 1.0),  # theta pitch
+            #     (-1e-4, 1e-4),  # psi yaw
+            #     (-0.5, 0.5),  # P
+            #     (-0.5, 0.5),  # Q
+            #     (-0.5, 0.5),  # R
+            #     (0.0, 1900.0),  # pos_n
+            #     (-200.0, 200.0),  # pos_e
+            #     (300.0, _MAX_ALT_SAMPLE),  # alt.
+            #     (0.0, 10.0),  # power. Consider sampling wider range.
+            #     (-2.0, 2.0),  # nz_int
+            #     (-2.0, 2.0),  # ps_int
+            #     (-2.0, 2.0),  # nyr_int
+            # ]
             [
-                (150.0, 550.0),  # vt
-                (-0.17453292519943295 / 10, 0.7853981633974483 / 10),  # alpha (rad)
-                (-0.5235987755982988 / 10, 0.5235987755982988 / 10),  # beta (rad)
-                (-np.pi / 4, np.pi / 4),  # phi roll
-                (-1.0, 1.0),  # theta pitch
+                # NOTE WAS: REDUCED
+                (250.0, 450.1),  # vt
+                (-0.17453292519943295 / 20, 0.7853981633974483 / 20),  # alpha (rad)
+                (-0.5235987755982988 / 20, 0.5235987755982988 / 20),  # beta (rad)
+                (-np.pi / 8, np.pi / 8),  # phi roll
+                (-0.5, 0.5),  # theta pitch
                 (-1e-4, 1e-4),  # psi yaw
-                (-0.5, 0.5),  # P
-                (-0.5, 0.5),  # Q
-                (-0.5, 0.5),  # R
-                (0.0, 1900.0),  # pos_n
+                (-0.25, 0.25),  # P
+                (-0.25, 0.25),  # Q
+                (-0.25, 0.25),  # R
+                (0.0, 1000.0),  # pos_n
                 (-200.0, 200.0),  # pos_e
-                (300.0, _MAX_ALT_SAMPLE),  # alt.
+                (400.0, 700.0),  # alt.
                 (0.0, 10.0),  # power. Consider sampling wider range.
-                (-2.0, 2.0),  # nz_int
-                (-2.0, 2.0),  # ps_int
-                (-2.0, 2.0),  # nyr_int
+                (-1.0, 1.0),  # nz_int
+                (-1.0, 1.0),  # ps_int
+                (-1.0, 1.0),  # nyr_int
             ]
         )
 

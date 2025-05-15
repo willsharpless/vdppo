@@ -450,6 +450,7 @@ def train(envs, env_paramss, config, rngs, env_test=None):
                 
         plt.close("all")
         # print("Earliest Reach {}: {}        {}".format(timestep, cnt, np.mean(consumption)))
+        print(f"ITER TIME : {t1-t0:2.1f}s    SUCCESS :  (Crashed)  {100*crash_perc:2.1f}%  (Reached)  {100*reach_perc:2.1f}%  (RAA)  {100*reach_avoid_perc:2.1f}%")
         print("Time {}".format(t1-t0))
 
         # Add in eval with deterministic checkpoint
@@ -565,7 +566,7 @@ if __name__ == "__main__":
     debug = True
     if debug:
         config["EXP_NAME"]="F16ReachAlwaysAvoid"
-        config["DIR"]="F16_raa_debug"
+        config["DIR"]="F16_raa_PE500_halfsamp2_"
         config["LR"]=3e-4
         config["NUM_ENVS"]=256
         config["NUM_STEPS"]=200
@@ -582,10 +583,10 @@ if __name__ == "__main__":
         config["VF_COEF"]=2.0
         config["MAX_GRAD_NORM"]=0.5
         config["ACTIVATION"]="tanh"
-        config["CUDA_USE"]="0,1,2,3"
+        config["CUDA_USE"]="0"
         config["ANNEAL_LR"]=True,
         config["ANNEAL_ENT"]=True
-        config["NAME"]="F16_raa_debug"
+        config["NAME"]="F16_raa_PE500_halfsamp2_"
         # config["TEST_MODE"]=True # USES DETERMINISTIC MODELS
 
     config["NUM_UPDATES"] = int(
@@ -623,7 +624,7 @@ if __name__ == "__main__":
     config_test["TEST_MODE"] = True
     env_test = get_env(config_test)
 
-    config["USE_WANDB"] = not debug #True # False for debugging
+    config["USE_WANDB"] = True #True # False for debugging
     if config["USE_WANDB"]:
         wandb.init(project='EC-EFPPO-{}'.format(config["EXP_NAME"]), name=config["NAME"], config=config,
                    entity='braat_brrt')
