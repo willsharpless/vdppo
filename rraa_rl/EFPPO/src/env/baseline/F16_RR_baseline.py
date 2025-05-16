@@ -12,13 +12,6 @@ from flax import struct
 import numpy as np
 from jax_f16.f16 import F16
 
-@struct.dataclass
-class EnvState:
-    state: jax.Array = struct.field(default_factory=jax.Array)
-    time: int = 0
-    energy: float = 0.
-    reach: float = 0.
-    avoid: int = 0.
 
 @struct.dataclass
 class EnvParams:
@@ -27,16 +20,17 @@ class EnvParams:
     # max_energy: float = 800.0
     max_steps_in_episode: int = 5000
 
-
 @struct.dataclass
-class EnvStateRA:
+class EnvStateRR:
     state: jax.Array = struct.field(default_factory=jax.Array)
     time: int = 0
-    avoid: float = 0.
-    reach: float = 0.
-    has_reached: float = 0.
-    min_reach: float = 0.
-    cost: float = 0.
+    reach1: float = 0.
+    reach2: float = 0.
+    has_reached_1: float = 0.
+    has_reached_2: float = 0.
+    min_reach1: float = 0.
+    min_reach2: float = 0.
+    cost : float = 0.
 
 @struct.dataclass
 class EnvParamsEmpty:
@@ -84,12 +78,24 @@ def compute_f16_vel_angles(state):
     assert out.shape == (3,)
     return out
 
-# NOTE: Both RA and RAA class
-class F16ReachAvoidBaseline(environment.Environment):
+
+class F16ReachReachBaseline(environment.Environment):
+
+    
+    def compute_cost_accumulated(self, curr_min_reach1_value, curr_min_reach2_value, prev_min_reach1_value=None, prev_min_reach2_value=None, 
+                     reach1_value=None, reach2_value=None): 
+        if prev_min_reach1_value is None or prev_min_reach2_value is None:
+            cost = jnp.maximum(curr_min_reach1_value, curr_min_reach2_value)
+        else: 
+            cost = jnp.minimum(curr_min_reach1_value, prev_min_reach1_value) + jnp.minimum(curr_min_reach2_value, prev_min_reach2_value)
+        return cost 
+    
+    def compute_reward(self, state, last_state, params): 
+        return params.gamma * jnp.maximum(state.min_reach1, state.min_reach2) - jnp.maximum(last_state.min_reach1, last_state.min_reach2) 
 
     def __init__(self):
         super().__init__()
-        self.obs_shape = (26-2+1,)
+        self.obs_shape = (26,)
         self.NX = F16.NX
         self.NU = F16.NU
 
@@ -136,10 +142,10 @@ class F16ReachAvoidBaseline(environment.Environment):
     def step_env(
         self,
         key: chex.PRNGKey,
-        state: EnvStateRA,
+        state: EnvStateRR,
         action: chex.Array,
         params: EnvParams,
-    ) -> Tuple[chex.Array, EnvStateRA, float, bool, dict]:
+    ) -> Tuple[chex.Array, EnvStateRR, float, bool, dict]:
 
         assert state.state.shape == (self.NX,)
         assert action.shape == (self.NU,)
@@ -176,22 +182,33 @@ class F16ReachAvoidBaseline(environment.Environment):
         # NOTE: STATE <- A_STATE IF HITTING GEOFENCES?
         # NOTE: but A_STATE is the updated dynamics? => update only if at avoid set?? wtf??
 
-        reach_value = self.is_reach(a_state_new, params)
-        avoid_value = self.is_avoid(a_state_new, params) 
+        reach1_value = self.is_reach1(a_state_new, params)
+        reach2_value = self.is_reach2(a_state_new, params)
         
-        has_reached = reach_value < 0
-        min_reach = jnp.minimum(reach_value, state.reach)
-        
-        reward = params.gamma * reach_value - state.reach
-        cost = avoid_value
+        has_reached_1 = reach1_value < 0
+        has_reached_2 = reach2_value < 0
 
+        min_reach1 = jnp.minimum(reach1_value, state.min_reach1)
+        min_reach2 = jnp.minimum(reach2_value, state.min_reach2)
+
+        #NOTE WAS: FOR KILLING STRAY TRAJECTORIES
+        avoid_value = self.is_avoid(a_state_new, params)
         a_state_new = jnp.where(avoid_value <= 0, a_state_new, state.state)
 
-        # next_state_new = EnvStateRR(state.state, state.time + 1, avoid_value, reach_value, has_reached)
-        next_state_new = EnvStateRA(a_state_new, state.time + 1, avoid_value, reach_value, has_reached, min_reach, cost)
+        cost = self.compute_cost_accumulated(curr_min_reach1_value=min_reach1, 
+                                             curr_min_reach2_value=min_reach2,
+                                             prev_min_reach1_value=state.min_reach1,
+                                             prev_min_reach2_value=state.min_reach2,
+                                             reach1_value=reach1_value,
+                                             reach2_value=reach2_value)
 
-        # observation = jnp.concatenate([self.get_obs(state), jnp.array([avoid_value, reach_value])]) # might need a squeeze here
-        observation = jnp.concatenate([self.get_obs(next_state_new), jnp.array([min_reach])]).squeeze()
+        # next_state_new = EnvStateRR(state.state, state.time + 1, reach1_value, reach2_value, has_reached_1, has_reached_2)
+        next_state_new = EnvStateRR(a_state_new, state.time + 1, reach1_value, reach2_value, has_reached_1, has_reached_2, min_reach1, min_reach2, cost)
+
+        reward = self.compute_reward(state=next_state_new, last_state=state, params=params)
+
+        # observation = jnp.concatenate([self.get_obs(state), jnp.array([reach1_value, reach2_value])]) # might need a squeeze here
+        observation = jnp.concatenate([self.get_obs(next_state_new), jnp.array([min_reach1, min_reach2])]).squeeze()
 
         # next_energy = jnp.clip(state.energy - 4 * jnp.sum(control_raw ** 2), params.min_energy, params.max_energy)
         # next_state_new = EnvState(state=a_state_new, time=state.time + 1, energy=next_energy,
@@ -215,7 +232,7 @@ class F16ReachAvoidBaseline(environment.Environment):
 
     def reset_env(
         self, key: chex.PRNGKey, params: EnvParams
-    ) -> Tuple[chex.Array, EnvStateRA]:
+    ) -> Tuple[chex.Array, EnvStateRR]:
 
         _MAX_ALT_SAMPLE = 800.0
         bounds = np.array(
@@ -248,9 +265,9 @@ class F16ReachAvoidBaseline(environment.Environment):
                 (-0.25, 0.25),  # P
                 (-0.25, 0.25),  # Q
                 (-0.25, 0.25),  # R
-                (0.0, 1000.0),  # pos_n
+                (250.0, 750.0),  # pos_n
                 (-200.0, 200.0),  # pos_e
-                (400.0, 700.0),  # alt.
+                (300.0, 900.0),  # alt.
                 (0.0, 10.0),  # power. Consider sampling wider range.
                 (-1.0, 1.0),  # nz_int
                 (-1.0, 1.0),  # ps_int
@@ -268,40 +285,56 @@ class F16ReachAvoidBaseline(environment.Environment):
         # )
         # state = EnvState(state=state, time=0, energy=init_energy, reach=reach_value, avoid=avoid_value)
 
-        reach_value = self.is_reach(state, params)
-        avoid_value = self.is_avoid(state, params)
+        reach1_value = self.is_reach1(state, params)
+        reach2_value = self.is_reach2(state, params)
         
-        has_reached = reach_value < 0
-        min_reach = reach_value
-        cost = avoid_value
+        has_reached_1 = reach1_value < 0
+        has_reached_2 = reach2_value < 0
+
+        min_reach1 = reach1_value 
+        min_reach2 = reach2_value
+
+        cost = self.compute_cost_accumulated(curr_min_reach1_value=min_reach1,
+                                             curr_min_reach2_value=min_reach2,
+                                             prev_min_reach1_value=None,
+                                             prev_min_reach2_value=None,
+                                             reach1_value=reach1_value,
+                                             reach2_value=reach2_value) 
 
         time = 0
-        env_state = EnvStateRA(state, time, avoid_value, reach_value, has_reached, min_reach, cost)
-        # observation = jnp.concatenate([self.get_obs(env_state), jnp.array([avoid_value, reach_value])]) # might need a squeeze here
-        observation = jnp.concatenate([self.get_obs(env_state), jnp.array([min_reach])]).squeeze()
+        env_state = EnvStateRR(state, time, reach1_value, reach2_value, has_reached_1, has_reached_2, min_reach1, min_reach2, cost)
+        observation = jnp.concatenate([self.get_obs(env_state), jnp.array([min_reach1, min_reach2])]) # might need a squeeze here
 
         return observation, env_state
 
-    # def is_reach(self, state, avoid_value, params: EnvParams) -> float:
-    #     """Check the reach value of the current state"""
-    #     has_reached_goal = jnp.fabs(state[self.PN] - 2000.) < 25.
-    #     reach = (jnp.fabs(state[self.PN] - 2000.) - 25.) / 5.
-    #     value = jnp.where(has_reached_goal, -300., reach)
-    #     is_avoid = (avoid_value == -1)
-    #     value = jnp.where(is_avoid, 800.0, value)
-    #     return value
 
-    # NOTE: old reaching was getting to 2000 position north
-
-    def is_reach(self, state, params: EnvParams) -> float:
-        """Get to positon 1500 NORTH EAST """
-        target_center = [1500.]
+    def is_reach1(self, state, params: EnvParams) -> float:
+        """Get to positon 1200 NORTH and 850 HIGH """
+        target_center = [1200., 850]
 
         # has_reached_goal = jnp.fabs(state[self.PN] - target_center[0]) < 25.
         # reach = (jnp.fabs(state[self.PN] - 2000.) - 25.) / 5.
 
-        # reach = (jnp.fabs(state[self.PN] - target_center[0]) - 25.) / 5
-        reach = (jnp.fabs(state[self.PN] - target_center[0]) - 250.) / 5
+        radius = 150
+        reach = (jnp.sqrt((state[self.PN] - target_center[0]) ** 2 + (state[self.H] - target_center[1]) ** 2) - radius) / 5
+        has_reached_goal = reach < 0
+
+        value = jnp.where(has_reached_goal, -300., reach)
+
+        # is_avoid = (avoid_value == -1)
+        # value = jnp.where(is_avoid, 800.0, value)
+
+        return value
+    
+    def is_reach2(self, state, params: EnvParams) -> float:
+        """Get to positon 1200 NORTH and 350 HIGH """
+        target_center = [1200., 350.]
+
+        # has_reached_goal = jnp.fabs(state[self.PN] - target_center[0]) < 25.
+        # reach = (jnp.fabs(state[self.PN] - 2000.) - 25.) / 5.
+
+        radius = 150
+        reach = (jnp.sqrt((state[self.PN] - target_center[0]) ** 2 + (state[self.H] - target_center[1]) ** 2) - radius) / 5
         has_reached_goal = reach < 0
 
         value = jnp.where(has_reached_goal, -300., reach)
@@ -311,28 +344,18 @@ class F16ReachAvoidBaseline(environment.Environment):
 
         return value
 
-    # def is_avoid(self, state, params: EnvParams):
-
-    #     alt_valid = (0. <= state[self.H]) & (state[self.H] <= 1100.0)
-    #     pe_valid = (-200.0 <= state[self.PE]) & (state[self.PE] <= 200.0)
-    #     # avoid_1 = (-200.0 <= state[self.PE]) & (state[self.PE] <= -50.0) & (jnp.fabs(state[self.PN] - 0.) <= 25.)
-    #     # avoid_2 = (0.0 <= state[self.PE]) & (state[self.PE] <= 200.0) & (jnp.fabs(state[self.PN] - 1000.) <= 25.)
-    #     # avoid_3 = (-200.0 <= state[self.PE]) & (state[self.PE] <= -50.0) & (jnp.fabs(state[self.PN] - 1500.) <= 25.)
-
-    #     return jnp.logical_not(alt_valid & pe_valid)
-
-    # NOTE: old avoid was flight corridor (box), ie within +- 200 EAST and < 1100 altitude and above ground
 
     def is_avoid(self, state, params: EnvParams):
         """Avoid Geofence at 2000 PN and ground (HEIGHT 0) and stay in flight corridor +-200 PE """
 
         value_geof = (state[self.PN] - 2000) / 5
         value_grnd = -state[self.H] / 5
+        value_roof = (state[self.H] - 1100) / 5
         value_corr = (jnp.fabs(state[self.PE]) - 500.) / 5
 
-        return jnp.maximum(jnp.maximum(value_geof, value_grnd), value_corr)
+        return jnp.maximum(jnp.maximum(jnp.maximum(value_geof, value_grnd), value_corr), value_roof)
 
-    def get_obs(self, state: EnvStateRA) -> chex.Array:
+    def get_obs(self, state: EnvStateRR) -> chex.Array:
         """Return angle in polar coordinates and change."""
 
         state_obs = state.state
@@ -377,7 +400,7 @@ class F16ReachAvoidBaseline(environment.Environment):
         obs = state_enc
         return obs
 
-    def is_terminal(self, state: EnvStateRA, params: EnvParams) -> bool:
+    def is_terminal(self, state: EnvStateRR, params: EnvParams) -> bool:
         """Check whether state is terminal."""
         # Check number of steps in episode termination condition
         done = state.time >= params.max_steps_in_episode
@@ -386,7 +409,7 @@ class F16ReachAvoidBaseline(environment.Environment):
     @property
     def name(self) -> str:
         """Environment name."""
-        return "F16ReachAvoid"
+        return "F16ReachReach"
 
     @property
     def num_actions(self) -> int:
@@ -406,9 +429,8 @@ class F16ReachAvoidBaseline(environment.Environment):
 
     def observation_space(self, params: EnvParams) -> spaces.Box:
         """Observation space of the environment."""
-        obs_dim = 26 -2 + 1#26
-        high = jnp.ones(obs_dim) * jnp.finfo(jnp.float32).max
-        return spaces.Box(-high, high, shape=(obs_dim,), dtype=jnp.float32)
+        high = jnp.ones(26) * jnp.finfo(jnp.float32).max
+        return spaces.Box(-high, high, shape=(26,), dtype=jnp.float32)
 
     def state_space(self, params: EnvParams) -> spaces.Dict:
         """State space of the environment."""
@@ -427,25 +449,37 @@ class F16ReachAvoidBaseline(environment.Environment):
                 #     (),
                 #     jnp.float32,
                 # ),
-                "avoid": spaces.Box(
+                "reach1": spaces.Box(
                     -jnp.finfo(jnp.float32).max,
                     jnp.finfo(jnp.float32).max,
                     (),
                     jnp.float32,
                 ),
-                "reach": spaces.Box(
+                "reach2": spaces.Box(
                     -jnp.finfo(jnp.float32).max,
                     jnp.finfo(jnp.float32).max,
                     (),
                     jnp.float32,
                 ),
-                "has_reached": spaces.Box(
+                "has_reached_1": spaces.Box(
                     -jnp.finfo(jnp.float32).max,
                     jnp.finfo(jnp.float32).max,
                     (),
                     jnp.float32,
                 ),
-                "min_reach": spaces.Box(
+                "has_reach_2": spaces.Box(
+                    -jnp.finfo(jnp.float32).max,
+                    jnp.finfo(jnp.float32).max,
+                    (),
+                    jnp.float32,
+                ),
+                "min_reach1": spaces.Box(
+                    -jnp.finfo(jnp.float32).max,
+                    jnp.finfo(jnp.float32).max,
+                    (),
+                    jnp.float32,
+                ),
+                "min_reach2": spaces.Box(
                     -jnp.finfo(jnp.float32).max,
                     jnp.finfo(jnp.float32).max,
                     (),
@@ -459,4 +493,3 @@ class F16ReachAvoidBaseline(environment.Environment):
                 ),
             }
         )
-    

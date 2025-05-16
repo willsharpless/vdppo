@@ -215,11 +215,16 @@ def train(env, env_params, config, rng):
                    "average cost": jnp.mean(cost),
                    "actor_loss": jnp.mean(loss_info["actor_loss"]), "entropy_loss": jnp.mean(loss_info["entropy_loss"]),
                    "value_loss": jnp.mean(loss_info["value_loss"]), "cost_loss": jnp.mean(loss_info["cost_loss"]),
-                   'trajectory_sample':wandb.Image(fig),
+                #    'trajectory_sample':wandb.Image(fig),
                     "Reach 1 Success %": reach_1_perc,
                     "Reach 2 Success %": reach_2_perc,
                     "Reach-Reach Success %": reach_perc,
                    "lambda": jnp.mean(loss_info['lambda'])})
+        
+        if "Hopper" in config["EXP_NAME"]:
+                wandb.log({
+                    'trajectory_sample':wandb.Image(fig),
+                })
         
         # Save video of trajectory 
         video_freq = 5 #25 
@@ -246,19 +251,19 @@ if __name__ == "__main__":
     # config["CPPO_UPDATE_TYPE"] = "min" # update
     # config["USE_STL"] = False # stl 
 
-    # # variant 2
-    # config["ENV_REWARD_TYPE"] = "accumulated" # reward
-    # config["ENV_COST_FN"] = "sum" # cost_fn
-    # config["ENV_COST_TYPE"] = "accumulated" # cost
-    # config["CPPO_UPDATE_TYPE"] = "mean" # update
-    # config["USE_STL"] = False # stl 
-
-    # variant 3
-    config["ENV_REWARD_TYPE"] = "instant" # reward
+    # variant 2 - NOTE: BEST - when used with sum rewards: gamma * (r1 + r2) - (prev r1 + prev r2)
+    config["ENV_REWARD_TYPE"] = "accumulated" # reward
     config["ENV_COST_FN"] = "sum" # cost_fn
-    config["ENV_COST_TYPE"] = "instant" # cost
+    config["ENV_COST_TYPE"] = "accumulated" # cost
     config["CPPO_UPDATE_TYPE"] = "mean" # update
     config["USE_STL"] = False # stl 
+
+    # # variant 3
+    # config["ENV_REWARD_TYPE"] = "instant" # reward
+    # config["ENV_COST_FN"] = "sum" # cost_fn
+    # config["ENV_COST_TYPE"] = "instant" # cost
+    # config["CPPO_UPDATE_TYPE"] = "mean" # update
+    # config["USE_STL"] = False # stl 
 
     if config["EXP_NAME"] == "HopperReachReach_separated_CPPO":
         # Use min target cost accumulation
