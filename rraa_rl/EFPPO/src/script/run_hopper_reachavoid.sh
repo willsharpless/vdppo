@@ -1,10 +1,10 @@
 python ./rraa_rl/EFPPO/src/rl/RA-PPO.py \
 --EXP_NAME=HopperReachAvoid \
---DIR=hopper_reachavoid_ceilingwall \
+--DIR=hopper_reachavoid_final \
 --LR=3e-4 \
 --NUM_ENVS=128 \
 --NUM_STEPS=400 \
---TOTAL_TIMESTEPS=100_000_000 \
+--TOTAL_TIMESTEPS=50_000_000 \
 --STEP_SCAN=4 \
 --UPDATE_EPOCHS=10 \
 --NUM_MINIBATCHES=32 \
@@ -20,5 +20,5 @@ python ./rraa_rl/EFPPO/src/rl/RA-PPO.py \
 --CUDA_USE=0,1,2,3 \
 --ANNEAL_LR \
 --ANNEAL_ENT \
---NAME=hopper_reachavoid \
+--NAME=hopper_reachavoid_final \
 # --TEST_MODE

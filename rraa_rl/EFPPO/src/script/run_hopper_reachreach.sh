@@ -1,10 +1,10 @@
-CUDA_VISIBLE_DEVICES=1 python ./rraa_rl/EFPPO/src/rl/RR-PPO.py \
+python ./rraa_rl/EFPPO/src/rl/RR-PPO.py \
 --EXP_NAME=HopperReachReach \
---DIR=hopper_reachreach_halfwidth_R10_MoG_OWfix_retest \
+--DIR=hopper_reachreach_50M \
 --LR=3e-4 \
 --NUM_ENVS=128 \
 --NUM_STEPS=400 \
---TOTAL_TIMESTEPS=100_000_000 \
+--TOTAL_TIMESTEPS=50_000_000 \
 --STEP_SCAN=4 \
 --UPDATE_EPOCHS=10 \
 --NUM_MINIBATCHES=32 \
@@ -17,7 +17,7 @@ CUDA_VISIBLE_DEVICES=1 python ./rraa_rl/EFPPO/src/rl/RR-PPO.py \
 --VF_COEF=2.0 \
 --MAX_GRAD_NORM=0.5 \
 --ACTIVATION=tanh \
---CUDA_USE=1 \
+--CUDA_USE=0 \
 --ANNEAL_LR \
 --ANNEAL_ENT \
---NAME=hopper_reachreach_halfwidth_R10_MoG_OWfix_retest
+--NAME=hopper_reachreach_50M

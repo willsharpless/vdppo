@@ -414,7 +414,7 @@ def train(envs, env_paramss, config, rng):
         update_epoch_reach2 = partial(_no_update, config)
 
     total_timesteps = config["NUM_UPDATES"] // config["STEP_SCAN"]
-
+    best_score = -jnp.inf
     for timestep in range(config["NUM_UPDATES"] // config["STEP_SCAN"]):
 
         t0 = time.time()
@@ -480,18 +480,31 @@ def train(envs, env_paramss, config, rng):
             info['u_air'] = env_params.u_air
             info['v_air'] = env_params.v_air
             info['obs'] = env_params.obstacle
-
-        checkpoints.save_checkpoint(ckpt_dir=os.path.abspath(os.path.join("model", config["DIR"])),
-                                    target={"policy_network":train_state_policy, 
-                                            "value_network":train_state_value,
-                                            "policy_reach1_network":train_state_policy_reach1, 
-                                            "value_reach1_network":train_state_value_reach1,
-                                            "policy_reach2_network":train_state_policy_reach2, 
-                                            "value_reach2_network":train_state_value_reach2,
-                                            },
-                                    step=timestep,
-                                    overwrite=True,
-                                    keep=2)
+        if timestep % 5 == 0:
+            checkpoints.save_checkpoint(ckpt_dir=os.path.abspath(os.path.join("model", config["DIR"])),
+                                        target={"policy_network":train_state_policy, 
+                                                "value_network":train_state_value,
+                                                "policy_reach1_network":train_state_policy_reach1, 
+                                                "value_reach1_network":train_state_value_reach1,
+                                                "policy_reach2_network":train_state_policy_reach2, 
+                                                "value_reach2_network":train_state_value_reach2,
+                                                },
+                                        step=timestep,
+                                        overwrite=True,
+                                        keep=2)
+        if reach_perc > best_score:
+            best_score = reach_perc
+            checkpoints.save_checkpoint(ckpt_dir=os.path.abspath(os.path.join("model", config["DIR"])),
+                                        target={"policy_network":train_state_policy, 
+                                                "value_network":train_state_value,
+                                                "policy_reach1_network":train_state_policy_reach1, 
+                                                "value_reach1_network":train_state_value_reach1,
+                                                "policy_reach2_network":train_state_policy_reach2, 
+                                                "value_reach2_network":train_state_value_reach2,
+                                                },
+                                        step=timestep,
+                                        prefix="best_",
+                                        overwrite=True,)
 
         policy_decision_sample = traj_batch.policy_taken[:,idx]
         # fig = plot_contour_RRAA((info, info_1, info_2), timestep, config)
@@ -539,7 +552,7 @@ def train(envs, env_paramss, config, rng):
 if __name__ == "__main__":
     config = vars(get_args(sys.argv[1:]))
 
-    debug = True
+    debug = False
     if debug:
         config["EXP_NAME"]="F16ReachReach"
         config["DIR"]="F16_rr_verttargs_4"

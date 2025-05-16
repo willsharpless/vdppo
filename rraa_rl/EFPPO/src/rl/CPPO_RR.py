@@ -226,12 +226,35 @@ if __name__ == "__main__":
     config = vars(get_args(sys.argv[1:]))
 
     # FIXME: Manual for now
-    config["ENV_COST_TYPE"] = "accumulated"
-    config["CPPO_UPDATE_TYPE"] = "mean"
-    config["USE_STL"] = False
+
+    # # variant 1
+    # config["ENV_REWARD_TYPE"] = "accumulated" # reward
+    # config["ENV_COST_FN"] = "max" # cost_fn
+    # config["ENV_COST_TYPE"] = "accumulated" # cost
+    # config["CPPO_UPDATE_TYPE"] = "min" # update
+    # config["USE_STL"] = False # stl 
+
+    # # variant 2
+    # config["ENV_REWARD_TYPE"] = "accumulated" # reward
+    # config["ENV_COST_FN"] = "sum" # cost_fn
+    # config["ENV_COST_TYPE"] = "accumulated" # cost
+    # config["CPPO_UPDATE_TYPE"] = "mean" # update
+    # config["USE_STL"] = False # stl 
+
+    # variant 3
+    config["ENV_REWARD_TYPE"] = "instant" # reward
+    config["ENV_COST_FN"] = "sum" # cost_fn
+    config["ENV_COST_TYPE"] = "instant" # cost
+    config["CPPO_UPDATE_TYPE"] = "mean" # update
+    config["USE_STL"] = False # stl 
 
     if config["EXP_NAME"] == "HopperReachReach_separated_CPPO":
         # Use min target cost accumulation
+        config["ENV_REWARD_TYPE"] = "instant" # reward
+        config["ENV_COST_FN"] = "sum" # cost_fn
+        config["ENV_COST_TYPE"] = "instant" # cost
+        config["USE_STL"] = False # stl
+
         config["CPPO_UPDATE_TYPE"] = "min"
 
     # HopperReachReach environment specific assertions
@@ -240,10 +263,12 @@ if __name__ == "__main__":
         assert("USE_STL" in config.keys())
         assert("CPPO_UPDATE_TYPE" in config.keys())
         assert("ENV_COST_TYPE" in config.keys())
-        
+        assert("ENV_COST_FN" in config.keys())
+        assert("ENV_REWARD_TYPE" in config.keys())
 
         print('\n\n\ENV_COST_TYPE: {}'.format(config["ENV_COST_TYPE"]))
-        print('\n\n\ENV_COST_TYPE: {}'.format(config["ENV_COST_TYPE"]))
+        print('ENV_COST_FN: {}'.format(config["ENV_COST_FN"]))
+        print('ENV_REWARD_TYPE: {}'.format(config["ENV_REWARD_TYPE"]))
         print('USE_STL: {}'.format(config["USE_STL"]))
         print('CPPO_UPDATE_TYPE: {}\n\n\n'.format(config["CPPO_UPDATE_TYPE"]))
 
