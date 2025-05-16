@@ -53,6 +53,7 @@ class TrainState(train_state.TrainState):
     lambda_coef: Any
 
 def train(env, env_params, config, rng):
+    best_score = -float(jnp.inf)
     def _train(update_state, ent):
 
         train_state_policy, train_state_value, train_state_cost, rng = update_state
@@ -71,7 +72,8 @@ def train(env, env_params, config, rng):
         )
 
         ####### RRAA Change ######
-        # # FIXME: Check if we want to use these last vlaue dones
+        # # # FIXME: Check if we want to use these last vlaue dones
+        # FIXME: Do we need to flip these done values ? 
         # dones = jnp.zeros_like(traj_batch.done)
         # dones = dones.at[-1, :].set(1.0) 
         ####### RRAA Change ######
@@ -82,10 +84,12 @@ def train(env, env_params, config, rng):
         last_cost = train_state_cost.apply_fn(train_state_cost.params, last_obs)
         advantages_value, targets_value = calculate_gae(config["GAMMA_ENERGY"], config["GAE_LAMBDA"], traj_batch.value,
                                                         traj_batch.reward, 
+                                                        # dones, 
                                                         traj_batch.done, # TODO: CHECK THIS
                                                         last_val)
         advantages_cost, targets_cost = calculate_gae(1.0, config["GAE_LAMBDA"], traj_batch.value_cost,
                                                         traj_batch.cost, 
+                                                        # dones, 
                                                         traj_batch.done, # TODO: CHECK THIS
                                                         last_cost)
 
@@ -190,7 +194,15 @@ def train(env, env_params, config, rng):
 
         fig = plot_contour_RRAA((info, None, None), timestep, config, policy_decision_sample=None)
 
-        
+        # Keep the best performaing model
+        if reach_perc > best_score:
+            best_score = reach_perc
+            checkpoints.save_checkpoint(ckpt_dir=os.path.abspath(os.path.join("model", config["DIR"])),
+                                        target={"policy_network": train_state_policy, "value_network": train_state_value,
+                                            "cost_network": train_state_cost},
+                                        step=timestep,
+                                        prefix="best_",
+                                        overwrite=True,)
 
         t1 = time.time()
 
@@ -203,11 +215,16 @@ def train(env, env_params, config, rng):
                    "average cost": jnp.mean(cost),
                    "actor_loss": jnp.mean(loss_info["actor_loss"]), "entropy_loss": jnp.mean(loss_info["entropy_loss"]),
                    "value_loss": jnp.mean(loss_info["value_loss"]), "cost_loss": jnp.mean(loss_info["cost_loss"]),
-                   'trajectory_sample':wandb.Image(fig),
+                #    'trajectory_sample':wandb.Image(fig),
                     "Reach 1 Success %": reach_1_perc,
                     "Reach 2 Success %": reach_2_perc,
                     "Reach-Reach Success %": reach_perc,
                    "lambda": jnp.mean(loss_info['lambda'])})
+        
+        if "Hopper" in config["EXP_NAME"]:
+                wandb.log({
+                    'trajectory_sample':wandb.Image(fig),
+                })
         
         # Save video of trajectory 
         video_freq = 5 #25 
@@ -234,19 +251,19 @@ if __name__ == "__main__":
     # config["CPPO_UPDATE_TYPE"] = "min" # update
     # config["USE_STL"] = False # stl 
 
-    # # variant 2
-    # config["ENV_REWARD_TYPE"] = "accumulated" # reward
-    # config["ENV_COST_FN"] = "sum" # cost_fn
-    # config["ENV_COST_TYPE"] = "accumulated" # cost
-    # config["CPPO_UPDATE_TYPE"] = "mean" # update
-    # config["USE_STL"] = False # stl 
-
-    # variant 3
-    config["ENV_REWARD_TYPE"] = "instant" # reward
+    # variant 2 - NOTE: BEST - when used with sum rewards: gamma * (r1 + r2) - (prev r1 + prev r2)
+    config["ENV_REWARD_TYPE"] = "accumulated" # reward
     config["ENV_COST_FN"] = "sum" # cost_fn
-    config["ENV_COST_TYPE"] = "instant" # cost
+    config["ENV_COST_TYPE"] = "accumulated" # cost
     config["CPPO_UPDATE_TYPE"] = "mean" # update
     config["USE_STL"] = False # stl 
+
+    # # variant 3
+    # config["ENV_REWARD_TYPE"] = "instant" # reward
+    # config["ENV_COST_FN"] = "sum" # cost_fn
+    # config["ENV_COST_TYPE"] = "instant" # cost
+    # config["CPPO_UPDATE_TYPE"] = "mean" # update
+    # config["USE_STL"] = False # stl 
 
     if config["EXP_NAME"] == "HopperReachReach_separated_CPPO":
         # Use min target cost accumulation

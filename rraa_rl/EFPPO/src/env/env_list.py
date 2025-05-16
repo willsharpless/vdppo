@@ -13,6 +13,9 @@ from .baseline.hopper_avoid_ceiling_baseline import HopperAvoidCeilingBaseline, 
 from .baseline.wind_field_baseline import WindFieldBaseline
 from .baseline.half_cheetah_avoid_baseline import HalfCheetahAvoidBaseline
 
+from .baseline.F16_RAA_baseline import F16ReachAvoidBaseline
+from .baseline.F16_RR_baseline import F16ReachReachBaseline
+
 from .wrappers import TransformObservation
 
 from functools import partial
@@ -332,6 +335,24 @@ def get_env(config):
         # env_avoid.set_untransform_obs(untrans)
         return (env, env_avoid)
     
+    elif config["EXP_NAME"] == 'F16ReachAlwaysAvoid_CPPO':
+        from .reach_avoid.F16_RAA import F16ReachAvoid, F16AvoidOnly
+
+        obs_dim = 26 - 2 + 1
+
+        vec1 = jnp.zeros(obs_dim, dtype=jnp.float32)
+        vec1 = vec1.at[-1].set(400.)
+        vec2 = jnp.ones(obs_dim, dtype=jnp.float32)
+        vec2 = vec2.at[-1].set(400.)
+        trans = partial(transform_observation, vec1, vec2)
+
+        env = F16ReachAvoidBaseline()
+
+        env = TransformObservation(env, trans)
+
+        # env.set_untransform_obs(untrans) # Not implemented
+        return env
+    
     elif config["EXP_NAME"] == 'F16ReachReach':
         from .reach_avoid.F16_RR import F16ReachReach, F16Reach1, F16Reach2
         vec1 = jnp.zeros(26, dtype=jnp.float32)
@@ -351,6 +372,21 @@ def get_env(config):
         # env.set_untransform_obs(untrans) # Not implemented
         # env_avoid.set_untransform_obs(untrans)
         return (env, env1, env2)
+
+    elif config["EXP_NAME"] == 'F16ReachReach_CPPO':
+        vec1 = jnp.zeros(26, dtype=jnp.float32)
+        vec1 = vec1.at[-1].set(400.)
+        vec2 = jnp.ones(26, dtype=jnp.float32)
+        vec2 = vec2.at[-1].set(400.)
+        trans = partial(transform_observation, vec1, vec2)
+
+        env = F16ReachReachBaseline()
+
+        env = TransformObservation(env, trans)
+
+        # env.set_untransform_obs(untrans) # Not implemented
+        # env_avoid.set_untransform_obs(untrans)
+        return env
 
     elif config["EXP_NAME"] == 'PointAvoid':
         vec1 = jnp.zeros(9, dtype=jnp.float32)
