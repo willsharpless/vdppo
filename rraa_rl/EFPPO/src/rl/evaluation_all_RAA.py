@@ -50,10 +50,10 @@ def plot_scores(traj_batches, config):
     raa_scores_RA = calculate_reachavoid(traj_batch_RA)
 
     # (avoid perc, reach avoid idx)
-    raa_scores_HJPPO = (raa_scores_HJPPO[0][-1], raa_scores_HJPPO[1][-1])
-    raa_scores_HJPPO_d = (raa_scores_HJPPO_d[0][-1], raa_scores_HJPPO_d[1][-1])
-    raa_scores_CPPO = (raa_scores_CPPO[0][-1], raa_scores_CPPO[1][-1])
-    raa_scores_RA = (raa_scores_RA[0][-1], raa_scores_RA[1][-1])
+    # raa_scores_HJPPO = (raa_scores_HJPPO[0][-1], raa_scores_HJPPO[1][-1])
+    # raa_scores_HJPPO_d = (raa_scores_HJPPO_d[0][-1], raa_scores_HJPPO_d[1][-1])
+    # raa_scores_CPPO = (raa_scores_CPPO[0][-1], raa_scores_CPPO[1][-1])
+    # raa_scores_RA = (raa_scores_RA[0][-1], raa_scores_RA[1][-1])
 
     raa_scores_all = [
         ("CPPO", raa_scores_CPPO),
@@ -289,13 +289,13 @@ def test(envs, env_paramss, config, rngs):
 
 
     ## MODEL 6 : RA
-
+    print("Rolling Out RA (Variant 1)")
     rng_4, _rng_4 = jax.random.split(rng_4)
     reset_rng_4 = jax.random.split(_rng_4, config["NUM_ENVS"])
-    obsv_6, env_state_6 = jax.vmap(env_RA.reset, in_axes=(0, None))(reset_rng_4, env_params_RA)
+    obsv_4, env_state_4 = jax.vmap(env_RA.reset, in_axes=(0, None))(reset_rng_4, env_params_RA)
     rng_4, _rng_4 = jax.random.split(rng_4)
     runner_state = (train_state_policy_RA, train_state_value_RA, 
-                    env_state_6, obsv_6, _rng_4)
+                    env_state_4, obsv_4, _rng_4)
 
     runner_state, traj_batch_RA = jax.lax.scan(
         env_step_RA, runner_state, None, config["NUM_STEPS"]
