@@ -190,6 +190,10 @@ class F16ReachReach(environment.Environment):
         has_reached_1 = reach1_value < 0
         has_reached_2 = reach2_value < 0
 
+        #NOTE WAS: FOR KILLING STRAY TRAJECTORIES
+        avoid_value = self.is_avoid(a_state_new, params)
+        a_state_new = jnp.where(avoid_value <= 0, a_state_new, state.state)
+
         # next_state_new = EnvStateRR(state.state, state.time + 1, reach1_value, reach2_value, has_reached_1, has_reached_2)
         next_state_new = EnvStateRR(a_state_new, state.time + 1, reach1_value, reach2_value, has_reached_1, has_reached_2)
 
@@ -222,23 +226,42 @@ class F16ReachReach(environment.Environment):
 
         _MAX_ALT_SAMPLE = 800.0
         bounds = np.array(
+            # [
+            #     (150.0, 550.0),  # vt
+            #     (-0.17453292519943295 / 10, 0.7853981633974483 / 10),  # alpha (rad)
+            #     (-0.5235987755982988 / 10, 0.5235987755982988 / 10),  # beta (rad)
+            #     (-np.pi / 4, np.pi / 4),  # phi roll
+            #     (-1.0, 1.0),  # theta pitch
+            #     (-1e-4, 1e-4),  # psi yaw
+            #     (-0.5, 0.5),  # P
+            #     (-0.5, 0.5),  # Q
+            #     (-0.5, 0.5),  # R
+            #     (0.0, 1900.0),  # pos_n
+            #     (-200.0, 200.0),  # pos_e
+            #     (300.0, _MAX_ALT_SAMPLE),  # alt.
+            #     (0.0, 10.0),  # power. Consider sampling wider range.
+            #     (-2.0, 2.0),  # nz_int
+            #     (-2.0, 2.0),  # ps_int
+            #     (-2.0, 2.0),  # nyr_int
+            # ]
             [
-                (150.0, 550.0),  # vt
-                (-0.17453292519943295 / 10, 0.7853981633974483 / 10),  # alpha (rad)
-                (-0.5235987755982988 / 10, 0.5235987755982988 / 10),  # beta (rad)
-                (-np.pi / 4, np.pi / 4),  # phi roll
-                (-1.0, 1.0),  # theta pitch
+                # NOTE WAS: REDUCED
+                (250.0, 450.1),  # vt
+                (-0.17453292519943295 / 20, 0.7853981633974483 / 20),  # alpha (rad)
+                (-0.5235987755982988 / 20, 0.5235987755982988 / 20),  # beta (rad)
+                (-np.pi / 8, np.pi / 8),  # phi roll
+                (-0.5, 0.5),  # theta pitch
                 (-1e-4, 1e-4),  # psi yaw
-                (-0.5, 0.5),  # P
-                (-0.5, 0.5),  # Q
-                (-0.5, 0.5),  # R
-                (0.0, 1900.0),  # pos_n
+                (-0.25, 0.25),  # P
+                (-0.25, 0.25),  # Q
+                (-0.25, 0.25),  # R
+                (250.0, 750.0),  # pos_n
                 (-200.0, 200.0),  # pos_e
-                (300.0, _MAX_ALT_SAMPLE),  # alt.
+                (300.0, 900.0),  # alt.
                 (0.0, 10.0),  # power. Consider sampling wider range.
-                (-2.0, 2.0),  # nz_int
-                (-2.0, 2.0),  # ps_int
-                (-2.0, 2.0),  # nyr_int
+                (-1.0, 1.0),  # nz_int
+                (-1.0, 1.0),  # ps_int
+                (-1.0, 1.0),  # nyr_int
             ]
         )
 
@@ -276,13 +299,14 @@ class F16ReachReach(environment.Environment):
     # NOTE: old reaching was getting to 2000 position north
 
     def is_reach1(self, state, params: EnvParams) -> float:
-        """Get to positon 1200 NORTH and 150 EAST """
-        target_center = [1200., 50.]
+        """Get to positon 1200 NORTH and 850 HIGH """
+        target_center = [1200., 850]
 
         # has_reached_goal = jnp.fabs(state[self.PN] - target_center[0]) < 25.
         # reach = (jnp.fabs(state[self.PN] - 2000.) - 25.) / 5.
 
-        reach = (jnp.sqrt((state[self.PN] - target_center[0]) ** 2 + (state[self.PE] - target_center[1]) ** 2) - 25.) / 5
+        radius = 150
+        reach = (jnp.sqrt((state[self.PN] - target_center[0]) ** 2 + (state[self.H] - target_center[1]) ** 2) - radius) / 5
         has_reached_goal = reach < 0
 
         value = jnp.where(has_reached_goal, -300., reach)
@@ -293,13 +317,14 @@ class F16ReachReach(environment.Environment):
         return value
     
     def is_reach2(self, state, params: EnvParams) -> float:
-        """Get to positon 1200 NORTH and -150 EAST """
-        target_center = [600., -50.]
+        """Get to positon 1200 NORTH and 350 HIGH """
+        target_center = [1200., 350.]
 
         # has_reached_goal = jnp.fabs(state[self.PN] - target_center[0]) < 25.
         # reach = (jnp.fabs(state[self.PN] - 2000.) - 25.) / 5.
 
-        reach = (jnp.sqrt((state[self.PN] - target_center[0]) ** 2 + (state[self.PE] - target_center[1]) ** 2) - 25.) / 5
+        radius = 150
+        reach = (jnp.sqrt((state[self.PN] - target_center[0]) ** 2 + (state[self.H] - target_center[1]) ** 2) - radius) / 5
         has_reached_goal = reach < 0
 
         value = jnp.where(has_reached_goal, -300., reach)
@@ -318,6 +343,16 @@ class F16ReachReach(environment.Environment):
     #     # avoid_3 = (-200.0 <= state[self.PE]) & (state[self.PE] <= -50.0) & (jnp.fabs(state[self.PN] - 1500.) <= 25.)
 
     #     return jnp.logical_not(alt_valid & pe_valid)
+
+    def is_avoid(self, state, params: EnvParams):
+        """Avoid Geofence at 2000 PN and ground (HEIGHT 0) and stay in flight corridor +-200 PE """
+
+        value_geof = (state[self.PN] - 2000) / 5
+        value_grnd = -state[self.H] / 5
+        value_roof = (state[self.H] - 1100) / 5
+        value_corr = (jnp.fabs(state[self.PE]) - 500.) / 5
+
+        return jnp.maximum(jnp.maximum(jnp.maximum(value_geof, value_grnd), value_corr), value_roof)
 
     def get_obs(self, state: EnvStateRR) -> chex.Array:
         """Return angle in polar coordinates and change."""
@@ -533,6 +568,10 @@ class F16Reach1(environment.Environment):
 
         reach1_value = self.is_reach1(a_state_new, params)
         reach2_value = self.is_reach2(a_state_new, params)
+
+        #NOTE WAS: FOR KILLING STRAY TRAJECTORIES
+        avoid_value = self.is_avoid(a_state_new, params)
+        a_state_new = jnp.where(avoid_value <= 0, a_state_new, state.state)
         
         # has_reached_1 = reach1_value < 0
         # has_reached_2 = reach2_value < 0
@@ -569,23 +608,42 @@ class F16Reach1(environment.Environment):
 
         _MAX_ALT_SAMPLE = 800.0
         bounds = np.array(
+            # [
+            #     (150.0, 550.0),  # vt
+            #     (-0.17453292519943295 / 10, 0.7853981633974483 / 10),  # alpha (rad)
+            #     (-0.5235987755982988 / 10, 0.5235987755982988 / 10),  # beta (rad)
+            #     (-np.pi / 4, np.pi / 4),  # phi roll
+            #     (-1.0, 1.0),  # theta pitch
+            #     (-1e-4, 1e-4),  # psi yaw
+            #     (-0.5, 0.5),  # P
+            #     (-0.5, 0.5),  # Q
+            #     (-0.5, 0.5),  # R
+            #     (0.0, 1900.0),  # pos_n
+            #     (-200.0, 200.0),  # pos_e
+            #     (300.0, _MAX_ALT_SAMPLE),  # alt.
+            #     (0.0, 10.0),  # power. Consider sampling wider range.
+            #     (-2.0, 2.0),  # nz_int
+            #     (-2.0, 2.0),  # ps_int
+            #     (-2.0, 2.0),  # nyr_int
+            # ]
             [
-                (150.0, 550.0),  # vt
-                (-0.17453292519943295 / 10, 0.7853981633974483 / 10),  # alpha (rad)
-                (-0.5235987755982988 / 10, 0.5235987755982988 / 10),  # beta (rad)
-                (-np.pi / 4, np.pi / 4),  # phi roll
-                (-1.0, 1.0),  # theta pitch
+                # NOTE WAS: REDUCED
+                (250.0, 450.1),  # vt
+                (-0.17453292519943295 / 20, 0.7853981633974483 / 20),  # alpha (rad)
+                (-0.5235987755982988 / 20, 0.5235987755982988 / 20),  # beta (rad)
+                (-np.pi / 8, np.pi / 8),  # phi roll
+                (-0.5, 0.5),  # theta pitch
                 (-1e-4, 1e-4),  # psi yaw
-                (-0.5, 0.5),  # P
-                (-0.5, 0.5),  # Q
-                (-0.5, 0.5),  # R
-                (0.0, 1900.0),  # pos_n
+                (-0.25, 0.25),  # P
+                (-0.25, 0.25),  # Q
+                (-0.25, 0.25),  # R
+                (250.0, 750.0),  # pos_n
                 (-200.0, 200.0),  # pos_e
-                (300.0, _MAX_ALT_SAMPLE),  # alt.
+                (300.0, 900.0),  # alt.
                 (0.0, 10.0),  # power. Consider sampling wider range.
-                (-2.0, 2.0),  # nz_int
-                (-2.0, 2.0),  # ps_int
-                (-2.0, 2.0),  # nyr_int
+                (-1.0, 1.0),  # nz_int
+                (-1.0, 1.0),  # ps_int
+                (-1.0, 1.0),  # nyr_int
             ]
         )
 
@@ -623,13 +681,14 @@ class F16Reach1(environment.Environment):
     # NOTE: old reaching was getting to 2000 position north
 
     def is_reach1(self, state, params: EnvParams) -> float:
-        """Get to positon 1200 NORTH and 150 EAST """
-        target_center = [1200., 50.]
+        """Get to positon 1200 NORTH and 850 HIGH """
+        target_center = [1200., 850]
 
         # has_reached_goal = jnp.fabs(state[self.PN] - target_center[0]) < 25.
         # reach = (jnp.fabs(state[self.PN] - 2000.) - 25.) / 5.
 
-        reach = (jnp.sqrt((state[self.PN] - target_center[0]) ** 2 + (state[self.PE] - target_center[1]) ** 2) - 25.) / 5
+        radius = 150
+        reach = (jnp.sqrt((state[self.PN] - target_center[0]) ** 2 + (state[self.H] - target_center[1]) ** 2) - radius) / 5
         has_reached_goal = reach < 0
 
         value = jnp.where(has_reached_goal, -300., reach)
@@ -640,13 +699,14 @@ class F16Reach1(environment.Environment):
         return value
     
     def is_reach2(self, state, params: EnvParams) -> float:
-        """Get to positon 1200 NORTH and -150 EAST """
-        target_center = [600., -50.]
+        """Get to positon 1200 NORTH and 350 HIGH """
+        target_center = [1200., 350.]
 
         # has_reached_goal = jnp.fabs(state[self.PN] - target_center[0]) < 25.
         # reach = (jnp.fabs(state[self.PN] - 2000.) - 25.) / 5.
 
-        reach = (jnp.sqrt((state[self.PN] - target_center[0]) ** 2 + (state[self.PE] - target_center[1]) ** 2) - 25.) / 5
+        radius = 150
+        reach = (jnp.sqrt((state[self.PN] - target_center[0]) ** 2 + (state[self.H] - target_center[1]) ** 2) - radius) / 5
         has_reached_goal = reach < 0
 
         value = jnp.where(has_reached_goal, -300., reach)
@@ -665,6 +725,16 @@ class F16Reach1(environment.Environment):
     #     # avoid_3 = (-200.0 <= state[self.PE]) & (state[self.PE] <= -50.0) & (jnp.fabs(state[self.PN] - 1500.) <= 25.)
 
     #     return jnp.logical_not(alt_valid & pe_valid)
+
+    def is_avoid(self, state, params: EnvParams):
+        """Avoid Geofence at 2000 PN and ground (HEIGHT 0) and stay in flight corridor +-200 PE """
+
+        value_geof = (state[self.PN] - 2000) / 5
+        value_grnd = -state[self.H] / 5
+        value_roof = (state[self.H] - 1100) / 5
+        value_corr = (jnp.fabs(state[self.PE]) - 500.) / 5
+
+        return jnp.maximum(jnp.maximum(jnp.maximum(value_geof, value_grnd), value_corr), value_roof)
 
     def get_obs(self, state: EnvStateR1) -> chex.Array:
         """Return angle in polar coordinates and change."""
@@ -875,11 +945,12 @@ class F16Reach2(environment.Environment):
         # reach_value = self.is_reach(a_state_new, avoid_value, params)
         # a_state_new = jnp.where(avoid_value == 1, a_state_new, state.state) 
         
-        # NOTE: STATE <- A_STATE IF HITTING GEOFENCES?
-        # NOTE: but A_STATE is the updated dynamics? => update only if at avoid set?? wtf??
-
         reach1_value = self.is_reach1(a_state_new, params)
         reach2_value = self.is_reach2(a_state_new, params)
+
+        #NOTE WAS: FOR KILLING STRAY TRAJECTORIES
+        avoid_value = self.is_avoid(a_state_new, params)
+        a_state_new = jnp.where(avoid_value <= 0, a_state_new, state.state)
         
         # has_reached_1 = reach1_value < 0
         # has_reached_2 = reach2_value < 0
@@ -916,23 +987,42 @@ class F16Reach2(environment.Environment):
 
         _MAX_ALT_SAMPLE = 800.0
         bounds = np.array(
+            # [
+            #     (150.0, 550.0),  # vt
+            #     (-0.17453292519943295 / 10, 0.7853981633974483 / 10),  # alpha (rad)
+            #     (-0.5235987755982988 / 10, 0.5235987755982988 / 10),  # beta (rad)
+            #     (-np.pi / 4, np.pi / 4),  # phi roll
+            #     (-1.0, 1.0),  # theta pitch
+            #     (-1e-4, 1e-4),  # psi yaw
+            #     (-0.5, 0.5),  # P
+            #     (-0.5, 0.5),  # Q
+            #     (-0.5, 0.5),  # R
+            #     (0.0, 1900.0),  # pos_n
+            #     (-200.0, 200.0),  # pos_e
+            #     (300.0, _MAX_ALT_SAMPLE),  # alt.
+            #     (0.0, 10.0),  # power. Consider sampling wider range.
+            #     (-2.0, 2.0),  # nz_int
+            #     (-2.0, 2.0),  # ps_int
+            #     (-2.0, 2.0),  # nyr_int
+            # ]
             [
-                (150.0, 550.0),  # vt
-                (-0.17453292519943295 / 10, 0.7853981633974483 / 10),  # alpha (rad)
-                (-0.5235987755982988 / 10, 0.5235987755982988 / 10),  # beta (rad)
-                (-np.pi / 4, np.pi / 4),  # phi roll
-                (-1.0, 1.0),  # theta pitch
+                # NOTE WAS: REDUCED
+                (250.0, 450.1),  # vt
+                (-0.17453292519943295 / 20, 0.7853981633974483 / 20),  # alpha (rad)
+                (-0.5235987755982988 / 20, 0.5235987755982988 / 20),  # beta (rad)
+                (-np.pi / 8, np.pi / 8),  # phi roll
+                (-0.5, 0.5),  # theta pitch
                 (-1e-4, 1e-4),  # psi yaw
-                (-0.5, 0.5),  # P
-                (-0.5, 0.5),  # Q
-                (-0.5, 0.5),  # R
-                (0.0, 1900.0),  # pos_n
+                (-0.25, 0.25),  # P
+                (-0.25, 0.25),  # Q
+                (-0.25, 0.25),  # R
+                (250.0, 750.0),  # pos_n
                 (-200.0, 200.0),  # pos_e
-                (300.0, _MAX_ALT_SAMPLE),  # alt.
+                (300.0, 900.0),  # alt.
                 (0.0, 10.0),  # power. Consider sampling wider range.
-                (-2.0, 2.0),  # nz_int
-                (-2.0, 2.0),  # ps_int
-                (-2.0, 2.0),  # nyr_int
+                (-1.0, 1.0),  # nz_int
+                (-1.0, 1.0),  # ps_int
+                (-1.0, 1.0),  # nyr_int
             ]
         )
 
@@ -970,13 +1060,14 @@ class F16Reach2(environment.Environment):
     # NOTE: old reaching was getting to 2000 position north
 
     def is_reach1(self, state, params: EnvParams) -> float:
-        """Get to positon 1200 NORTH and 150 EAST """
-        target_center = [1200., 50.]
+        """Get to positon 1200 NORTH and 850 HIGH """
+        target_center = [1200., 850]
 
         # has_reached_goal = jnp.fabs(state[self.PN] - target_center[0]) < 25.
         # reach = (jnp.fabs(state[self.PN] - 2000.) - 25.) / 5.
 
-        reach = (jnp.sqrt((state[self.PN] - target_center[0]) ** 2 + (state[self.PE] - target_center[1]) ** 2) - 25.) / 5
+        radius = 150
+        reach = (jnp.sqrt((state[self.PN] - target_center[0]) ** 2 + (state[self.H] - target_center[1]) ** 2) - radius) / 5
         has_reached_goal = reach < 0
 
         value = jnp.where(has_reached_goal, -300., reach)
@@ -987,13 +1078,14 @@ class F16Reach2(environment.Environment):
         return value
     
     def is_reach2(self, state, params: EnvParams) -> float:
-        """Get to positon 1200 NORTH and -150 EAST """
-        target_center = [600., -50.]
+        """Get to positon 1200 NORTH and 350 HIGH """
+        target_center = [1200., 350.]
 
         # has_reached_goal = jnp.fabs(state[self.PN] - target_center[0]) < 25.
         # reach = (jnp.fabs(state[self.PN] - 2000.) - 25.) / 5.
 
-        reach = (jnp.sqrt((state[self.PN] - target_center[0]) ** 2 + (state[self.PE] - target_center[1]) ** 2) - 25.) / 5
+        radius = 150
+        reach = (jnp.sqrt((state[self.PN] - target_center[0]) ** 2 + (state[self.H] - target_center[1]) ** 2) - radius) / 5
         has_reached_goal = reach < 0
 
         value = jnp.where(has_reached_goal, -300., reach)
@@ -1012,6 +1104,16 @@ class F16Reach2(environment.Environment):
     #     # avoid_3 = (-200.0 <= state[self.PE]) & (state[self.PE] <= -50.0) & (jnp.fabs(state[self.PN] - 1500.) <= 25.)
 
     #     return jnp.logical_not(alt_valid & pe_valid)
+
+    def is_avoid(self, state, params: EnvParams):
+        """Avoid Geofence at 2000 PN and ground (HEIGHT 0) and stay in flight corridor +-200 PE """
+
+        value_geof = (state[self.PN] - 2000) / 5
+        value_grnd = -state[self.H] / 5
+        value_roof = (state[self.H] - 1100) / 5
+        value_corr = (jnp.fabs(state[self.PE]) - 500.) / 5
+
+        return jnp.maximum(jnp.maximum(jnp.maximum(value_geof, value_grnd), value_corr), value_roof)
 
     def get_obs(self, state: EnvStateR2) -> chex.Array:
         """Return angle in polar coordinates and change."""

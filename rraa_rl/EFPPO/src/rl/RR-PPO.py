@@ -539,14 +539,14 @@ def train(envs, env_paramss, config, rng):
 if __name__ == "__main__":
     config = vars(get_args(sys.argv[1:]))
 
-    debug = False
+    debug = True
     if debug:
         config["EXP_NAME"]="F16ReachReach"
-        config["DIR"]="F16_rr_debug"
+        config["DIR"]="F16_rr_verttargs_4"
         config["LR"]=3e-4
         config["NUM_ENVS"]=256
         config["NUM_STEPS"]=200
-        config["TOTAL_TIMESTEPS"]=200_000_000
+        config["TOTAL_TIMESTEPS"]=100_000_000
         config["STEP_SCAN"]=10
         config["UPDATE_EPOCHS"]=10
         config["NUM_MINIBATCHES"]=64
@@ -559,10 +559,10 @@ if __name__ == "__main__":
         config["VF_COEF"]=2.0
         config["MAX_GRAD_NORM"]=0.5
         config["ACTIVATION"]="tanh"
-        config["CUDA_USE"]="0,1,2,3"
+        config["CUDA_USE"]="0"
         config["ANNEAL_LR"]=True,
         config["ANNEAL_ENT"]=True
-        config["NAME"]="F16_rr_debug"
+        config["NAME"]="F16_rr_verttargs_4"
 
         # config["TEST_MODE"]=True # USES DETERMINISTIC MODELS
 
@@ -597,7 +597,7 @@ if __name__ == "__main__":
         env_params_reach_2 = env_params_reach_2.replace(index=config['SECTION'])
     env_paramss = (env_params, env_params_reach_1, env_params_reach_2)
 
-    config["USE_WANDB"] = not debug # False for debugging
+    config["USE_WANDB"] = True #not debug # False for debugging
     if config["USE_WANDB"]:
         wandb.init(project='EC-EFPPO-{}'.format(config["EXP_NAME"]), name=config["NAME"], config=config,
                    entity='braat_brrt')

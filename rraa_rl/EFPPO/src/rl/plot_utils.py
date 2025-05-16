@@ -789,7 +789,11 @@ def plot_contour_RRAA(multi_info, epoch, config, policy_decision_sample=None):
         plt.figure(figsize=(12, 6))
         fig, ax = plt.subplots(1, 1)
         if config['EXP_NAME'] == 'F16ReachReach':
-            pass
+            radius = 150
+            draw_circle = plt.Circle((1200., 850), radius, facecolor="green", fill=True, alpha = 0.4)
+            ax.add_patch(draw_circle)
+            draw_circle = plt.Circle((1200., 350), radius, facecolor="green", fill=True, alpha = 0.4)
+            ax.add_patch(draw_circle)
         else:
             draw_rectangle_1 = plt.Rectangle((1250., -0.1), 500., 1200., facecolor="green", fill=True, alpha = 0.4)
             ax.add_patch(draw_rectangle_1)
