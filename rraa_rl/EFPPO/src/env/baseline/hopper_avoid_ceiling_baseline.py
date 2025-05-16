@@ -461,7 +461,7 @@ class HopperReachReachBaseline_base:
     reward format: gamma * (r1 + r2) - (last r1 + last r2)
     """
 
-    def __init__(self, backend="positional", cost_type="accumulated", use_stl=False):
+    def __init__(self, backend="positional", cost_fn="sum", reward_type="accumulated", cost_type="accumulated", use_stl=False):
         env = HopperRandom(backend=backend,
                            exclude_current_positions_from_observation=False,
                            terminate_when_unhealthy=False)
@@ -472,6 +472,8 @@ class HopperReachReachBaseline_base:
         self.observation_size = (env.observation_size,)
         self.default_params = EnvParams()
 
+        self.reward_type = reward_type # "accumulated" or "instant" 
+        self.cost_fn = cost_fn # "sum" or "max"
         self.cost_type = cost_type # "accumulated" or "instant" 
         self.use_stl = use_stl # when true turns off cost (set to 0) after has reached that target
 
@@ -483,8 +485,12 @@ class HopperReachReachBaseline_base:
         if prev_min_reach1_value is None or prev_min_reach2_value is None:
             cost = jnp.maximum(curr_min_reach1_value, curr_min_reach2_value)
         else: 
-            cost = jnp.minimum(curr_min_reach1_value, prev_min_reach1_value) + jnp.minimum(curr_min_reach2_value, prev_min_reach2_value)
-            # cost = jnp.maximum(jnp.minimum(curr_min_reach1_value, prev_min_reach1_value), jnp.minimum(curr_min_reach2_value, prev_min_reach2_value))
+            if self.cost_fn == "sum":
+                cost = jnp.minimum(curr_min_reach1_value, prev_min_reach1_value) + jnp.minimum(curr_min_reach2_value, prev_min_reach2_value)
+            elif self.cost_fn == "max": 
+                cost = jnp.maximum(jnp.minimum(curr_min_reach1_value, prev_min_reach1_value), jnp.minimum(curr_min_reach2_value, prev_min_reach2_value))
+            else: 
+                raise ValueError("Invalid cost function. Choose either 'sum' or 'max'.")
         return cost 
     
     @partial(jax.jit, static_argnums=(0,))
@@ -643,7 +649,12 @@ class HopperReachReachBaseline_augmented_max(HopperReachReachBaseline_base):
     def compute_reward(self, state, last_state, params): 
         # Compute reward for constrained MDP 
         # Max Reward: gamma * (max (r1, r2)) - max(last r1, last r2)
-        return params.gamma * jnp.maximum(state.reach1, state.reach2) - jnp.maximum(last_state.reach1, last_state.reach2)
+        if self.reward_type == "instant":
+            return params.gamma * jnp.maximum(state.reach1, state.reach2) - jnp.maximum(last_state.reach1, last_state.reach2)
+        elif self.reward_type == "accumulated":
+            return params.gamma * jnp.maximum(state.min_reach1, state.min_reach2) - jnp.maximum(last_state.min_reach1, last_state.min_reach2)
+        else: 
+            raise ValueError("Invalid reward type. Choose either 'instant' or 'accumulated'.")
     
     @partial(jax.jit, static_argnums=(0,))
     def compute_observation(self, state):
@@ -671,7 +682,12 @@ class HopperReachReachBaseline_augmented_sum(HopperReachReachBaseline_base):
     def compute_reward(self, state, last_state, params): 
         # Compute reward for constrained MDP 
         # Sum Reward: gamma * (r1 + r2) - (last r1 + last r2)
-        return params.gamma * (state.reach1 + state.reach2) - (last_state.reach1 + last_state.reach2)
+        if self.reward_type == "instant":
+            return params.gamma * (state.reach1 + state.reach2) - (last_state.reach1 + last_state.reach2)
+        elif self.reward_type == "accumulated":
+            return params.gamma * (state.min_reach1 + state.min_reach2) - (last_state.min_reach1 + last_state.min_reach2)
+        else: 
+            raise ValueError("Invalid reward type. Choose either 'instant' or 'accumulated'.")
     
     @partial(jax.jit, static_argnums=(0,))
     def compute_observation(self, state):
