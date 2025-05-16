@@ -1,10 +1,10 @@
 python ./rraa_rl/EFPPO/src/rl/CPPO_RAA.py \
 --EXP_NAME=HopperReachAlwaysAvoid_CPPO \
---DIR=hopper_raa_cppo_0_val100_dones \
+--DIR=final_hopper_raa_cppo_0 \
 --LR=3e-4 \
 --NUM_ENVS=128 \
 --NUM_STEPS=400 \
---TOTAL_TIMESTEPS=100_000_000 \
+--TOTAL_TIMESTEPS=50_000_000 \
 --STEP_SCAN=4 \
 --UPDATE_EPOCHS=10 \
 --NUM_MINIBATCHES=32 \
@@ -23,4 +23,4 @@ python ./rraa_rl/EFPPO/src/rl/CPPO_RAA.py \
 --CUDA_USE=1,2,3 \
 --ANNEAL_LR \
 --ANNEAL_ENT \
---NAME=hopper_raa_cppo_0_val100_dones
+--NAME=final_hopper_raa_cppo_0
