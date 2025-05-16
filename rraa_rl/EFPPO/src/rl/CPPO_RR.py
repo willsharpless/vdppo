@@ -33,7 +33,7 @@ def calculate_reward_cost(traj_batch):
     cnt3 = 0 # reach 1 and 2 not reached
     reach1_idx = ((traj_batch.reach1) < 0).argmax(axis=0)
     reach2_idx = ((traj_batch.reach2) < 0).argmax(axis=0)
-    reach3_idx =  ((traj_batch.reach1) < 0 & (traj_batch.reach2 < 0)).argmax(axis=0)
+    reach3_idx =  ((traj_batch.reach1 < 0) & (traj_batch.reach2 < 0)).argmax(axis=0)
 
     for i in range(reach1_idx.shape[0]):
         if reach1_idx[i] == 0 and (traj_batch.reach1[0, i] >= 0):
@@ -224,6 +224,23 @@ def train(env, env_params, config, rng):
 if __name__ == "__main__":
     
     config = vars(get_args(sys.argv[1:]))
+
+    # FIXME: Manual for now
+    config["ENV_COST_TYPE"] = "accumulated"
+    config["CPPO_UPDATE_TYPE"] = "mean"
+    config["USE_STL"] = False
+
+    # HopperReachReach environment specific assertions
+    print(config.keys())
+    if "HopperReachReach" in config["EXP_NAME"]:
+        assert("USE_STL" in config.keys())
+        assert("CPPO_UPDATE_TYPE" in config.keys())
+        assert("ENV_COST_TYPE" in config.keys())
+        
+
+        print('\n\n\ENV_COST_TYPE: {}'.format(config["ENV_COST_TYPE"]))
+        print('USE_STL: {}'.format(config["USE_STL"]))
+        print('CPPO_UPDATE_TYPE: {}\n\n\n'.format(config["CPPO_UPDATE_TYPE"]))
 
     config["USE_WANDB"] = True 
     if config["USE_WANDB"]:

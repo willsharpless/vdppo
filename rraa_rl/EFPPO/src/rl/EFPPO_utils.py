@@ -1815,7 +1815,12 @@ def _cppo_update_RR(config, update_state, ent):
             # each cost: max(min r1 until now, min r2 until now)
             # so min of all costs < 0 indicates that both goals have been reached
             # lambda_new = jnp.clip(targets_cost.min() - config['THRESHOLD_CPPO'], 0) * config['K_P']
-            lambda_new = jnp.clip(targets_cost.mean() - config['THRESHOLD_CPPO'], 0) * config['K_P']
+            if config["CPPO_UPDATE_TYPE"] == "max":
+                lambda_new = jnp.clip(targets_cost.max() - config['THRESHOLD_CPPO'], 0) * config['K_P']
+            elif config["CPPO_UPDATE_TYPE"] == "mean":
+                lambda_new = jnp.clip(targets_cost.mean() - config['THRESHOLD_CPPO'], 0) * config['K_P']
+            else: 
+                raise ValueError("CPPO_UPDATE_TYPE must be either 'max' or 'mean'")
             ########## RRAA Change ##########
 
             total_loss = config["VF_COEF"] * value_loss_cost

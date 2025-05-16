@@ -141,7 +141,8 @@ def get_env(config):
         trans = partial(transform_observation, vec1, vec2)
         untrans = partial(untransform_observation, vec1, vec2)
 
-        env = HopperReachReachBaseline_augmented_max()
+        env = HopperReachReachBaseline_augmented_max(cost_type=config["ENV_COST_TYPE"], 
+                                                     use_stl=config["USE_STL"])
         env = TransformObservation(env, trans)
         env.set_untransform_obs(untrans)
 
@@ -156,7 +157,8 @@ def get_env(config):
         trans = partial(transform_observation, vec1, vec2)
         untrans = partial(untransform_observation, vec1, vec2)
 
-        env = HopperReachReachBaseline_augmented_sum()
+        env = HopperReachReachBaseline_augmented_sum(cost_type=config["ENV_COST_TYPE"], 
+                                                     use_stl=config["USE_STL"])
         env = TransformObservation(env, trans)
         env.set_untransform_obs(untrans)
 

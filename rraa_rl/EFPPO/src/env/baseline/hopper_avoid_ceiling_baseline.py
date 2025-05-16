@@ -6,6 +6,8 @@ from brax.envs.wrappers.training import EpisodeWrapper, AutoResetWrapper
 from flax import struct
 from brax.envs.base import State
 
+from copy import deepcopy
+
 from .hopper_random import HopperRandom
 
 @struct.dataclass
@@ -285,7 +287,7 @@ class HopperReachReachBaseline_base:
     reward format: gamma * (r1 + r2) - (last r1 + last r2)
     """
 
-    def __init__(self, backend="positional"):
+    def __init__(self, backend="positional", cost_type="accumulated", use_stl=False):
         env = HopperRandom(backend=backend,
                            exclude_current_positions_from_observation=False,
                            terminate_when_unhealthy=False)
@@ -296,9 +298,13 @@ class HopperReachReachBaseline_base:
         self.observation_size = (env.observation_size,)
         self.default_params = EnvParams()
 
+        self.cost_type = cost_type # "accumulated" or "instant" 
+        self.use_stl = use_stl # when true turns off cost (set to 0) after has reached that target
+
 
     @partial(jax.jit, static_argnums=(0,))
-    def compute_cost(self, curr_min_reach1_value, curr_min_reach2_value, prev_min_reach1_value=None, prev_min_reach2_value=None): 
+    def compute_cost_accumulated(self, curr_min_reach1_value, curr_min_reach2_value, prev_min_reach1_value=None, prev_min_reach2_value=None, 
+                     reach1_value=None, reach2_value=None): 
         # Compute cost for constrained MDP 
         if prev_min_reach1_value is None or prev_min_reach2_value is None:
             cost = jnp.maximum(curr_min_reach1_value, curr_min_reach2_value)
@@ -306,6 +312,24 @@ class HopperReachReachBaseline_base:
             cost = jnp.minimum(curr_min_reach1_value, prev_min_reach1_value) + jnp.minimum(curr_min_reach2_value, prev_min_reach2_value)
             # cost = jnp.maximum(jnp.minimum(curr_min_reach1_value, prev_min_reach1_value), jnp.minimum(curr_min_reach2_value, prev_min_reach2_value))
         return cost 
+    
+    @partial(jax.jit, static_argnums=(0,))
+    def compute_cost_instant(self, curr_min_reach1_value, curr_min_reach2_value, prev_min_reach1_value, prev_min_reach2_value, 
+                     reach1_value, reach2_value): 
+        cost = reach1_value + reach2_value 
+        return cost 
+    
+    @partial(jax.jit, static_argnums=(0,))
+    def compute_cost(self, curr_min_reach1_value, curr_min_reach2_value, prev_min_reach1_value=None, prev_min_reach2_value=None,    
+                        reach1_value=None, reach2_value=None):
+        if self.cost_type == "accumulated":
+            return self.compute_cost_accumulated(curr_min_reach1_value, curr_min_reach2_value, prev_min_reach1_value, prev_min_reach2_value,
+                     reach1_value, reach2_value)
+        elif self.cost_type == "instant":
+            return self.compute_cost_instant(curr_min_reach1_value, curr_min_reach2_value, prev_min_reach1_value, prev_min_reach2_value,
+                     reach1_value, reach2_value)
+        else: 
+            raise ValueError("Invalid cost type. Choose either 'accumulated' or 'instant'.")
 
     @partial(jax.jit, static_argnums=(0,))
     def compute_reward(self, state, last_state, params): 
@@ -341,7 +365,8 @@ class HopperReachReachBaseline_base:
         min_reach1 = reach1_value
         min_reach2 = reach2_value
 
-        cost = self.compute_cost(min_reach1, min_reach2, prev_min_reach1_value=None, prev_min_reach2_value=None)
+        cost = self.compute_cost(min_reach1, min_reach2, prev_min_reach1_value=None, prev_min_reach2_value=None, 
+                                 reach1_value=reach1_value, reach2_value=reach2_value)
 
         env_state = EnvStateRR(state, reach1_value, reach2_value, has_reached_1, has_reached_2, min_reach1, min_reach2, cost)
         observation = self.compute_observation(env_state) 
@@ -361,8 +386,20 @@ class HopperReachReachBaseline_base:
         min_reach1 = jnp.minimum(state.min_reach1, reach1_value)
         min_reach2 = jnp.minimum(state.min_reach2, reach2_value)
         
-        cost = self.compute_cost(min_reach1, min_reach2, state.min_reach1, state.min_reach2)
-        
+        min_reach1_cost_input = deepcopy(min_reach1)
+        min_reach2_cost_input = deepcopy(min_reach2)
+        reach1_cost_input = deepcopy(reach1_value)
+        reach2_cost_input = deepcopy(reach2_value)
+
+        if self.use_stl: 
+            reach1_cost_input = jnp.where(has_reached_1, 0, reach2_cost_input)
+            reach2_cost_input = jnp.where(has_reached_2, 0, reach1_cost_input)
+            min_reach1_cost_input = jnp.where(has_reached_1, 0, min_reach1_cost_input)
+            min_reach2_cost_input = jnp.where(has_reached_2, 0, min_reach2_cost_input)
+
+        cost = self.compute_cost(min_reach1_cost_input, min_reach2_cost_input, state.min_reach1, state.min_reach2, 
+                                reach1_value=reach1_cost_input, reach2_value=reach2_cost_input)
+            
         head_pos, jaw_pos, thg_pos, leg_pos, foot_front_pos, foot_back_pos = self.calculate_position(state.state.obs)
         pos_dict = {"head_pos": head_pos, "jaw_pos": jaw_pos, "thg_pos": thg_pos, "leg_pos": leg_pos,
                     "foot_front_pos": foot_front_pos, "foot_back_pos": foot_back_pos}

@@ -864,8 +864,11 @@ def plot_video_contour_RRAA(multi_info, epoch, config, save_video=False, prefix=
             if log_wandb: 
                 wandb_name = f"{prefix}trajectory video"
                 print("Logging video to wandb: ", wandb_name)
-                wandb.log({wandb_name: wandb.Video(video_path, format="mp4")}, step=epoch)
-        
+                try: 
+                    wandb.log({wandb_name: wandb.Video(video_path, format="mp4")}, step=epoch)
+                except: 
+                    print("Error logging video to wandb")
+                    
         end_time = time()
         print("Time taken to plot and push video: ", end_time - start_time)
         return frames
@@ -982,8 +985,11 @@ def plot_video_contour_RRAA(multi_info, epoch, config, save_video=False, prefix=
             if log_wandb: 
                 wandb_name = f"{prefix}trajectory video"
                 print("Logging video to wandb: ", wandb_name)
-                wandb.log({wandb_name: wandb.Video(video_path, format="mp4")}, step=epoch)
-        
+                try:
+                    wandb.log({wandb_name: wandb.Video(video_path, format="mp4")}, step=epoch)
+                except: 
+                    print("Error logging video to wandb")
+                    
         end_time = time()
         print("Time taken to plot and push video: ", end_time - start_time)
         return frames
