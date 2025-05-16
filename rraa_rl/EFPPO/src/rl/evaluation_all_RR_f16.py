@@ -440,19 +440,19 @@ if __name__ == "__main__":
     if debug:
         config["EXP_NAME"]="F16ReachReach"
 
-        config["DIR_HJPPO"]="model/BASELINE_F16_rr_verttargs_cutsamp"
+        config["DIR_HJPPO"]="BASELINE_F16_rr_verttargs_cutsamp"
         config["DIR_MODEL_HJPPO"]="checkpoint_63"
 
-        config["DIR_CPPOv1"]=""
-        config["DIR_MODEL_CPPOv1"]="checkpoint_243"
+        config["DIR_CPPOv1"]="BASELINE_final_f16_rr_cppo_0"
+        config["DIR_MODEL_CPPOv1"]="best_100"
 
-        config["DIR_CPPOv2"]=""
-        config["DIR_MODEL_CPPOv2"]="checkpoint_243"
+        config["DIR_CPPOv2"]="BASELINE_final_f16_rr_cppo_0"
+        config["DIR_MODEL_CPPOv2"]="best_100"
 
-        config["DIR_CPPOv3"]=""
-        config["DIR_MODEL_CPPOv3"]="checkpoint_214"
+        config["DIR_CPPOv3"]="BASELINE_final_f16_rr_cppo_0"
+        config["DIR_MODEL_CPPOv3"]="best_100"
 
-        config["DIR_DSTL"]="model/BASELINE_F16_reachreachdecomposed_100M"
+        config["DIR_DSTL"]="BASELINE_F16_reachreachdecomposed_100M"
         config["DIR_MODEL_DSTL"]="best_143"
 
         config['TEST_DIR'] = "eval_all_F16RR"
@@ -464,29 +464,29 @@ if __name__ == "__main__":
     envs_HJPPO = get_env(config)
     env_HJPPO, env_HJPPO_1, env_HJPPO_2 = envs_HJPPO
 
-    # "BASELINE_final_hopper_rr_cppomax_raccum_cfnmax_caccum_umin_V1--LR=3e-4"
+    # "BASELINE_final_f16_rr_cppo_0"
     config_CPPOv1 = copy.deepcopy(config)
-    config_CPPOv1["EXP_NAME"] = "F16ReachReach_max_CPPO"
+    config_CPPOv1["EXP_NAME"] = "F16ReachReach_CPPO"
     config_CPPOv1["ENV_REWARD_TYPE"] = "accumulated" # reward
-    config_CPPOv1["ENV_COST_FN"] = "max" # cost_fn
+    config_CPPOv1["ENV_COST_FN"] = "sum" # cost_fn
     config_CPPOv1["ENV_COST_TYPE"] = "accumulated" # cost
-    config_CPPOv1["CPPO_UPDATE_TYPE"] = "min" # update
+    config_CPPOv1["CPPO_UPDATE_TYPE"] = "mean" # update
     config_CPPOv1["USE_STL"] = False # stl 
     env_CPPO_v1 = get_env(config_CPPOv1)
 
     # "BASELINE_final_hopper_rr_cpposum_raccum_cfnmax_caccum_umin_V1"
     config_CPPOv2 = copy.deepcopy(config)
-    config_CPPOv2["EXP_NAME"] = "F16ReachReach_sum_CPPO"
+    config_CPPOv2["EXP_NAME"] = "F16ReachReach_CPPO"
     config_CPPOv2["ENV_REWARD_TYPE"] = "accumulated" # reward
-    config_CPPOv2["ENV_COST_FN"] = "max" # cost_fn
+    config_CPPOv2["ENV_COST_FN"] = "sum" # cost_fn
     config_CPPOv2["ENV_COST_TYPE"] = "accumulated" # cost
-    config_CPPOv2["CPPO_UPDATE_TYPE"] = "min" # update
+    config_CPPOv2["CPPO_UPDATE_TYPE"] = "mean" # update
     config_CPPOv2["USE_STL"] = False # stl 
     env_CPPO_v2 = get_env(config_CPPOv2)
 
     # "BASELINE_final_hopper_rr_cpposum_raccum_cfnsum_caccum_umean_V2"
     config_CPPOv3 = copy.deepcopy(config)
-    config_CPPOv3["EXP_NAME"] = "F16ReachReach_sum_CPPO"
+    config_CPPOv3["EXP_NAME"] = "F16ReachReach_CPPO"
     config_CPPOv3["ENV_REWARD_TYPE"] = "accumulated" # reward
     config_CPPOv3["ENV_COST_FN"] = "sum" # cost_fn
     config_CPPOv3["ENV_COST_TYPE"] = "accumulated" # cost
