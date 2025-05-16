@@ -223,7 +223,7 @@ def test(envs, env_paramss, config, rngs):
 
     train_state_policy_RA = TrainState.create(
         apply_fn=policy_network_RA.apply,
-        params=raw_restored['policy_network']['params'],
+        params=raw_restored_RA['policy_network']['params'],
         tx=tx,
     )    
 
@@ -231,7 +231,7 @@ def test(envs, env_paramss, config, rngs):
     value_network_RA = Value_Network(activation=config["ACTIVATION"])
     train_state_value_RA = TrainState.create(
         apply_fn=value_network_RA.apply,
-        params=raw_restored['value_network']['params'],
+        params=raw_restored_RA['value_network']['params'],
         tx=tx,
     )
 
@@ -310,14 +310,17 @@ if __name__ == "__main__":
     if debug:
         config["EXP_NAME"]="HopperReachAlwaysAvoid"
 
-        config["DIR_HJPPO"]="stonkens_models/hopper_reachalwaysavoid"
-        config["DIR_MODEL_HJPPO"]="best_126"
+        config["DIR_HJPPO"]="hopper_raa_final_nikhil"#"stonkens_models/hopper_reachalwaysavoid"
+        config["DIR_MODEL_HJPPO"]="checkpoint_160"#"best_126"
 
         config["DIR_CPPO"]="hopper_raa_cppo_0_val100_dones_augmented"
         config["DIR_MODEL_CPPO"]="checkpoint_486"
 
-        config["DIR_RA"]="stonkens_models/hopper_reachavoid_final"
-        config["DIR_MODEL_RA"]="best_244"
+        config["DIR_RA"]="hopper_reachavoid_final_nikhil" #"stonkens_models/hopper_reachavoid_final"
+        config["DIR_MODEL_RA"]="checkpoint_240" #"best_244"
+
+        print(os.path.abspath('model/{}/{}'.format(config["DIR_RA"], config["DIR_MODEL_RA"])))
+        print(os.path.exists(os.path.abspath('model/{}/{}'.format(config["DIR_RA"], config["DIR_MODEL_RA"]))))
 
         config['TEST_DIR'] = "eval_all_HopperRR_"
 
