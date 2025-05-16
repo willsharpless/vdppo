@@ -230,6 +230,10 @@ if __name__ == "__main__":
     config["CPPO_UPDATE_TYPE"] = "mean"
     config["USE_STL"] = False
 
+    if config["EXP_NAME"] == "HopperReachReach_separated_CPPO":
+        # Use min target cost accumulation
+        config["CPPO_UPDATE_TYPE"] = "min"
+
     # HopperReachReach environment specific assertions
     print(config.keys())
     if "HopperReachReach" in config["EXP_NAME"]:
@@ -238,6 +242,7 @@ if __name__ == "__main__":
         assert("ENV_COST_TYPE" in config.keys())
         
 
+        print('\n\n\ENV_COST_TYPE: {}'.format(config["ENV_COST_TYPE"]))
         print('\n\n\ENV_COST_TYPE: {}'.format(config["ENV_COST_TYPE"]))
         print('USE_STL: {}'.format(config["USE_STL"]))
         print('CPPO_UPDATE_TYPE: {}\n\n\n'.format(config["CPPO_UPDATE_TYPE"]))

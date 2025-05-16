@@ -583,7 +583,8 @@ def plot_contour_RRAA(multi_info, epoch, config, policy_decision_sample=None):
 
     if config['EXP_NAME'] == 'HopperReachReach' \
         or config["EXP_NAME"] == 'HopperReachReach_max_CPPO' \
-        or config["EXP_NAME"] == 'HopperReachReach_sum_CPPO':
+        or config["EXP_NAME"] == 'HopperReachReach_sum_CPPO'\
+        or config['EXP_NAME'] == 'HopperReachReach_separated_CPPO':
 
         info, info_1, info_2 = multi_info
 
@@ -868,14 +869,15 @@ def plot_video_contour_RRAA(multi_info, epoch, config, save_video=False, prefix=
                     wandb.log({wandb_name: wandb.Video(video_path, format="mp4")}, step=epoch)
                 except: 
                     print("Error logging video to wandb")
-                    
+
         end_time = time()
         print("Time taken to plot and push video: ", end_time - start_time)
         return frames
     
     if config['EXP_NAME'] == 'HopperReachReach' \
         or config["EXP_NAME"] == 'HopperReachReach_max_CPPO' \
-        or config["EXP_NAME"] == 'HopperReachReach_sum_CPPO':
+        or config["EXP_NAME"] == 'HopperReachReach_sum_CPPO'\
+        or config['EXP_NAME'] == 'HopperReachReach_separated_CPPO':
         info, info_1, info_2 = multi_info
 
         def draw_hopper_rr(step, info, reach_idx_1, reach_idx_2, title, ax, target_type="both"):

@@ -8,7 +8,8 @@ from .reach_avoid.wind_field import WindField
 from .reach_avoid.half_cheetah_avoid import HalfCheetahAvoid, HalfCheetahAvoidDeterministic
 from .reach_avoid.safety_gym_avoid import PointAvoid
 from .baseline.pendulum_constraint_baseline import PendulumConstraintBaseline
-from .baseline.hopper_avoid_ceiling_baseline import HopperAvoidCeilingBaseline, HopperReachAlwaysAvoidBaseline_augmented, HopperReachReachBaseline_augmented_max, HopperReachReachBaseline_augmented_sum
+from .baseline.hopper_avoid_ceiling_baseline import HopperAvoidCeilingBaseline, HopperReachAlwaysAvoidBaseline_augmented, HopperReachReachBaseline_augmented_max, \
+    HopperReachReachBaseline_augmented_sum, HopperReachReachBaseline_reward_cost_separated
 from .baseline.wind_field_baseline import WindFieldBaseline
 from .baseline.half_cheetah_avoid_baseline import HalfCheetahAvoidBaseline
 
@@ -158,6 +159,22 @@ def get_env(config):
         untrans = partial(untransform_observation, vec1, vec2)
 
         env = HopperReachReachBaseline_augmented_sum(cost_type=config["ENV_COST_TYPE"], 
+                                                     use_stl=config["USE_STL"])
+        env = TransformObservation(env, trans)
+        env.set_untransform_obs(untrans)
+
+        return (env)
+    
+    elif config["EXP_NAME"] == "HopperReachReach_separated_CPPO":
+        obs_dim = 12 + 2
+        vec1 = jnp.zeros(obs_dim, dtype=jnp.float32)
+        vec1 = vec1.at[0].set(1.)
+        vec2 = jnp.ones(obs_dim, dtype=jnp.float32)
+        
+        trans = partial(transform_observation, vec1, vec2)
+        untrans = partial(untransform_observation, vec1, vec2)
+
+        env = HopperReachReachBaseline_reward_cost_separated(cost_type=config["ENV_COST_TYPE"], 
                                                      use_stl=config["USE_STL"])
         env = TransformObservation(env, trans)
         env.set_untransform_obs(untrans)

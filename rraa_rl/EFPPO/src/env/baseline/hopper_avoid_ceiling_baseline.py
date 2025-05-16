@@ -460,7 +460,7 @@ class HopperReachReachBaseline_augmented_max(HopperReachReachBaseline_base):
     """
     Hopper Avoid Ceiling Baseline environment for CPPO baseline
     
-    Unaugmented state base: obs = [obs]
+    augmented state base: obs = [obs, min reach 1, min reach 2]
     reward format: gamma * (max (r1, r2)) - max(last r1, last r2)
     """
 
@@ -489,7 +489,7 @@ class HopperReachReachBaseline_augmented_sum(HopperReachReachBaseline_base):
     """
     Hopper Avoid Ceiling Baseline environment for CPPO baseline
     
-    Unaugmented state base: obs = [obs]
+    augmented state base: obs = [obs, min reach 1, min reach 2]
     reward format: gamma * (r1 + r2) - (last r1 + last r2)
     """
 
@@ -511,4 +511,40 @@ class HopperReachReachBaseline_augmented_sum(HopperReachReachBaseline_base):
             shape=(self._env.observation_size + 2),
         )
     
+
+class HopperReachReachBaseline_reward_cost_separated(HopperReachReachBaseline_base):
+    """
+    Hopper Avoid Ceiling Baseline environment for CPPO baseline
+
+    augmented state base: obs = [obs, min reach 1, min reach 2]
+    
+    Reward: reach 1: gamma * r1 - last r1
+    Cost: reach 2: r2 
+    CPPO Update: min(cost over trajectory) <= 0 
+    """
+
+    @partial(jax.jit, static_argnums=(0,))  
+    def compute_cost(self, curr_min_reach1_value, curr_min_reach2_value, prev_min_reach1_value=None, prev_min_reach2_value=None,    
+                        reach1_value=None, reach2_value=None):
+        # Compute cost for constrained MDP 
+        # Cost: reach 2: r2 
+        return reach2_value
+
+    @partial(jax.jit, static_argnums=(0,))
+    def compute_reward(self, state, last_state, params): 
+        # Compute reward for constrained MDP 
+        # Max Reward: gamma * r1 - last r1
+        return params.gamma * state.reach1 - last_state.reach1
+    
+    @partial(jax.jit, static_argnums=(0,))
+    def compute_observation(self, state):
+        # Compute observation for constrained MDP 
+        return jnp.concatenate([state.state.obs, jnp.array([state.min_reach1, state.min_reach2])])
+    
+    def observation_space(self, params):
+        return spaces.Box(
+            low=-jnp.inf,
+            high=jnp.inf,
+            shape=(self._env.observation_size + 2),
+        )
 
