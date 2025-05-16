@@ -316,6 +316,39 @@ def get_env(config):
         trans = partial(transform_observation, vec1, vec2)
         env = F16Avoid()
         env = TransformObservation(env, trans)
+
+    elif config["EXP_NAME"] == "F16ReachAvoid":
+        from .reach_avoid.F16_RAA import F16ReachAvoid
+        vec1 = jnp.zeros(26, dtype=jnp.float32)
+        vec1 = vec1.at[-1].set(400.)
+        vec2 = jnp.ones(26, dtype=jnp.float32)
+        vec2 = vec2.at[-1].set(400.)
+        trans = partial(transform_observation, vec1, vec2)
+
+        env = F16ReachAvoid()
+        env = TransformObservation(env, trans)
+
+        return (env)
+
+
+    elif config["EXP_NAME"] == "F16ReachReachDecomposed":
+        from .reach_avoid.F16_RR import F16ReachReachBaseline, F16Reach1Baseline, F16Reach2Baseline
+        vec1 = jnp.zeros(24, dtype=jnp.float32)
+        vec1 = vec1.at[-1].set(400.)
+        vec2 = jnp.ones(24, dtype=jnp.float32)
+        vec2 = vec2.at[-1].set(400.)
+        trans = partial(transform_observation, vec1, vec2)
+
+        env = F16ReachReachBaseline()
+        env = TransformObservation(env, trans)
+
+        env1 = F16Reach1Baseline()
+        env1 = TransformObservation(env1, trans)
+
+        env2 = F16Reach2Baseline()
+        env2 = TransformObservation(env2, trans)
+
+        return (env, env1, env2)
     
     elif config["EXP_NAME"] == 'F16ReachAlwaysAvoid':
         from .reach_avoid.F16_RAA import F16ReachAvoid, F16AvoidOnly
@@ -435,6 +468,7 @@ def get_env(config):
     elif config["EXP_NAME"] == 'F16AvoidBaseline':
         from .baseline.F16_avoid_baseline import F16AvoidBaseline
         env = F16AvoidBaseline()
+
     else:
         raise Exception("No Given Environment")
     return env
