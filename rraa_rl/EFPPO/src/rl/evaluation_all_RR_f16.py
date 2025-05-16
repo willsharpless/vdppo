@@ -102,7 +102,7 @@ def plot_scores(traj_batches, config):
     for i, label in enumerate(labels):
         axes[0].barh(label, reach_percs[i], color=colors[label])
     axes[0].set_xlim(0, 1.1)
-    axes[0].set_title(r"HOPPER-RR: Success Percentage ($\uparrow$)", fontsize=12)
+    axes[0].set_title(r"F16-RR: Success Percentage ($\uparrow$)", fontsize=12)
     axes[0].set_xlabel(r"Percentage")
     axes[0].set_yticks(np.arange(len(labels)))
     axes[0].set_yticklabels(labels, ha='right', fontsize=10)
@@ -114,7 +114,7 @@ def plot_scores(traj_batches, config):
     # Mean reach index bar plot with error bars
     for i, label in enumerate(labels):
         axes[1].barh(label, mean_idxs[i], xerr=std_idxs[i]/2, color=colors[label], capsize=4)
-    axes[1].set_title(r"HOPPER-RR: Mean Steps to Success ($\downarrow$)", fontsize=12)
+    axes[1].set_title(r"F16-RR: Mean Steps to Success ($\downarrow$)", fontsize=12)
     axes[1].set_xlabel(r"Index")
     axes[1].set_yticks(np.arange(len(labels)))
     axes[1].set_yticklabels(labels, ha='right', fontsize=10)
@@ -438,24 +438,24 @@ if __name__ == "__main__":
 
     debug = True
     if debug:
-        config["EXP_NAME"]="HopperReachReach"
+        config["EXP_NAME"]="F16ReachReach"
 
-        config["DIR_HJPPO"]="BASELINE_hopper_reachreach_50M"
-        config["DIR_MODEL_HJPPO"]="best_34"
+        config["DIR_HJPPO"]="model/BASELINE_F16_rr_verttargs_cutsamp"
+        config["DIR_MODEL_HJPPO"]="checkpoint_63"
 
-        config["DIR_CPPOv1"]="BASELINE_final_hopper_rr_cppomax_raccum_cfnmax_caccum_umin_V1--LR=3e-4"
+        config["DIR_CPPOv1"]=""
         config["DIR_MODEL_CPPOv1"]="checkpoint_243"
 
-        config["DIR_CPPOv2"]="BASELINE_final_hopper_rr_cpposum_raccum_cfnmax_caccum_umin_V1"
+        config["DIR_CPPOv2"]=""
         config["DIR_MODEL_CPPOv2"]="checkpoint_243"
 
-        config["DIR_CPPOv3"]="BASELINE_final_hopper_rr_cpposum_raccum_cfnsum_caccum_umean_V2"
+        config["DIR_CPPOv3"]=""
         config["DIR_MODEL_CPPOv3"]="checkpoint_214"
 
-        config["DIR_DSTL"]="BASELINE_hopper_reachreach_decomposed"
-        config["DIR_MODEL_DSTL"]="best_35"
+        config["DIR_DSTL"]="model/BASELINE_F16_reachreachdecomposed_100M"
+        config["DIR_MODEL_DSTL"]="best_143"
 
-        config['TEST_DIR'] = "eval_all_HopperRR_"
+        config['TEST_DIR'] = "eval_all_F16RR"
 
     config["NUM_ENVS"]=1000
     config["NUM_STEPS"]=500
@@ -466,7 +466,7 @@ if __name__ == "__main__":
 
     # "BASELINE_final_hopper_rr_cppomax_raccum_cfnmax_caccum_umin_V1--LR=3e-4"
     config_CPPOv1 = copy.deepcopy(config)
-    config_CPPOv1["EXP_NAME"] = "HopperReachReach_max_CPPO"
+    config_CPPOv1["EXP_NAME"] = "F16ReachReach_max_CPPO"
     config_CPPOv1["ENV_REWARD_TYPE"] = "accumulated" # reward
     config_CPPOv1["ENV_COST_FN"] = "max" # cost_fn
     config_CPPOv1["ENV_COST_TYPE"] = "accumulated" # cost
@@ -476,7 +476,7 @@ if __name__ == "__main__":
 
     # "BASELINE_final_hopper_rr_cpposum_raccum_cfnmax_caccum_umin_V1"
     config_CPPOv2 = copy.deepcopy(config)
-    config_CPPOv2["EXP_NAME"] = "HopperReachReach_sum_CPPO"
+    config_CPPOv2["EXP_NAME"] = "F16ReachReach_sum_CPPO"
     config_CPPOv2["ENV_REWARD_TYPE"] = "accumulated" # reward
     config_CPPOv2["ENV_COST_FN"] = "max" # cost_fn
     config_CPPOv2["ENV_COST_TYPE"] = "accumulated" # cost
@@ -486,7 +486,7 @@ if __name__ == "__main__":
 
     # "BASELINE_final_hopper_rr_cpposum_raccum_cfnsum_caccum_umean_V2"
     config_CPPOv3 = copy.deepcopy(config)
-    config_CPPOv3["EXP_NAME"] = "HopperReachReach_sum_CPPO"
+    config_CPPOv3["EXP_NAME"] = "F16ReachReach_sum_CPPO"
     config_CPPOv3["ENV_REWARD_TYPE"] = "accumulated" # reward
     config_CPPOv3["ENV_COST_FN"] = "sum" # cost_fn
     config_CPPOv3["ENV_COST_TYPE"] = "accumulated" # cost
@@ -495,7 +495,7 @@ if __name__ == "__main__":
     env_CPPO_v3 = get_env(config_CPPOv3)
 
     config_dSTL = copy.deepcopy(config)
-    config_dSTL["EXP_NAME"] = "HopperReachReachDecomposed"
+    config_dSTL["EXP_NAME"] = "F16ReachReachDecomposed"
     env_dSTL, env_dSTL_1, env_dSTL_2 = get_env(config_dSTL)
 
     envs = (
