@@ -10,6 +10,7 @@ from functools import partial
 from flax.training.train_state import TrainState
 from flax.training import checkpoints
 import jax.numpy as jnp
+import seaborn as sns
 
 import matplotlib.pyplot as plt
 from PIL import Image
@@ -18,7 +19,7 @@ import imageio
 from rraa_rl.EFPPO.src.rl.arguments import get_args
 from rraa_rl.EFPPO.src.env.env_list import get_env
 from rraa_rl.EFPPO.src.model.actorcritic import Policy_Network, Value_Network, ActorCritic_Continuous, Policy_Network_Discrete, MoGPolicy_Network
-from rraa_rl.EFPPO.src.rl.EFPPO_utils import _env_step_rr_vanilla, _env_step_rr_deterministic, _env_step_CPPO_rr
+from rraa_rl.EFPPO.src.rl.EFPPO_utils import _env_step_rr_vanilla, _env_step_rr_deterministic, _env_step_cppo_RR, _env_step_rr_decomposed
 # from rraa_rl.EFPPO.src.rl.plot_utils import calculate_reachreach
 from rraa_rl.EFPPO.src.rl.root_finding import Bisection
 from rraa_rl.EFPPO.src.rl.utils import tree_index1, tree_index2, optimizer
@@ -40,55 +41,99 @@ def calculate_reachreach(traj_batch, reach_type="both"):
     reach_percs = (reach_1_perc.item(), reach_2_perc.item(), reach_perc.item())
     reach_idxs = (reach_idx_1, reach_idx_2, reach_idx)
     return reach_percs, reach_idxs
+
+def plot_scores(traj_batches, config):
+
+    (traj_batch_HJPPO, 
+        traj_batch_HJPPO_d, 
+        traj_batch_CPPOv1, 
+        traj_batch_CPPOv2, 
+        traj_batch_CPPOv3, 
+        traj_batch_dSTL) = traj_batches
     
-def plot_RR_value(traj_batch, traj_batch_d, config):
+    rr_scores_HJPPO = calculate_reachreach(traj_batch_HJPPO)
+    rr_scores_HJPPO_d = calculate_reachreach(traj_batch_HJPPO_d)
+    rr_scores_CPPOv1 = calculate_reachreach(traj_batch_CPPOv1)
+    rr_scores_CPPOv2 = calculate_reachreach(traj_batch_CPPOv2)
+    rr_scores_CPPOv3 = calculate_reachreach(traj_batch_CPPOv3)
+    rr_scores_dSTL = calculate_reachreach(traj_batch_dSTL)
 
-    plt.figure(figsize=(5, 10), constrained_layout=True)
-    fig, axes = plt.subplots(1, 2)
+    rr_scores_all = [
+        ("HJPPO", rr_scores_HJPPO),
+        ("HJPPO_d", rr_scores_HJPPO_d),
+        ("CPPOv1", rr_scores_CPPOv1),
+        ("CPPOv2", rr_scores_CPPOv2),
+        ("CPPOv3", rr_scores_CPPOv3),
+        ("dSTL", rr_scores_dSTL),
+    ]
 
-    def draw_vals(batch, title, ax):
+    # Extract data
+    labels = []
+    reach_percs = []
+    mean_idxs = []
+    std_idxs = []
 
-        # Cumulative min over time for each batch column
-        cummin1 = lax.associative_scan(jnp.minimum, batch.reach1, axis=0)  # [T, B]
-        cummin2 = lax.associative_scan(jnp.minimum, batch.reach2, axis=0)  # [T, B]
-        # score = jnp.maximum(cummin1, cummin2)  # [T, B]
+    for tag, scores in rr_scores_all:
+        
+        reach_perc = scores[0][2]
+        idxs = scores[1][2]
+        finite_mask = jnp.isfinite(idxs)
+        finite_idxs = idxs[finite_mask]
+        mean_idx = jnp.mean(finite_idxs) if finite_idxs.size > 0 else jnp.nan
+        std_idx = jnp.std(finite_idxs) if finite_idxs.size > 0 else jnp.nan
 
-        # Compute summary statistics over batch for ribbon plot
-        median_1 = jnp.median(cummin1, axis=1)
-        q25_1 = jnp.percentile(cummin1, 25, axis=1)
-        q75_1 = jnp.percentile(cummin1, 75, axis=1)
+        labels.append(tag)
+        reach_percs.append(reach_perc)
+        mean_idxs.append(mean_idx)
+        std_idxs.append(std_idx)
 
-        median_2 = jnp.median(cummin2, axis=1)
-        q25_2 = jnp.percentile(cummin2, 25, axis=1)
-        q75_2 = jnp.percentile(cummin2, 75, axis=1)
+    # Plotting
+    fig, axes = plt.subplots(2, 1, figsize=(7, 4.5), sharex=False)
+    palette = sns.color_palette("deep", n_colors=6)
+    colors = {label: color for label, color in zip(labels, palette)}
 
-        # Plot
-        timesteps = jnp.arange(cummin1.shape[0])
-        ax.fill_between(timesteps, q25_1, q75_1, alpha=0.3, label="min<t l1", color="green")
-        ax.fill_between(timesteps, q25_2, q75_2, alpha=0.3, label="min<t l2", color="blue")
-        ax.plot(timesteps, median_1, color="green")
-        ax.plot(timesteps, median_2, color="blue")
-        ax.set_xlabel("Trajectory Step")
-        ax.set_title(title)
-        ax.legend()
+    # Reach percentage bar plot
+    for i, label in enumerate(labels):
+        axes[0].barh(label, reach_percs[i], color=colors[label])
+    axes[0].set_xlim(0, 1.1)
+    axes[0].set_title(r"Success Percentage", fontsize=12)
+    axes[0].set_xlabel(r"Percentage")
+    axes[0].set_yticks(np.arange(len(labels)))
+    axes[0].set_yticklabels(labels, ha='right', fontsize=10)
+    axes[0].tick_params(axis='y', pad=10)  # move labels away from bars
+    axes[0].grid(True, axis="x", linestyle="--", alpha=0.5)
+    axes[0].spines[['top', 'right', 'left']].set_visible(False)
 
-    draw_vals(traj_batch, "Stochastic Policy", axes[0])
-    draw_vals(traj_batch_d, "Deterministic Policy", axes[1])
+    # Mean reach index bar plot with error bars
+    for i, label in enumerate(labels):
+        axes[1].barh(label, mean_idxs[i], xerr=std_idxs[i], color=colors[label], capsize=4)
+    axes[1].set_title(r"Mean Steps to Success", fontsize=12)
+    axes[1].set_xlabel(r"Index")
+    axes[1].set_yticks(np.arange(len(labels)))
+    axes[1].set_yticklabels(labels, ha='right', fontsize=10)
+    axes[1].tick_params(axis='y', pad=10)
+    axes[1].grid(True, axis="x", linestyle="--", alpha=0.5)
+    axes[1].spines[['top', 'right', 'left']].set_visible(False)
 
-    plt.savefig(f"model/{config['DIR']}/test/{config['DIR_MODEL']}_value_plot", dpi=300)
+    # Style tweaks to match NeurIPS-style
+    for ax in axes:
+        ax.spines[['top', 'right']].set_visible(False)
+        ax.tick_params(axis='both', which='both', labelsize=10)
+
+    plt.savefig(f"model/{config['TEST_DIR']}/score_plot", dpi=300)
     return fig
 
 def test(envs, env_paramss, config, rngs):
     rng_1, rng_2, rng_3, rng_4, rng_5, rng_6 = rngs
 
-    env_HJPPO, env_HJPPO_reach_1, env_HJPPO_reach_2, env_CPPO, env_dSTL = envs # COMPOSED (RR) + 2 DECOMPOSED (R1 + R2)
-    env_params_HJPPO, env_params_HJPPO_reach_1, env_params_HJPPO_reach_2, env_params_CPPO, env_params_dSTL = env_paramss
+    env_HJPPO, env_HJPPO_reach_1, env_HJPPO_reach_2, env_CPPO, env_dSTL, env_dSTL_1, env_dSTL_2 = envs # COMPOSED (RR) + 2 DECOMPOSED (R1 + R2)
+    env_params_HJPPO, env_params_HJPPO_reach_1, env_params_HJPPO_reach_2, env_params_CPPO, env_params_dSTL, env_params_dSTL_1, env_params_dSTL_2 = env_paramss
 
     # DEFINE ENV STEP WRAPPERS
     env_step_HJPPO = partial(_env_step_rr_vanilla, env_HJPPO, env_params_HJPPO)
     env_step_HJPPO_d = partial(_env_step_rr_deterministic, env_HJPPO, env_params_HJPPO)
-    env_step_CPPO = partial(_env_step_CPPO_rr, env_CPPO, env_params_CPPO)
-    # env_step_dSTL = partial(FIXME, env_dSTL, env_params_dSTL)
+    env_step_CPPO = partial(_env_step_cppo_RR, env_CPPO, env_params_CPPO)
+    env_step_dSTL = partial(_env_step_rr_decomposed, env_dSTL, env_params_dSTL)
     tx = optimizer(config)
 
     ########################################## LOAD HJ-PPO #################################################
@@ -150,7 +195,7 @@ def test(envs, env_paramss, config, rngs):
         config["DIR_CPPOv1"], config["DIR_MODEL_CPPOv1"])), target=None)
 
     policy_network_CPPOv1 = Policy_Network(
-        env.action_space(env_params_CPPO).shape[0], activation=config["ACTIVATION"]
+        env_CPPO.action_space(env_params_CPPO).shape[0], activation=config["ACTIVATION"]
     )
 
     train_state_policy_CPPOv1 = TrainState.create(
@@ -181,7 +226,7 @@ def test(envs, env_paramss, config, rngs):
         config["DIR_CPPOv2"], config["DIR_MODEL_CPPOv2"])), target=None)
 
     policy_network_CPPOv2 = Policy_Network(
-        env.action_space(env_params_CPPO).shape[0], activation=config["ACTIVATION"]
+        env_CPPO.action_space(env_params_CPPO).shape[0], activation=config["ACTIVATION"]
     )
 
     train_state_policy_CPPOv2 = TrainState.create(
@@ -212,7 +257,7 @@ def test(envs, env_paramss, config, rngs):
         config["DIR_CPPOv3"], config["DIR_MODEL_CPPOv3"])), target=None)
 
     policy_network_CPPOv3 = Policy_Network(
-        env.action_space(env_params_CPPO).shape[0], activation=config["ACTIVATION"]
+        env_CPPO.action_space(env_params_CPPO).shape[0], activation=config["ACTIVATION"]
     )
 
     train_state_policy_CPPOv3 = TrainState.create(
@@ -240,10 +285,45 @@ def test(envs, env_paramss, config, rngs):
 
     ########################################## LOAD DECOMPOSED STL #################################################
 
-    # raw_restored_dSTL = checkpoints.restore_checkpoint(ckpt_dir=os.path.abspath('model/{}/{}'.format(
-    #     config["DIR_dSTL"], config["DIR_MODEL_dSTL"])), target=None)
+    raw_restored_dSTL = checkpoints.restore_checkpoint(ckpt_dir=os.path.abspath('model/{}/{}'.format(
+        config["DIR_dSTL"], config["DIR_MODEL_dSTL"])), target=None)
     
-    ## FIXME
+    policy_network_dSTL_1 = Policy_Network(
+        env_dSTL_1.action_space(env_params_dSTL_1).shape[0], activation=config["ACTIVATION"]
+    )
+    policy_network_dSTL_2 = Policy_Network(
+        env_dSTL_2.action_space(env_params_dSTL_2).shape[0], activation=config["ACTIVATION"]
+    )
+
+    train_state_policy_dSTL_1 = TrainState.create(
+        apply_fn=policy_network_dSTL_1.apply,
+        params=raw_restored_dSTL['policy_reach1_network']['params'],
+        tx=tx,
+        count=1e-4,
+    )
+
+    train_state_policy_dSTL_2 = TrainState.create(
+        apply_fn=policy_network_dSTL_2.apply,
+        params=raw_restored_dSTL['policy_reach2_network']['params'],
+        tx=tx,
+        count=1e-4,
+    )
+
+    value_network_reach1 = Value_Network(activation=config["ACTIVATION"])
+    train_state_value_dSTL_1 = TrainState.create(
+        apply_fn=value_network_reach1.apply,
+        params=raw_restored_dSTL['value_reach1_network']['params'],
+        tx=tx,
+        count=1e-4,
+    )
+
+    value_network_reach2 = Value_Network(activation=config["ACTIVATION"])
+    train_state_value_dSTL_2 = TrainState.create(
+        apply_fn=value_network_reach2.apply,
+        params=raw_restored_dSTL['value_reach2_network']['params'],
+        tx=tx,
+        count=1e-4,
+    )
 
     ########################################## ROLL OUT MODELS #################################################
 
@@ -252,7 +332,7 @@ def test(envs, env_paramss, config, rngs):
     print("Rolling Out HJ-PPO (Stochastic)")
     rng_1, _rng_1 = jax.random.split(rng_1)
     reset_rng_1 = jax.random.split(_rng_1, config["NUM_ENVS"])
-    obsv_1, env_state_1 = jax.vmap(env.reset, in_axes=(0, None))(reset_rng_1, env_params_HJPPO)
+    obsv_1, env_state_1 = jax.vmap(env_HJPPO.reset, in_axes=(0, None))(reset_rng_1, env_params_HJPPO)
     
     rng_1, _rng_1 = jax.random.split(rng_1)
     runner_state_standard = (train_state_policy_HJPPO, train_state_value_HJPPO, env_state_1, obsv_1, _rng_1)
@@ -270,7 +350,7 @@ def test(envs, env_paramss, config, rngs):
     print("Rolling Out HJ-PPO (Deterministic)")
     rng_2, _rng_2 = jax.random.split(rng_2)
     reset_rng_2 = jax.random.split(_rng_2, config["NUM_ENVS"])
-    obsv_2, env_state_2 = jax.vmap(env.reset, in_axes=(0, None))(reset_rng_2, env_params_HJPPO)
+    obsv_2, env_state_2 = jax.vmap(env_HJPPO.reset, in_axes=(0, None))(reset_rng_2, env_params_HJPPO)
 
     rng_2, _rng_2 = jax.random.split(rng_2)
     runner_state_standard = (train_state_policy_HJPPO, train_state_value_HJPPO, env_state_2, obsv_2, _rng_2)
@@ -325,9 +405,19 @@ def test(envs, env_paramss, config, rngs):
         env_step_CPPO, runner_state, None, config["NUM_STEPS"]
     )
 
-    ## MODEL 6 : DSTL FIXME
+    ## MODEL 6 : DSTL
 
-    traj_batch_dSTL = traj_batch_HJPPO
+    rng_6, _rng_6 = jax.random.split(rng_6)
+    reset_rng_6 = jax.random.split(_rng_6, config["NUM_ENVS"])
+    obsv_6, env_state_6 = jax.vmap(env_dSTL.reset, in_axes=(0, None))(reset_rng_6, env_params_dSTL)
+    rng_6, _rng_6 = jax.random.split(rng_6)
+    runner_state = (train_state_policy_dSTL_1, train_state_value_dSTL_1,
+                    train_state_policy_dSTL_2, train_state_value_dSTL_2,
+                    env_state_6, obsv_6, _rng_6)
+
+    runner_state, traj_batch_dSTL = jax.lax.scan(
+        env_step_dSTL, runner_state, None, config["NUM_STEPS"]
+    )
 
     return traj_batch_HJPPO, traj_batch_HJPPO_d, traj_batch_CPPOv1, traj_batch_CPPOv2, traj_batch_CPPOv3, traj_batch_dSTL
 
@@ -353,11 +443,11 @@ if __name__ == "__main__":
 
     config_dSTL = copy(config)
     config_dSTL["EXP_NAME"] = "HopperReachReachDecomposed"
-    env_dSTL = get_env(config_dSTL)
+    env_dSTL, env_dSTL_1, env_dSTL_2 = get_env(config_dSTL)
 
     envs = (
         env_HJPPO, env_HJPPO_1, env_HJPPO_2, 
-        env_CPPO, env_dSTL
+        env_CPPO, env_dSTL, env_dSTL_1, env_dSTL_2
     )
     env_paramss = (
         env_HJPPO.default_params, env_HJPPO_1.default_params, env_HJPPO_2.default_params,
@@ -375,23 +465,10 @@ if __name__ == "__main__":
 
     os.environ["XLA_PYTHON_CLIENT_PREALLOCATE"] = "false"
     
-    (result_traj_batch, result_traj_batch_deterministic) = test(envs, env_paramss, config, rngs)
+    traj_batches = test(envs, env_paramss, config, rngs)
 
-    ((reach_1_perc, reach_2_perc, reach_perc), 
-     (reach_idx_1, reach_idx_2, reach_idx)) = calculate_reachreach(result_traj_batch)
-    
-    ((reach_1_perc_d, reach_2_perc_d, reach_perc_d), 
-     (reach_idx_1_d, reach_idx_2_d, reach_idx_d)) = calculate_reachreach(result_traj_batch_deterministic)
-    
-    print("\nSCORES")
-    print(f" STOCH - REACH-REACH : {100*reach_perc:0.1f}%")
-    print(f" STOCH - REACH-1     : {100*reach_1_perc:0.1f}%")
-    print(f" STOCH - REACH-2     : {100*reach_2_perc:0.1f}%")
-    print(f" DETER - REACH-REACH : {100*reach_perc_d:0.1f}%")
-    print(f" DETER - REACH-1     : {100*reach_1_perc_d:0.1f}%")
-    print(f" DETER - REACH-2     : {100*reach_2_perc_d:0.1f}%")
-    print("")
+    os.makedirs(f"model/{config['TEST_DIR']}", exist_ok=True)
+    # val_fig = plot_RR_value(result_traj_batch, result_traj_batch_deterministic, config)
+    # traj_fig = plot_traj_sample(result_traj_batch, result_traj_batch_deterministic, config, sample_size=5, make_video=False)
 
-    os.makedirs(f"model/{config['DIR']}/test", exist_ok=True)
-    val_fig = plot_RR_value(result_traj_batch, result_traj_batch_deterministic, config)
-    traj_fig = plot_traj_sample(result_traj_batch, result_traj_batch_deterministic, config, sample_size=5, make_video=False)
+    score_plot = plot_scores(traj_batches, config)
