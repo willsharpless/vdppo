@@ -552,10 +552,10 @@ def train(envs, env_paramss, config, rng):
 if __name__ == "__main__":
     config = vars(get_args(sys.argv[1:]))
 
-    debug = False
+    debug = True
     if debug:
         config["EXP_NAME"]="F16ReachReach"
-        config["DIR"]="F16_rr_verttargs_4"
+        config["DIR"]="F16_rr_verttargs_4_rerun"
         config["LR"]=3e-4
         config["NUM_ENVS"]=256
         config["NUM_STEPS"]=200
@@ -575,7 +575,7 @@ if __name__ == "__main__":
         config["CUDA_USE"]="0"
         config["ANNEAL_LR"]=True,
         config["ANNEAL_ENT"]=True
-        config["NAME"]="F16_rr_verttargs_4"
+        config["NAME"]="F16_rr_verttargs_4_rerun"
 
         # config["TEST_MODE"]=True # USES DETERMINISTIC MODELS
 

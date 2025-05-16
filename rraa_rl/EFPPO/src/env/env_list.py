@@ -407,6 +407,8 @@ def get_env(config):
         return (env, env1, env2)
 
     elif config["EXP_NAME"] == 'F16ReachReach_CPPO':
+        from .baseline.F16_RR_baseline import F16ReachReachBaseline
+        
         vec1 = jnp.zeros(26, dtype=jnp.float32)
         vec1 = vec1.at[-1].set(400.)
         vec2 = jnp.ones(26, dtype=jnp.float32)

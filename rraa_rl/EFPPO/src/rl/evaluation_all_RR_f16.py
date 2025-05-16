@@ -63,8 +63,8 @@ def plot_scores(traj_batches, config):
         ("CPPOv2", rr_scores_CPPOv2),
         ("CPPOv1", rr_scores_CPPOv1),
         ("DSTL", rr_scores_dSTL),
-        ("HJPPO", rr_scores_HJPPO_d),
-        # ("HJPPO", rr_scores_HJPPO),
+        ("HJPPOd", rr_scores_HJPPO_d),
+        ("HJPPO", rr_scores_HJPPO),
     ]
 
     # Extract data
@@ -95,7 +95,7 @@ def plot_scores(traj_batches, config):
 
     # Plotting
     fig, axes = plt.subplots(2, 1, figsize=(7, 4.5), sharex=False)
-    palette = sns.color_palette("deep", n_colors=5)[::-1]
+    palette = sns.color_palette("deep", n_colors=6)[::-1]
     colors = {label: color for label, color in zip(labels, palette)}
         
     # Reach percentage bar plot
@@ -130,7 +130,7 @@ def plot_scores(traj_batches, config):
    
     plt.subplots_adjust(hspace=0.8)
 
-    plt.savefig(f"model/{config['TEST_DIR']}/score_plot", dpi=300)
+    plt.savefig(f"model/{config['TEST_DIR']}/score_plot_4", dpi=300)
     return fig
 
 def test(envs, env_paramss, config, rngs):
@@ -441,7 +441,7 @@ if __name__ == "__main__":
         config["EXP_NAME"]="F16ReachReach"
 
         config["DIR_HJPPO"]="BASELINE_F16_rr_verttargs_cutsamp"
-        config["DIR_MODEL_HJPPO"]="checkpoint_63"
+        config["DIR_MODEL_HJPPO"]="checkpoint_68"
 
         config["DIR_CPPOv1"]="BASELINE_final_f16_rr_cppo_0"
         config["DIR_MODEL_CPPOv1"]="best_100"
