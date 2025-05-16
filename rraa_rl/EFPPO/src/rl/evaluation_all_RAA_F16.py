@@ -97,7 +97,7 @@ def plot_scores(traj_batches, config):
     for i, label in enumerate(labels):
         axes[0].barh(label, reach_avoid_percs[i], color=colors[label])
     axes[0].set_xlim(0, 1.1)
-    axes[0].set_title(r"HOPPER-RAA: Success Percentage ($\uparrow$)", fontsize=12)
+    axes[0].set_title(r"F16-RAA: Success Percentage ($\uparrow$)", fontsize=12)
     axes[0].set_xlabel(r"Percentage")
     axes[0].set_yticks(np.arange(len(labels)))
     axes[0].set_yticklabels(labels, ha='right', fontsize=10)
@@ -109,7 +109,7 @@ def plot_scores(traj_batches, config):
     # Mean reach index bar plot with error bars
     for i, label in enumerate(labels):
         axes[1].barh(label, mean_idxs[i], xerr=std_idxs[i]/2, color=colors[label], capsize=4)
-    axes[1].set_title(r"HOPPER-RAA: Mean Steps to Success ($\downarrow$)", fontsize=12)
+    axes[1].set_title(r"F16-RAA: Mean Steps to Success ($\downarrow$)", fontsize=12)
     axes[1].set_xlabel(r"Index")
     axes[1].set_yticks(np.arange(len(labels)))
     axes[1].set_yticklabels(labels, ha='right', fontsize=10)
@@ -308,7 +308,7 @@ if __name__ == "__main__":
 
     debug = True
     if debug:
-        config["EXP_NAME"]="HopperReachAlwaysAvoid"
+        config["EXP_NAME"]="F16ReachAlwaysAvoid"
 
         config["DIR_HJPPO"]="hopper_raa_final_nikhil"#"stonkens_models/hopper_reachalwaysavoid"
         config["DIR_MODEL_HJPPO"]="checkpoint_160"#"best_126"
@@ -322,7 +322,7 @@ if __name__ == "__main__":
         print(os.path.abspath('model/{}/{}'.format(config["DIR_RA"], config["DIR_MODEL_RA"])))
         print(os.path.exists(os.path.abspath('model/{}/{}'.format(config["DIR_RA"], config["DIR_MODEL_RA"]))))
 
-        config['TEST_DIR'] = "eval_all_HopperRAA_"
+        config['TEST_DIR'] = "eval_all_F16RAA_"
 
     config["NUM_ENVS"]=1000
     config["NUM_STEPS"]=500
@@ -333,7 +333,7 @@ if __name__ == "__main__":
 
     # "BASELINE_final_hopper_rr_cppomax_raccum_cfnmax_caccum_umin_V1--LR=3e-4"
     config_CPPO = copy.deepcopy(config)
-    config_CPPO["EXP_NAME"] = "HopperReachAlwaysAvoid_CPPO"
+    config_CPPO["EXP_NAME"] = "F16ReachAlwaysAvoid_CPPO"
     # config_CPPO["ENV_REWARD_TYPE"] = "accumulated" # reward
     # config_CPPO["ENV_COST_FN"] = "max" # cost_fn
     # config_CPPO["ENV_COST_TYPE"] = "accumulated" # cost
@@ -342,7 +342,7 @@ if __name__ == "__main__":
     env_CPPO = get_env(config_CPPO)
 
     config_RA = copy.deepcopy(config)
-    config_RA["EXP_NAME"] = "HopperReachAvoid"
+    config_RA["EXP_NAME"] = "F16ReachAvoid"
     env_RA = get_env(config_RA)
 
     envs = (
