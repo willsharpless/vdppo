@@ -4,6 +4,7 @@ import jax
 from jax import lax
 import sys
 import numpy as np
+import copy
 
 from functools import partial
 from flax.training.train_state import TrainState
@@ -78,7 +79,7 @@ def plot_RR_value(traj_batch, traj_batch_d, config):
     return fig
 
 def test(envs, env_paramss, config, rngs):
-    rng_1, rng_2, rng_3, rng_4, rng_5, rng_6, rng_7, rng_8 = rngs
+    rng_1, rng_2, rng_3, rng_4, rng_5, rng_6 = rngs
 
     env_HJPPO, env_HJPPO_reach_1, env_HJPPO_reach_2, env_CPPO, env_dSTL = envs # COMPOSED (RR) + 2 DECOMPOSED (R1 + R2)
     env_params_HJPPO, env_params_HJPPO_reach_1, env_params_HJPPO_reach_2, env_params_CPPO, env_params_dSTL = env_paramss
@@ -324,7 +325,8 @@ def test(envs, env_paramss, config, rngs):
         env_step_CPPO, runner_state, None, config["NUM_STEPS"]
     )
 
-    ## FIXME ADD DECOMPOSED STL
+    ## MODEL 6 : DSTL FIXME
+
     traj_batch_dSTL = traj_batch_HJPPO
 
     return traj_batch_HJPPO, traj_batch_HJPPO_d, traj_batch_CPPOv1, traj_batch_CPPOv2, traj_batch_CPPOv3, traj_batch_dSTL
@@ -332,26 +334,48 @@ def test(envs, env_paramss, config, rngs):
 if __name__ == "__main__":
     config = vars(get_args(sys.argv[1:]))
 
-    debug = False
+    debug = True
     if debug:
         config["EXP_NAME"]="HopperReachReach"
         config["DIR"]="hopper_reachreach_halfwidth_R10"
         config["DIR_MODEL"]="checkpoint_975"
-        config["NUM_ENVS"]=128
-        config["NUM_STEPS"]=500
-        config["ACTIVATION"]="tanh"
 
-    envs = get_env(config)
-    env, env_1, env_2 = envs
-    env_paramss = (env.default_params, env_1.default_params, env_2.default_params)
-    rng = jax.random.PRNGKey(20)
-    folder = os.path.exists("model/{}/traj".format(config['DIR']))
+    config["NUM_ENVS"]=1000
+    config["NUM_STEPS"]=500
+    config["ACTIVATION"]="tanh"
 
-    # if config['EXP_NAME'] == 'WindField': 
-    #     env_params = env_params.replace(index=config['SECTION'])
+    envs_HJPPO = get_env(config)
+    env_HJPPO, env_HJPPO_1, env_HJPPO_2 = envs_HJPPO
+
+    config_CPPO = copy(config)
+    config_CPPO["EXP_NAME"] = "HopperReachReachCPPO"
+    env_CPPO = get_env(config_CPPO)
+
+    config_dSTL = copy(config)
+    config_dSTL["EXP_NAME"] = "HopperReachReachDecomposed"
+    env_dSTL = get_env(config_dSTL)
+
+    envs = (
+        env_HJPPO, env_HJPPO_1, env_HJPPO_2, 
+        env_CPPO, env_dSTL
+    )
+    env_paramss = (
+        env_HJPPO.default_params, env_HJPPO_1.default_params, env_HJPPO_2.default_params,
+        env_CPPO.default_params, env_dSTL.default_params, 
+    )
+
+    rng_1 = jax.random.PRNGKey(20)
+    rng_2 = jax.random.PRNGKey(20)
+    rng_3 = jax.random.PRNGKey(20)
+    rng_4 = jax.random.PRNGKey(20)
+    rng_5 = jax.random.PRNGKey(20)
+    rng_6 = jax.random.PRNGKey(20)
+    rngs = (rng_1, rng_2, rng_3, rng_4, rng_5, rng_6)
+    # folder = os.path.exists("model/{}/traj".format(config['DIR']))
+
     os.environ["XLA_PYTHON_CLIENT_PREALLOCATE"] = "false"
     
-    (result_traj_batch, result_traj_batch_deterministic) = test(envs, env_paramss, config, rng)
+    (result_traj_batch, result_traj_batch_deterministic) = test(envs, env_paramss, config, rngs)
 
     ((reach_1_perc, reach_2_perc, reach_perc), 
      (reach_idx_1, reach_idx_2, reach_idx)) = calculate_reachreach(result_traj_batch)
