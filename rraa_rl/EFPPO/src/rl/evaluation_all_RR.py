@@ -126,13 +126,15 @@ def plot_scores(traj_batches, config):
 def test(envs, env_paramss, config, rngs):
     rng_1, rng_2, rng_3, rng_4, rng_5, rng_6 = rngs
 
-    env_HJPPO, env_HJPPO_reach_1, env_HJPPO_reach_2, env_CPPO, env_dSTL, env_dSTL_1, env_dSTL_2 = envs # COMPOSED (RR) + 2 DECOMPOSED (R1 + R2)
-    env_params_HJPPO, env_params_HJPPO_reach_1, env_params_HJPPO_reach_2, env_params_CPPO, env_params_dSTL, env_params_dSTL_1, env_params_dSTL_2 = env_paramss
+    env_HJPPO, env_HJPPO_reach_1, env_HJPPO_reach_2, env_CPPO_v1, env_CPPO_v2, env_CPPO_v3, env_dSTL, env_dSTL_1, env_dSTL_2 = envs # COMPOSED (RR) + 2 DECOMPOSED (R1 + R2)
+    env_params_HJPPO, env_params_HJPPO_reach_1, env_params_HJPPO_reach_2, env_params_CPPO_v1, env_params_CPPO_v2, env_params_CPPO_v3, env_params_dSTL, env_params_dSTL_1, env_params_dSTL_2 = env_paramss
 
     # DEFINE ENV STEP WRAPPERS
     env_step_HJPPO = partial(_env_step_rr_vanilla, env_HJPPO, env_params_HJPPO)
     env_step_HJPPO_d = partial(_env_step_rr_deterministic, env_HJPPO, env_params_HJPPO)
-    env_step_CPPO = partial(_env_step_cppo_RR, env_CPPO, env_params_CPPO)
+    env_step_CPPOv1= partial(_env_step_cppo_RR, env_CPPO_v1, env_params_CPPO_v1)
+    env_step_CPPOv2 = partial(_env_step_cppo_RR, env_CPPO_v2, env_params_CPPO_v2)
+    env_step_CPPOv3 = partial(_env_step_cppo_RR, env_CPPO_v3, env_params_CPPO_v3)
     env_step_dSTL = partial(_env_step_rr_decomposed, env_dSTL, env_params_dSTL)
     tx = optimizer(config)
 
@@ -195,7 +197,7 @@ def test(envs, env_paramss, config, rngs):
         config["DIR_CPPOv1"], config["DIR_MODEL_CPPOv1"])), target=None)
 
     policy_network_CPPOv1 = Policy_Network(
-        env_CPPO.action_space(env_params_CPPO).shape[0], activation=config["ACTIVATION"]
+        env_CPPO_v1.action_space(env_params_CPPO_v1).shape[0], activation=config["ACTIVATION"]
     )
 
     train_state_policy_CPPOv1 = TrainState.create(
@@ -226,7 +228,7 @@ def test(envs, env_paramss, config, rngs):
         config["DIR_CPPOv2"], config["DIR_MODEL_CPPOv2"])), target=None)
 
     policy_network_CPPOv2 = Policy_Network(
-        env_CPPO.action_space(env_params_CPPO).shape[0], activation=config["ACTIVATION"]
+        env_CPPO_v2.action_space(env_params_CPPO_v2).shape[0], activation=config["ACTIVATION"]
     )
 
     train_state_policy_CPPOv2 = TrainState.create(
@@ -257,7 +259,7 @@ def test(envs, env_paramss, config, rngs):
         config["DIR_CPPOv3"], config["DIR_MODEL_CPPOv3"])), target=None)
 
     policy_network_CPPOv3 = Policy_Network(
-        env_CPPO.action_space(env_params_CPPO).shape[0], activation=config["ACTIVATION"]
+        env_CPPO_v3.action_space(env_params_CPPO_v3).shape[0], activation=config["ACTIVATION"]
     )
 
     train_state_policy_CPPOv3 = TrainState.create(
@@ -368,13 +370,13 @@ def test(envs, env_paramss, config, rngs):
     print("Rolling Out C-PPO (Variant 1)")
     rng_3, _rng_3 = jax.random.split(rng_3)
     reset_rng_3 = jax.random.split(_rng_3, config["NUM_ENVS"])
-    obsv_3, env_state_3 = jax.vmap(env_CPPO.reset, in_axes=(0, None))(reset_rng_3, env_params_CPPO)
+    obsv_3, env_state_3 = jax.vmap(env_CPPO_v1.reset, in_axes=(0, None))(reset_rng_3, env_params_CPPO_v1)
 
     rng_3, _rng_3 = jax.random.split(rng_3)
     runner_state = (train_state_policy_CPPOv1, train_state_value_CPPOv1, train_state_cost_CPPOv1, env_state_3, obsv_3, _rng_3)
     
     runner_state, traj_batch_CPPOv1 = jax.lax.scan(
-        env_step_CPPO, runner_state, None, config["NUM_STEPS"]
+        env_step_CPPOv1, runner_state, None, config["NUM_STEPS"]
     )
 
     ## MODEL 4 : CPPO : Variant 2
@@ -382,13 +384,13 @@ def test(envs, env_paramss, config, rngs):
     print("Rolling Out C-PPO (Variant 1)")
     rng_4, _rng_4 = jax.random.split(rng_4)
     reset_rng_4 = jax.random.split(_rng_4, config["NUM_ENVS"])
-    obsv_4, env_state_4 = jax.vmap(env_CPPO.reset, in_axes=(0, None))(reset_rng_3, env_params_CPPO)
+    obsv_4, env_state_4 = jax.vmap(env_CPPO_v2.reset, in_axes=(0, None))(reset_rng_3, env_params_CPPO_v2)
 
     rng_4, _rng_4 = jax.random.split(rng_4)
     runner_state = (train_state_policy_CPPOv2, train_state_value_CPPOv2, train_state_cost_CPPOv2, env_state_4, obsv_4, _rng_4)
     
     runner_state, traj_batch_CPPOv2 = jax.lax.scan(
-        env_step_CPPO, runner_state, None, config["NUM_STEPS"]
+        env_step_CPPOv2, runner_state, None, config["NUM_STEPS"]
     )
 
     ## MODEL 5 : CPPO : Variant 3
@@ -396,13 +398,13 @@ def test(envs, env_paramss, config, rngs):
     print("Rolling Out C-PPO (Variant 3)")
     rng_5, _rng_5 = jax.random.split(rng_5)
     reset_rng_5 = jax.random.split(_rng_5, config["NUM_ENVS"])
-    obsv_5, env_state_5 = jax.vmap(env_CPPO.reset, in_axes=(0, None))(reset_rng_5, env_params_CPPO)
+    obsv_5, env_state_5 = jax.vmap(env_CPPO_v3.reset, in_axes=(0, None))(reset_rng_5, env_params_CPPO_v3)
 
     rng_5, _rng_5 = jax.random.split(rng_5)
     runner_state = (train_state_policy_CPPOv3, train_state_value_CPPOv3, train_state_cost_CPPOv3, env_state_5, obsv_5, _rng_5)
     
     runner_state, traj_batch_CPPOv3 = jax.lax.scan(
-        env_step_CPPO, runner_state, None, config["NUM_STEPS"]
+        env_step_CPPOv3, runner_state, None, config["NUM_STEPS"]
     )
 
     ## MODEL 6 : DSTL
@@ -431,14 +433,14 @@ if __name__ == "__main__":
         config["DIR_HJPPO"]="BASELINE_hopper_reachavoid_final"
         config["DIR_MODEL"]="best_244"
 
-        config["DIR_CPPOv1"]="BASELINE_final_hopper_rr_cpposum_raccum_cfnmax_caccum_umin_V1"
+        config["DIR_CPPOv1"]="BASELINE_final_hopper_rr_cppomax_raccum_cfnmax_caccum_umin_V1--LR=3e-4"
         config["DIR_MODEL_CPPOv1"]="checkpoint_243"
 
-        config["DIR_CPPOv2"]="BASELINE_final_hopper_rr_cpposum_raccum_cfnsum_caccum_umean_V2"
-        config["DIR_MODEL_CPPOv2"]="checkpoint_214"
+        config["DIR_CPPOv2"]="BASELINE_final_hopper_rr_cpposum_raccum_cfnmax_caccum_umin_V1"
+        config["DIR_MODEL_CPPOv2"]="checkpoint_243"
 
-        config["DIR_CPPOv3"]="BASELINE_final_hopper_rr_cppomax_raccum_cfnmax_caccum_umin_V1--LR=3e-4"
-        config["DIR_MODEL_CPPOv3"]="checkpoint_243"
+        config["DIR_CPPOv3"]="BASELINE_final_hopper_rr_cpposum_raccum_cfnsum_caccum_umean_V2"
+        config["DIR_MODEL_CPPOv3"]="checkpoint_214"
 
         config["DIR_DSTL"]="BASELINE_hopper_reachreach_decomposed"
         config["DIR_MODEL_DSTL"]="checkpoint_240"
@@ -450,21 +452,44 @@ if __name__ == "__main__":
     envs_HJPPO = get_env(config)
     env_HJPPO, env_HJPPO_1, env_HJPPO_2 = envs_HJPPO
 
-    config_CPPO = copy(config)
-    config_CPPO["EXP_NAME"] = "HopperReachReachCPPO"
-    env_CPPO = get_env(config_CPPO)
+    config_CPPOv1 = copy.deepcopy(config)
+    config_CPPOv1["EXP_NAME"] = "HopperReachReach_max_CPPO"
+    config["ENV_REWARD_TYPE"] = "accumulated" # reward
+    config["ENV_COST_FN"] = "max" # cost_fn
+    config["ENV_COST_TYPE"] = "accumulated" # cost
+    config["CPPO_UPDATE_TYPE"] = "min" # update
+    config["USE_STL"] = False # stl 
+    env_CPPO_v1 = get_env(config_CPPOv1)
 
-    config_dSTL = copy(config)
+    config_CPPOv2 = copy.deepcopy(config)
+    config_CPPOv2["EXP_NAME"] = "HopperReachReach_sum_CPPO"
+    config["ENV_REWARD_TYPE"] = "accumulated" # reward
+    config["ENV_COST_FN"] = "sum" # cost_fn
+    config["ENV_COST_TYPE"] = "accumulated" # cost
+    config["CPPO_UPDATE_TYPE"] = "mean" # update
+    config["USE_STL"] = False # stl 
+    env_CPPO_v2 = get_env(config_CPPOv2)
+
+    config_CPPOv3 = copy.deepcopy(config)
+    config_CPPOv3["EXP_NAME"] = "HopperReachReach_sum_CPPO"
+    config["ENV_REWARD_TYPE"] = "instant" # reward
+    config["ENV_COST_FN"] = "sum" # cost_fn
+    config["ENV_COST_TYPE"] = "instant" # cost
+    config["CPPO_UPDATE_TYPE"] = "mean" # update
+    config["USE_STL"] = False # stl
+    env_CPPO_v3 = get_env(config_CPPOv3)
+
+    config_dSTL = copy.deepcopy(config)
     config_dSTL["EXP_NAME"] = "HopperReachReachDecomposed"
     env_dSTL, env_dSTL_1, env_dSTL_2 = get_env(config_dSTL)
 
     envs = (
         env_HJPPO, env_HJPPO_1, env_HJPPO_2, 
-        env_CPPO, env_dSTL, env_dSTL_1, env_dSTL_2
+        env_CPPO_v1, env_CPPO_v2, env_CPPO_v3, env_dSTL, env_dSTL_1, env_dSTL_2
     )
     env_paramss = (
         env_HJPPO.default_params, env_HJPPO_1.default_params, env_HJPPO_2.default_params,
-        env_CPPO.default_params, env_dSTL.default_params, 
+        env_CPPO_v1.default_params, env_CPPO_v2.default_params, env_CPPO_v3.default_params, env_dSTL.default_params, env_dSTL_1.default_params, env_dSTL_2.default_params, 
     )
 
     rng_1 = jax.random.PRNGKey(20)
@@ -478,6 +503,7 @@ if __name__ == "__main__":
 
     os.environ["XLA_PYTHON_CLIENT_PREALLOCATE"] = "false"
     
+    print("\n\nCollecting Trajectories")
     traj_batches = test(envs, env_paramss, config, rngs)
 
     os.makedirs(f"model/{config['TEST_DIR']}", exist_ok=True)
