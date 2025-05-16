@@ -69,6 +69,14 @@ def calculate_reachreach(traj_batch, reach_type="both"):
     reach_idxs = (reach_idx_1, reach_idx_2, reach_idx)
     return reach_percs, reach_idxs
 
+
+def calculate_reach(traj_batch):
+    reach_idx = (traj_batch.reach < 0).argmax(axis=0)
+    reach_idx = np.where(np.any((traj_batch.reach < 0) == 1, axis=0), reach_idx, np.inf)
+    reach_perc = ((reach_idx < np.inf).sum() / reach_idx.__len__()).item()
+    return reach_perc, reach_idx
+
+
 def calculate_reachalwaysavoid(traj_batch, idx, type="both"): 
     assert(type in ["both", "avoid" ])
 
@@ -583,8 +591,9 @@ def plot_contour_RRAA(multi_info, epoch, config, policy_decision_sample=None):
 
     if config['EXP_NAME'] == 'HopperReachReach' \
         or config["EXP_NAME"] == 'HopperReachReach_max_CPPO' \
-        or config["EXP_NAME"] == 'HopperReachReach_sum_CPPO'\
-        or config['EXP_NAME'] == 'HopperReachReach_separated_CPPO':
+        or config["EXP_NAME"] == 'HopperReachReach_sum_CPPO' \
+        or config["EXP_NAME"] == 'HopperReachReachDecomposed' \
+        or config["EXP_NAME"] == "HopperReachReach_separated_CPPO": 
 
         info, info_1, info_2 = multi_info
 
@@ -658,7 +667,7 @@ def plot_contour_RRAA(multi_info, epoch, config, policy_decision_sample=None):
             ax.set_title(title)
         
         draw_hopper_rr(info, "Reach Reach", axes[0], target_type="both")
-        if config['EXP_NAME'] == 'HopperReachReach':
+        if config['EXP_NAME'] == 'HopperReachReach'  or config["EXP_NAME"] == 'HopperReachReachDecomposed':
             draw_hopper_rr(info_1, "Reach 1", axes[1], target_type="R1")
             draw_hopper_rr(info_2, "Reach 2", axes[2], target_type="R2")
 

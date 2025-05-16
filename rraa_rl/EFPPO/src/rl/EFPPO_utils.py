@@ -1,6 +1,6 @@
 import jax
 import jax.numpy as jnp
-from rraa_rl.EFPPO.src.rl.gae import Transition_reach, Transition_raa, Transition_rr, Transition_r1, Transition_r2, Transition_cppo, Transition_sac, Transition_a, Transition_ra, Transition_rr_cppo
+from rraa_rl.EFPPO.src.rl.gae import Transition_reach, Transition_raa, Transition_rr, Transition_r1, Transition_r2, Transition_cppo, Transition_sac, Transition_a, Transition_ra, Transition_rr_cppo, Transition_r
 
 def _env_step(env, env_params, runner_state, _):
     (train_state_policy, train_state_energy, train_state_h,
@@ -81,6 +81,62 @@ def _env_step_raa_debug(env, env_params, runner_state, decomposed_state, _, forc
     runner_state = (train_state_policy, train_state_energy, train_state_h,
                     env_state, obsv, rng)
     return runner_state, transition
+
+def _env_step_rr_decomposed(env, env_params, runner_state, _):
+    (train_state_policy1, train_state_value1, train_state_policy2, train_state_value2, last_env_state, last_obs, rng) = runner_state
+    rng, _rng = jax.random.split(rng)
+    pi1 = train_state_policy1.apply_fn(train_state_policy1.params, last_obs)
+    value1 = train_state_value1.apply_fn(train_state_value1.params, last_obs)
+    pi2 = train_state_policy2.apply_fn(train_state_policy2.params, last_obs)
+    value2 = train_state_value2.apply_fn(train_state_value2.params, last_obs)
+    action1 = pi1.sample(seed=_rng)
+    action2 = pi2.sample(seed=_rng)
+    log_prob1 = pi1.log_prob(action1)
+    log_prob2 = pi2.log_prob(action2)
+    reached1 = last_env_state.has_reached_1
+    reached2 = last_env_state.has_reached_2
+    combined_action = jnp.where((value2 < value1)[:, None], action2, action1)
+    combined_value = jnp.where((value2 < value1), value2, value1)
+    combined_log_prob = jnp.where((value2 < value1), log_prob2, log_prob1)
+    combined_mask = jnp.logical_not(jnp.logical_or(reached1, reached2))
+    only_reach1_mask = jnp.logical_and(reached1, jnp.logical_not(reached2))
+    action = jnp.where(combined_mask[:, None], combined_action,
+            jnp.where(only_reach1_mask[:, None], action2, action1))
+    log_prob = jnp.where(combined_mask, combined_log_prob,
+                jnp.where(only_reach1_mask, log_prob2, log_prob1))
+    value = jnp.where(combined_mask, combined_value,
+                jnp.where(only_reach1_mask, value2, value1))
+    policy_taken = jnp.where(combined_mask, 0*value,
+                jnp.where(only_reach1_mask, 2 + 0*value, 1 + 0*value)) # just for tracking
+    
+    rng, _rng = jax.random.split(rng)
+    env_num = last_obs.shape[0]
+    rng_step = jax.random.split(_rng, env_num)
+    obsv, env_state, reward, done, info = jax.vmap(
+        env.step, in_axes=(0, 0, 0, None)
+    )(rng_step, last_env_state, action, env_params)
+    transition = Transition_rr(done, action, value, value1, value2, reward, log_prob, last_obs, info, 
+                               last_env_state.reach1, last_env_state.reach2, reached1, reached2, policy_taken)
+    runner_state = (train_state_policy1, train_state_value1, train_state_policy2, train_state_value2, env_state, obsv, rng)
+    return runner_state, transition
+
+def _env_step_r_decomposed(env, env_params, runner_state, _):
+    (train_state_policy, train_state_value, last_env_state, last_obs, rng) = runner_state
+    rng, _rng = jax.random.split(rng)
+    pi = train_state_policy.apply_fn(train_state_policy.params, last_obs)
+    value = train_state_value.apply_fn(train_state_value.params, last_obs)
+    action = pi.sample(seed=_rng)
+    log_prob = pi.log_prob(action)
+    rng, _rng = jax.random.split(rng)
+    env_num = last_obs.shape[0]
+    rng_step = jax.random.split(_rng, env_num)
+    obsv, env_state, reward, done, info = jax.vmap(
+        env.step, in_axes=(0, 0, 0, None)
+    )(rng_step, last_env_state, action, env_params)
+    transition = Transition_r(done, action, value, reward, log_prob, last_obs, info, last_env_state.reach)
+    runner_state = (train_state_policy, train_state_value, env_state, obsv, rng)
+    return runner_state, transition
+
 
 def _env_step_rr_vanilla(env, env_params, runner_state, _):
     (train_state_policy, train_state_value, last_env_state, last_obs, 
