@@ -427,8 +427,21 @@ if __name__ == "__main__":
     debug = True
     if debug:
         config["EXP_NAME"]="HopperReachReach"
-        config["DIR"]="hopper_reachreach_halfwidth_R10"
-        config["DIR_MODEL"]="checkpoint_975"
+
+        config["DIR_HJPPO"]="BASELINE_hopper_reachavoid_final"
+        config["DIR_MODEL"]="best_244"
+
+        config["DIR_CPPOv1"]="BASELINE_final_hopper_rr_cpposum_raccum_cfnmax_caccum_umin_V1"
+        config["DIR_MODEL_CPPOv1"]="checkpoint_243"
+
+        config["DIR_CPPOv2"]="BASELINE_final_hopper_rr_cpposum_raccum_cfnsum_caccum_umean_V2"
+        config["DIR_MODEL_CPPOv2"]="checkpoint_214"
+
+        config["DIR_CPPOv3"]="BASELINE_final_hopper_rr_cppomax_raccum_cfnmax_caccum_umin_V1--LR=3e-4"
+        config["DIR_MODEL_CPPOv3"]="checkpoint_243"
+
+        config["DIR_DSTL"]="BASELINE_hopper_reachreach_decomposed"
+        config["DIR_MODEL_DSTL"]="checkpoint_240"
 
     config["NUM_ENVS"]=1000
     config["NUM_STEPS"]=500
