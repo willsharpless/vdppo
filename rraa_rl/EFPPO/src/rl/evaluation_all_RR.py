@@ -59,12 +59,12 @@ def plot_scores(traj_batches, config):
     rr_scores_dSTL = calculate_reachreach(traj_batch_dSTL)
 
     rr_scores_all = [
-        ("HJPPO", rr_scores_HJPPO),
-        ("HJPPO_d", rr_scores_HJPPO_d),
-        ("CPPOv1", rr_scores_CPPOv1),
-        ("CPPOv2", rr_scores_CPPOv2),
         ("CPPOv3", rr_scores_CPPOv3),
-        ("dSTL", rr_scores_dSTL),
+        ("CPPOv2", rr_scores_CPPOv2),
+        ("CPPOv1", rr_scores_CPPOv1),
+        ("DSTL", rr_scores_dSTL),
+        ("HJPPO", rr_scores_HJPPO_d),
+        # ("HJPPO", rr_scores_HJPPO),
     ]
 
     # Extract data
@@ -77,10 +77,16 @@ def plot_scores(traj_batches, config):
         
         reach_perc = scores[0][2]
         idxs = scores[1][2]
-        finite_mask = jnp.isfinite(idxs)
-        finite_idxs = idxs[finite_mask]
-        mean_idx = jnp.mean(finite_idxs) if finite_idxs.size > 0 else jnp.nan
-        std_idx = jnp.std(finite_idxs) if finite_idxs.size > 0 else jnp.nan
+        # finite_mask = jnp.isfinite(idxs)
+        # finite_idxs = idxs[finite_mask]
+        # mean_idx = jnp.mean(finite_idxs) if finite_idxs.size > 0 else jnp.nan
+        # std_idx = jnp.std(finite_idxs) if finite_idxs.size > 0 else jnp.nan
+
+        replace_val = config["NUM_STEPS"]
+        cleaned_idxs = jnp.where(jnp.isfinite(idxs), idxs, replace_val)
+
+        mean_idx = jnp.mean(cleaned_idxs)
+        std_idx = jnp.std(cleaned_idxs)
 
         labels.append(tag)
         reach_percs.append(reach_perc)
@@ -89,36 +95,40 @@ def plot_scores(traj_batches, config):
 
     # Plotting
     fig, axes = plt.subplots(2, 1, figsize=(7, 4.5), sharex=False)
-    palette = sns.color_palette("deep", n_colors=6)
+    palette = sns.color_palette("deep", n_colors=5)[::-1]
     colors = {label: color for label, color in zip(labels, palette)}
-
+        
     # Reach percentage bar plot
     for i, label in enumerate(labels):
         axes[0].barh(label, reach_percs[i], color=colors[label])
     axes[0].set_xlim(0, 1.1)
-    axes[0].set_title(r"Success Percentage", fontsize=12)
+    axes[0].set_title(r"HOPPER-RR: Success Percentage ($\uparrow$)", fontsize=12)
     axes[0].set_xlabel(r"Percentage")
     axes[0].set_yticks(np.arange(len(labels)))
     axes[0].set_yticklabels(labels, ha='right', fontsize=10)
     axes[0].tick_params(axis='y', pad=10)  # move labels away from bars
-    axes[0].grid(True, axis="x", linestyle="--", alpha=0.5)
+    axes[0].grid(True, color='white', axis="x", linestyle="--", alpha=0.5)
     axes[0].spines[['top', 'right', 'left']].set_visible(False)
+    axes[0].set_facecolor("#e6ecf2")
 
     # Mean reach index bar plot with error bars
     for i, label in enumerate(labels):
-        axes[1].barh(label, mean_idxs[i], xerr=std_idxs[i], color=colors[label], capsize=4)
-    axes[1].set_title(r"Mean Steps to Success", fontsize=12)
+        axes[1].barh(label, mean_idxs[i], xerr=std_idxs[i]/2, color=colors[label], capsize=4)
+    axes[1].set_title(r"HOPPER-RR: Mean Steps to Success ($\downarrow$)", fontsize=12)
     axes[1].set_xlabel(r"Index")
     axes[1].set_yticks(np.arange(len(labels)))
     axes[1].set_yticklabels(labels, ha='right', fontsize=10)
     axes[1].tick_params(axis='y', pad=10)
-    axes[1].grid(True, axis="x", linestyle="--", alpha=0.5)
+    axes[1].grid(True, color='white', axis="x", linestyle="--", alpha=0.5)
     axes[1].spines[['top', 'right', 'left']].set_visible(False)
+    axes[1].set_facecolor("#e6ecf2")
 
     # Style tweaks to match NeurIPS-style
     for ax in axes:
         ax.spines[['top', 'right']].set_visible(False)
         ax.tick_params(axis='both', which='both', labelsize=10)
+   
+    plt.subplots_adjust(hspace=0.8)
 
     plt.savefig(f"model/{config['TEST_DIR']}/score_plot", dpi=300)
     return fig
@@ -204,7 +214,7 @@ def test(envs, env_paramss, config, rngs):
         apply_fn=policy_network_CPPOv1.apply,
         params=raw_restored_CPPOv1['policy_network']['params'],
         tx=tx,
-        lambda_coef=0.,
+        # lambda_coef=0.,
     )
 
     value_network_CPPOv1 = Value_Network(activation=config["ACTIVATION"])
@@ -212,7 +222,7 @@ def test(envs, env_paramss, config, rngs):
         apply_fn=value_network_CPPOv1.apply,
         params=raw_restored_CPPOv1['value_network']['params'],
         tx=tx,
-        lambda_coef=0.,
+        # lambda_coef=0.,
     )
 
     value_network_cost_CPPOv1 = Value_Network(activation=config["ACTIVATION"])
@@ -220,7 +230,7 @@ def test(envs, env_paramss, config, rngs):
         apply_fn=value_network_cost_CPPOv1.apply,
         params=raw_restored_CPPOv1['cost_network']['params'],
         tx=tx,
-        lambda_coef=0.,
+        # lambda_coef=0.,
     )
 
     ## CPO v2
@@ -235,7 +245,7 @@ def test(envs, env_paramss, config, rngs):
         apply_fn=policy_network_CPPOv2.apply,
         params=raw_restored_CPPOv2['policy_network']['params'],
         tx=tx,
-        lambda_coef=0.,
+        # lambda_coef=0.,
     )
 
     value_network_CPPOv2 = Value_Network(activation=config["ACTIVATION"])
@@ -243,7 +253,7 @@ def test(envs, env_paramss, config, rngs):
         apply_fn=value_network_CPPOv2.apply,
         params=raw_restored_CPPOv2['value_network']['params'],
         tx=tx,
-        lambda_coef=0.,
+        # lambda_coef=0.,
     )
 
     value_network_cost_CPPOv2 = Value_Network(activation=config["ACTIVATION"])
@@ -251,7 +261,7 @@ def test(envs, env_paramss, config, rngs):
         apply_fn=value_network_cost_CPPOv2.apply,
         params=raw_restored_CPPOv2['cost_network']['params'],
         tx=tx,
-        lambda_coef=0.,
+        # lambda_coef=0.,
     )
 
     ## CPO v3
@@ -266,7 +276,7 @@ def test(envs, env_paramss, config, rngs):
         apply_fn=policy_network_CPPOv3.apply,
         params=raw_restored_CPPOv3['policy_network']['params'],
         tx=tx,
-        lambda_coef=0.,
+        # lambda_coef=0.,
     )
 
     value_network_CPPOv3 = Value_Network(activation=config["ACTIVATION"])
@@ -274,7 +284,7 @@ def test(envs, env_paramss, config, rngs):
         apply_fn=value_network_CPPOv3.apply,
         params=raw_restored_CPPOv3['value_network']['params'],
         tx=tx,
-        lambda_coef=0.,
+        # lambda_coef=0.,
     )
 
     value_network_cost_CPPOv3 = Value_Network(activation=config["ACTIVATION"])
@@ -282,13 +292,13 @@ def test(envs, env_paramss, config, rngs):
         apply_fn=value_network_cost_CPPOv3.apply,
         params=raw_restored_CPPOv3['cost_network']['params'],
         tx=tx,
-        lambda_coef=0.,
+        # lambda_coef=0.,
     )
 
     ########################################## LOAD DECOMPOSED STL #################################################
 
     raw_restored_dSTL = checkpoints.restore_checkpoint(ckpt_dir=os.path.abspath('model/{}/{}'.format(
-        config["DIR_dSTL"], config["DIR_MODEL_dSTL"])), target=None)
+        config["DIR_DSTL"], config["DIR_MODEL_DSTL"])), target=None)
     
     policy_network_dSTL_1 = Policy_Network(
         env_dSTL_1.action_space(env_params_dSTL_1).shape[0], activation=config["ACTIVATION"]
@@ -301,14 +311,14 @@ def test(envs, env_paramss, config, rngs):
         apply_fn=policy_network_dSTL_1.apply,
         params=raw_restored_dSTL['policy_reach1_network']['params'],
         tx=tx,
-        count=1e-4,
+        # count=1e-4,
     )
 
     train_state_policy_dSTL_2 = TrainState.create(
         apply_fn=policy_network_dSTL_2.apply,
         params=raw_restored_dSTL['policy_reach2_network']['params'],
         tx=tx,
-        count=1e-4,
+        # count=1e-4,
     )
 
     value_network_reach1 = Value_Network(activation=config["ACTIVATION"])
@@ -316,7 +326,7 @@ def test(envs, env_paramss, config, rngs):
         apply_fn=value_network_reach1.apply,
         params=raw_restored_dSTL['value_reach1_network']['params'],
         tx=tx,
-        count=1e-4,
+        # count=1e-4,
     )
 
     value_network_reach2 = Value_Network(activation=config["ACTIVATION"])
@@ -324,7 +334,7 @@ def test(envs, env_paramss, config, rngs):
         apply_fn=value_network_reach2.apply,
         params=raw_restored_dSTL['value_reach2_network']['params'],
         tx=tx,
-        count=1e-4,
+        # count=1e-4,
     )
 
     ########################################## ROLL OUT MODELS #################################################
@@ -430,8 +440,8 @@ if __name__ == "__main__":
     if debug:
         config["EXP_NAME"]="HopperReachReach"
 
-        config["DIR_HJPPO"]="BASELINE_hopper_reachavoid_final"
-        config["DIR_MODEL"]="best_244"
+        config["DIR_HJPPO"]="BASELINE_hopper_reachreach_50M"
+        config["DIR_MODEL_HJPPO"]="best_34"
 
         config["DIR_CPPOv1"]="BASELINE_final_hopper_rr_cppomax_raccum_cfnmax_caccum_umin_V1--LR=3e-4"
         config["DIR_MODEL_CPPOv1"]="checkpoint_243"
@@ -443,7 +453,9 @@ if __name__ == "__main__":
         config["DIR_MODEL_CPPOv3"]="checkpoint_214"
 
         config["DIR_DSTL"]="BASELINE_hopper_reachreach_decomposed"
-        config["DIR_MODEL_DSTL"]="checkpoint_240"
+        config["DIR_MODEL_DSTL"]="best_35"
+
+        config['TEST_DIR'] = "eval_all_HopperRR_"
 
     config["NUM_ENVS"]=1000
     config["NUM_STEPS"]=500
@@ -452,31 +464,34 @@ if __name__ == "__main__":
     envs_HJPPO = get_env(config)
     env_HJPPO, env_HJPPO_1, env_HJPPO_2 = envs_HJPPO
 
+    # "BASELINE_final_hopper_rr_cppomax_raccum_cfnmax_caccum_umin_V1--LR=3e-4"
     config_CPPOv1 = copy.deepcopy(config)
     config_CPPOv1["EXP_NAME"] = "HopperReachReach_max_CPPO"
-    config["ENV_REWARD_TYPE"] = "accumulated" # reward
-    config["ENV_COST_FN"] = "max" # cost_fn
-    config["ENV_COST_TYPE"] = "accumulated" # cost
-    config["CPPO_UPDATE_TYPE"] = "min" # update
-    config["USE_STL"] = False # stl 
+    config_CPPOv1["ENV_REWARD_TYPE"] = "accumulated" # reward
+    config_CPPOv1["ENV_COST_FN"] = "max" # cost_fn
+    config_CPPOv1["ENV_COST_TYPE"] = "accumulated" # cost
+    config_CPPOv1["CPPO_UPDATE_TYPE"] = "min" # update
+    config_CPPOv1["USE_STL"] = False # stl 
     env_CPPO_v1 = get_env(config_CPPOv1)
 
+    # "BASELINE_final_hopper_rr_cpposum_raccum_cfnmax_caccum_umin_V1"
     config_CPPOv2 = copy.deepcopy(config)
     config_CPPOv2["EXP_NAME"] = "HopperReachReach_sum_CPPO"
-    config["ENV_REWARD_TYPE"] = "accumulated" # reward
-    config["ENV_COST_FN"] = "sum" # cost_fn
-    config["ENV_COST_TYPE"] = "accumulated" # cost
-    config["CPPO_UPDATE_TYPE"] = "mean" # update
-    config["USE_STL"] = False # stl 
+    config_CPPOv2["ENV_REWARD_TYPE"] = "accumulated" # reward
+    config_CPPOv2["ENV_COST_FN"] = "max" # cost_fn
+    config_CPPOv2["ENV_COST_TYPE"] = "accumulated" # cost
+    config_CPPOv2["CPPO_UPDATE_TYPE"] = "min" # update
+    config_CPPOv2["USE_STL"] = False # stl 
     env_CPPO_v2 = get_env(config_CPPOv2)
 
+    # "BASELINE_final_hopper_rr_cpposum_raccum_cfnsum_caccum_umean_V2"
     config_CPPOv3 = copy.deepcopy(config)
     config_CPPOv3["EXP_NAME"] = "HopperReachReach_sum_CPPO"
-    config["ENV_REWARD_TYPE"] = "instant" # reward
-    config["ENV_COST_FN"] = "sum" # cost_fn
-    config["ENV_COST_TYPE"] = "instant" # cost
-    config["CPPO_UPDATE_TYPE"] = "mean" # update
-    config["USE_STL"] = False # stl
+    config_CPPOv3["ENV_REWARD_TYPE"] = "accumulated" # reward
+    config_CPPOv3["ENV_COST_FN"] = "sum" # cost_fn
+    config_CPPOv3["ENV_COST_TYPE"] = "accumulated" # cost
+    config_CPPOv3["CPPO_UPDATE_TYPE"] = "mean" # update
+    config_CPPOv3["USE_STL"] = False # stl 
     env_CPPO_v3 = get_env(config_CPPOv3)
 
     config_dSTL = copy.deepcopy(config)
