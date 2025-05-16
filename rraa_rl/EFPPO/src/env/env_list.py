@@ -8,7 +8,8 @@ from .reach_avoid.wind_field import WindField
 from .reach_avoid.half_cheetah_avoid import HalfCheetahAvoid, HalfCheetahAvoidDeterministic
 from .reach_avoid.safety_gym_avoid import PointAvoid
 from .baseline.pendulum_constraint_baseline import PendulumConstraintBaseline
-from .baseline.hopper_avoid_ceiling_baseline import HopperAvoidCeilingBaseline
+from .baseline.hopper_avoid_ceiling_baseline import HopperAvoidCeilingBaseline, HopperReachAlwaysAvoidBaseline_augmented, HopperReachReachBaseline_augmented_max, \
+    HopperReachReachBaseline_augmented_sum, HopperReachReachBaseline_reward_cost_separated
 from .baseline.wind_field_baseline import WindFieldBaseline
 from .baseline.half_cheetah_avoid_baseline import HalfCheetahAvoidBaseline
 
@@ -94,6 +95,73 @@ def get_env(config):
         env1.set_untransform_obs(untrans)
         env2.set_untransform_obs(untrans)
         return (env, env1, env2)
+
+    elif config["EXP_NAME"] == 'HopperReachReach' and config["TEST_MODE"] == False:
+        vec1 = jnp.zeros(14, dtype=jnp.float32)
+        vec1 = vec1.at[0].set(1.)
+        # vec1 = vec1.at[-1].set(400.)
+        vec2 = jnp.ones(14, dtype=jnp.float32)
+        # vec2 = vec2.at[-1].set(400.) # INIT ENERGY?
+        trans = partial(transform_observation, vec1, vec2)
+        untrans = partial(untransform_observation, vec1, vec2)
+
+        env = HopperReachReach()
+        env = TransformObservation(env, trans)
+        
+        env1 = HopperReach1() # TODO make determinstic
+        env1 = TransformObservation(env1, trans)
+        env2 = HopperReach2() # TODO make determinstic
+        env2 = TransformObservation(env2, trans)
+
+        env.set_untransform_obs(untrans)
+        env1.set_untransform_obs(untrans)
+        env2.set_untransform_obs(untrans)
+        return (env, env1, env2)
+    elif config["EXP_NAME"] == 'HopperReachReach' and config["TEST_MODE"] == True:
+        vec1 = jnp.zeros(14, dtype=jnp.float32)
+        vec1 = vec1.at[0].set(1.)
+        vec2 = jnp.ones(14, dtype=jnp.float32)
+        trans = partial(transform_observation, vec1, vec2)
+        untrans = partial(untransform_observation, vec1, vec2)
+
+        env = HopperReachReachDeterministic()
+        env = TransformObservation(env, trans)
+
+        env1 = HopperReach1Deterministic() # TODO make determinstic
+        env1 = TransformObservation(env1, trans)
+        env2 = HopperReach2Deterministic() # TODO make determinstic
+        env2 = TransformObservation(env2, trans)
+
+        env.set_untransform_obs(untrans)
+        env1.set_untransform_obs(untrans)
+        env2.set_untransform_obs(untrans)
+        return (env, env1, env2)
+    
+    elif config["EXP_NAME"] == "HopperReachReachDecomposed":
+        vec1 = jnp.zeros(12, dtype=jnp.float32)
+        vec1 = vec1.at[0].set(1.)
+        # vec1 = vec1.at[-1].set(400.)
+        vec2 = jnp.ones(12, dtype=jnp.float32)
+        # vec2 = vec2.at[-1].set(400.) # INIT ENERGY?
+        trans = partial(transform_observation, vec1, vec2)
+        untrans = partial(untransform_observation, vec1, vec2)
+
+        from .baseline.hopper_avoid_ceiling_baseline import HopperRR, HopperR1, HopperR2
+        if config["TEST_MODE"] == False:
+            env = HopperRR()
+            env1 = HopperR1()
+            env2 = HopperR2()
+        else:
+            env = HopperRR(deterministic=True)
+            env1 = HopperR1(deterministic=True)
+            env2 = HopperR2(deterministic=True)
+        env = TransformObservation(env, trans)
+        env1 = TransformObservation(env1, trans)
+        env2 = TransformObservation(env2, trans)
+        env.set_untransform_obs(untrans)
+        env1.set_untransform_obs(untrans)
+        env2.set_untransform_obs(untrans)
+        return (env, env1, env2)
         
     elif config["EXP_NAME"] == "HopperReachAlwaysAvoid": 
         # TODO: Add a determinist and random version after you create the environments - change based on mode? 
@@ -116,6 +184,69 @@ def get_env(config):
         env.set_untransform_obs(untrans)
         env_avoid.set_untransform_obs(untrans)
         return (env, env_avoid)
+    
+    elif config["EXP_NAME"] == "HopperReachAlwaysAvoid_CPPO":
+        obs_dim = 12 + 1
+        vec1 = jnp.zeros(obs_dim, dtype=jnp.float32)
+        vec1 = vec1.at[0].set(1.)
+        vec2 = jnp.ones(obs_dim, dtype=jnp.float32)
+        
+        trans = partial(transform_observation, vec1, vec2)
+        untrans = partial(untransform_observation, vec1, vec2)
+
+        env = HopperReachAlwaysAvoidBaseline_augmented()
+        env = TransformObservation(env, trans)
+        env.set_untransform_obs(untrans)
+
+        return (env)
+    
+    elif config["EXP_NAME"] == "HopperReachReach_max_CPPO":
+        obs_dim = 12 + 2
+        vec1 = jnp.zeros(obs_dim, dtype=jnp.float32)
+        vec1 = vec1.at[0].set(1.)
+        vec2 = jnp.ones(obs_dim, dtype=jnp.float32)
+        
+        trans = partial(transform_observation, vec1, vec2)
+        untrans = partial(untransform_observation, vec1, vec2)
+
+        env = HopperReachReachBaseline_augmented_max(cost_type=config["ENV_COST_TYPE"], 
+                                                     use_stl=config["USE_STL"])
+        env = TransformObservation(env, trans)
+        env.set_untransform_obs(untrans)
+
+        return (env)
+    
+    elif config["EXP_NAME"] == "HopperReachReach_sum_CPPO":
+        obs_dim = 12 + 2
+        vec1 = jnp.zeros(obs_dim, dtype=jnp.float32)
+        vec1 = vec1.at[0].set(1.)
+        vec2 = jnp.ones(obs_dim, dtype=jnp.float32)
+        
+        trans = partial(transform_observation, vec1, vec2)
+        untrans = partial(untransform_observation, vec1, vec2)
+
+        env = HopperReachReachBaseline_augmented_sum(cost_type=config["ENV_COST_TYPE"], 
+                                                     use_stl=config["USE_STL"])
+        env = TransformObservation(env, trans)
+        env.set_untransform_obs(untrans)
+
+        return (env)
+    
+    elif config["EXP_NAME"] == "HopperReachReach_separated_CPPO":
+        obs_dim = 12 + 2
+        vec1 = jnp.zeros(obs_dim, dtype=jnp.float32)
+        vec1 = vec1.at[0].set(1.)
+        vec2 = jnp.ones(obs_dim, dtype=jnp.float32)
+        
+        trans = partial(transform_observation, vec1, vec2)
+        untrans = partial(untransform_observation, vec1, vec2)
+
+        env = HopperReachReachBaseline_reward_cost_separated(cost_type=config["ENV_COST_TYPE"], 
+                                                     use_stl=config["USE_STL"])
+        env = TransformObservation(env, trans)
+        env.set_untransform_obs(untrans)
+
+        return (env)
     
     elif config["EXP_NAME"] == "HopperReachAvoid":
         vec1 = jnp.zeros(14, dtype=jnp.float32)
