@@ -329,7 +329,7 @@ def train(envs, env_paramss, config, rngs, env_test=None):
         update_epoch_avoid = partial(_no_update, config)
 
     total_timesteps = config["NUM_UPDATES"] // config["STEP_SCAN"]
-
+    best_score = -jnp.inf
     for timestep in range(config["NUM_UPDATES"] // config["STEP_SCAN"]):
 
         t0 = time.time()
@@ -393,16 +393,27 @@ def train(envs, env_paramss, config, rngs, env_test=None):
             info['u_air'] = env_params.u_air
             info['v_air'] = env_params.v_air
             info['obs'] = env_params.obstacle
-
-        checkpoints.save_checkpoint(ckpt_dir=os.path.abspath(os.path.join("model", config["DIR"])),
-                                    target={"policy_network":train_state_policy, 
-                                            "value_network":train_state_value,
-                                            "policy_avoid_network":train_state_policy_avoid, 
-                                            "value_avoid_network":train_state_value_avoid,
-                                            },
-                                    step=timestep,
-                                    overwrite=True,
-                                    keep=2)
+        if timestep % 5 == 0:
+            checkpoints.save_checkpoint(ckpt_dir=os.path.abspath(os.path.join("model", config["DIR"])),
+                                        target={"policy_network":train_state_policy, 
+                                                "value_network":train_state_value,
+                                                "policy_avoid_network":train_state_policy_avoid, 
+                                                "value_avoid_network":train_state_value_avoid,
+                                                },
+                                        step=timestep,
+                                        overwrite=True,
+                                        keep=2)
+        if reach_avoid_perc > best_score:
+            best_score = reach_avoid_perc
+            checkpoints.save_checkpoint(ckpt_dir=os.path.abspath(os.path.join("model", config["DIR"])),
+                                        target={"policy_network":train_state_policy, 
+                                                "value_network":train_state_value,
+                                                "policy_avoid_network":train_state_policy_avoid, 
+                                                "value_avoid_network":train_state_value_avoid,
+                                                },
+                                        step=timestep,
+                                        overwrite=True,
+                                        prefix="best_",)
 
          # TODO: Need to add plot utils function
         fig = plot_contour_RRAA((info, info_avoid), timestep, config)
@@ -438,11 +449,11 @@ def train(envs, env_paramss, config, rngs, env_test=None):
                 wandb.log({
                     'trajectory_sample':wandb.Image(fig),
                     'policy_decision_sample':wandb.Image(fig2),
-                })
+                }, step=timestep)
             
         # Save video of trajectory 
         if "Hopper" in config["EXP_NAME"]:
-            video_freq = 5 #25 
+            video_freq = 25 #25 
             save_video = config["USE_WANDB"] #True 
             if timestep % video_freq == 0 or timestep == total_timesteps - 1: 
                 video_frames = plot_video_contour_RRAA((info, info_avoid), timestep, config, save_video=save_video, log_wandb=config["USE_WANDB"])
@@ -454,7 +465,7 @@ def train(envs, env_paramss, config, rngs, env_test=None):
         print("Time {}".format(t1-t0))
 
         # Add in eval with deterministic checkpoint
-        if env_test is not None and timestep % 5 == 0 and "Hopper" in config["EXP_NAME"]:
+        if env_test is not None and timestep % 20 == 0 and "Hopper" in config["EXP_NAME"]:
             rng_composed, _rng_composed = jax.random.split(rng_composed)
             reset_rng_composed = jax.random.split(_rng_composed, config["NUM_ENVS"])# FIXME: Have eval envs use a different seed than train envs
             # FIXME: Is it just running same initial state over and over?
@@ -563,7 +574,7 @@ def train(envs, env_paramss, config, rngs, env_test=None):
 if __name__ == "__main__":
     config = vars(get_args(sys.argv[1:]))
 
-    debug = True
+    debug = False
     if debug:
         config["EXP_NAME"]="F16ReachAlwaysAvoid"
         config["DIR"]="F16_raa_PE500_halfsamp2_"

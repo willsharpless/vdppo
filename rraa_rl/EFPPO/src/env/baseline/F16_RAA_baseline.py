@@ -309,7 +309,7 @@ class F16ReachAvoidBaseline(environment.Environment):
         # is_avoid = (avoid_value == -1)
         # value = jnp.where(is_avoid, 800.0, value)
 
-        return value
+        return value * 100
 
     # def is_avoid(self, state, params: EnvParams):
 

@@ -223,12 +223,16 @@ def train(envs, env_paramss, config, rng, env_test=None):
                     #    "not reaching goal": cnt,
                     "actor_loss": jnp.mean(loss_info["actor_loss"]), "value_loss": jnp.mean(loss_info["value_loss"]),
                     "reach_gamma": result['reach_gamma'][0], "entropy_weight": result['entropy_weight'][0],
-                    'trajectory_sample':wandb.Image(fig_contour),
+                    # 'trajectory_sample':wandb.Image(fig_contour),
                     "crashed [%]": crash_perc,
                     "reached [%]": reach_perc,
                     "reached_avoid [%]": reach_avoid_perc,
                         # 'trajectory_sample_R1':wandb.Image(fig1), 'trajectory_sample_R2':wandb.Image(fig2)
                     }, step=timestep)
+            if "Hopper" in config["EXP_NAME"]:
+                wandb.log({
+                    'trajectory_sample':wandb.Image(fig_contour),
+                }, step=timestep)
         # Save video of trajectory 
         if "Hopper" in config["EXP_NAME"]:
             video_freq = 25 #25 
@@ -239,7 +243,7 @@ def train(envs, env_paramss, config, rng, env_test=None):
         # print("Earliest Reach {}: {}        {}".format(timestep, cnt, np.mean(consumption)))
         print("Time {}".format(t1-t0))
         # Add in eval with deterministic checkpoint
-        if env_test is not None and timestep % 20 == 0:
+        if env_test is not None and timestep % 20 == 0 and "Hopper" in config["EXP_NAME"]:
             rng_og = rng
             rng, _rng = jax.random.split(rng_og)
             reset_rng = jax.random.split(_rng, config["NUM_ENVS"])# FIXME: Have eval envs use a different seed than train envs
