@@ -42,6 +42,8 @@ class TrainState(train_state.TrainState):
     lambda_coef: Any
 
 def train(env, env_params, config, rng):
+    best_score = -float(jnp.inf)
+
     def _train(update_state, ent):
 
         train_state_policy, train_state_value, train_state_cost, rng = update_state
@@ -181,6 +183,16 @@ def train(env, env_params, config, rng):
         cnt_never_reached, cnt_crashed, cnt_crash_after_reach = calculate_reach_avoid_stats(traj_batch)
         (reach_perc, crash_perc, reach_avoid_perc) = calculate_reachavoid(traj_batch)
 
+        # Keep the best performaing model
+        if reach_avoid_perc > best_score:
+            best_score = reach_avoid_perc
+            checkpoints.save_checkpoint(ckpt_dir=os.path.abspath(os.path.join("model", config["DIR"])),
+                                        target={"policy_network": train_state_policy, "value_network": train_state_value,
+                                            "cost_network": train_state_cost},
+                                        step=timestep,
+                                        prefix="best_",
+                                        overwrite=True,)
+
         t1 = time.time()
 
         reward, cost, cnt = calculate_reward_cost(traj_batch)
@@ -191,13 +203,18 @@ def train(env, env_params, config, rng):
                    "actor_loss": jnp.mean(loss_info["actor_loss"]), "entropy_loss": jnp.mean(loss_info["entropy_loss"]),
                    "value_loss": jnp.mean(loss_info["value_loss"]), "cost_loss": jnp.mean(loss_info["cost_loss"]),
                    "crashed [%]": crash_perc,
-                   'trajectory_sample':wandb.Image(fig),
+                #    'trajectory_sample':wandb.Image(fig),
                     "reached [%]": reach_perc,
                     "reached_avoid [%]": reach_avoid_perc,
                     "cnt crashed ": cnt_crashed,
                     "cnt not reaching goal ": cnt_never_reached,
                     "cnt crash after reach ": cnt_crash_after_reach,
                    "lambda": jnp.mean(loss_info['lambda'])})
+        
+        if "Hopper" in config["EXP_NAME"]:
+                wandb.log({
+                    'trajectory_sample':wandb.Image(fig),
+                })
         
         # Save video of trajectory 
         video_freq = 5 #25 
@@ -236,6 +253,7 @@ if __name__ == "__main__":
     os.environ["CUDA_VISIBLE_DEVICES"] = config['CUDA_USE']
     env = get_env(config)
     env_params = env.default_params
+    print(env_params)
     env_params = env_params.replace(gamma=config["GAMMA_ENERGY"])
     wandb.init(project='CPPO-{}'.format(config["EXP_NAME"]), name=config["NAME"], config=config)
     rng = jax.random.PRNGKey(20)

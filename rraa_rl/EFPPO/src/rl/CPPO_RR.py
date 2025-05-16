@@ -53,6 +53,7 @@ class TrainState(train_state.TrainState):
     lambda_coef: Any
 
 def train(env, env_params, config, rng):
+    best_score = -float(jnp.inf)
     def _train(update_state, ent):
 
         train_state_policy, train_state_value, train_state_cost, rng = update_state
@@ -71,7 +72,8 @@ def train(env, env_params, config, rng):
         )
 
         ####### RRAA Change ######
-        # # FIXME: Check if we want to use these last vlaue dones
+        # # # FIXME: Check if we want to use these last vlaue dones
+        # FIXME: Do we need to flip these done values ? 
         # dones = jnp.zeros_like(traj_batch.done)
         # dones = dones.at[-1, :].set(1.0) 
         ####### RRAA Change ######
@@ -82,10 +84,12 @@ def train(env, env_params, config, rng):
         last_cost = train_state_cost.apply_fn(train_state_cost.params, last_obs)
         advantages_value, targets_value = calculate_gae(config["GAMMA_ENERGY"], config["GAE_LAMBDA"], traj_batch.value,
                                                         traj_batch.reward, 
+                                                        # dones, 
                                                         traj_batch.done, # TODO: CHECK THIS
                                                         last_val)
         advantages_cost, targets_cost = calculate_gae(1.0, config["GAE_LAMBDA"], traj_batch.value_cost,
                                                         traj_batch.cost, 
+                                                        # dones, 
                                                         traj_batch.done, # TODO: CHECK THIS
                                                         last_cost)
 
@@ -190,7 +194,15 @@ def train(env, env_params, config, rng):
 
         fig = plot_contour_RRAA((info, None, None), timestep, config, policy_decision_sample=None)
 
-        
+        # Keep the best performaing model
+        if reach_perc > best_score:
+            best_score = reach_perc
+            checkpoints.save_checkpoint(ckpt_dir=os.path.abspath(os.path.join("model", config["DIR"])),
+                                        target={"policy_network": train_state_policy, "value_network": train_state_value,
+                                            "cost_network": train_state_cost},
+                                        step=timestep,
+                                        prefix="best_",
+                                        overwrite=True,)
 
         t1 = time.time()
 
