@@ -353,9 +353,11 @@ def get_env(config):
     elif config["EXP_NAME"] == 'F16ReachAlwaysAvoid':
         from .reach_avoid.F16_RAA import F16ReachAvoid, F16AvoidOnly
         vec1 = jnp.zeros(26, dtype=jnp.float32)
-        vec1 = vec1.at[-1].set(400.)
+        vec1 = vec1.at[-1].set(80.)
+        vec1 = vec1.at[-2].set(80.)
         vec2 = jnp.ones(26, dtype=jnp.float32)
-        vec2 = vec2.at[-1].set(400.)
+        vec2 = vec2.at[-1].set(80.)
+        vec2 = vec2.at[-2].set(80.)
         trans = partial(transform_observation, vec1, vec2)
 
         env = F16ReachAvoid()
@@ -389,9 +391,11 @@ def get_env(config):
     elif config["EXP_NAME"] == 'F16ReachReach':
         from .reach_avoid.F16_RR import F16ReachReach, F16Reach1, F16Reach2
         vec1 = jnp.zeros(26, dtype=jnp.float32)
-        vec1 = vec1.at[-1].set(400.)
+        vec1 = vec1.at[-1].set(80.)
+        vec1 = vec1.at[-2].set(80.)
         vec2 = jnp.ones(26, dtype=jnp.float32)
-        vec2 = vec2.at[-1].set(400.)
+        vec2 = vec2.at[-1].set(80.)
+        vec2 = vec2.at[-2].set(80.)
         trans = partial(transform_observation, vec1, vec2)
 
         env = F16ReachReach()

@@ -635,6 +635,43 @@ class F16AvoidOnly(environment.Environment):
 
         return observation, env_state
 
+    def reset_env_toinput(
+        self, reset_state, params: EnvParams
+    ) -> Tuple[chex.Array, EnvStateAvoidOnly]:
+        
+        state_high = jnp.full(16, jnp.inf)
+        state_low = jnp.full(16, -jnp.inf)
+        state_high = state_high.at[self.ALPHA].set(self.MORELLI_BOUNDS[self.ALPHA, 1])
+        state_low = state_low.at[self.ALPHA].set(self.MORELLI_BOUNDS[self.ALPHA, 0])
+        state_high = state_high.at[self.BETA].set(self.MORELLI_BOUNDS[self.BETA, 1])
+        state_low = state_low.at[self.BETA].set(self.MORELLI_BOUNDS[self.BETA, 0])
+        state_high = state_high.at[self.THETA].set(jnp.pi / 3)
+        state_low = state_low.at[self.THETA].set(-jnp.pi / 3)
+        state_high = state_high.at[self.P].set(10.0)
+        state_low = state_low.at[self.P].set(-10.0)
+
+        a_state_new = jnp.clip(reset_state, state_low, state_high) # WHAT IS THIS? - WAS
+
+        # is_avoid = self.is_avoid(a_state_new, params)
+        # avoid_value = jnp.where(is_avoid, -1, state.avoid)
+        # reach_value = self.is_reach(a_state_new, avoid_value, params)
+        # a_state_new = jnp.where(avoid_value == 1, a_state_new, state.state) 
+        
+        # NOTE: STATE <- A_STATE IF HITTING GEOFENCES?
+        # NOTE: but A_STATE is the updated dynamics? => update only if at avoid set?? wtf??
+
+        #NOTE WAS: FOR KILLING STRAY TRAJECTORIES
+        avoid_value = self.is_avoid(a_state_new, params)
+        a_state_new = jnp.where(avoid_value <= 0, a_state_new, reset_state)
+
+        reach_value = self.is_reach(a_state_new, params)
+        
+        time = 0
+        env_state = EnvStateAvoidOnly(a_state_new, time, avoid_value)
+        observation = jnp.concatenate([self.get_obs(env_state), jnp.array([avoid_value, reach_value])]) # might need a squeeze here
+
+        return observation, env_state
+
     # def is_reach(self, state, avoid_value, params: EnvParams) -> float:
     #     """Check the reach value of the current state"""
     #     has_reached_goal = jnp.fabs(state[self.PN] - 2000.) < 25.

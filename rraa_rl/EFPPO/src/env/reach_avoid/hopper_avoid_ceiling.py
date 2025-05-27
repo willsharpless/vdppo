@@ -499,6 +499,11 @@ class HopperReach1:
         reach1_value = self.is_reach1(head_pos)
         reach2_value = self.is_reach2(head_pos)
         observation = jnp.concatenate([state.obs, jnp.array([reach1_value, reach2_value])])
+        
+        # FIXME: defined for TransformObservation mean [1, 0, 0...] & var [1, 1...]
+        observation = observation.at[0].set(observation[0] - 1.) 
+        # if earlier, incorrect values
+
         env_state = EnvStateR1(state, reach1_value)
         return observation, env_state
 
@@ -632,6 +637,11 @@ class HopperReach2:
         reach2_value = self.is_reach2(head_pos)
         observation = jnp.concatenate([state.obs, jnp.array([reach1_value, reach2_value])])
         env_state = EnvStateR2(state, reach2_value)
+        
+        # FIXME: defined for TransformObservation mean [1, 0, 0...] & var [1, 1...]
+        observation = observation.at[0].set(observation[0] - 1.) 
+        # if earlier, incorrect values
+
         return observation, env_state
 
     @partial(jax.jit, static_argnums=(0,))
