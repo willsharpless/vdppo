@@ -71,6 +71,7 @@ def plot_scores(traj_batches, config):
     for tag, scores in raa_scores_all:
         
         reach_avoid_perc = scores[0][2]
+        print(f"{tag}: REACH {100. * scores[0][0]:2.1f}%, CRASH {100. * scores[0][1]:2.1f}%, R-AA {100. * scores[0][2]:2.1f}%")
         idxs = scores[1][2]
         # finite_mask = jnp.isfinite(idxs)
         # finite_idxs = idxs[finite_mask]
@@ -90,7 +91,7 @@ def plot_scores(traj_batches, config):
 
     # Plotting
     fig, axes = plt.subplots(2, 1, figsize=(7, 4.5), sharex=False)
-    palette = sns.color_palette("deep", n_colors=5)[::-1]
+    palette = sns.color_palette("deep", n_colors=len(raa_scores_all))[::-1]
     colors = {label: color for label, color in zip(labels, palette)}
         
     # Reach percentage bar plot
@@ -310,22 +311,28 @@ if __name__ == "__main__":
     if debug:
         config["EXP_NAME"]="F16ReachAlwaysAvoid"
 
-        config["DIR_HJPPO"]="hopper_raa_final_nikhil"#"stonkens_models/hopper_reachalwaysavoid"
-        config["DIR_MODEL_HJPPO"]="checkpoint_160"#"best_126"
+        # config["DIR_HJPPO"]="F16_raa_PE500_halfsamp2_" #"stonkens_models/hopper_reachalwaysavoid"
+        # config["DIR_MODEL_HJPPO"]="best_21" #"best_126"
 
-        config["DIR_CPPO"]="hopper_raa_cppo_0_val100_dones_augmented"
-        config["DIR_MODEL_CPPO"]="checkpoint_486"
+        # config["DIR_HJPPO"]="BASELINE_F16_raa_PE500_halfsamp2_TOfix"
+        # config["DIR_MODEL_HJPPO"]="checkpoint_193" #"best_126"
 
-        config["DIR_RA"]="hopper_reachavoid_final_nikhil" #"stonkens_models/hopper_reachavoid_final"
-        config["DIR_MODEL_RA"]="checkpoint_240" #"best_244"
+        config["DIR_HJPPO"]="BASELINE_F16_raa_PE500_halfsamp2_TO80m80s_tjreset_g999"
+        config["DIR_MODEL_HJPPO"]="checkpoint_16" #"best_126"
+
+        config["DIR_CPPO"]="RENAME_final_f16_raa_cppo_0_val100"
+        config["DIR_MODEL_CPPO"]="best_182"
+
+        config["DIR_RA"]="RENAME_F16_reachavoid_100M" #"stonkens_models/hopper_reachavoid_final"
+        config["DIR_MODEL_RA"]="best_195" #"best_244"
 
         print(os.path.abspath('model/{}/{}'.format(config["DIR_RA"], config["DIR_MODEL_RA"])))
         print(os.path.exists(os.path.abspath('model/{}/{}'.format(config["DIR_RA"], config["DIR_MODEL_RA"]))))
 
-        config['TEST_DIR'] = "eval_all_F16RAA_"
+        config['TEST_DIR'] = "eval_all_F16RAA_052225_4"
 
     config["NUM_ENVS"]=1000
-    config["NUM_STEPS"]=500
+    config["NUM_STEPS"]=200
     config["ACTIVATION"]="tanh"
 
     envs_HJPPO = get_env(config)

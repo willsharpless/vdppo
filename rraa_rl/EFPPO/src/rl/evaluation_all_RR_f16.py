@@ -63,8 +63,8 @@ def plot_scores(traj_batches, config):
         ("CPPOv2", rr_scores_CPPOv2),
         ("CPPOv1", rr_scores_CPPOv1),
         ("DSTL", rr_scores_dSTL),
-        ("HJPPOd", rr_scores_HJPPO_d),
-        ("HJPPO", rr_scores_HJPPO),
+        ("HJPPO", rr_scores_HJPPO_d),
+        # ("HJPPO", rr_scores_HJPPO),
     ]
 
     # Extract data
@@ -95,7 +95,7 @@ def plot_scores(traj_batches, config):
 
     # Plotting
     fig, axes = plt.subplots(2, 1, figsize=(7, 4.5), sharex=False)
-    palette = sns.color_palette("deep", n_colors=6)[::-1]
+    palette = sns.color_palette("deep", n_colors=len(rr_scores_all))[::-1]
     colors = {label: color for label, color in zip(labels, palette)}
         
     # Reach percentage bar plot
@@ -130,7 +130,7 @@ def plot_scores(traj_batches, config):
    
     plt.subplots_adjust(hspace=0.8)
 
-    plt.savefig(f"model/{config['TEST_DIR']}/score_plot_4", dpi=300)
+    plt.savefig(f"model/{config['TEST_DIR']}/score_plot" + config['PLOT_TAG'], dpi=300)
     return fig
 
 def test(envs, env_paramss, config, rngs):
@@ -391,7 +391,7 @@ def test(envs, env_paramss, config, rngs):
 
     ## MODEL 4 : CPPO : Variant 2
 
-    print("Rolling Out C-PPO (Variant 1)")
+    print("Rolling Out C-PPO (Variant 2)")
     rng_4, _rng_4 = jax.random.split(rng_4)
     reset_rng_4 = jax.random.split(_rng_4, config["NUM_ENVS"])
     obsv_4, env_state_4 = jax.vmap(env_CPPO_v2.reset, in_axes=(0, None))(reset_rng_3, env_params_CPPO_v2)
@@ -440,25 +440,31 @@ if __name__ == "__main__":
     if debug:
         config["EXP_NAME"]="F16ReachReach"
 
-        config["DIR_HJPPO"]="BASELINE_F16_rr_verttargs_cutsamp"
-        config["DIR_MODEL_HJPPO"]="checkpoint_68"
+        # config["DIR_HJPPO"]="BASELINE_F16_rr_verttargs_cutsamp_To80m80s_tjreset_100k_g999init"
+        # config["DIR_MODEL_HJPPO"]="best_137"
+        # config["DIR_MODEL_HJPPO"]="checkpoint_194"
+
+        config["DIR_HJPPO"]="BASELINE_F16_rr_verttargs_cutsamp_To80m80s_tjreset_LR1e-3"
+        # config["DIR_MODEL_HJPPO"]="best_147"
+        config["DIR_MODEL_HJPPO"]="checkpoint_194"
 
         config["DIR_CPPOv1"]="BASELINE_final_f16_rr_cppo_0"
-        config["DIR_MODEL_CPPOv1"]="best_100"
+        config["DIR_MODEL_CPPOv1"]="checkpoint_193"
 
         config["DIR_CPPOv2"]="BASELINE_final_f16_rr_cppo_0"
         config["DIR_MODEL_CPPOv2"]="best_100"
 
-        config["DIR_CPPOv3"]="BASELINE_final_f16_rr_cppo_0"
-        config["DIR_MODEL_CPPOv3"]="best_100"
+        config["DIR_CPPOv3"]="BASELINE_final_f16_rr_cppo_cutsamp"
+        config["DIR_MODEL_CPPOv3"]="best_124"
 
         config["DIR_DSTL"]="BASELINE_F16_reachreachdecomposed_100M"
         config["DIR_MODEL_DSTL"]="best_143"
 
         config['TEST_DIR'] = "eval_all_F16RR"
+        config['PLOT_TAG'] = "_052225_cutsamp_newruns6"
 
     config["NUM_ENVS"]=1000
-    config["NUM_STEPS"]=500
+    config["NUM_STEPS"]=200
     config["ACTIVATION"]="tanh"
 
     envs_HJPPO = get_env(config)
