@@ -184,15 +184,18 @@ class F16ReachReach(environment.Environment):
         # NOTE: STATE <- A_STATE IF HITTING GEOFENCES?
         # NOTE: but A_STATE is the updated dynamics? => update only if at avoid set?? wtf??
 
-        reach1_value = self.is_reach1(a_state_new, params)
-        reach2_value = self.is_reach2(a_state_new, params)
-        
-        has_reached_1 = reach1_value < 0
-        has_reached_2 = reach2_value < 0
-
         #NOTE WAS: FOR KILLING STRAY TRAJECTORIES
         avoid_value = self.is_avoid(a_state_new, params)
         a_state_new = jnp.where(avoid_value <= 0, a_state_new, state.state)
+
+        reach1_value = self.is_reach1(a_state_new, params)
+        reach2_value = self.is_reach2(a_state_new, params)
+
+        # jax.debug.print(f"\n\n STATE USED FOR VAL: {a_state_new}")
+        # jax.debug.print(f"\nREACH 1 VALUE: {reach1_value},    REACH 2 VALUE: {reach2_value}")
+        
+        has_reached_1 = reach1_value < 0
+        has_reached_2 = reach2_value < 0
 
         # next_state_new = EnvStateRR(state.state, state.time + 1, reach1_value, reach2_value, has_reached_1, has_reached_2)
         next_state_new = EnvStateRR(a_state_new, state.time + 1, reach1_value, reach2_value, has_reached_1, has_reached_2)
@@ -249,19 +252,19 @@ class F16ReachReach(environment.Environment):
                 (250.0, 450.1),  # vt
                 (-0.17453292519943295 / 20, 0.7853981633974483 / 20),  # alpha (rad)
                 (-0.5235987755982988 / 20, 0.5235987755982988 / 20),  # beta (rad)
-                (-np.pi / 8, np.pi / 8),  # phi roll
-                (-0.5, 0.5),  # theta pitch
+                (-np.pi / 16, np.pi / 16),  # phi roll
+                (-0.25, 0.25),  # theta pitch
                 (-1e-4, 1e-4),  # psi yaw
-                (-0.25, 0.25),  # P
-                (-0.25, 0.25),  # Q
-                (-0.25, 0.25),  # R
+                (-0.125, 0.125),  # P
+                (-0.125, 0.125),  # Q
+                (-0.125, 0.125),  # R
                 (250.0, 750.0),  # pos_n
-                (-200.0, 200.0),  # pos_e
+                (-50.0, 50.0),  # pos_e
                 (300.0, 900.0),  # alt.
                 (0.0, 10.0),  # power. Consider sampling wider range.
-                (-1.0, 1.0),  # nz_int
-                (-1.0, 1.0),  # ps_int
-                (-1.0, 1.0),  # nyr_int
+                (-0.5, 0.5),  # nz_int
+                (-0.5, 0.5),  # ps_int
+                (-0.5, 0.5),  # nyr_int
             ]
         )
 
@@ -566,13 +569,13 @@ class F16Reach1(environment.Environment):
         # NOTE: STATE <- A_STATE IF HITTING GEOFENCES?
         # NOTE: but A_STATE is the updated dynamics? => update only if at avoid set?? wtf??
 
-        reach1_value = self.is_reach1(a_state_new, params)
-        reach2_value = self.is_reach2(a_state_new, params)
-
         #NOTE WAS: FOR KILLING STRAY TRAJECTORIES
         avoid_value = self.is_avoid(a_state_new, params)
         a_state_new = jnp.where(avoid_value <= 0, a_state_new, state.state)
-        
+
+        reach1_value = self.is_reach1(a_state_new, params)
+        reach2_value = self.is_reach2(a_state_new, params)
+
         # has_reached_1 = reach1_value < 0
         # has_reached_2 = reach2_value < 0
 
@@ -627,23 +630,39 @@ class F16Reach1(environment.Environment):
             #     (-2.0, 2.0),  # nyr_int
             # ]
             [
-                # NOTE WAS: REDUCED
+                # # NOTE WAS: REDUCED
+                # (250.0, 450.1),  # vt
+                # (-0.17453292519943295 / 20, 0.7853981633974483 / 20),  # alpha (rad)
+                # (-0.5235987755982988 / 20, 0.5235987755982988 / 20),  # beta (rad)
+                # (-np.pi / 8, np.pi / 8),  # phi roll
+                # (-0.5, 0.5),  # theta pitch
+                # (-1e-4, 1e-4),  # psi yaw
+                # (-0.25, 0.25),  # P
+                # (-0.25, 0.25),  # Q
+                # (-0.25, 0.25),  # R
+                # (250.0, 750.0),  # pos_n
+                # (-200.0, 200.0),  # pos_e
+                # (300.0, 900.0),  # alt.
+                # (0.0, 10.0),  # power. Consider sampling wider range.
+                # (-1.0, 1.0),  # nz_int
+                # (-1.0, 1.0),  # ps_int
+                # (-1.0, 1.0),  # nyr_int
                 (250.0, 450.1),  # vt
                 (-0.17453292519943295 / 20, 0.7853981633974483 / 20),  # alpha (rad)
                 (-0.5235987755982988 / 20, 0.5235987755982988 / 20),  # beta (rad)
-                (-np.pi / 8, np.pi / 8),  # phi roll
-                (-0.5, 0.5),  # theta pitch
+                (-np.pi / 16, np.pi / 16),  # phi roll
+                (-0.25, 0.25),  # theta pitch
                 (-1e-4, 1e-4),  # psi yaw
-                (-0.25, 0.25),  # P
-                (-0.25, 0.25),  # Q
-                (-0.25, 0.25),  # R
+                (-0.125, 0.125),  # P
+                (-0.125, 0.125),  # Q
+                (-0.125, 0.125),  # R
                 (250.0, 750.0),  # pos_n
-                (-200.0, 200.0),  # pos_e
+                (-50.0, 50.0),  # pos_e
                 (300.0, 900.0),  # alt.
                 (0.0, 10.0),  # power. Consider sampling wider range.
-                (-1.0, 1.0),  # nz_int
-                (-1.0, 1.0),  # ps_int
-                (-1.0, 1.0),  # nyr_int
+                (-0.5, 0.5),  # nz_int
+                (-0.5, 0.5),  # ps_int
+                (-0.5, 0.5),  # nyr_int
             ]
         )
 
@@ -659,12 +678,47 @@ class F16Reach1(environment.Environment):
 
         reach1_value = self.is_reach1(state, params)
         reach2_value = self.is_reach2(state, params)
+
+        # print(f"\n\n STATE USED FOR VAL: {state}")
+        # print(f"\nREACH 1 VALUE: {reach1_value},    REACH 2 VALUE: {reach2_value}")
         
         # has_reached_1 = reach1_value < 0
         # has_reached_2 = reach2_value < 0
 
         time = 0
         env_state = EnvStateR1(state, time, reach1_value)
+        observation = jnp.concatenate([self.get_obs(env_state), jnp.array([reach1_value, reach2_value])]) # might need a squeeze here
+
+        return observation, env_state
+    
+    def reset_env_toinput(
+        self, reset_state, params: EnvParams
+    ) -> Tuple[chex.Array, EnvStateR1]:
+
+        
+        state_high = jnp.full(16, jnp.inf)
+        state_low = jnp.full(16, -jnp.inf)
+        state_high = state_high.at[self.ALPHA].set(self.MORELLI_BOUNDS[self.ALPHA, 1])
+        state_low = state_low.at[self.ALPHA].set(self.MORELLI_BOUNDS[self.ALPHA, 0])
+        state_high = state_high.at[self.BETA].set(self.MORELLI_BOUNDS[self.BETA, 1])
+        state_low = state_low.at[self.BETA].set(self.MORELLI_BOUNDS[self.BETA, 0])
+        state_high = state_high.at[self.THETA].set(jnp.pi / 3)
+        state_low = state_low.at[self.THETA].set(-jnp.pi / 3)
+        state_high = state_high.at[self.P].set(10.0)
+        state_low = state_low.at[self.P].set(-10.0)
+
+        a_state_new = jnp.clip(reset_state, state_low, state_high)
+        avoid_value = self.is_avoid(a_state_new, params)
+        a_state_new = jnp.where(avoid_value <= 0, a_state_new, reset_state)
+
+        reach1_value = self.is_reach1(a_state_new, params)
+        reach2_value = self.is_reach2(a_state_new, params)
+
+        # print(f"\n\n STATE USED FOR VAL: {a_state_new}")
+        # print(f"\nREACH 1 VALUE: {reach1_value},    REACH 2 VALUE: {reach2_value}")
+
+        time = 0
+        env_state = EnvStateR1(a_state_new, time, reach1_value)
         observation = jnp.concatenate([self.get_obs(env_state), jnp.array([reach1_value, reach2_value])]) # might need a squeeze here
 
         return observation, env_state
@@ -945,13 +999,13 @@ class F16Reach2(environment.Environment):
         # reach_value = self.is_reach(a_state_new, avoid_value, params)
         # a_state_new = jnp.where(avoid_value == 1, a_state_new, state.state) 
         
-        reach1_value = self.is_reach1(a_state_new, params)
-        reach2_value = self.is_reach2(a_state_new, params)
-
         #NOTE WAS: FOR KILLING STRAY TRAJECTORIES
         avoid_value = self.is_avoid(a_state_new, params)
         a_state_new = jnp.where(avoid_value <= 0, a_state_new, state.state)
-        
+
+        reach1_value = self.is_reach1(a_state_new, params)
+        reach2_value = self.is_reach2(a_state_new, params)
+
         # has_reached_1 = reach1_value < 0
         # has_reached_2 = reach2_value < 0
 
@@ -1006,23 +1060,41 @@ class F16Reach2(environment.Environment):
             #     (-2.0, 2.0),  # nyr_int
             # ]
             [
-                # NOTE WAS: REDUCED
+                # # NOTE WAS: REDUCED
+                # (250.0, 450.1),  # vt
+                # (-0.17453292519943295 / 20, 0.7853981633974483 / 20),  # alpha (rad)
+                # (-0.5235987755982988 / 20, 0.5235987755982988 / 20),  # beta (rad)
+                # (-np.pi / 8, np.pi / 8),  # phi roll
+                # (-0.5, 0.5),  # theta pitch
+                # (-1e-4, 1e-4),  # psi yaw
+                # (-0.25, 0.25),  # P
+                # (-0.25, 0.25),  # Q
+                # (-0.25, 0.25),  # R
+                # (250.0, 750.0),  # pos_n
+                # (-200.0, 200.0),  # pos_e
+                # (300.0, 900.0),  # alt.
+                # (0.0, 10.0),  # power. Consider sampling wider range.
+                # (-1.0, 1.0),  # nz_int
+                # (-1.0, 1.0),  # ps_int
+                # (-1.0, 1.0),  # nyr_int
+
                 (250.0, 450.1),  # vt
                 (-0.17453292519943295 / 20, 0.7853981633974483 / 20),  # alpha (rad)
                 (-0.5235987755982988 / 20, 0.5235987755982988 / 20),  # beta (rad)
-                (-np.pi / 8, np.pi / 8),  # phi roll
-                (-0.5, 0.5),  # theta pitch
+                (-np.pi / 16, np.pi / 16),  # phi roll
+                (-0.25, 0.25),  # theta pitch
                 (-1e-4, 1e-4),  # psi yaw
-                (-0.25, 0.25),  # P
-                (-0.25, 0.25),  # Q
-                (-0.25, 0.25),  # R
+                (-0.125, 0.125),  # P
+                (-0.125, 0.125),  # Q
+                (-0.125, 0.125),  # R
                 (250.0, 750.0),  # pos_n
-                (-200.0, 200.0),  # pos_e
+                (-50.0, 50.0),  # pos_e
                 (300.0, 900.0),  # alt.
                 (0.0, 10.0),  # power. Consider sampling wider range.
-                (-1.0, 1.0),  # nz_int
-                (-1.0, 1.0),  # ps_int
-                (-1.0, 1.0),  # nyr_int
+                (-0.5, 0.5),  # nz_int
+                (-0.5, 0.5),  # ps_int
+                (-0.5, 0.5),  # nyr_int
+                
             ]
         )
 
@@ -1047,7 +1119,45 @@ class F16Reach2(environment.Environment):
         observation = jnp.concatenate([self.get_obs(env_state), jnp.array([reach1_value, reach2_value])]) # might need a squeeze here
 
         return observation, env_state
+    
+    def reset_env_toinput(
+        self, reset_state, params: EnvParams
+    ) -> Tuple[chex.Array, EnvStateR1]:
+        
+        state_high = jnp.full(16, jnp.inf)
+        state_low = jnp.full(16, -jnp.inf)
+        state_high = state_high.at[self.ALPHA].set(self.MORELLI_BOUNDS[self.ALPHA, 1])
+        state_low = state_low.at[self.ALPHA].set(self.MORELLI_BOUNDS[self.ALPHA, 0])
+        state_high = state_high.at[self.BETA].set(self.MORELLI_BOUNDS[self.BETA, 1])
+        state_low = state_low.at[self.BETA].set(self.MORELLI_BOUNDS[self.BETA, 0])
+        state_high = state_high.at[self.THETA].set(jnp.pi / 3)
+        state_low = state_low.at[self.THETA].set(-jnp.pi / 3)
+        state_high = state_high.at[self.P].set(10.0)
+        state_low = state_low.at[self.P].set(-10.0)
 
+        a_state_new = jnp.clip(reset_state, state_low, state_high) # WHAT IS THIS? - WAS
+
+        # is_avoid = self.is_avoid(a_state_new, params)
+        # avoid_value = jnp.where(is_avoid, -1, state.avoid)
+        # reach_value = self.is_reach(a_state_new, avoid_value, params)
+        # a_state_new = jnp.where(avoid_value == 1, a_state_new, state.state) 
+        
+        # NOTE: STATE <- A_STATE IF HITTING GEOFENCES?
+        # NOTE: but A_STATE is the updated dynamics? => update only if at avoid set?? wtf??
+
+        #NOTE WAS: FOR KILLING STRAY TRAJECTORIES
+        avoid_value = self.is_avoid(a_state_new, params)
+        a_state_new = jnp.where(avoid_value <= 0, a_state_new, reset_state)
+
+        reach1_value = self.is_reach1(a_state_new, params)
+        reach2_value = self.is_reach2(a_state_new, params)
+        
+        time = 0
+        env_state = EnvStateR2(a_state_new, time, reach2_value)
+        observation = jnp.concatenate([self.get_obs(env_state), jnp.array([reach1_value, reach2_value])]) # might need a squeeze here
+
+        return observation, env_state
+    
     # def is_reach(self, state, avoid_value, params: EnvParams) -> float:
     #     """Check the reach value of the current state"""
     #     has_reached_goal = jnp.fabs(state[self.PN] - 2000.) < 25.

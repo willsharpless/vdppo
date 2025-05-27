@@ -69,31 +69,52 @@ def train(envs, env_paramss, config, rngs, env_test=None):
 
         ##################  Env step: Avoid Env ##################
 
-        init_type = "standard" # "fullrandom" # "toinput" # "standard"
+        init_type = "toinput" # "fullrandom" # "toinput" # "standard"
 
         # RESET ENV
         rng_avoid, _rng_avoid = jax.random.split(rng_avoid)
         reset_rng_avoid = jax.random.split(_rng_avoid, config["NUM_ENVS"])
 
-        if init_type == "toinput":   
-            # Select random observations from standard rollout to use for initial avoid state 
-            traj_batch_observations = traj_batch.obs #traj_batch.obs # avoid function
+        # if init_type == "toinput":   
+        #     # Select random observations from standard rollout to use for initial avoid state 
+        #     traj_batch_observations = traj_batch.obs #traj_batch.obs # avoid function
 
-            untrans_traj_batch_observations = env.untransform_obs(traj_batch_observations)
+        #     untrans_traj_batch_observations = env.untransform_obs(traj_batch_observations)
 
-            untrans_traj_batch_observations = jnp.transpose(untrans_traj_batch_observations, axes=(1, 0, 2))
-            rng_avoid, _rng_avoid = jax.random.split(rng_avoid)
+        #     untrans_traj_batch_observations = jnp.transpose(untrans_traj_batch_observations, axes=(1, 0, 2))
+        #     rng_avoid, _rng_avoid = jax.random.split(rng_avoid)
             
-            # Single random index
-            # random_index = jax.random.randint(_rng_avoid, shape=(), minval=0, maxval=untrans_traj_batch_observations.shape[1])
-            # untrans_traj_batch_observations = untrans_traj_batch_observations[:, random_index, :]
+        #     # Single random index
+        #     # random_index = jax.random.randint(_rng_avoid, shape=(), minval=0, maxval=untrans_traj_batch_observations.shape[1])
+        #     # untrans_traj_batch_observations = untrans_traj_batch_observations[:, random_index, :]
+
+        #     # Multiple random indices
+        #     random_index = jax.random.randint(_rng_avoid, shape=(untrans_traj_batch_observations.shape[0],), minval=0, maxval=untrans_traj_batch_observations.shape[1])
+        #     untrans_traj_batch_observations = jax.vmap(lambda obs, idx: obs[idx])(untrans_traj_batch_observations, random_index)
+
+        #     obsv_avoid, env_state_avoid = jax.vmap(env_avoid.reset_toinput, in_axes=(0, 0, None))(reset_rng_avoid, untrans_traj_batch_observations, env_params_avoid) 
+        
+        if init_type == "toinput": 
+            # Select random observations from standard rollout to use for initial avoid state 
+
+            random_index = jax.random.randint(_rng_avoid, shape=(config["NUM_ENVS"],), minval=0, maxval=config["NUM_STEPS"])
+            # random_index = jax.random.randint(_rng_reach1, shape=(untrans_traj_batch_observations_full.shape[0],), minval=0, maxval=untrans_traj_batch_observations_full.shape[1])
 
             # Multiple random indices
-            random_index = jax.random.randint(_rng_avoid, shape=(untrans_traj_batch_observations.shape[0],), minval=0, maxval=untrans_traj_batch_observations.shape[1])
-            untrans_traj_batch_observations = jax.vmap(lambda obs, idx: obs[idx])(untrans_traj_batch_observations, random_index)
+            if "Hopper" in config["EXP_NAME"]:
+                traj_batch_observations_full = traj_batch.obs 
+                untrans_traj_batch_observations_full = env.untransform_obs(traj_batch_observations_full)
+                untrans_traj_batch_observations_full = jnp.transpose(untrans_traj_batch_observations_full, axes=(1, 0, 2))
+                untrans_traj_batch_observations = jax.vmap(lambda obs, idx: obs[idx])(untrans_traj_batch_observations_full, random_index)
+                obsv_avoid, env_state_avoid = jax.vmap(env_avoid.reset_toinput, in_axes=(0, 0, None))(reset_rng_avoid, untrans_traj_batch_observations, env_params_avoid) 
 
-            obsv_avoid, env_state_avoid = jax.vmap(env_avoid.reset_toinput, in_axes=(0, 0, None))(reset_rng_avoid, untrans_traj_batch_observations, env_params_avoid) 
-        
+            elif "F16" in config["EXP_NAME"]:
+                traj_batch_states = traj_batch.info['state']
+                traj_batch_states = jnp.transpose(traj_batch_states, axes=(1, 0, 2))
+                reset_states = jax.vmap(lambda obs, idx: obs[idx])(traj_batch_states, random_index)
+                # obsv_reach_1, env_state_reach_1 = jax.vmap(env_reach_1.reset_env_toinput, in_axes=(0, None))(reset_states, env_params_reach_1) 
+                obsv_avoid, env_state_avoid = jax.vmap(env_avoid.reset_env_toinput, in_axes=(0, None))(reset_states, env_params_avoid) 
+                
         elif init_type == "standard":
             obsv_avoid, env_state_avoid = jax.vmap(env_avoid.reset, in_axes=(0, None))(reset_rng_avoid, env_params_avoid) # NOTE: old standard reset
 
@@ -566,7 +587,7 @@ if __name__ == "__main__":
     debug = True
     if debug:
         config["EXP_NAME"]="F16ReachAlwaysAvoid"
-        config["DIR"]="F16_raa_PE500_halfsamp2_"
+        config["DIR"]="F16_raa_PE500_halfsamp2_TO80m80s_tjreset_g999"
         config["LR"]=3e-4
         config["NUM_ENVS"]=256
         config["NUM_STEPS"]=200
@@ -575,7 +596,7 @@ if __name__ == "__main__":
         config["UPDATE_EPOCHS"]=10
         config["NUM_MINIBATCHES"]=64
         config["GAMMA_ENERGY"]=1.0
-        config["GAMMA_REACH_INIT"]=0.995
+        config["GAMMA_REACH_INIT"]=0.999
         config["GAMMA_REACH_FINAL"]=0.9995
         config["GAE_LAMBDA"]=0.95
         config["CLIP_EPS"]=0.2
@@ -586,7 +607,7 @@ if __name__ == "__main__":
         config["CUDA_USE"]="0"
         config["ANNEAL_LR"]=True,
         config["ANNEAL_ENT"]=True
-        config["NAME"]="F16_raa_PE500_halfsamp2_"
+        config["NAME"]="F16_raa_PE500_halfsamp2_TO80m80s_tjreset_g999"
         # config["TEST_MODE"]=True # USES DETERMINISTIC MODELS
 
     config["NUM_UPDATES"] = int(
@@ -624,7 +645,7 @@ if __name__ == "__main__":
     config_test["TEST_MODE"] = True
     env_test = get_env(config_test)
 
-    config["USE_WANDB"] = True #True # False for debugging
+    config["USE_WANDB"] = True # False for debugging 
     if config["USE_WANDB"]:
         wandb.init(project='EC-EFPPO-{}'.format(config["EXP_NAME"]), name=config["NAME"], config=config,
                    entity='braat_brrt')

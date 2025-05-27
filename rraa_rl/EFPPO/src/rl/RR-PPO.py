@@ -62,26 +62,33 @@ def train(envs, env_paramss, config, rng):
             env_step, runner_state, None, config["NUM_STEPS"]
         )
 
-        # init_type = "toinput" # "standard", "toinput"
-        init_type = "standard"
+        init_type = "toinput" # "standard", "toinput"
         # RESET ENV - 1
         rng, _rng = jax.random.split(rng_og)
         reset_rng = jax.random.split(_rng, config["NUM_ENVS"])
 
         if init_type == "standard": 
             obsv_reach_1, env_state_reach_1 = jax.vmap(env_reach_1.reset, in_axes=(0, None))(reset_rng, env_params_reach_1)
+        
         elif init_type == "toinput": 
             # Select random observations from standard rollout to use for initial avoid state 
-            traj_batch_observations_full = traj_batch.obs 
-            untrans_traj_batch_observations_full = env.untransform_obs(traj_batch_observations_full)
-            untrans_traj_batch_observations_full = jnp.transpose(untrans_traj_batch_observations_full, axes=(1, 0, 2))
             rng_reach1, _rng_reach1 = jax.random.split(rng)
+            random_index = jax.random.randint(_rng_reach1, shape=(config["NUM_ENVS"],), minval=0, maxval=config["NUM_STEPS"])
+            # random_index = jax.random.randint(_rng_reach1, shape=(untrans_traj_batch_observations_full.shape[0],), minval=0, maxval=untrans_traj_batch_observations_full.shape[1])
 
             # Multiple random indices
-            random_index = jax.random.randint(_rng_reach1, shape=(untrans_traj_batch_observations_full.shape[0],), minval=0, maxval=untrans_traj_batch_observations_full.shape[1])
-            untrans_traj_batch_observations = jax.vmap(lambda obs, idx: obs[idx])(untrans_traj_batch_observations_full, random_index)
+            if "Hopper" in config["EXP_NAME"]:
+                traj_batch_observations_full = traj_batch.obs 
+                untrans_traj_batch_observations_full = env.untransform_obs(traj_batch_observations_full)
+                untrans_traj_batch_observations_full = jnp.transpose(untrans_traj_batch_observations_full, axes=(1, 0, 2))
+                untrans_traj_batch_observations = jax.vmap(lambda obs, idx: obs[idx])(untrans_traj_batch_observations_full, random_index)
+                obsv_reach_1, env_state_reach_1 = jax.vmap(env_reach_1.reset_toinput, in_axes=(0, 0, None))(reset_rng, untrans_traj_batch_observations, env_params_reach_1) 
 
-            obsv_reach_1, env_state_reach_1 = jax.vmap(env_reach_1.reset_toinput, in_axes=(0, 0, None))(reset_rng, untrans_traj_batch_observations, env_params_reach_1) 
+            elif "F16" in config["EXP_NAME"]:
+                traj_batch_states = traj_batch.info['state']
+                traj_batch_states = jnp.transpose(traj_batch_states, axes=(1, 0, 2))
+                reset_states = jax.vmap(lambda obs, idx: obs[idx])(traj_batch_states, random_index)
+                obsv_reach_1, env_state_reach_1 = jax.vmap(env_reach_1.reset_env_toinput, in_axes=(0, None))(reset_states, env_params_reach_1) 
         
         rng, _rng = jax.random.split(rng)
         runner_state_standard_reach_1 = (train_state_policy, train_state_value, env_state_reach_1, obsv_reach_1, _rng)
@@ -103,15 +110,37 @@ def train(envs, env_paramss, config, rng):
 
         if init_type == "standard":
             obsv_reach_2, env_state_reach_2 = jax.vmap(env_reach_2.reset, in_axes=(0, None))(reset_rng, env_params_reach_2)
+        # elif init_type == "toinput": 
+        #     # Select random observations from standard rollout to use for initial avoid state 
+        #     rng_reach2, _rng_reach2 = jax.random.split(rng)
+
+        #     # Multiple random indices
+        #     random_index = jax.random.randint(_rng_reach2, shape=(untrans_traj_batch_observations_full.shape[0],), minval=0, maxval=untrans_traj_batch_observations_full.shape[1])
+        #     untrans_traj_batch_observations = jax.vmap(lambda obs, idx: obs[idx])(untrans_traj_batch_observations_full, random_index)
+
+        #     obsv_reach_2, env_state_reach_2 = jax.vmap(env_reach_2.reset_toinput, in_axes=(0, 0, None))(reset_rng, untrans_traj_batch_observations, env_params_reach_2) 
+
         elif init_type == "toinput": 
             # Select random observations from standard rollout to use for initial avoid state 
             rng_reach2, _rng_reach2 = jax.random.split(rng)
+            random_index = jax.random.randint(_rng_reach2, shape=(config["NUM_ENVS"],), minval=0, maxval=config["NUM_STEPS"])
+            # random_index = jax.random.randint(_rng_reach1, shape=(untrans_traj_batch_observations_full.shape[0],), minval=0, maxval=untrans_traj_batch_observations_full.shape[1])
 
             # Multiple random indices
-            random_index = jax.random.randint(_rng_reach2, shape=(untrans_traj_batch_observations_full.shape[0],), minval=0, maxval=untrans_traj_batch_observations_full.shape[1])
-            untrans_traj_batch_observations = jax.vmap(lambda obs, idx: obs[idx])(untrans_traj_batch_observations_full, random_index)
+            if "Hopper" in config["EXP_NAME"]:
+                traj_batch_observations_full = traj_batch.obs 
+                untrans_traj_batch_observations_full = env.untransform_obs(traj_batch_observations_full)
+                untrans_traj_batch_observations_full = jnp.transpose(untrans_traj_batch_observations_full, axes=(1, 0, 2))
+                untrans_traj_batch_observations = jax.vmap(lambda obs, idx: obs[idx])(untrans_traj_batch_observations_full, random_index)
+                # obsv_reach_1, env_state_reach_1 = jax.vmap(env_reach_1.reset_toinput, in_axes=(0, 0, None))(reset_rng, untrans_traj_batch_observations, env_params_reach_1) 
+                obsv_reach_2, env_state_reach_2 = jax.vmap(env_reach_2.reset_toinput, in_axes=(0, 0, None))(reset_rng, untrans_traj_batch_observations, env_params_reach_2) 
 
-            obsv_reach_2, env_state_reach_2 = jax.vmap(env_reach_2.reset_toinput, in_axes=(0, 0, None))(reset_rng, untrans_traj_batch_observations, env_params_reach_2) 
+            elif "F16" in config["EXP_NAME"]:
+                traj_batch_states = traj_batch.info['state']
+                traj_batch_states = jnp.transpose(traj_batch_states, axes=(1, 0, 2))
+                reset_states = jax.vmap(lambda obs, idx: obs[idx])(traj_batch_states, random_index)
+                # obsv_reach_1, env_state_reach_1 = jax.vmap(env_reach_1.reset_env_toinput, in_axes=(0, None))(reset_states, env_params_reach_1) 
+                obsv_reach_2, env_state_reach_2 = jax.vmap(env_reach_2.reset_env_toinput, in_axes=(0, None))(reset_states, env_params_reach_2) 
         
         rng, _rng = jax.random.split(rng)
         runner_state_standard_reach_2 = (train_state_policy, train_state_value, env_state_reach_2, obsv_reach_2, _rng)
@@ -415,6 +444,7 @@ def train(envs, env_paramss, config, rng):
 
     total_timesteps = config["NUM_UPDATES"] // config["STEP_SCAN"]
 
+    best_score = -jnp.inf
     for timestep in range(config["NUM_UPDATES"] // config["STEP_SCAN"]):
 
         t0 = time.time()
@@ -490,8 +520,21 @@ def train(envs, env_paramss, config, rng):
                                             "value_reach2_network":train_state_value_reach2,
                                             },
                                     step=timestep,
-                                    overwrite=True,
-                                    keep=2)
+                                    overwrite=True)
+        
+        if reach_perc > best_score:
+            best_score = reach_perc
+            checkpoints.save_checkpoint(ckpt_dir=os.path.abspath(os.path.join("model", config["DIR"])),
+                                        target={"policy_network":train_state_policy,
+                                                "value_network":train_state_value,
+                                                "policy_reach1_network":train_state_policy_reach1,
+                                                "value_reach1_network":train_state_value_reach1,
+                                                "policy_reach2_network":train_state_policy_reach2,
+                                                "value_reach2_network":train_state_value_reach2,
+                                                },
+                                        step=timestep,
+                                        prefix="best_",
+                                        overwrite=True,)
 
         policy_decision_sample = traj_batch.policy_taken[:,idx]
         # fig = plot_contour_RRAA((info, info_1, info_2), timestep, config)
@@ -541,9 +584,35 @@ if __name__ == "__main__":
 
     debug = True
     if debug:
+        # config["EXP_NAME"]="HopperReachReach"
+        # config["DIR"]="hopper_reachreach_debug"
+        # config["LR"]=3e-4
+        # # config["NUM_ENVS"]=128
+        # config["NUM_ENVS"]=1
+        # config["NUM_STEPS"]=400
+        # config["TOTAL_TIMESTEPS"]=50_000_000
+        # config["STEP_SCAN"]=4
+        # config["UPDATE_EPOCHS"]=10
+        # config["NUM_MINIBATCHES"]=32
+        # config["GAMMA_ENERGY"]=1.0
+        # config["GAMMA_REACH_INIT"]=0.995
+        # config["GAMMA_REACH_FINAL"]=0.9995
+        # config["GAE_LAMBDA"]=0.95
+        # config["CLIP_EPS"]=0.2
+        # config["ENT_COEF"]=0.0001
+        # config["VF_COEF"]=2.0
+        # config["MAX_GRAD_NORM"]=0.5
+        # config["ACTIVATION"]="tanh"
+        # config["CUDA_USE"]="0,1,2,3"
+        # config["ANNEAL_LR"]=True,
+        # config["ANNEAL_ENT"]=True
+        # config["NAME"]="hopper_debug"
+        # config["TEST_MODE"]=True # USES DETERMINISTIC MODELS
+
+    # if debug:
         config["EXP_NAME"]="F16ReachReach"
-        config["DIR"]="F16_rr_verttargs_4"
-        config["LR"]=3e-4
+        config["DIR"]="F16_rr_verttargs_cutsamp_To80m80s_tjreset_LR2e-3"
+        config["LR"]=2e-3
         config["NUM_ENVS"]=256
         config["NUM_STEPS"]=200
         config["TOTAL_TIMESTEPS"]=100_000_000
@@ -560,11 +629,10 @@ if __name__ == "__main__":
         config["MAX_GRAD_NORM"]=0.5
         config["ACTIVATION"]="tanh"
         config["CUDA_USE"]="0"
-        config["ANNEAL_LR"]=True,
+        config["ANNEAL_LR"]=True
         config["ANNEAL_ENT"]=True
-        config["NAME"]="F16_rr_verttargs_4"
-
-        # config["TEST_MODE"]=True # USES DETERMINISTIC MODELS
+        config["NAME"]="F16_rr_verttargs_cutsamp_To80m80s_tjreset_LR2e-3"
+    #     # config["TEST_MODE"]=True # USES DETERMINISTIC MODELS
 
     config["NUM_UPDATES"] = int(
         config["TOTAL_TIMESTEPS"] // config["NUM_STEPS"] // config["NUM_ENVS"]
