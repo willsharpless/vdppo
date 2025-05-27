@@ -1,6 +1,6 @@
-python ./rraa_rl/EFPPO/src/rl/RR-PPO.py \
---EXP_NAME=HopperReachReach \
---DIR=hopper_reachreach_50M \
+CUDA_VISIBLE_DEVICES=1 python ./rraa_rl/EFPPO/src/rl/rr_baseline_ppo.py \
+--EXP_NAME=HopperReachReachDecomposed \
+--DIR=hopper_reachreach_decomposed \
 --LR=3e-4 \
 --NUM_ENVS=128 \
 --NUM_STEPS=400 \
@@ -20,4 +20,4 @@ python ./rraa_rl/EFPPO/src/rl/RR-PPO.py \
 --CUDA_USE=0 \
 --ANNEAL_LR \
 --ANNEAL_ENT \
---NAME=hopper_reachreach_50M
+--NAME=hopper_reachreach_decomposed

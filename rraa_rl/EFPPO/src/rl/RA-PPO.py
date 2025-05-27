@@ -22,7 +22,7 @@ from typing import Any
 from rraa_rl.EFPPO.src.rl.EFPPO_utils import _ppo_vanilla_update, _env_step_rr_vanilla, _env_step_r1_vanilla, _env_step_r2_vanilla, _env_step_raa_vanilla, _env_step_a_vanilla, _env_step_ra_vanilla, _env_step_ra_vanilla_deterministic
 from rraa_rl.EFPPO.src.env.env_list import get_env
 from rraa_rl.EFPPO.src.model.actorcritic import Policy_Network, Value_Network, Policy_Network_Discrete, Policy_Network_Learnable_Std, MoGPolicy_Network
-from rraa_rl.EFPPO.src.rl.plot_utils import calculate_minimal_reach, calculate_consumption, calculate_reach_avoid_stats, calculate_reachreach, calculate_reachalwaysavoid, plot_target, plot_value_target, plot_contour, plot_contour_RRAA, plot_policy_decision
+from rraa_rl.EFPPO.src.rl.plot_utils import calculate_minimal_reach, calculate_consumption, calculate_reach_avoid_stats, calculate_reachreach, calculate_reachalwaysavoid, plot_target, plot_value_target, plot_contour, plot_contour_RRAA, plot_policy_decision, calculate_reachavoid, plot_video_contour_RRAA
 from rraa_rl.EFPPO.src.rl.utils import optimizer, get_BuRd, tree_index1, tree_index2
 from rraa_rl.EFPPO.src.rl.gae import (Transition_reach,
                               calculate_gae, calculate_gae2, calculate_gae3,
@@ -152,7 +152,7 @@ def train(envs, env_paramss, config, rng, env_test=None):
 
 
     total_timesteps = config["NUM_UPDATES"] // config["STEP_SCAN"]
-
+    best_score = -jnp.inf
     for timestep in range(config["NUM_UPDATES"] // config["STEP_SCAN"]):
 
         t0 = time.time()
@@ -190,19 +190,29 @@ def train(envs, env_paramss, config, rng, env_test=None):
         info = tree_index2(traj_batch.info, idx)
 
         info['reach_index'] = reach_idx
-
+        (reach_perc, crash_perc, reach_avoid_perc) = calculate_reachavoid(traj_batch)
         if config['EXP_NAME'] == 'WindField' or config['EXP_NAME'] == 'WindFieldFull':
             info['u_air'] = env_params.u_air
             info['v_air'] = env_params.v_air
             info['obs'] = env_params.obstacle
-
-        checkpoints.save_checkpoint(ckpt_dir=os.path.abspath(os.path.join("model", config["DIR"])),
-                                    target={"policy_network":train_state_policy, 
-                                            "value_network":train_state_value,
-                                            },
-                                    step=timestep,
-                                    overwrite=True,
-                                    keep=2)
+        if timestep % 5 == 0:
+            checkpoints.save_checkpoint(ckpt_dir=os.path.abspath(os.path.join("model", config["DIR"])),
+                                        target={"policy_network":train_state_policy, 
+                                                "value_network":train_state_value,
+                                                },
+                                        step=timestep,
+                                        overwrite=True,
+                                        keep=2)
+        if reach_avoid_perc > best_score:
+            best_score = reach_avoid_perc
+            checkpoints.save_checkpoint(ckpt_dir=os.path.abspath(os.path.join("model", config["DIR"])),
+                                        target={"policy_network":train_state_policy, 
+                                                "value_network":train_state_value,
+                                                },
+                                        step=total_timesteps,
+                                        overwrite=True,
+                                        prefix="best_",)
+        
 
          # TODO: Need to add plot utils function
         fig_contour = plot_contour_RRAA((info, None), timestep, config)
@@ -213,14 +223,27 @@ def train(envs, env_paramss, config, rng, env_test=None):
                     #    "not reaching goal": cnt,
                     "actor_loss": jnp.mean(loss_info["actor_loss"]), "value_loss": jnp.mean(loss_info["value_loss"]),
                     "reach_gamma": result['reach_gamma'][0], "entropy_weight": result['entropy_weight'][0],
-                    'trajectory_sample':wandb.Image(fig_contour),
+                    # 'trajectory_sample':wandb.Image(fig_contour),
+                    "crashed [%]": crash_perc,
+                    "reached [%]": reach_perc,
+                    "reached_avoid [%]": reach_avoid_perc,
                         # 'trajectory_sample_R1':wandb.Image(fig1), 'trajectory_sample_R2':wandb.Image(fig2)
                     }, step=timestep)
+            if "Hopper" in config["EXP_NAME"]:
+                wandb.log({
+                    'trajectory_sample':wandb.Image(fig_contour),
+                }, step=timestep)
+        # Save video of trajectory 
+        if "Hopper" in config["EXP_NAME"]:
+            video_freq = 25 #25 
+            save_video = config["USE_WANDB"] #True 
+            if timestep % video_freq == 0 or timestep == total_timesteps - 1: 
+                video_frames = plot_video_contour_RRAA((info, None), timestep, config, save_video=save_video, log_wandb=config["USE_WANDB"])
         plt.close("all")
         # print("Earliest Reach {}: {}        {}".format(timestep, cnt, np.mean(consumption)))
         print("Time {}".format(t1-t0))
         # Add in eval with deterministic checkpoint
-        if env_test is not None and timestep % 5 == 0:
+        if env_test is not None and timestep % 20 == 0 and "Hopper" in config["EXP_NAME"]:
             rng_og = rng
             rng, _rng = jax.random.split(rng_og)
             reset_rng = jax.random.split(_rng, config["NUM_ENVS"])# FIXME: Have eval envs use a different seed than train envs

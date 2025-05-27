@@ -20,16 +20,16 @@ from rraa_rl.EFPPO.src.env.env_list import get_env
 from rraa_rl.EFPPO.src.model.actorcritic import Policy_Network, Policy_Network_Discrete, Value_Network, ActorCritic_Discrete
 from rraa_rl.EFPPO.src.rl.utils import optimizer, get_BuRd, tree_index1, tree_index2
 from rraa_rl.EFPPO.src.rl.gae import calculate_gae
-from rraa_rl.EFPPO.src.rl.EFPPO_utils import _env_step_cppo, _cppo_update
+from rraa_rl.EFPPO.src.rl.EFPPO_utils import _env_step_cppo_RAA, _cppo_update_RAA
 from rraa_rl.EFPPO.src.rl.plot_utils import plot_contour_RRAA, plot_video_contour_RRAA, calculate_reach_avoid_stats, calculate_reachavoid
 
-def calculate_reward_cost(traj_batch):
-    reach_idx = ((traj_batch.reach) < 0 & (traj_batch.avoid == 1)).argmax(axis=0)
+def calculate_reward_cost(traj_batch): 
+    reach_idx = ((traj_batch.reach) < 0 & (traj_batch.avoid < 0)).argmax(axis=0)
     reward = []
     cost = []
     cnt = 0
     for i in range(reach_idx.shape[0]):
-        if reach_idx[i] == 0 and (traj_batch.reach[0, i] >= 0 or traj_batch.avoid[0, i] < 0):
+        if reach_idx[i] == 0 and (traj_batch.reach[0, i] >= 0 or traj_batch.avoid[0, i] > 0):
             cnt += 1
         else:
             reward.append(jnp.sum(traj_batch.reward[0: reach_idx[i], i]))
@@ -37,10 +37,13 @@ def calculate_reward_cost(traj_batch):
     return jnp.array(reward), jnp.array(cost), cnt
 
 
+
 class TrainState(train_state.TrainState):
     lambda_coef: Any
 
 def train(env, env_params, config, rng):
+    best_score = -float(jnp.inf)
+
     def _train(update_state, ent):
 
         train_state_policy, train_state_value, train_state_cost, rng = update_state
@@ -58,14 +61,24 @@ def train(env, env_params, config, rng):
             env_step, runner_state, None, config["NUM_STEPS"]
         )
 
+        ####### RRAA Change ######
+        # NOTE: FOR RAA SET DONES TO ONLY THE LAST TIME STEP
+        dones = jnp.zeros_like(traj_batch.done)
+        dones = dones.at[-1, :].set(1.0)
+        ####### RRAA Change ######
+
         # CALCULATE ADVANTAGE
         train_state_policy, train_state_value, train_state_cost, env_state, last_obs, rng = runner_state
         last_val = train_state_value.apply_fn(train_state_value.params, last_obs)
         last_cost = train_state_cost.apply_fn(train_state_cost.params, last_obs)
         advantages_value, targets_value = calculate_gae(config["GAMMA_ENERGY"], config["GAE_LAMBDA"], traj_batch.value,
-                                                        traj_batch.reward, traj_batch.done, last_val)
+                                                        traj_batch.reward, 
+                                                        dones, #traj_batch.done, 
+                                                        last_val)
         advantages_cost, targets_cost = calculate_gae(1.0, config["GAE_LAMBDA"], traj_batch.value_cost,
-                                                        traj_batch.cost, traj_batch.done, last_cost)
+                                                        traj_batch.cost, 
+                                                        dones, #traj_batch.done, 
+                                                        last_cost)
 
         # UPDATE NETWORK
         update_state = (train_state_policy, train_state_value, train_state_cost, traj_batch,
@@ -78,8 +91,10 @@ def train(env, env_params, config, rng):
         return (update_state[0], update_state[1],
                 update_state[2], update_state[-1]), {"batch_info": traj_batch, "loss_info": loss_info}
 
-    update_epoch = partial(_cppo_update, config)
-    env_step = partial(_env_step_cppo, env, env_params)
+    ####### RRAA Change ######
+    update_epoch = partial(_cppo_update_RAA, config)
+    env_step = partial(_env_step_cppo_RAA, env, env_params)
+    ####### RRAA Change ######
     training = jax.jit(_train)
 
     tx = optimizer(config)
@@ -154,21 +169,29 @@ def train(env, env_params, config, rng):
                                     step=timestep,
                                     overwrite=True,
                                     keep=2)
-
-        visual_logging = True 
         
-        if visual_logging: 
-                # Perform Logging and Plotting
-            idx = 0 # index to plot
-            info = tree_index2(traj_batch.info, idx)
-            reach_idx = (traj_batch.reach < 0).argmax(axis=0)[idx]
-            avoid_idx = (traj_batch.avoid == -1).argmax(axis=0)[idx]
-            info["reach_index"] = reach_idx
-            info["avoid_index"] = avoid_idx
+        ####### RRAA Change ######
+        # Perform Logging and Plotting
+        idx = 0 # index to plot
+        info = tree_index2(traj_batch.info, idx)
+        reach_idx = (traj_batch.reach < 0).argmax(axis=0)[idx]
+        avoid_idx = (traj_batch.avoid > 0).argmax(axis=0)[idx]
+        info["reach_index"] = reach_idx
+        info["avoid_index"] = avoid_idx
 
-            fig = plot_contour_RRAA((info, None), timestep, config)
-            cnt_never_reached, cnt_crashed, cnt_crash_after_reach = calculate_reach_avoid_stats(traj_batch)
-            (reach_perc, crash_perc, reach_avoid_perc) = calculate_reachavoid(traj_batch)
+        fig = plot_contour_RRAA((info, None), timestep, config)
+        cnt_never_reached, cnt_crashed, cnt_crash_after_reach = calculate_reach_avoid_stats(traj_batch)
+        (reach_perc, crash_perc, reach_avoid_perc) = calculate_reachavoid(traj_batch)
+
+        # Keep the best performaing model
+        if reach_avoid_perc > best_score:
+            best_score = reach_avoid_perc
+            checkpoints.save_checkpoint(ckpt_dir=os.path.abspath(os.path.join("model", config["DIR"])),
+                                        target={"policy_network": train_state_policy, "value_network": train_state_value,
+                                            "cost_network": train_state_cost},
+                                        step=timestep,
+                                        prefix="best_",
+                                        overwrite=True,)
 
         t1 = time.time()
 
@@ -179,42 +202,40 @@ def train(env, env_params, config, rng):
                    "average cost": jnp.mean(cost),
                    "actor_loss": jnp.mean(loss_info["actor_loss"]), "entropy_loss": jnp.mean(loss_info["entropy_loss"]),
                    "value_loss": jnp.mean(loss_info["value_loss"]), "cost_loss": jnp.mean(loss_info["cost_loss"]),
+                   "crashed [%]": crash_perc,
+                #    'trajectory_sample':wandb.Image(fig),
+                    "reached [%]": reach_perc,
+                    "reached_avoid [%]": reach_avoid_perc,
+                    "cnt crashed ": cnt_crashed,
+                    "cnt not reaching goal ": cnt_never_reached,
+                    "cnt crash after reach ": cnt_crash_after_reach,
                    "lambda": jnp.mean(loss_info['lambda'])})
-
-        if visual_logging:
-            wandb.log({"not reaching goal": cnt,
-                    "average total return": -jnp.mean(reward),
-                    "average cost": jnp.mean(cost),
-                    "actor_loss": jnp.mean(loss_info["actor_loss"]), "entropy_loss": jnp.mean(loss_info["entropy_loss"]),
-                    "value_loss": jnp.mean(loss_info["value_loss"]), "cost_loss": jnp.mean(loss_info["cost_loss"]),
-                    "crashed [%]": crash_perc,
-                    'trajectory_sample':wandb.Image(fig),
-                        "reached [%]": reach_perc,
-                        "reached_avoid [%]": reach_avoid_perc,
-                        "cnt crashed ": cnt_crashed,
-                        "cnt not reaching goal ": cnt_never_reached,
-                        "cnt crash after reach ": cnt_crash_after_reach,
-                    "lambda": jnp.mean(loss_info['lambda'])})
-            
-            # Save video of trajectory 
-            video_freq = 5 #25 
-            save_video = True 
-            if timestep % video_freq == 0 or timestep == total_timesteps - 1: 
-                video_frames = plot_video_contour_RRAA((info, None), timestep + 1, config, save_video=save_video, log_wandb=config["USE_WANDB"])
         
+        if "Hopper" in config["EXP_NAME"]:
+                wandb.log({
+                    'trajectory_sample':wandb.Image(fig),
+                })
+        
+        # Save video of trajectory 
+        video_freq = 5 #25 
+        save_video = True 
+        if timestep % video_freq == 0 or timestep == total_timesteps - 1: 
+            video_frames = plot_video_contour_RRAA((info, None), timestep + 1, config, save_video=save_video, log_wandb=config["USE_WANDB"])
+        ####### RRAA Change ######
+
         print("Iteration {}: not reach {} reward {} cost {}".format(timestep, cnt, -jnp.mean(reward), jnp.mean(cost)))
         print("Time {}".format(t1-t0))
 
     return
 
 if __name__ == "__main__":
+    
     config = vars(get_args(sys.argv[1:]))
 
     config["USE_WANDB"] = True 
     if config["USE_WANDB"]:
         wandb.init(project='EC-EFPPO-{}'.format(config["EXP_NAME"]), name=config["NAME"], config=config,
                    entity='braat_brrt')
-
 
     config["NUM_UPDATES"] = int(
         config["TOTAL_TIMESTEPS"] // config["NUM_STEPS"] // config["NUM_ENVS"]
@@ -232,6 +253,7 @@ if __name__ == "__main__":
     os.environ["CUDA_VISIBLE_DEVICES"] = config['CUDA_USE']
     env = get_env(config)
     env_params = env.default_params
+    print(env_params)
     env_params = env_params.replace(gamma=config["GAMMA_ENERGY"])
     wandb.init(project='CPPO-{}'.format(config["EXP_NAME"]), name=config["NAME"], config=config)
     rng = jax.random.PRNGKey(20)

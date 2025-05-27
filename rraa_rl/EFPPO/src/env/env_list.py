@@ -8,9 +8,13 @@ from .reach_avoid.wind_field import WindField
 from .reach_avoid.half_cheetah_avoid import HalfCheetahAvoid, HalfCheetahAvoidDeterministic
 from .reach_avoid.safety_gym_avoid import PointAvoid
 from .baseline.pendulum_constraint_baseline import PendulumConstraintBaseline
-from .baseline.hopper_avoid_ceiling_baseline import HopperAvoidCeilingBaseline
+from .baseline.hopper_avoid_ceiling_baseline import HopperAvoidCeilingBaseline, HopperReachAlwaysAvoidBaseline_augmented, HopperReachReachBaseline_augmented_max, \
+    HopperReachReachBaseline_augmented_sum, HopperReachReachBaseline_reward_cost_separated
 from .baseline.wind_field_baseline import WindFieldBaseline
 from .baseline.half_cheetah_avoid_baseline import HalfCheetahAvoidBaseline
+
+from .baseline.F16_RAA_baseline import F16ReachAvoidBaseline
+from .baseline.F16_RR_baseline import F16ReachReachBaseline
 
 from .wrappers import TransformObservation
 
@@ -94,6 +98,73 @@ def get_env(config):
         env1.set_untransform_obs(untrans)
         env2.set_untransform_obs(untrans)
         return (env, env1, env2)
+
+    elif config["EXP_NAME"] == 'HopperReachReach' and config["TEST_MODE"] == False:
+        vec1 = jnp.zeros(14, dtype=jnp.float32)
+        vec1 = vec1.at[0].set(1.)
+        # vec1 = vec1.at[-1].set(400.)
+        vec2 = jnp.ones(14, dtype=jnp.float32)
+        # vec2 = vec2.at[-1].set(400.) # INIT ENERGY?
+        trans = partial(transform_observation, vec1, vec2)
+        untrans = partial(untransform_observation, vec1, vec2)
+
+        env = HopperReachReach()
+        env = TransformObservation(env, trans)
+        
+        env1 = HopperReach1() # TODO make determinstic
+        env1 = TransformObservation(env1, trans)
+        env2 = HopperReach2() # TODO make determinstic
+        env2 = TransformObservation(env2, trans)
+
+        env.set_untransform_obs(untrans)
+        env1.set_untransform_obs(untrans)
+        env2.set_untransform_obs(untrans)
+        return (env, env1, env2)
+    elif config["EXP_NAME"] == 'HopperReachReach' and config["TEST_MODE"] == True:
+        vec1 = jnp.zeros(14, dtype=jnp.float32)
+        vec1 = vec1.at[0].set(1.)
+        vec2 = jnp.ones(14, dtype=jnp.float32)
+        trans = partial(transform_observation, vec1, vec2)
+        untrans = partial(untransform_observation, vec1, vec2)
+
+        env = HopperReachReachDeterministic()
+        env = TransformObservation(env, trans)
+
+        env1 = HopperReach1Deterministic() # TODO make determinstic
+        env1 = TransformObservation(env1, trans)
+        env2 = HopperReach2Deterministic() # TODO make determinstic
+        env2 = TransformObservation(env2, trans)
+
+        env.set_untransform_obs(untrans)
+        env1.set_untransform_obs(untrans)
+        env2.set_untransform_obs(untrans)
+        return (env, env1, env2)
+    
+    elif config["EXP_NAME"] == "HopperReachReachDecomposed":
+        vec1 = jnp.zeros(12, dtype=jnp.float32)
+        vec1 = vec1.at[0].set(1.)
+        # vec1 = vec1.at[-1].set(400.)
+        vec2 = jnp.ones(12, dtype=jnp.float32)
+        # vec2 = vec2.at[-1].set(400.) # INIT ENERGY?
+        trans = partial(transform_observation, vec1, vec2)
+        untrans = partial(untransform_observation, vec1, vec2)
+
+        from .baseline.hopper_avoid_ceiling_baseline import HopperRR, HopperR1, HopperR2
+        if config["TEST_MODE"] == False:
+            env = HopperRR()
+            env1 = HopperR1()
+            env2 = HopperR2()
+        else:
+            env = HopperRR(deterministic=True)
+            env1 = HopperR1(deterministic=True)
+            env2 = HopperR2(deterministic=True)
+        env = TransformObservation(env, trans)
+        env1 = TransformObservation(env1, trans)
+        env2 = TransformObservation(env2, trans)
+        env.set_untransform_obs(untrans)
+        env1.set_untransform_obs(untrans)
+        env2.set_untransform_obs(untrans)
+        return (env, env1, env2)
         
     elif config["EXP_NAME"] == "HopperReachAlwaysAvoid": 
         # TODO: Add a determinist and random version after you create the environments - change based on mode? 
@@ -116,6 +187,72 @@ def get_env(config):
         env.set_untransform_obs(untrans)
         env_avoid.set_untransform_obs(untrans)
         return (env, env_avoid)
+    
+    elif config["EXP_NAME"] == "HopperReachAlwaysAvoid_CPPO":
+        obs_dim = 12 + 1
+        vec1 = jnp.zeros(obs_dim, dtype=jnp.float32)
+        vec1 = vec1.at[0].set(1.)
+        vec2 = jnp.ones(obs_dim, dtype=jnp.float32)
+        
+        trans = partial(transform_observation, vec1, vec2)
+        untrans = partial(untransform_observation, vec1, vec2)
+
+        env = HopperReachAlwaysAvoidBaseline_augmented()
+        env = TransformObservation(env, trans)
+        env.set_untransform_obs(untrans)
+
+        return (env)
+    
+    elif config["EXP_NAME"] == "HopperReachReach_max_CPPO":
+        obs_dim = 12 + 2
+        vec1 = jnp.zeros(obs_dim, dtype=jnp.float32)
+        vec1 = vec1.at[0].set(1.)
+        vec2 = jnp.ones(obs_dim, dtype=jnp.float32)
+        
+        trans = partial(transform_observation, vec1, vec2)
+        untrans = partial(untransform_observation, vec1, vec2)
+
+        env = HopperReachReachBaseline_augmented_max(cost_type=config["ENV_COST_TYPE"], 
+                                                     use_stl=config["USE_STL"], 
+                                                     cost_fn=config["ENV_COST_FN"])
+        env = TransformObservation(env, trans)
+        env.set_untransform_obs(untrans)
+
+        return (env)
+    
+    elif config["EXP_NAME"] == "HopperReachReach_sum_CPPO":
+        obs_dim = 12 + 2
+        vec1 = jnp.zeros(obs_dim, dtype=jnp.float32)
+        vec1 = vec1.at[0].set(1.)
+        vec2 = jnp.ones(obs_dim, dtype=jnp.float32)
+        
+        trans = partial(transform_observation, vec1, vec2)
+        untrans = partial(untransform_observation, vec1, vec2)
+
+        env = HopperReachReachBaseline_augmented_sum(cost_type=config["ENV_COST_TYPE"], 
+                                                     use_stl=config["USE_STL"], 
+                                                     cost_fn=config["ENV_COST_FN"])
+        env = TransformObservation(env, trans)
+        env.set_untransform_obs(untrans)
+
+        return (env)
+    
+    elif config["EXP_NAME"] == "HopperReachReach_separated_CPPO":
+        obs_dim = 12 + 2
+        vec1 = jnp.zeros(obs_dim, dtype=jnp.float32)
+        vec1 = vec1.at[0].set(1.)
+        vec2 = jnp.ones(obs_dim, dtype=jnp.float32)
+        
+        trans = partial(transform_observation, vec1, vec2)
+        untrans = partial(untransform_observation, vec1, vec2)
+
+        env = HopperReachReachBaseline_reward_cost_separated(cost_type=config["ENV_COST_TYPE"], 
+                                                     use_stl=config["USE_STL"], 
+                                                     cost_fn=config["ENV_COST_FN"])
+        env = TransformObservation(env, trans)
+        env.set_untransform_obs(untrans)
+
+        return (env)
     
     elif config["EXP_NAME"] == "HopperReachAvoid":
         vec1 = jnp.zeros(14, dtype=jnp.float32)
@@ -179,6 +316,39 @@ def get_env(config):
         trans = partial(transform_observation, vec1, vec2)
         env = F16Avoid()
         env = TransformObservation(env, trans)
+
+    elif config["EXP_NAME"] == "F16ReachAvoid":
+        from .reach_avoid.F16_RAA import F16ReachAvoid
+        vec1 = jnp.zeros(26, dtype=jnp.float32)
+        vec1 = vec1.at[-1].set(400.)
+        vec2 = jnp.ones(26, dtype=jnp.float32)
+        vec2 = vec2.at[-1].set(400.)
+        trans = partial(transform_observation, vec1, vec2)
+
+        env = F16ReachAvoid()
+        env = TransformObservation(env, trans)
+
+        return (env)
+
+
+    elif config["EXP_NAME"] == "F16ReachReachDecomposed":
+        from .reach_avoid.F16_RR import F16ReachReachBaseline, F16Reach1Baseline, F16Reach2Baseline
+        vec1 = jnp.zeros(24, dtype=jnp.float32)
+        vec1 = vec1.at[-1].set(400.)
+        vec2 = jnp.ones(24, dtype=jnp.float32)
+        vec2 = vec2.at[-1].set(400.)
+        trans = partial(transform_observation, vec1, vec2)
+
+        env = F16ReachReachBaseline()
+        env = TransformObservation(env, trans)
+
+        env1 = F16Reach1Baseline()
+        env1 = TransformObservation(env1, trans)
+
+        env2 = F16Reach2Baseline()
+        env2 = TransformObservation(env2, trans)
+
+        return (env, env1, env2)
     
     elif config["EXP_NAME"] == 'F16ReachAlwaysAvoid':
         from .reach_avoid.F16_RAA import F16ReachAvoid, F16AvoidOnly
@@ -199,6 +369,24 @@ def get_env(config):
         # env.set_untransform_obs(untrans) # Not implemented
         # env_avoid.set_untransform_obs(untrans)
         return (env, env_avoid)
+    
+    elif config["EXP_NAME"] == 'F16ReachAlwaysAvoid_CPPO':
+        from .reach_avoid.F16_RAA import F16ReachAvoid, F16AvoidOnly
+
+        obs_dim = 26 - 2 + 1
+
+        vec1 = jnp.zeros(obs_dim, dtype=jnp.float32)
+        vec1 = vec1.at[-1].set(400.)
+        vec2 = jnp.ones(obs_dim, dtype=jnp.float32)
+        vec2 = vec2.at[-1].set(400.)
+        trans = partial(transform_observation, vec1, vec2)
+
+        env = F16ReachAvoidBaseline()
+
+        env = TransformObservation(env, trans)
+
+        # env.set_untransform_obs(untrans) # Not implemented
+        return env
     
     elif config["EXP_NAME"] == 'F16ReachReach':
         from .reach_avoid.F16_RR import F16ReachReach, F16Reach1, F16Reach2
@@ -221,6 +409,23 @@ def get_env(config):
         # env.set_untransform_obs(untrans) # Not implemented
         # env_avoid.set_untransform_obs(untrans)
         return (env, env1, env2)
+
+    elif config["EXP_NAME"] == 'F16ReachReach_CPPO':
+        from .baseline.F16_RR_baseline import F16ReachReachBaseline
+        
+        vec1 = jnp.zeros(26, dtype=jnp.float32)
+        vec1 = vec1.at[-1].set(400.)
+        vec2 = jnp.ones(26, dtype=jnp.float32)
+        vec2 = vec2.at[-1].set(400.)
+        trans = partial(transform_observation, vec1, vec2)
+
+        env = F16ReachReachBaseline()
+
+        env = TransformObservation(env, trans)
+
+        # env.set_untransform_obs(untrans) # Not implemented
+        # env_avoid.set_untransform_obs(untrans)
+        return env
 
     elif config["EXP_NAME"] == 'PointAvoid':
         vec1 = jnp.zeros(9, dtype=jnp.float32)
@@ -269,6 +474,7 @@ def get_env(config):
     elif config["EXP_NAME"] == 'F16AvoidBaseline':
         from .baseline.F16_avoid_baseline import F16AvoidBaseline
         env = F16AvoidBaseline()
+
     else:
         raise Exception("No Given Environment")
     return env
