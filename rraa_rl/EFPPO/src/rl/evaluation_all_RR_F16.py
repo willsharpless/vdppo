@@ -63,8 +63,8 @@ def plot_scores(traj_batches, config):
         ("CPPOv2", rr_scores_CPPOv2),
         ("CPPOv1", rr_scores_CPPOv1),
         ("DSTL", rr_scores_dSTL),
-        ("HJPPO", rr_scores_HJPPO_d),
-        # ("HJPPO", rr_scores_HJPPO),
+        ("DO-HJ-PPO", rr_scores_HJPPO_d),
+        # ("DO-HJ-PPO", rr_scores_HJPPO),
     ]
 
     # Extract data
@@ -101,27 +101,37 @@ def plot_scores(traj_batches, config):
     # Reach percentage bar plot
     for i, label in enumerate(labels):
         axes[0].barh(label, reach_percs[i], color=colors[label])
-    axes[0].set_xlim(0, 1.1)
+    axes[0].set_xlim(0, 1.)
     axes[0].set_title(r"F16-RR: Success Percentage ($\uparrow$)", fontsize=12)
     axes[0].set_xlabel(r"Percentage")
     axes[0].set_yticks(np.arange(len(labels)))
     axes[0].set_yticklabels(labels, ha='right', fontsize=10)
+    axes[0].set_xticks([0, 0.2, 0.4, 0.6, 0.8, 1.0], labels=[r'$0\%$', r'$20\%$', r'$40\%$', r'$60\%$', r'$80\%$', r'$100\%$'])
     axes[0].tick_params(axis='y', pad=10)  # move labels away from bars
     axes[0].grid(True, color='white', axis="x", linestyle="--", alpha=0.5)
     axes[0].spines[['top', 'right', 'left']].set_visible(False)
     axes[0].set_facecolor("#e6ecf2")
+    for tick_label in axes[0].get_yticklabels():
+        if tick_label.get_text() == "DO-HJ-PPO":
+            tick_label.set_fontweight("bold")
+            tick_label.set_fontsize(12)
 
     # Mean reach index bar plot with error bars
     for i, label in enumerate(labels):
         axes[1].barh(label, mean_idxs[i], xerr=std_idxs[i]/2, color=colors[label], capsize=4)
     axes[1].set_title(r"F16-RR: Mean Steps to Success ($\downarrow$)", fontsize=12)
     axes[1].set_xlabel(r"Index")
+    axes[1].set_xlim(75, 225)
     axes[1].set_yticks(np.arange(len(labels)))
     axes[1].set_yticklabels(labels, ha='right', fontsize=10)
     axes[1].tick_params(axis='y', pad=10)
     axes[1].grid(True, color='white', axis="x", linestyle="--", alpha=0.5)
     axes[1].spines[['top', 'right', 'left']].set_visible(False)
     axes[1].set_facecolor("#e6ecf2")
+    for tick_label in axes[1].get_yticklabels():
+        if tick_label.get_text() == "DO-HJ-PPO":
+            tick_label.set_fontweight("bold")
+            tick_label.set_fontsize(12)
 
     # Style tweaks to match NeurIPS-style
     for ax in axes:
@@ -130,7 +140,7 @@ def plot_scores(traj_batches, config):
    
     plt.subplots_adjust(hspace=0.8)
 
-    plt.savefig(f"model/{config['TEST_DIR']}/score_plot" + config['PLOT_TAG'], dpi=300)
+    plt.savefig(f"model/{config['TEST_DIR']}/score_plot" + config['PLOT_TAG'], dpi=300, bbox_inches="tight", pad_inches=0.1)
     return fig
 
 def test(envs, env_paramss, config, rngs):
@@ -460,8 +470,8 @@ if __name__ == "__main__":
         config["DIR_DSTL"]="BASELINE_F16_reachreachdecomposed_100M"
         config["DIR_MODEL_DSTL"]="best_143"
 
-        config['TEST_DIR'] = "eval_all_F16RR"
-        config['PLOT_TAG'] = "_052225_cutsamp_newruns6"
+        config['TEST_DIR'] = "eval_all_figs"
+        config['PLOT_TAG'] = "_F16_RR_052825"
 
     config["NUM_ENVS"]=1000
     config["NUM_STEPS"]=200

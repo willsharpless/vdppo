@@ -62,7 +62,7 @@ def plot_scores(traj_batches, config):
         ("CPPO-v3", rr_scores_CPPOv3),
         ("CPPO-v2", rr_scores_CPPOv2),
         ("CPPO-v1", rr_scores_CPPOv1),
-        ("Dec-STL", rr_scores_dSTL),
+        ("DSTL", rr_scores_dSTL),
         ("DO-HJ-PPO", rr_scores_HJPPO_d),
         # ("HJPPO", rr_scores_HJPPO),
     ]
@@ -95,7 +95,7 @@ def plot_scores(traj_batches, config):
 
     # Plotting
     fig, axes = plt.subplots(2, 1, figsize=(7, 4.5), sharex=False)
-    palette = sns.color_palette("deep", n_colors=3)[::-1]
+    palette = sns.color_palette("deep", n_colors=len(rr_scores_all))[::-1]
     colors = {label: color for label, color in zip(labels, palette)}
         
     # Reach percentage bar plot
@@ -106,6 +106,9 @@ def plot_scores(traj_batches, config):
     axes[0].set_xlabel(r"Percentage")
     axes[0].set_yticks(np.arange(len(labels)))
     axes[0].set_yticklabels(labels, ha='right', fontsize=10)
+    # axes[0].set_xticklabels([r'0\%', r'20\%', r'40\%', r'60\%', r'80\%', r'100\%'])
+    # axes[0].set_xticks([0, 0.2, 0.4, 0.6, 0.8, 1.0], labels=[r'$0\%$', r'$20\%$', r'$40\%$', r'$60\%$', r'$80\%$', r'$100\%$'])
+    axes[0].set_xticks([0.75, 0.8, 0.85, 0.9, 0.95, 1.0], labels=[r'$75\%$', r'$80\%$', r'$85\%$', r'$90\%$', r'$95\%$', r'$100\%$'])
     axes[0].tick_params(axis='y', pad=10)  # move labels away from bars
     axes[0].grid(True, color='white', axis="x", linestyle="--", alpha=0.5)
     axes[0].spines[['top', 'right', 'left']].set_visible(False)
@@ -138,7 +141,7 @@ def plot_scores(traj_batches, config):
    
     plt.subplots_adjust(hspace=0.8)
 
-    plt.savefig(f"model/{config['TEST_DIR']}/score_plot_2", dpi=300, bbox_inches="tight", pad_inches=0.1)
+    plt.savefig(f"model/{config['TEST_DIR']}/score_plot" + config['PLOT_TAG'], dpi=300, bbox_inches="tight", pad_inches=0.1)
     return fig
 
 def test(envs, env_paramss, config, rngs):
@@ -399,7 +402,7 @@ def test(envs, env_paramss, config, rngs):
 
     ## MODEL 4 : CPPO : Variant 2
 
-    print("Rolling Out C-PPO (Variant 1)")
+    print("Rolling Out C-PPO (Variant 2)")
     rng_4, _rng_4 = jax.random.split(rng_4)
     reset_rng_4 = jax.random.split(_rng_4, config["NUM_ENVS"])
     obsv_4, env_state_4 = jax.vmap(env_CPPO_v2.reset, in_axes=(0, None))(reset_rng_3, env_params_CPPO_v2)
@@ -463,7 +466,8 @@ if __name__ == "__main__":
         config["DIR_DSTL"]="BASELINE_hopper_reachreach_decomposed"
         config["DIR_MODEL_DSTL"]="best_35"
 
-        config['TEST_DIR'] = "eval_all_HopperRR_2"
+        config['TEST_DIR'] = "eval_all_figs"
+        config['PLOT_TAG'] = "_Hopper_RR_052825"
 
     config["NUM_ENVS"]=1000
     config["NUM_STEPS"]=500

@@ -58,8 +58,8 @@ def plot_scores(traj_batches, config):
     raa_scores_all = [
         ("CPPO", raa_scores_CPPO),
         ("RA", raa_scores_RA),
-        ("HJPPO", raa_scores_HJPPO_d),
-        # ("HJPPO", raa_scores_HJPPO),
+        ("DO-HJ-PPO", raa_scores_HJPPO_d),
+        # ("DO-HJ-PPO", raa_scores_HJPPO),
     ]
 
     # Extract data
@@ -101,10 +101,15 @@ def plot_scores(traj_batches, config):
     axes[0].set_xlabel(r"Percentage")
     axes[0].set_yticks(np.arange(len(labels)))
     axes[0].set_yticklabels(labels, ha='right', fontsize=10)
+    axes[0].set_xticks([0, 0.2, 0.4, 0.6, 0.8, 1.0], labels=[r'$0\%$', r'$20\%$', r'$40\%$', r'$60\%$', r'$80\%$', r'$100\%$'])
     axes[0].tick_params(axis='y', pad=10)  # move labels away from bars
     axes[0].grid(True, color='white', axis="x", linestyle="--", alpha=0.5)
     axes[0].spines[['top', 'right', 'left']].set_visible(False)
     axes[0].set_facecolor("#e6ecf2")
+    for tick_label in axes[0].get_yticklabels():
+        if tick_label.get_text() == "DO-HJ-PPO":
+            tick_label.set_fontweight("bold")
+            tick_label.set_fontsize(12)
 
     # Mean reach index bar plot with error bars
     for i, label in enumerate(labels):
@@ -117,6 +122,10 @@ def plot_scores(traj_batches, config):
     axes[1].grid(True, color='white', axis="x", linestyle="--", alpha=0.5)
     axes[1].spines[['top', 'right', 'left']].set_visible(False)
     axes[1].set_facecolor("#e6ecf2")
+    for tick_label in axes[1].get_yticklabels():
+        if tick_label.get_text() == "DO-HJ-PPO":
+            tick_label.set_fontweight("bold")
+            tick_label.set_fontsize(12)
 
     # Style tweaks to match NeurIPS-style
     for ax in axes:
@@ -125,7 +134,7 @@ def plot_scores(traj_batches, config):
    
     plt.subplots_adjust(hspace=0.8)
 
-    plt.savefig(f"model/{config['TEST_DIR']}/score_plot", dpi=300)
+    plt.savefig(f"model/{config['TEST_DIR']}/score_plot" + config['PLOT_TAG'], dpi=300, bbox_inches="tight", pad_inches=0.1)
     return fig
 
 def test(envs, env_paramss, config, rngs):
@@ -322,7 +331,8 @@ if __name__ == "__main__":
         print(os.path.abspath('model/{}/{}'.format(config["DIR_RA"], config["DIR_MODEL_RA"])))
         print(os.path.exists(os.path.abspath('model/{}/{}'.format(config["DIR_RA"], config["DIR_MODEL_RA"]))))
 
-        config['TEST_DIR'] = "eval_all_HopperRAA_"
+        config['TEST_DIR'] = "eval_all_figs"
+        config['PLOT_TAG'] = "_Hopper_RAA_052825"
 
     config["NUM_ENVS"]=1000
     config["NUM_STEPS"]=500
