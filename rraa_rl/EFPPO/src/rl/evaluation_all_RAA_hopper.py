@@ -134,10 +134,28 @@ def plot_scores(traj_batches, config):
    
     plt.subplots_adjust(hspace=0.8)
 
-    plt.savefig(f"model/{config['TEST_DIR']}/score_plot" + config['PLOT_TAG'], dpi=300, bbox_inches="tight", pad_inches=0.1)
+    plt.savefig(f"model/{config['TEST_DIR']}/{config['NAME_TAG']}/score_plot", dpi=300, bbox_inches="tight", pad_inches=0.1)
     return fig
 
-def test(envs, env_paramss, config, rngs):
+def save_traj(traj_batch, config, tag, sample_size=5):
+    traj_data = {
+        attr: getattr(traj_batch, attr)[:sample_size]
+        for attr in dir(traj_batch)
+        if not callable(getattr(traj_batch, attr)) and not attr.startswith("_") and not attr == 'info'
+    }
+
+    save_path = f"model/{config['TEST_DIR']}/{config['NAME_TAG']}/traj_sample/traj_{tag}" + ".npz"
+    os.makedirs(os.path.dirname(save_path), exist_ok=True)
+    with open(save_path, 'wb') as f:
+        jnp.savez(f, **traj_data)
+    print(f"Trajectory saved to {save_path}")
+
+def load_traj(file_path):
+    with jnp.load(file_path, allow_pickle=False) as traj_data:
+        traj_batch = {key: traj_data[key] for key in traj_data.files}
+    return traj_batch
+
+def test(envs, env_paramss, config, rngs, saving_traj=False):
     rng_1, rng_2, rng_3, rng_4  = rngs
 
     env_HJPPO, env_HJPPO_avoid, env_CPPO, env_RA = envs # COMPOSED (RAA) + 2 DECOMPOSED (R1 + R2)
@@ -264,6 +282,8 @@ def test(envs, env_paramss, config, rngs):
         env_step_HJPPO, runner_state, None, config["NUM_STEPS"]
     )
 
+    if saving_traj: save_traj(traj_batch_HJPPO_d, config, 'DOHJPPO', sample_size=5)
+
     ## MODEL 2 : HJ-PPO : DETERMINISTIC
 
     print("Rolling Out HJ-PPO (Deterministic)")
@@ -296,6 +316,7 @@ def test(envs, env_paramss, config, rngs):
         env_step_CPPO, runner_state, None, config["NUM_STEPS"]
     )
 
+    if saving_traj: save_traj(traj_batch_CPPO, config, 'CPPO', sample_size=5)
 
     ## MODEL 6 : RA
     print("Rolling Out RA (Variant 1)")
@@ -309,6 +330,8 @@ def test(envs, env_paramss, config, rngs):
     runner_state, traj_batch_RA = jax.lax.scan(
         env_step_RA, runner_state, None, config["NUM_STEPS"]
     )
+
+    if saving_traj: save_traj(traj_batch_RA, config, 'RA', sample_size=5)
 
     return traj_batch_HJPPO, traj_batch_HJPPO_d, traj_batch_CPPO, traj_batch_RA
 
@@ -332,7 +355,7 @@ if __name__ == "__main__":
         print(os.path.exists(os.path.abspath('model/{}/{}'.format(config["DIR_RA"], config["DIR_MODEL_RA"]))))
 
         config['TEST_DIR'] = "eval_all_figs"
-        config['PLOT_TAG'] = "_Hopper_RAA_052825"
+        config['NAME_TAG'] = "Hopper_RAA_052825"
 
     config["NUM_ENVS"]=1000
     config["NUM_STEPS"]=500
@@ -373,9 +396,9 @@ if __name__ == "__main__":
     os.environ["XLA_PYTHON_CLIENT_PREALLOCATE"] = "false"
     
     print("\n\nCollecting Trajectories")
-    traj_batches = test(envs, env_paramss, config, rngs)
+    traj_batches = test(envs, env_paramss, config, rngs, saving_traj=True)
 
-    os.makedirs(f"model/{config['TEST_DIR']}", exist_ok=True)
+    os.makedirs(f"model/{config['TEST_DIR']}/{config['NAME_TAG']}", exist_ok=True)
     # val_fig = plot_RR_value(result_traj_batch, result_traj_batch_deterministic, config)
     # traj_fig = plot_traj_sample(result_traj_batch, result_traj_batch_deterministic, config, sample_size=5, make_video=False)
 
