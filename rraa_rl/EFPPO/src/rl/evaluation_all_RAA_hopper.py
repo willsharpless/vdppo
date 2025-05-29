@@ -90,7 +90,7 @@ def plot_scores(traj_batches, config):
 
     # Plotting
     fig, axes = plt.subplots(2, 1, figsize=(7, 4.5), sharex=False)
-    palette = sns.color_palette("deep", n_colors=5)[::-1]
+    palette = sns.color_palette("deep", n_colors=len(raa_scores_all))[::-1]
     colors = {label: color for label, color in zip(labels, palette)}
         
     # Reach percentage bar plot
@@ -282,8 +282,6 @@ def test(envs, env_paramss, config, rngs, saving_traj=False):
         env_step_HJPPO, runner_state, None, config["NUM_STEPS"]
     )
 
-    if saving_traj: save_traj(traj_batch_HJPPO_d, config, 'DOHJPPO', sample_size=5)
-
     ## MODEL 2 : HJ-PPO : DETERMINISTIC
 
     print("Rolling Out HJ-PPO (Deterministic)")
@@ -301,6 +299,8 @@ def test(envs, env_paramss, config, rngs, saving_traj=False):
     runner_state, traj_batch_HJPPO_d = jax.lax.scan(
         env_step_HJPPO_d, runner_state, None, config["NUM_STEPS"]
     )
+
+    if saving_traj: save_traj(traj_batch_HJPPO_d, config, 'DOHJPPO', sample_size=5)
 
     ## MODEL 3 : CPPO : Variant 1
 
@@ -342,19 +342,21 @@ if __name__ == "__main__":
     if debug:
         config["EXP_NAME"]="HopperReachAlwaysAvoid"
 
-        config["DIR_HJPPO"]="hopper_raa_final_nikhil"#"stonkens_models/hopper_reachalwaysavoid"
-        config["DIR_MODEL_HJPPO"]="checkpoint_160"#"best_126"
+        # config["DIR_HJPPO"]="hopper_raa_final_nikhil"#"stonkens_models/hopper_reachalwaysavoid"
+        # config["DIR_MODEL_HJPPO"]="checkpoint_160"#"best_126" # FIXME NIKHIL'S CODE, but where is checkpoint_160?
+        config["DIR_HJPPO"]="BASELINE_hopper_raa_final_nikhil"#"stonkens_models/hopper_reachalwaysavoid"
+        config["DIR_MODEL_HJPPO"]="checkpoint_242"#"best_126"
 
-        config["DIR_CPPO"]="hopper_raa_cppo_0_val100_dones_augmented"
+        config["DIR_CPPO"]="BASELINE_hopper_raa_cppo_0_val100_dones_augmented"
         config["DIR_MODEL_CPPO"]="checkpoint_486"
 
-        config["DIR_RA"]="hopper_reachavoid_final_nikhil" #"stonkens_models/hopper_reachavoid_final"
+        config["DIR_RA"]="BASELINE_hopper_reachavoid_final_nikhil" #"stonkens_models/hopper_reachavoid_final"
         config["DIR_MODEL_RA"]="checkpoint_240" #"best_244"
 
         print(os.path.abspath('model/{}/{}'.format(config["DIR_RA"], config["DIR_MODEL_RA"])))
         print(os.path.exists(os.path.abspath('model/{}/{}'.format(config["DIR_RA"], config["DIR_MODEL_RA"]))))
 
-        config['TEST_DIR'] = "eval_all_figs"
+        config['TEST_DIR'] = "eval_all_firstsub"
         config['NAME_TAG'] = "Hopper_RAA_052825"
 
     config["NUM_ENVS"]=1000
