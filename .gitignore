@@ -16,3 +16,10 @@
 !/rraa_rl/exp/safeCartpole_swingup/PPO
 !/rraa_rl/exp/safeCartpole_swingup/PPO/test
 !/rraa_rl/exp/safeCartpole_swingup/PPO/test/**
+
+# render
+/render/figs/*
+/render/gifs/*
+/render/f16_somefigs_061025/*
+/render/gifs/frames/*
+/render/gifs/wonky_traj_frames/*

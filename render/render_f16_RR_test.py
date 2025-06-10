@@ -1,4 +1,3 @@
-import os
 import sys
 import trimesh
 import numpy as np
@@ -12,7 +11,6 @@ plt.rcParams["text.usetex"] = False
 import jax.numpy as jnp
 from rraa_rl.EFPPO.src.rl.arguments import get_args
 from rraa_rl.EFPPO.src.env.env_list import get_env
-import imageio
 
 def load_mesh(path):
     """
@@ -37,8 +35,7 @@ def set_follow_camera(ax, pos, look_dir=np.array([1, 0, 0]), up=np.array([0, 0, 
     - dist: how far back the camera should be from the jet
     """
     # Offset to follow from behind
-    # pos = (400, 0, 600) # FIXME position fixed for now
-    camera_pos = (400, 0, 600) - look_dir * dist - up * (dist * 0.3)
+    camera_pos = pos - look_dir * dist - up * (dist * 0.3)
 
     # Center the plot around the jet
     span = dist * 2
@@ -84,7 +81,7 @@ def plot_mesh(ax, mesh, pos=(0, 0, 0), euler_angles=(0, 0, 0), scale=1.0, set_fo
         poly = Poly3DCollection([triangle], color='darkgray', edgecolor='k', alpha=alpha, linewidth=0.1)
         ax.add_collection3d(poly)
 
-def draw_targets(ax, setting_type='RR', alpha=0.5, draw_obstacles=True):
+def draw_targets(ax, setting_type='RR',alpha=0.5, draw_obstacles=True):
     """
     Draws target points in the 3D plot.
     
@@ -183,146 +180,16 @@ def load_traj(file_path):
         traj_batch = {key: traj_data[key] for key in traj_data.files}
     return traj_batch
 
-def _draw_f16_scene(position, euler_angles, setting_type, mesh, scale, trail=None, title=None, title2='Body', set_follow_cam=True):
-    fig = plt.figure(dpi=200)
-    gs = gridspec.GridSpec(1, 3)
-    ax = fig.add_subplot(gs[0, :2], projection='3d')
-
-    # Main scene
-    draw_targets(ax, setting_type=setting_type)
-    plot_mesh(ax, mesh, pos=position, euler_angles=euler_angles, scale=scale, set_follow_cam=set_follow_cam)
-
-    # Add trajectory trail (if given)
-    if trail is not None and len(trail) > 1:
-        trail = np.array(trail)
-        ax.plot3D(trail[:, 0], trail[:, 1], trail[:, 2], linestyle='--', color='black', linewidth=0.5, alpha=0.7)
-
-    # CONFIGURE PLOT
-    if setting_type == 'RR':
-        ax.set_xlim(0, 1600)
-        ax.set_ylim(-400, 400)
-        ax.set_zlim(100, 1000)
-        ax.set_xticks([0, 200, 400, 600, 800, 1000, 1200, 1400, 1600])
-        ax.set_xticklabels(['0', '', '', '', '', '', '', '', '1600'])
-        ax.set_yticks([-400, -200, 0, 200, 400])
-        ax.set_yticklabels(['-400', '', '0', '', '400'])
-        ax.set_zticks([100, 300, 500, 700, 900, 1100])
-        ax.set_zticklabels(['100', '', '', '', '', '1100'])
-    elif setting_type == 'RAA':
-        ax.set_xlim(0, 2100)
-        ax.set_ylim(-550, 550)
-        ax.set_zlim(-50, 1000)
-        ax.set_xticks([0, 400, 800, 1200, 1600, 2000])
-        ax.set_xticklabels(['0', '', '', '', '', '2000'])
-        ax.set_yticks([-500, -250, 0, 250, 500])
-        ax.set_yticklabels(['-500', '', '0', '', '500'])
-        ax.set_zticks([0, 200, 400, 600, 800, 1100])
-        ax.set_zticklabels(['0', '', '', '', '', '1100'])
-
-    ax.set_xlabel("Position North")
-    ax.set_ylabel("Position East")
-    ax.set_zlabel("Altitude")
-    ax.zaxis.set_label_coords(-0.5, 0.)
-    ax.set_aspect('equal')
-
-    bg_color = "#e6ecf2"
-    for axis in [ax.xaxis, ax.yaxis, ax.zaxis]:
-        axis.set_pane_color(plt.matplotlib.colors.to_rgba(bg_color))
-        axis._axinfo["grid"]['color'] = (1, 1, 1, 1)
-
-    # Close-up view
-    ax2 = fig.add_subplot(gs[0, 2], projection='3d')
-    plot_mesh(ax2, mesh, pos=position, euler_angles=euler_angles, scale=scale, alpha=1.0, set_follow_cam=set_follow_cam)
-    draw_targets(ax2, setting_type=setting_type, alpha=0.2, draw_obstacles=False)
-    ax2.set_xticklabels([])
-    ax2.set_yticklabels([])
-    ax2.set_zticklabels([])
-    span = 30 * 2
-    ax2.set_xlim(position[0] - span/2, position[0] + span/2)
-    ax2.set_ylim(position[1] - span/2, position[1] + span/2)
-    ax2.set_zlim(position[2] - span/2, position[2] + span/2)
-
-    for axis in [ax2.xaxis, ax2.yaxis, ax2.zaxis]:
-        axis.set_pane_color(plt.matplotlib.colors.to_rgba(bg_color))
-        axis._axinfo["grid"]['color'] = (1, 1, 1, 1)
-
-    ax2.set_title(title2)
-    ax2.set_aspect('equal')
-
-    # FINAL TOUCHES
-    plt.subplots_adjust(left=0.01, right=0.99, top=0.99, bottom=0.01)
-    plt.subplots_adjust(wspace=0.5)
-    plt.suptitle(title, fontsize=20, y=0.95)
-
-    return fig
-
-def render_f16_trajectory_gif(position_traj, angles_traj, setting_type, mesh, scale, output_gif_path, temp_dir="frames", dpi=200, config=None):
-    os.makedirs(temp_dir, exist_ok=True)
-    frame_paths = []
-    print(f"Rendering F16 trajectory GIF to {output_gif_path}...")
-
-    if config is not None and config['ALG'] == 'DOHJPPO':
-        title = r'$\mathtt{F16}$ — RR — $\mathbf{DO\text{-}HJ\text{-}PPO}$'
-    elif config is not None and 'CPPO' in config['ALG']:
-        title = r'$\mathtt{F16}$ — RR — $\mathbf{C\text{-}PPO}$'
-    elif config is not None and 'DSTL' in config['ALG']:
-        title = r'$\mathtt{F16}$ — RR — $\mathbf{D\text{-}STL}$'
-
-    for t in range(len(position_traj)):
-        print(f"Rendering frame {t+1}/{len(position_traj)}")
-        trail = position_traj[:t+1]  # slice up to current time
-        fig = _draw_f16_scene(position_traj[t], angles_traj[t], setting_type, mesh, scale, trail=trail, title=title)
-        frame_path = os.path.join(temp_dir, f"frame_{t:04d}.png")
-        fig.savefig(frame_path, dpi=dpi)
-        plt.close(fig)
-        frame_paths.append(frame_path)
-
-    # Create GIF
-    images = [imageio.v3.imread(fp) for fp in frame_paths]
-    imageio.mimsave(output_gif_path, images, duration=0.05)
-
-    # Optional cleanup
-    for fp in frame_paths:
-        os.remove(fp)
-    os.rmdir(temp_dir)
-
-def render_f16_trajectory_png(position_traj, angles_traj, setting_type, mesh, scale, output_png_path, dpi=200, config=None):
-
-    if config is not None and config['ALG'] == 'DOHJPPO':
-        title = r'$\mathtt{F16}$ — RR — $\mathbf{DO\text{-}HJ\text{-}PPO}$'
-    elif config is not None and 'CPPO' in config['ALG']:
-        title = r'$\mathtt{F16}$ — RR — $\mathbf{C\text{-}PPO}$'
-    elif config is not None and 'DSTL' in config['ALG']:
-        title = r'$\mathtt{F16}$ — RR — $\mathbf{D\text{-}STL}$'
-
-    # Draw final scene with trail
-    t = len(position_traj) - 1
-    trail = position_traj[:t+1]  # slice up to current time
-    fig = _draw_f16_scene(position_traj[t], angles_traj[t], setting_type, mesh, scale, 
-                          trail=trail, title=title, title2='Final Body', set_follow_cam=False)
-    
-    # Draw intermediate scenes on fig
-    ax = fig.axes[0]
-    snapshot_sample_indices = [0, 25, 50, 100, 150]
-    # snapshot_sample_indices = [0, 25, 50, 100]
-    for t in snapshot_sample_indices:
-        plot_mesh(ax, mesh, pos=position_traj[t], euler_angles=angles_traj[t], scale=scale, set_follow_cam=False)
-        
-    fig.savefig(output_png_path, dpi=dpi)
-    plt.close(fig)
-
 if __name__ == "__main__":
 
     ## INIT
-    draw_gif = False
-    sample_index = 0
     config = vars(get_args(sys.argv[1:]))
     config["EXP_NAME"]="F16ReachReach"
+    config["ALG"]="DOHJPPO"
     config["PROBLEM_TYPE"]="RR"
-    config["ALG"]="DSTL"
     setting_type=config['PROBLEM_TYPE']
-    fig_file_name = f"render/gifs/f16_RR_trajectory_render_{config['ALG']}_{sample_index}_view0_{np.random.randint(100000):2d}" #FIXME randint for touch bug
-    traj_batch = load_traj(f"model/eval_all_figs/F16_RR_052825/traj_sample/traj_{config['ALG']}.npz")
+    fig_file_name = f"render/figs/f16_{setting_type}_render_test_load.png"
+    traj_batch = load_traj("model/eval_all_figs/F16_RR_052825_2/traj_sample/traj_DOHJPPO.npz")
 
     path_to_glb = "render/f16-c_falcon.glb"  # Replace with your .glb or .gltf path
     mesh = load_mesh(path_to_glb)
@@ -330,40 +197,94 @@ if __name__ == "__main__":
     model_length = mesh.extents[0]
     scale = true_length / model_length
 
-    envs = get_env(config)
-    env = envs[0]
+    if config["ALG"]=="DOHJPPO":
+        envs = get_env(config)
+        env, _, _ = envs
+    else:
+        env = get_env(config)
+
+    sample_index = 0
+    step_index = 0
 
     # TEST STATE
     # position = np.array([400.0, 0.0, 600.0])  # North, East, Alt
     # euler_angles = (np.deg2rad(0), np.deg2rad(0), np.deg2rad(0))  # pitch, yaw, roll
 
-    # step_index = 0
-    # state_sample_ti = traj_batch['state'][sample_index, step_index, :]
-    # position = np.array([state_sample_ti[env._env.PN], state_sample_ti[env._env.PE], state_sample_ti[env._env.H]])  # North, East, Alt
-    # euler_angles = (state_sample_ti[env._env.THETA], state_sample_ti[env._env.PSI], state_sample_ti[env._env.PHI])  # pitch, yaw, roll
+    state_sample_ti = traj_batch['state'][sample_index, step_index, :]
 
-    render_f16_trajectory_png(
-        position_traj=traj_batch['state'][:, sample_index, [env._env.PN, env._env.PE, env._env.H]],
-        angles_traj=traj_batch['state'][:, sample_index, [env._env.THETA, env._env.PSI, env._env.PHI]],
-        setting_type=setting_type,
-        mesh=mesh,
-        scale=scale,
-        output_png_path=fig_file_name+".png",
-        dpi=200,
-        config=config
-    )
+    position = np.array([state_sample_ti[env._env.PN], state_sample_ti[env._env.PE], state_sample_ti[env._env.H]])  # North, East, Alt
+    euler_angles = (state_sample_ti[env._env.THETA], state_sample_ti[env._env.PSI], state_sample_ti[env._env.PHI])  # pitch, yaw, roll
 
-    if draw_gif:
-        render_f16_trajectory_gif(
-            position_traj=traj_batch['state'][:, sample_index, [env._env.PN, env._env.PE, env._env.H]],
-            angles_traj=traj_batch['state'][:, sample_index, [env._env.THETA, env._env.PSI, env._env.PHI]],
-            setting_type=setting_type,
-            mesh=mesh,
-            scale=scale,
-            output_png_path=fig_file_name+".gif",
-            temp_dir="render/gifs/frames",
-            dpi=200,
-            config=config
-        )
+    fig = plt.figure()
+    # ax = fig.add_subplot(121, projection='3d')
+    gs = gridspec.GridSpec(1, 3)
+    ax = fig.add_subplot(gs[0, :2], projection='3d')
+    # ax.view_init(elev=30, azim=60)
 
-    
+    draw_targets(ax, setting_type=setting_type)
+    plot_mesh(ax, mesh, pos=position, euler_angles=euler_angles, scale=scale, set_follow_cam=True)
+
+    # CONFIGURE PLOT
+    if setting_type == 'RR':
+        # ax.set_title("F-16 Reach-Reach")
+        ax.set_xlim(0, 1600)
+        ax.set_ylim(-400, 400)
+        ax.set_zlim(100, 1000)
+        ax.set_xticks([0, 200, 400, 600, 800, 1000, 1200, 1400, 1600], labels=['0', '', '', '', '', '', '', '', '1600'])
+        ax.set_yticks([-400, 300, -200, -100, 0, 100, 200, 300, 400], labels=['-400', '', '', '', '0', '', '', '', '400'])
+        ax.set_zticks([100, 300, 500, 700, 900, 1100], labels=['100', '', '', '', '', '1100'])
+    elif setting_type == 'RAA':
+        ax.set_xlim(0, 2100)
+        ax.set_ylim(-550, 550)
+        ax.set_zlim(-50, 1000)
+        # ax.set_title("F-16 Reach-Always-Avoid")
+        ax.set_xticks([0, 200, 400, 600, 800, 1000, 1200, 1400, 1600, 1800, 2000], labels=['0', '', '', '', '', '', '', '', '', '', '2000'])
+        ax.set_yticks([-500, -250, 0, 250, 500], labels=['-500', '', '0', '', '500'])
+        ax.set_zticks([0, 200, 400, 600, 800, 1100], labels=['0', '', '', '', '', '1100'])
+    ax.set_xlabel(r"Position North")
+    ax.set_ylabel(r"Position East")
+    ax.set_zlabel(r"Altitude")
+    ax.zaxis.set_label_coords(0.5, -0.1)
+    ax.set_aspect('equal')
+
+    bg_color = "#e6ecf2"
+    ax.xaxis.set_pane_color(plt.matplotlib.colors.to_rgba(bg_color))
+    ax.yaxis.set_pane_color(plt.matplotlib.colors.to_rgba(bg_color))
+    ax.zaxis.set_pane_color(plt.matplotlib.colors.to_rgba(bg_color))
+    ax.xaxis._axinfo["grid"]['color'] =  (1, 1, 1, 1.)  # white, with alpha
+    ax.yaxis._axinfo["grid"]['color'] =  (1, 1, 1, 1.)
+    ax.zaxis._axinfo["grid"]['color'] =  (1, 1, 1, 1.)
+
+    ## CLOSE UP PLOT
+
+    ax = fig.add_subplot(gs[0, 2], projection='3d')
+    # ax.view_init(elev=30, azim=60)
+
+    plot_mesh(ax, mesh, pos=position, euler_angles=euler_angles, scale=scale, alpha=1.0, set_follow_cam=True)
+    draw_targets(ax, setting_type=setting_type, alpha=0.2, draw_obstacles=False)
+
+    ax.set_xticklabels([])
+    ax.set_yticklabels([])
+    ax.set_zticklabels([])
+
+    span = 30 * 2
+    ax.set_xlim(position[0] - span/2, position[0] + span/2)
+    ax.set_ylim(position[1] - span/2, position[1] + span/2)
+    ax.set_zlim(position[2] - span/2, position[2] + span/2)
+
+    bg_color = "#e6ecf2"
+    ax.xaxis.set_pane_color(plt.matplotlib.colors.to_rgba(bg_color))
+    ax.yaxis.set_pane_color(plt.matplotlib.colors.to_rgba(bg_color))
+    ax.zaxis.set_pane_color(plt.matplotlib.colors.to_rgba(bg_color))
+    ax.xaxis._axinfo["grid"]['color'] =  (1, 1, 1, 1)  # white, with alpha
+    ax.yaxis._axinfo["grid"]['color'] =  (1, 1, 1, 1)
+    ax.zaxis._axinfo["grid"]['color'] =  (1, 1, 1, 1)
+
+    ax.set_title('Body')
+    ax.set_aspect('equal')
+
+    ## FINAL TOUCHES ##
+    plt.subplots_adjust(left=0.01, right=0.99, top=0.99, bottom=0.01)
+    plt.subplots_adjust(wspace=0.5)
+    plt.suptitle(r'$\mathtt{F16}$ — RR — $\mathbf{DO\text{-}HJ\text{-}PPO}$', fontsize=20, y=0.95)
+    plt.savefig(fig_file_name, dpi=500)
