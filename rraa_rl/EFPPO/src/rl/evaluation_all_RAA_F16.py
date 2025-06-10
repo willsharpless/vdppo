@@ -144,6 +144,7 @@ def save_traj(traj_batch, config, tag, sample_size=5):
         for attr in dir(traj_batch)
         if not callable(getattr(traj_batch, attr)) and not attr.startswith("_") and not attr == 'info'
     }
+    traj_data['state'] = traj_batch.info["state"][:, :sample_size]
 
     save_path = f"model/{config['TEST_DIR']}/{config['NAME_TAG']}/traj_sample/traj_{tag}" + ".npz"
     os.makedirs(os.path.dirname(save_path), exist_ok=True)

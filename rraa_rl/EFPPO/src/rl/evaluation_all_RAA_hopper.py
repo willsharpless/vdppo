@@ -96,7 +96,7 @@ def plot_scores(traj_batches, config):
     # Reach percentage bar plot
     for i, label in enumerate(labels):
         axes[0].barh(label, reach_avoid_percs[i], color=colors[label])
-    axes[0].set_xlim(0, 1.1)
+    axes[0].set_xlim(0, 1.)
     axes[0].set_title(r"HOPPER-RAA: Success Percentage ($\uparrow$)", fontsize=12)
     axes[0].set_xlabel(r"Percentage")
     axes[0].set_yticks(np.arange(len(labels)))

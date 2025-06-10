@@ -143,12 +143,13 @@ def plot_scores(traj_batches, config):
     plt.savefig(f"model/{config['TEST_DIR']}/{config['NAME_TAG']}/score_plot", dpi=300, bbox_inches="tight", pad_inches=0.1)
     return fig
 
-def save_traj(traj_batch, config, tag, sample_size=5):
+def save_traj(traj_batch, config, tag, sample_size=10):
     traj_data = {
-        attr: getattr(traj_batch, attr)[:sample_size]
+        attr: getattr(traj_batch, attr)[:, :sample_size]
         for attr in dir(traj_batch)
         if not callable(getattr(traj_batch, attr)) and not attr.startswith("_") and not attr == 'info'
     }
+    traj_data['state'] = traj_batch.info["state"][:, :sample_size]
 
     save_path = f"model/{config['TEST_DIR']}/{config['NAME_TAG']}/traj_sample/traj_{tag}" + ".npz"
     os.makedirs(os.path.dirname(save_path), exist_ok=True)
@@ -403,7 +404,7 @@ def test(envs, env_paramss, config, rngs, saving_traj=False):
         env_step_HJPPO_d, runner_state, None, config["NUM_STEPS"]
     )
 
-    if saving_traj: save_traj(traj_batch_HJPPO_d, config, 'DOHJPPO', sample_size=5)
+    if saving_traj: save_traj(traj_batch_HJPPO_d, config, 'DOHJPPO')
 
     ## MODEL 3 : CPPO : Variant 1
 
@@ -419,7 +420,7 @@ def test(envs, env_paramss, config, rngs, saving_traj=False):
         env_step_CPPOv1, runner_state, None, config["NUM_STEPS"]
     )
 
-    if saving_traj: save_traj(traj_batch_CPPOv1, config, 'CPPOv1', sample_size=5)
+    if saving_traj: save_traj(traj_batch_CPPOv1, config, 'CPPOv1')
 
     ## MODEL 4 : CPPO : Variant 2
 
@@ -435,7 +436,7 @@ def test(envs, env_paramss, config, rngs, saving_traj=False):
         env_step_CPPOv2, runner_state, None, config["NUM_STEPS"]
     )
 
-    if saving_traj: save_traj(traj_batch_CPPOv2, config, 'CPPOv2', sample_size=5)
+    if saving_traj: save_traj(traj_batch_CPPOv2, config, 'CPPOv2')
 
     ## MODEL 5 : CPPO : Variant 3
 
@@ -451,7 +452,7 @@ def test(envs, env_paramss, config, rngs, saving_traj=False):
         env_step_CPPOv3, runner_state, None, config["NUM_STEPS"]
     )
 
-    if saving_traj: save_traj(traj_batch_CPPOv3, config, 'CPPOv3', sample_size=5)
+    if saving_traj: save_traj(traj_batch_CPPOv3, config, 'CPPOv3')
 
     ## MODEL 6 : DSTL
 
@@ -467,7 +468,7 @@ def test(envs, env_paramss, config, rngs, saving_traj=False):
         env_step_dSTL, runner_state, None, config["NUM_STEPS"]
     )
 
-    if saving_traj: save_traj(traj_batch_dSTL, config, 'DSTL', sample_size=5)
+    if saving_traj: save_traj(traj_batch_dSTL, config, 'DSTL')
 
     return traj_batch_HJPPO, traj_batch_HJPPO_d, traj_batch_CPPOv1, traj_batch_CPPOv2, traj_batch_CPPOv3, traj_batch_dSTL
 
@@ -567,7 +568,5 @@ if __name__ == "__main__":
     traj_batches = test(envs, env_paramss, config, rngs, saving_traj=True)
 
     os.makedirs(f"model/{config['TEST_DIR']}/{config['NAME_TAG']}", exist_ok=True)
-    # val_fig = plot_RR_value(result_traj_batch, result_traj_batch_deterministic, config)
-    # traj_fig = plot_traj_sample(result_traj_batch, result_traj_batch_deterministic, config, sample_size=5, make_video=False)
 
     score_plot = plot_scores(traj_batches, config)
