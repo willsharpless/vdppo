@@ -146,7 +146,7 @@ def plot_scores(traj_batches, config):
 
 def save_traj(traj_batch, config, tag, sample_size=5):
     traj_data = {
-        attr: getattr(traj_batch, attr)[:sample_size]
+        attr: getattr(traj_batch, attr)[:, :sample_size]
         for attr in dir(traj_batch)
         if not callable(getattr(traj_batch, attr)) and not attr.startswith("_") and not attr == 'info'
     }
