@@ -139,7 +139,7 @@ def plot_scores(traj_batches, config):
 
 def save_traj(traj_batch, config, tag, sample_size=5):
     traj_data = {
-        attr: getattr(traj_batch, attr)[:sample_size]
+        attr: getattr(traj_batch, attr)[:, :sample_size]
         for attr in dir(traj_batch)
         if not callable(getattr(traj_batch, attr)) and not attr.startswith("_") and not attr == 'info'
     }
@@ -356,8 +356,8 @@ if __name__ == "__main__":
         print(os.path.abspath('model/{}/{}'.format(config["DIR_RA"], config["DIR_MODEL_RA"])))
         print(os.path.exists(os.path.abspath('model/{}/{}'.format(config["DIR_RA"], config["DIR_MODEL_RA"]))))
 
-        config['TEST_DIR'] = "eval_all_firstsub"
-        config['NAME_TAG'] = "Hopper_RAA_052825"
+        config['TEST_DIR'] = "eval_all_figs"
+        config['NAME_TAG'] = "Hopper_RAA_061925"
 
     config["NUM_ENVS"]=1000
     config["NUM_STEPS"]=500
