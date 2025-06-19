@@ -262,11 +262,11 @@ def render_f16_trajectory_gif(position_traj, angles_traj, setting_type, mesh, sc
     frame_paths = []
 
     if config is not None and config['ALG'] == 'DOHJPPO':
-        title = r'$\mathtt{F16}$ — RR — $\mathbf{DO\text{-}HJ\text{-}PPO}$'
+        title = r'$\mathtt{F16}$ — RAA — $\mathbf{DO\text{-}HJ\text{-}PPO}$'
     elif config is not None and 'CPPO' in config['ALG']:
-        title = r'$\mathtt{F16}$ — RR — $\mathbf{C\text{-}PPO}$'
+        title = r'$\mathtt{F16}$ — RAA — $\mathbf{C\text{-}PPO}$'
     elif config is not None and 'DSTL' in config['ALG']:
-        title = r'$\mathtt{F16}$ — RR — $\mathbf{D\text{-}STL}$'
+        title = r'$\mathtt{F16}$ — RAA — $\mathbf{D\text{-}STL}$'
 
     for t in range(len(position_traj)):
         trail = position_traj[:t+1]  # slice up to current time
@@ -301,18 +301,18 @@ def render_f16_trajectory_png(position_traj, angles_traj, setting_type, mesh, sc
         title = r'$\mathtt{F16}$ — RA'
 
     # Draw final scene with trail
-    # t = len(position_traj) - 1
-    t=100
+    t = len(position_traj) - 1
+    # t=100
     trail = position_traj[:t+1]  # slice up to current time
     fig = _draw_f16_scene(position_traj[t], angles_traj[t], setting_type, mesh, scale, 
                           trail=trail, title=title, title2='Final Body', set_follow_cam=False)
     
     # Draw intermediate scenes on fig
     ax = fig.axes[0]
-    snapshot_sample_indices = [0] # least-likely to bug
+    # snapshot_sample_indices = [0] # least-likely to bug
     # snapshot_sample_indices = [0, 25, 50] # Runtime Error
     # snapshot_sample_indices = [0, 25, 50] # bugs on t=50 (long bug)
-    # snapshot_sample_indices = [0, 25, 50, 100] # bugs on t=100, AttributeError: module 'matplotlib.image' has no attribute '_tight'
+    snapshot_sample_indices = [0, 25, 50, 100, 150] # bugs on t=100, AttributeError: module 'matplotlib.image' has no attribute '_tight'
     for t in snapshot_sample_indices:
         plot_mesh(ax, mesh, pos=position_traj[t], euler_angles=angles_traj[t], scale=scale, set_follow_cam=False)
         
@@ -324,13 +324,13 @@ if __name__ == "__main__":
 
     ## INIT
     draw_gif = False
-    sample_index = 3
+    sample_index = 0
     config = vars(get_args(sys.argv[1:]))
     config["EXP_NAME"]="F16ReachAlwaysAvoid"
     config["PROBLEM_TYPE"]="RAA"
     # config["EXP_NAME"]="F16ReachReach"
     # config["PROBLEM_TYPE"]="RR"
-    config["ALG"]="CPPO" # 'DOHJPPO', 'CPPO', 'DSTL', 'RA'
+    config["ALG"]="DOHJPPO" # 'DOHJPPO', 'CPPO', 'DSTL', 'RA'
     setting_type=config['PROBLEM_TYPE']
     fig_file_name = f"render/figs/f16_RAA_trajectory_render_{config['ALG']}_seed{sample_index}_{np.random.randint(100000):2d}" #FIXME randint for touch bug
     traj_batch = load_traj(f"model/eval_all_figs/F16_RAA_052825/traj_sample/traj_{config['ALG']}.npz")
