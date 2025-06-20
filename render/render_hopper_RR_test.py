@@ -1,5 +1,6 @@
 import os
 import sys
+import re
 import trimesh
 from copy import deepcopy 
 import numpy as np
@@ -150,6 +151,74 @@ def load_traj(file_path):
 #     fig.savefig(output_png_path, dpi=dpi)
 #     plt.close(fig)
 
+def inject_custom_script(html_str):
+    pattern = r'<script type="module">.*?</script>'
+
+    custom_script = """
+    <script type="module">
+    import * as THREE from 'three';
+    import { Viewer } from 'viewer';
+
+    const domElement = document.getElementById("brax-viewer");
+    const viewer = new Viewer(domElement, system);
+
+    viewer.renderer.setPixelRatio(2);
+    viewer.renderer.setSize(viewer.renderer.domElement.width, viewer.renderer.domElement.height, false);
+    viewer.camera.position.set(0, 5, 1.5);
+
+    const interval = setInterval(() => {
+        if (viewer.scene && viewer.renderer) {
+        const world = viewer.scene.getObjectByName('world');
+        if (world && world.children.length > 0) {
+            const ground = world.children[0];
+            ground.scale.set(100, 100, 100);
+            ground.visible = true;
+            ground.receiveShadow = true;
+
+            const size = 512;
+            const squares = 256;
+            const canvas = document.createElement('canvas');
+            canvas.width = canvas.height = size;
+            const ctx = canvas.getContext('2d');
+            const squareSize = size / squares;
+
+            for (let y = 0; y < squares; y++) {
+            for (let x = 0; x < squares; x++) {
+                ctx.fillStyle = (x + y) % 2 === 0 ? '#ffffff' : '#cccccc';
+                ctx.fillRect(x * squareSize, y * squareSize, squareSize, squareSize);
+            }
+            }
+
+            const texture = new THREE.CanvasTexture(canvas);
+            texture.wrapS = texture.wrapT = THREE.RepeatWrapping;
+            texture.repeat.set(10, 10);
+            texture.minFilter = THREE.LinearFilter;
+            texture.magFilter = THREE.NearestFilter;
+            texture.anisotropy = viewer.renderer.capabilities.getMaxAnisotropy();
+            texture.encoding = THREE.sRGBEncoding;
+            texture.needsUpdate = true;
+            viewer.renderer.outputEncoding = THREE.sRGBEncoding;
+
+            ground.material = new THREE.MeshStandardMaterial({
+            map: texture,
+            color: 0xffffff,
+            metalness: 0.0,
+            roughness: 1.0,
+            side: THREE.DoubleSide,
+            });
+
+            console.log("✔️ Applied checker texture to Brax ground mesh:", ground);
+        }
+
+        clearInterval(interval);
+        }
+    }, 100);
+    </script>
+""".strip()
+
+    modified_html = re.sub(pattern, custom_script, html_str, flags=re.DOTALL)
+    return modified_html
+
 if __name__ == "__main__":
 
     ## INIT
@@ -183,48 +252,30 @@ if __name__ == "__main__":
     html_str = html.render(
         sys=env._env._env.env.env.sys,
         states=[pipeline_state],
-        height=480,  # optional
-        # colab=False  # set True if using Colab
+        height=720,  # optional
     )
-    with open("render/hopper_render_test.html", "w") as f:
+
+    html_str = inject_custom_script(html_str)
+
+    with open("render/hopper_render_test_custom.html", "w") as f:
         f.write(html_str)
 
-    pipeline_states = []
-    for step_i in range(traj_batch['obs'].shape[1]):
-        test_obs = traj_batch['obs'][step_i, sample_index, :]
-        test_obs[1] = test_obs[1] - 1.25
-        qpos = test_obs[:6]
-        qvel = test_obs[6:12]
-        pipeline_state = env._env._env.env.env.pipeline_init(qpos, qvel)
-        pipeline_states.append(pipeline_state)
+    if draw_gif:
+        pipeline_states = []
+        for step_i in range(traj_batch['obs'].shape[0]):
+            test_obs = traj_batch['obs'][step_i, sample_index, :]
+            test_obs[1] = test_obs[1] - 1.25
+            qpos = test_obs[:6]
+            qvel = test_obs[6:12]
+            pipeline_state = env._env._env.env.env.pipeline_init(qpos, qvel)
+            pipeline_states.append(pipeline_state)
 
-    html_str = html.render(
-        sys=env._env._env.env.env.sys,
-        states=pipeline_states,
-        height=480,  # optional
-        # colab=False  # set True if using Colab
-    )
-    with open("render/hopper_render_traj_test.html", "w") as f:
-        f.write(html_str)
-
-    # render_f16_trajectory_png(
-    #     position_traj=traj_batch['state'],
-    #     angles_traj=traj_batch['state'],
-    #     setting_type=config['PROBLEM_TYPE'],
-    #     output_png_path=fig_file_name+".png",
-    #     dpi=200,
-    #     config=config
-    # )
-
-    # if draw_gif:
-    #     render_f16_trajectory_gif(
-    #         position_traj=traj_batch['state'],
-    #         angles_traj=traj_batch['state'],
-    #         setting_type=config['PROBLEM_TYPE'],
-    #         output_png_path=fig_file_name+".gif",
-    #         temp_dir="render/gifs/frames",
-    #         dpi=200,
-    #         config=config
-    #     )
-
-    
+        html_str = html.render(
+            sys=env._env._env.env.env.sys,
+            states=pipeline_states,
+            height=720,  # optional
+            # colab=False  # set True if using Colab
+        )
+        html_str = inject_custom_script(html_str)
+        with open("render/hopper_render_traj_test.html", "w") as f:
+            f.write(html_str)
