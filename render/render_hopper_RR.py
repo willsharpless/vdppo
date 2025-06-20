@@ -164,12 +164,74 @@ def inject_custom_script(html_str):
 
     viewer.renderer.setPixelRatio(2);
     viewer.renderer.setSize(viewer.renderer.domElement.width, viewer.renderer.domElement.height, false);
-    viewer.camera.position.set(0, 5, 1.5);
+    
+    function lockCameraView() {
+      if (!viewer || !viewer.camera || !viewer.controls) return;
+
+      // Custom position and focus point
+      viewer.camera.position.set(0, 2.5, 0.8);
+      viewer.controls.target.set(0, 0, 0.8);
+      viewer.controls.update();
+
+      // Disable interactivity
+      viewer.controls.enabled = false;
+
+      // Re-apply every frame to prevent Brax from resetting
+      requestAnimationFrame(lockCameraView);
+    }
 
     const interval = setInterval(() => {
+
+        // Hide lil-gui controls
+        if (viewer.gui) {
+          document.querySelectorAll('.lil-gui').forEach(el => {
+            el.style.display = 'none';
+          });
+          clearInterval(interval);
+        }
+
+        // Lock camera view
+        if (viewer.scene && viewer.camera && viewer.controls) {
+          lockCameraView();  // Start the persistent enforcement loop
+          clearInterval(interval);
+        }
+
+        // Enforce animator settings
+        const controllers = [...document.querySelectorAll("div.controller")];
+        let followTargetSet = false;
+        let timeScaleSet = false;
+
+        controllers.forEach(div => {
+          const label = div.querySelector(".name");
+          if (!label) return;
+          const labelText = label.textContent.trim();
+
+          // Follow Target (checkbox)
+          if (labelText === "Follow Target") {
+            const checkbox = div.querySelector("input[type='checkbox']");
+            if (checkbox && checkbox.checked) {
+              checkbox.click();  // uncheck it
+              followTargetSet = true;
+            }
+          }
+
+          // timeScale (input numer)
+          if (labelText === "timeScale") {
+            const numberInput = div.querySelector("input[type='number']");
+            if (numberInput && parseFloat(numberInput.value) !== 0.1) {
+              numberInput.value = 0.1;
+              numberInput.dispatchEvent(new Event("input", { bubbles: true }));
+              numberInput.dispatchEvent(new Event("change", { bubbles: true }));
+            }
+          }
+        });
+        clearInterval(interval);
+        
+        // Set checker texture on Brax ground mesh
         if (viewer.scene && viewer.renderer) {
         const world = viewer.scene.getObjectByName('world');
         if (world && world.children.length > 0) {
+
             const ground = world.children[0];
             ground.scale.set(100, 100, 100);
             ground.visible = true;
@@ -206,9 +268,39 @@ def inject_custom_script(html_str):
             roughness: 1.0,
             side: THREE.DoubleSide,
             });
-
-            console.log("✔️ Applied checker texture to Brax ground mesh:", ground);
         }
+
+        // Sphere 1: Blue
+        const blueSphere = new THREE.Mesh(
+          new THREE.SphereGeometry(0.1, 32, 32),
+          new THREE.MeshStandardMaterial({
+            color: 0x0000ff,         // Blue
+            transparent: true,
+            opacity: 0.6,
+            metalness: 0.0,
+            roughness: 0.5,
+          })
+        );
+        blueSphere.position.set(-1.0, 0.0, 1.4);
+        blueSphere.castShadow = true;
+        blueSphere.receiveShadow = true;
+        viewer.scene.add(blueSphere);
+
+        // Sphere 2: Green
+        const greenSphere = new THREE.Mesh(
+          new THREE.SphereGeometry(0.1, 32, 32),
+          new THREE.MeshStandardMaterial({
+            color: 0x00ff00,         // Green
+            transparent: true,
+            opacity: 0.6,
+            metalness: 0.0,
+            roughness: 0.5,
+          })
+        );
+        greenSphere.position.set(1.0, 0.0, 1.4);
+        greenSphere.castShadow = true;
+        greenSphere.receiveShadow = true;
+        viewer.scene.add(greenSphere);
 
         clearInterval(interval);
         }
@@ -222,7 +314,7 @@ def inject_custom_script(html_str):
 if __name__ == "__main__":
 
     ## INIT
-    draw_gif = False
+    draw_gif = True
     sample_index = 0
     config = vars(get_args(sys.argv[1:]))
     config["EXP_NAME"]="HopperReachReach"
@@ -234,35 +326,30 @@ if __name__ == "__main__":
     envs = get_env(config)
     env = envs[0]
 
-    # TEST STATE
-    # position = np.array([400.0, 0.0, 600.0])  # North, East, Alt
-    # euler_angles = (np.deg2rad(0), np.deg2rad(0), np.deg2rad(0))  # pitch, yaw, roll
-
-    step_index = 0
-    # state_sample_ti = traj_batch['state'][sample_index, step_index, :]
-    # position = np.array([state_sample_ti[env._env.PN], state_sample_ti[env._env.PE], state_sample_ti[env._env.H]])  # North, East, Alt
-    # euler_angles = (state_sample_ti[env._env.THETA], state_sample_ti[env._env.PSI], state_sample_ti[env._env.PHI])  # pitch, yaw, roll
-
-    test_obs = traj_batch['obs'][step_index, sample_index, :]
-    test_obs[1] = test_obs[1] - 1.25
-    qpos = test_obs[:6]
-    qvel = test_obs[6:12]
-    pipeline_state = env._env._env.env.env.pipeline_init(qpos, qvel)
+    # # TEST STATE
+    # step_index = 0
+    # test_obs = traj_batch['obs'][step_index, sample_index, :]
+    # test_obs[1] = test_obs[1] - 1.25
+    # qpos = test_obs[:6]
+    # qvel = test_obs[6:12]
+    # pipeline_state = env._env._env.env.env.pipeline_init(qpos, qvel)
     
-    html_str = html.render(
-        sys=env._env._env.env.env.sys,
-        states=[pipeline_state],
-        height=720,  # optional
-    )
+    # html_str = html.render(
+    #     sys=env._env._env.env.env.sys,
+    #     states=[pipeline_state],
+    #     height=720,  # optional
+    # )
 
-    html_str = inject_custom_script(html_str)
+    # html_str = inject_custom_script(html_str)
 
-    with open("render/hopper_render_test_custom.html", "w") as f:
-        f.write(html_str)
+    # with open("render/hopper_render_test.html", "w") as f:
+    #     f.write(html_str)
 
     if draw_gif:
+        
         pipeline_states = []
         for step_i in range(traj_batch['obs'].shape[0]):
+
             test_obs = traj_batch['obs'][step_i, sample_index, :]
             test_obs[1] = test_obs[1] - 1.25
             qpos = test_obs[:6]
@@ -270,12 +357,14 @@ if __name__ == "__main__":
             pipeline_state = env._env._env.env.env.pipeline_init(qpos, qvel)
             pipeline_states.append(pipeline_state)
 
+            if traj_batch['has_reached_1'][step_i, 0] and traj_batch['has_reached_2'][step_i, 0]:
+                break
+
         html_str = html.render(
             sys=env._env._env.env.env.sys,
             states=pipeline_states,
             height=720,  # optional
-            # colab=False  # set True if using Colab
         )
         html_str = inject_custom_script(html_str)
-        with open("render/hopper_render_traj_test.html", "w") as f:
+        with open("render/hopper_render_anim_RR.html", "w") as f:
             f.write(html_str)
