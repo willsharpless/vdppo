@@ -17,6 +17,7 @@ from rraa_rl.EFPPO.src.env.env_list import get_env
 import imageio
 
 from brax.io import html
+from brax.v1.io import html as html1
 
 def load_traj(file_path):
     with jnp.load(file_path, allow_pickle=False) as traj_data:
@@ -314,7 +315,7 @@ def inject_custom_script(html_str):
 if __name__ == "__main__":
 
     ## INIT
-    draw_gif = True
+    draw_gif = False
     sample_index = 0
     config = vars(get_args(sys.argv[1:]))
     config["EXP_NAME"]="HopperReachReach"
@@ -326,7 +327,8 @@ if __name__ == "__main__":
     envs = get_env(config)
     env = envs[0]
 
-    # # TEST STATE
+    ## Render single step
+
     # step_index = 0
     # test_obs = traj_batch['obs'][step_index, sample_index, :]
     # test_obs[1] = test_obs[1] - 1.25
@@ -340,10 +342,50 @@ if __name__ == "__main__":
     #     height=720,  # optional
     # )
 
-    # html_str = inject_custom_script(html_str)
+    ## Render trajectory snapshot
 
-    # with open("render/hopper_render_test.html", "w") as f:
-    #     f.write(html_str)
+    renderer = html1.Renderer(env._env._env.env.env.sys)
+
+    reached_both = traj_batch['has_reached_1'][:, sample_index] * traj_batch['has_reached_2'][:, sample_index]
+    first_reached_both = np.where(reached_both)[0] if np.any(reached_both) else traj_batch['obs'].shape[0] - 1
+    interval = first_reached_both // 5 if first_reached_both > 5 else 1
+
+    default_color = env.sys.link_color
+    default_r, default_g, default_b = default_color[0][0], default_color[0][1], default_color[0][2]
+
+    for step_i in range(traj_batch['obs'].shape[0]):
+        
+        at_interval = step_i % interval == 0 or step_i == first_reached_both
+        if not at_interval or traj_batch['has_reached_1'][step_i, sample_index] or traj_batch['has_reached_2'][step_i, sample_index]:
+            continue
+
+        test_obs = traj_batch['obs'][step_i, sample_index, :]
+        test_obs[1] = test_obs[1] - 1.25
+        qpos = test_obs[:6]
+        qvel = test_obs[6:12]
+        pipeline_state = env._env._env.env.env.pipeline_init(qpos, qvel)
+        # pipeline_states.append(pipeline_state)
+        
+        alpha_range = 0.2  # range for alpha values
+        # alpha_i = 1.0 - alpha_range * (step_i / first_reached_both) # decreasing
+        alpha_i = (1 - alpha_range) + alpha_range * (step_i / first_reached_both) # increasing
+
+        color = (default_r, default_g, default_b, alpha_i)  # blue with decreasing alpha
+        if traj_batch['has_reached_1'][step_i, sample_index]: 
+            color = (0.0, 1.0, 0.0, 1.0)  # green with full alpha
+        elif traj_batch['has_reached_2'][step_i, sample_index]:
+            color = (0.0, 0.0, 1.0, 1.0)  # red with full alpha
+
+        renderer.add(pipeline_state, color=color)
+
+        if traj_batch['has_reached_1'][step_i, sample_index] and traj_batch['has_reached_2'][step_i, sample_index]:
+            break
+
+    html_str = html1.render(renderer.scene)
+    html_str = inject_custom_script(html_str)
+
+    with open("render/hopper_render_test.html", "w") as f:
+        f.write(html_str)
 
     if draw_gif:
         
@@ -357,7 +399,7 @@ if __name__ == "__main__":
             pipeline_state = env._env._env.env.env.pipeline_init(qpos, qvel)
             pipeline_states.append(pipeline_state)
 
-            if traj_batch['has_reached_1'][step_i, 0] and traj_batch['has_reached_2'][step_i, 0]:
+            if traj_batch['has_reached_1'][step_i, sample_index] and traj_batch['has_reached_2'][step_i, sample_index]:
                 break
 
         html_str = html.render(
