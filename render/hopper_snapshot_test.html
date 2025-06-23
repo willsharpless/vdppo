@@ -1,0 +1,107 @@
+<!DOCTYPE html>
+<html>
+
+  <head>
+    <title>Brax visualizer</title>
+    <link rel="shortcut icon" type="image/x-icon" href="/favicon.ico">
+  </head>
+
+  <style>
+    body {
+      margin: 0;
+      padding: 0;
+    }
+
+    #brax-viewer {
+      height: 720px;
+      margin: 0;
+      padding: 0;
+    }
+  </style>
+  <script async src="https://unpkg.com/es-module-shims@1.6.3/dist/es-module-shims.js"></script>
+
+  <script type="importmap">
+    {
+      "imports": {
+        "three": "https://unpkg.com/three@0.150.1/build/three.module.js",
+        "three/addons/": "https://unpkg.com/three@0.150.1/examples/jsm/",
+        "lilgui": "https://cdn.jsdelivr.net/npm/lil-gui@0.18.0/+esm",
+        "viewer": "https://cdn.jsdelivr.net/gh/google/brax@v0.12.3/brax/visualizer/js/viewer.js"
+      }
+    }
+  </script>
+
+  <script src="https://unpkg.com/pako@2.1.0/dist/pako.min.js"></script>
+
+  <script type="application/javascript">
+  var system = "eJzNVctu2kAU/ZXI64Due2a67Qe0UruLoooqDkEFjLCrpo3y770zY4yTZpFFI8VCgO9rzuNiHpruMDQfLh6aYbNr+6E9+A0sAQjqlST5C8guL5r9atd6uvl0GDbdvnn00Haz//Etx3tPXDVDd+y7xuPD3WZ9l79s23X+uO26obmezfjy2w/b5dS67XZ9gfCrO25v8pyHqezzdrVvm9NBm5t7Dy7Q7w9dOdGhXl6c3vL8Y5fpXOE8fk6uv69ql+QYc37P1LDm+82ffOoVlSYaW5H0+jGnK7sn+D6uDv3P7XOE8B8AjvprMhATrXhLCBmRgTCWIGkql1cxqUX5h43P1nFaEAWNYKVxjFGKQEwkFUVlWux7BdMXrVj4cJKCSoCTsiq9L+rP0c2o54V9BXF6bxZzrUno8xjG1dYZsfITfAUzPjNzI8GqVMFQIwrhxAZH+OiPB0TDucWwDBAQLFiCKI5HzqvxYuZNN6DWRNMYk0oq4FOlRVGCCBmfhMoPtX5YDW19JN1XxUY9fBqb+NnMfhz67pzkwCX5IGAyAdGAyg6ilDOxxBA0mrcGneoh16tEZI4KOJVHYk1kRtGJTmJzrjYyD6ZYpM4yOQk/zxgtaKCzxC5TohQY0GV2XXzg9cwdb62e+iw31ZLaeUf9WeBei7tKFALHyZ/ZPssyodvvaMWVMF+5dgE6FY7jJ3EpPIFGbgQzqjD5Klh63uc2gksbaUyNfaTi2yCUEofoe17b5v8pX4+rfX/bHXeN+/j4F0C2lQU=";
+  // decode base64 (convert ascii to binary)
+  system = atob(system);
+  // convert binary string to character-number array
+  system = system.split('').map(function(x){return x.charCodeAt(0);});
+  // decompress
+  system = pako.inflate(system);
+  // convert gunzipped byteArray back to ascii string
+  system = new TextDecoder("utf-8").decode(system);
+  // and load json
+  system = JSON.parse(system);
+  </script>
+
+  <body>
+
+    <div id="brax-viewer"></div>
+
+    
+    <script type="module">
+      import * as THREE from 'three';
+      import { Viewer } from 'viewer';
+
+      const domElement = document.getElementById("brax-viewer");
+      const viewer = new Viewer(domElement, system);
+
+      const poses = [[[0.3641853332519531, 0.0, -0.002596735954284668], [0.36323487758636475, 0.0, -0.20259448885917664], [0.3638235926628113, 0.0, -0.902593731880188], [0.494964063167572, 0.0, -1.251929759979248]], [[0.9632607698440552, 0.0, 1.1838135719299316], [0.9948375821113586, 0.0, 0.9863220453262329], [0.5252407193183899, 0.0, 0.5000848770141602], [0.39022743701934814, 0.0, 0.254862517118454]], [[0.9786498546600342, 0.0, 1.2075281143188477], [0.9919090867042542, 0.0, 1.0079681873321533], [0.5505972504615784, 0.0, 0.48779892921447754], [0.4441331624984741, 0.0, 0.22858530282974243]], [[0.5416995286941528, 0.0, 1.2644420862197876], [0.5625377893447876, 0.0, 1.0655306577682495], [0.5023114681243896, 0.0, 0.392982542514801], [0.545598566532135, 0.0, 0.10603389143943787]], [[0.13044071197509766, 0.0, 1.2858940362930298], [0.15731385350227356, 0.0, 1.0877076387405396], [0.14127804338932037, 0.0, 0.4043557643890381], [0.2147466093301773, 0.0, 0.10324150323867798]], [[-0.31304657459259033, 0.0, 1.2597193717956543], [-0.283824622631073, 0.0, 1.0618656873703003], [-0.27165699005126953, 0.0, 0.37285077571868896], [-0.17935091257095337, 0.0, 0.05577254295349121]], [[-0.7860317826271057, 0.0, 1.253119707107544], [-0.7675099968910217, 0.0, 1.0539791584014893], [-0.7009034156799316, 0.0, 0.3571551442146301], [-0.5264832973480225, 0.0, 0.04309692978858948]], [[-0.8696842193603516, 0.0, 1.2009122371673584], [-0.8323714137077332, 0.0, 1.00442373752594], [-0.6999634504318237, 0.0, 0.3170630931854248], [-0.5355638265609741, 0.0, -0.042528778314590454]]];
+      const rotes = [[[0.9999971985816956, 0.0, 0.002376141492277384, 0.0], [1.0, 0.0, 4.9110036343336105e-05, 0.0], [0.9999992847442627, 0.0, -0.0012658331543207169, 0.0], [0.9999968409538269, 0.0, -0.002546044299378991, 0.0]], [[0.9968594908714294, 0.0, -0.07919073104858398, 0.0], [0.9591237902641296, 0.0, 0.28298690915107727, 0.0], [0.8465349078178406, 0.0, 0.5323333144187927, 0.0], [0.9862527847290039, 0.0, 0.1652439534664154, 0.0]], [[0.9994499087333679, 0.0, -0.033166319131851196, 0.0], [0.9643105268478394, 0.0, 0.2647741436958313, 0.0], [0.8755161166191101, 0.0, 0.48318910598754883, 0.0], [0.9939614534378052, 0.0, 0.10973058640956879, 0.0]], [[0.998638391494751, 0.0, -0.052166640758514404, 0.0], [0.9985478520393372, 0.0, -0.053872499614953995, 0.0], [0.9748438596725464, 0.0, 0.22288937866687775, 0.0], [0.9909396171569824, 0.0, -0.1343083381652832, 0.0]], [[0.9977303743362427, 0.0, -0.06733565032482147, 0.0], [0.9976352453231812, 0.0, -0.06873134523630142, 0.0], [0.987525463104248, 0.0, 0.15745972096920013, 0.0], [0.9916867613792419, 0.0, -0.12867577373981476, 0.0]], [[0.9973134994506836, 0.0, -0.07325167953968048, 0.0], [0.9972359538078308, 0.0, -0.07429992407560349, 0.0], [0.9939650893211365, 0.0, 0.1096968948841095, 0.0], [0.9953100085258484, 0.0, -0.09673653542995453, 0.0]], [[0.9989250898361206, 0.0, -0.04635431617498398, 0.0], [0.9988723993301392, 0.0, -0.04747550189495087, 0.0], [0.9988517165184021, 0.0, -0.04790855571627617, 0.0], [0.9923938512802124, 0.0, -0.12310332804918289, 0.0]], [[0.9956010580062866, 0.0, -0.09369419515132904, 0.0], [0.9953835606575012, 0.0, -0.09597747027873993, 0.0], [0.995641827583313, 0.0, -0.09326053410768509, 0.0], [0.9984234571456909, 0.0, 0.05612979829311371, 0.0]]];
+      const reachs = [{"reached1": 0, "reached2": 0}, {"reached1": 1, "reached2": 0}, {"reached1": 1, "reached2": 0}, {"reached1": 1, "reached2": 0}, {"reached1": 1, "reached2": 0}, {"reached1": 1, "reached2": 0}, {"reached1": 1, "reached2": 0}, {"reached1": 1, "reached2": 1}];
+      const alphas = [{"alpha": 0.19999999999999996}, {"alpha": 0.3467455621301775}, {"alpha": 0.3562130177514793}, {"alpha": 0.5124260355029586}, {"alpha": 0.6686390532544378}, {"alpha": 0.8248520710059172}, {"alpha": 0.9810650887573964}, {"alpha": 1.0}];
+
+      const interval = setInterval(() => {
+        if (!viewer.scene || !viewer.renderer || !viewer.camera || !viewer.controls) return;
+
+        // Step 1: Locate original body parts by filtering visible mesh objects
+        const originalBodyMeshes = viewer.scene.children.filter(obj =>
+          obj.type === 'Mesh' && obj.name !== 'ground' && obj.visible
+        );
+        console.log('originalBodyMeshes', originalBodyMeshes)
+
+        // Step 2: Create transparent clones for each timestep
+        for (let t = 0; t < poses.length; t++) {
+          const pose_t = poses[t];
+          const rot_t = rotes[t];
+
+          for (let j = 0; j < pose_t.length; j++) {
+            if (!originalBodyMeshes[j]) continue;
+
+            const clone = originalBodyMeshes[j].clone();
+            clone.position.fromArray(pose_t[j]);
+            clone.quaternion.fromArray(rot_t[j]);
+
+            // Set transparent material
+            clone.material = clone.material.clone();
+            clone.material.transparent = true;
+            clone.material.opacity = alphas[t];  // adjust for fading effect
+
+            // Optional: prevent z-fighting / sorting issues
+            clone.renderOrder = t;
+
+            viewer.scene.add(clone);
+          }
+        }
+
+        clearInterval(interval);
+      }, 100);
+    </script>
+    
+
+  </body>
+
+</html>
