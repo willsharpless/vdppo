@@ -48,8 +48,6 @@ class EnvStateR1:
     time: int = 0
     reach1: float = 0.
 
-
-
 @struct.dataclass
 class EnvStateR2:
     state: jax.Array = struct.field(default_factory=jax.Array)

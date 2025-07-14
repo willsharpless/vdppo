@@ -6,6 +6,7 @@ from .reach_avoid.hopper_avoid_ceiling import HopperReachReach, HopperReachReach
     HopperAvoidOnly, HopperReachAvoid
 from .reach_avoid.wind_field import WindField
 from .reach_avoid.half_cheetah_avoid import HalfCheetahAvoid, HalfCheetahAvoidDeterministic
+from .reach_avoid.half_cheetah_RAA import HalfCheetahReachAvoid, HalfCheetahAvoidOnly
 from .reach_avoid.safety_gym_avoid import PointAvoid
 from .baseline.pendulum_constraint_baseline import PendulumConstraintBaseline
 from .baseline.hopper_avoid_ceiling_baseline import HopperAvoidCeilingBaseline, HopperReachAlwaysAvoidBaseline_augmented, HopperReachReachBaseline_augmented_max, \
@@ -285,7 +286,6 @@ def get_env(config):
         trans = partial(transform_observation, vec1, vec2)
         env = HopperAvoidCeilingWallEnergyDeterministic()
         env = TransformObservation(env, trans)
-    # TODO DEFINE OTHERS
     elif config["EXP_NAME"] == 'HalfCheetahAvoid':
         vec1 = jnp.zeros(20, dtype=jnp.float32)
         vec1 = vec1.at[0].set(2.5)
@@ -296,6 +296,28 @@ def get_env(config):
         trans = partial(transform_observation, vec1, vec2)
         env = HalfCheetahAvoid()
         env = TransformObservation(env, trans)
+
+    elif config["EXP_NAME"] == "HalfCheetahReachAlwaysAvoid": 
+        vec1 = jnp.zeros(20, dtype=jnp.float32)
+        vec1 = vec1.at[0].set(2.5)
+        vec1 = vec1.at[-1].set(80.)
+        vec1 = vec1.at[-2].set(80.)
+        vec2 = jnp.ones(20, dtype=jnp.float32)
+        vec2 = vec2.at[0].set(3.)
+        vec2 = vec2.at[-1].set(80.)
+        vec2 = vec2.at[-2].set(80.)
+        trans = partial(transform_observation, vec1, vec2)
+        untrans = partial(untransform_observation, vec1, vec2)
+
+        env = HalfCheetahReachAvoid()
+        env_avoid = HalfCheetahAvoidOnly() 
+        env = TransformObservation(env, trans)
+        env_avoid = TransformObservation(env_avoid, trans)
+
+        env.set_untransform_obs(untrans)
+        env_avoid.set_untransform_obs(untrans)
+        return (env, env_avoid)
+    
     elif config["EXP_NAME"] == 'WindField':
         vec1 = jnp.zeros(14, dtype=jnp.float32)
         vec1 = vec1.at[-1].set(400.)
