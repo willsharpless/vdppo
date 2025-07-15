@@ -398,6 +398,12 @@ def train(envs, env_paramss, config, rngs, env_test=None):
         info = tree_index2(traj_batch.info, idx)
         info_avoid = tree_index2(traj_batch_avoid.info, idx)
 
+        ## FIXME 07/15/2025
+        # why does info['reach_index'] == info['avoid_index'] == 0?
+        # why is traj_batch.reach[:, 0] boolean but traj_batch.avoid[:, 0] is (positive) value?
+        # also seems like avoid value should be negative initially?
+        ## FIXME
+
         cnt_never_reached, cnt_crashed, cnt_crash_after_reach = calculate_reach_avoid_stats(traj_batch)
         (reach_perc, crash_perc, reach_avoid_perc) = calculate_reachavoid(traj_batch)
 
@@ -466,7 +472,7 @@ def train(envs, env_paramss, config, rngs, env_test=None):
                         # 'trajectory_sample_R1':wandb.Image(fig1), 'trajectory_sample_R2':wandb.Image(fig2)
                     }, step=timestep)
             
-            if "Hopper" in config["EXP_NAME"]:
+            if "Hopper" in config["EXP_NAME"] or "HalfCheetah" in config["EXP_NAME"]:
                 wandb.log({
                     'trajectory_sample':wandb.Image(fig),
                     'policy_decision_sample':wandb.Image(fig2),
@@ -475,8 +481,8 @@ def train(envs, env_paramss, config, rngs, env_test=None):
         # Save video of trajectory 
         if "Hopper" in config["EXP_NAME"] or "HalfCheetah" in config["EXP_NAME"]:
             video_freq = 25 #25 
-            save_video = config["USE_WANDB"] #True 
-            # save_video = True #FIXME
+            # save_video = config["USE_WANDB"] #True 
+            save_video = True #FIXME
             if timestep % video_freq == 0 or timestep == total_timesteps - 1: 
                 video_frames = plot_video_contour_RRAA((info, info_avoid), timestep, config, save_video=save_video, log_wandb=config["USE_WANDB"])
                 # wandb.log({"trajectory_video": wandb.Video(np.array(video_frames), fps=10, format="mp4")})
