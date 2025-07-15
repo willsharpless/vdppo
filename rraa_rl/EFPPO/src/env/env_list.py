@@ -300,12 +300,12 @@ def get_env(config):
     elif config["EXP_NAME"] == "HalfCheetahReachAlwaysAvoid": 
         vec1 = jnp.zeros(20, dtype=jnp.float32)
         vec1 = vec1.at[0].set(2.5)
-        vec1 = vec1.at[-1].set(80.)
-        vec1 = vec1.at[-2].set(80.)
+        # vec1 = vec1.at[-1].set(0.)
+        # vec1 = vec1.at[-2].set(0.)
         vec2 = jnp.ones(20, dtype=jnp.float32)
         vec2 = vec2.at[0].set(3.)
-        vec2 = vec2.at[-1].set(80.)
-        vec2 = vec2.at[-2].set(80.)
+        # vec2 = vec2.at[-1].set(1.)
+        # vec2 = vec2.at[-2].set(1.)
         trans = partial(transform_observation, vec1, vec2)
         untrans = partial(untransform_observation, vec1, vec2)
 

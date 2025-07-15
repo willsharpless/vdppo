@@ -1184,7 +1184,7 @@ def plot_video_contour_RRAA(multi_info, epoch, config, save_video=False, prefix=
                 ax.plot(np.array([info['head_pos'][i, 0], info['neck_pos'][i, 0]]),
                         np.array([info['head_pos'][i, 1], info['neck_pos'][i, 1]]), c=c1, alpha=alpha, linewidth=linewidth)
                 ax.plot(np.array([info['neck_pos'][i, 0], info['back_pos'][i, 0]]),
-                        np.array([info['neck_pos'][i, 1], info['back_pos'][i, 1]]), c=c2, alpha=alpha)
+                        np.array([info['neck_pos'][i, 1], info['back_pos'][i, 1]]), c=c2, alpha=alpha, linewidth=linewidth)
                 ax.plot(np.array([info['neck_pos'][i, 0], info['front_thigh_pos'][i, 0]]),
                         np.array([info['neck_pos'][i, 1], info['front_thigh_pos'][i, 1]]), c=c3, alpha=alpha, linewidth=linewidth)
                 ax.plot(np.array([info['front_thigh_pos'][i, 0], info['front_shin_pos'][i, 0]]),
