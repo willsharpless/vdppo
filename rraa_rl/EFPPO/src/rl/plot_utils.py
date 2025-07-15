@@ -766,6 +766,104 @@ def plot_contour_RRAA(multi_info, epoch, config, policy_decision_sample=None):
         plt.savefig('model/{}/reach/trajectory_{:0>4d}'.format(config["DIR"], epoch), dpi=300)
         return fig
     
+    elif 'HalfCheetah' in config['EXP_NAME'] and 'Avoid' in config['EXP_NAME']: 
+        
+        
+        info, info_avoid = multi_info 
+        plt.figure(figsize=(12, 6*2))
+        fig, axes = plt.subplots(2, 1)
+
+        def draw_cheetah_raa(info, title, ax):
+            reach_idx = info.get('reach_index')
+            avoid_idx = info.get('avoid_index')
+            full_len = info['head_pos'].shape[0]
+
+            # Plot Reach  
+            draw_target = plt.Rectangle((3.25, -0.7), 0.5, 5., fill=False)
+
+            # Plot Avoid
+            draw_rectangle = plt.Rectangle((2., -0.7), 1., 0.25, facecolor="red", fill=True)
+            draw_rectangle2 = plt.Rectangle((4., -0.7), 1., 0.25, facecolor="red", fill=True)
+
+            ax.add_patch(draw_target)
+            ax.add_patch(draw_rectangle)
+            ax.add_patch(draw_rectangle2)
+
+            indices = np.linspace(0, full_len, 11, dtype=int)
+            for step_n, i in enumerate(indices):
+                alpha = (step_n + 1) / 11 
+                # Plot Cheetah Body 
+                ax.plot(np.array([info['head_pos'][i, 0], info['neck_pos'][i, 0]]),
+                        np.array([info['head_pos'][i, 1], info['neck_pos'][i, 1]]), c='r', alpha=alpha)
+                ax.plot(np.array([info['neck_pos'][i, 0], info['back_pos'][i, 0]]),
+                        np.array([info['neck_pos'][i, 1], info['back_pos'][i, 1]]), c='g', alpha=alpha)
+                ax.plot(np.array([info['neck_pos'][i, 0], info['front_thigh_pos'][i, 0]]),
+                        np.array([info['neck_pos'][i, 1], info['front_thigh_pos'][i, 1]]), c='m', alpha=alpha)
+                ax.plot(np.array([info['front_thigh_pos'][i, 0], info['front_shin_pos'][i, 0]]),
+                        np.array([info['front_thigh_pos'][i, 1], info['front_shin_pos'][i, 1]]), c='g', alpha=alpha)
+                ax.plot(np.array([info['front_foot_pos'][i, 0], info['front_shin_pos'][i, 0]]),
+                        np.array([info['front_foot_pos'][i, 1], info['front_shin_pos'][i, 1]]), c='r', alpha=alpha)
+                ax.plot(np.array([info['back_pos'][i, 0], info['back_thigh_pos'][i, 0]]),
+                        np.array([info['back_pos'][i, 1], info['back_thigh_pos'][i, 1]]), c='m', alpha=alpha)
+                ax.plot(np.array([info['back_thigh_pos'][i, 0], info['back_shin_pos'][i, 0]]),
+                        np.array([info['back_thigh_pos'][i, 1], info['back_shin_pos'][i, 1]]), c='g', alpha=alpha)
+                ax.plot(np.array([info['back_foot_pos'][i, 0], info['back_shin_pos'][i, 0]]),
+                        np.array([info['back_foot_pos'][i, 1], info['back_shin_pos'][i, 1]]), c='r', alpha=alpha)
+                
+            # Plot First Reach in Green 
+            if reach_idx is not None and reach_idx > 0:
+                i = reach_idx
+                ax.plot(np.array([info['head_pos'][i, 0], info['neck_pos'][i, 0]]),
+                        np.array([info['head_pos'][i, 1], info['neck_pos'][i, 1]]), c='g', linewidth=4)
+                ax.plot(np.array([info['neck_pos'][i, 0], info['back_pos'][i, 0]]),
+                        np.array([info['neck_pos'][i, 1], info['back_pos'][i, 1]]), c='g', linewidth=4)
+                ax.plot(np.array([info['neck_pos'][i, 0], info['front_thigh_pos'][i, 0]]),
+                        np.array([info['neck_pos'][i, 1], info['front_thigh_pos'][i, 1]]), c='g', linewidth=4)
+                ax.plot(np.array([info['front_thigh_pos'][i, 0], info['front_shin_pos'][i, 0]]),
+                        np.array([info['front_thigh_pos'][i, 1], info['front_shin_pos'][i, 1]]), c='g', linewidth=4)
+                ax.plot(np.array([info['front_foot_pos'][i, 0], info['front_shin_pos'][i, 0]]),
+                        np.array([info['front_foot_pos'][i, 1], info['front_shin_pos'][i, 1]]), c='g', linewidth=4)
+                ax.plot(np.array([info['back_pos'][i, 0], info['back_thigh_pos'][i, 0]]),
+                        np.array([info['back_pos'][i, 1], info['back_thigh_pos'][i, 1]]), c='g')
+                ax.plot(np.array([info['back_thigh_pos'][i, 0], info['back_shin_pos'][i, 0]]),
+                        np.array([info['back_thigh_pos'][i, 1], info['back_shin_pos'][i, 1]]), c='g', linewidth=4)
+                ax.plot(np.array([info['back_foot_pos'][i, 0], info['back_shin_pos'][i, 0]]),
+                        np.array([info['back_foot_pos'][i, 1], info['back_shin_pos'][i, 1]]), c='g', linewidth=4)
+            
+            # Plot Avoid Violation in Red
+            if avoid_idx is not None and avoid_idx > 0: 
+                i = avoid_idx
+                ax.plot(np.array([info['head_pos'][i, 0], info['neck_pos'][i, 0]]),
+                        np.array([info['head_pos'][i, 1], info['neck_pos'][i, 1]]), c='r', linewidth=4)
+                ax.plot(np.array([info['neck_pos'][i, 0], info['back_pos'][i, 0]]),
+                        np.array([info['neck_pos'][i, 1], info['back_pos'][i, 1]]), c='r', linewidth=4)
+                ax.plot(np.array([info['neck_pos'][i, 0], info['front_thigh_pos'][i, 0]]),
+                        np.array([info['neck_pos'][i, 1], info['front_thigh_pos'][i, 1]]), c='r', linewidth=4)
+                ax.plot(np.array([info['front_thigh_pos'][i, 0], info['front_shin_pos'][i, 0]]),
+                        np.array([info['front_thigh_pos'][i, 1], info['front_shin_pos'][i, 1]]), c='r', linewidth=4)
+                ax.plot(np.array([info['front_foot_pos'][i, 0], info['front_shin_pos'][i, 0]]),
+                        np.array([info['front_foot_pos'][i, 1], info['front_shin_pos'][i, 1]]), c='r', linewidth=4)
+                ax.plot(np.array([info['back_pos'][i, 0], info['back_thigh_pos'][i, 0]]),
+                        np.array([info['back_pos'][i, 1], info['back_thigh_pos'][i, 1]]), c='r')
+                ax.plot(np.array([info['back_thigh_pos'][i, 0], info['back_shin_pos'][i, 0]]),
+                        np.array([info['back_thigh_pos'][i, 1], info['back_shin_pos'][i, 1]]), c='r', linewidth=4)
+                ax.plot(np.array([info['back_foot_pos'][i, 0], info['back_shin_pos'][i, 0]]),
+                        np.array([info['back_foot_pos'][i, 1], info['back_shin_pos'][i, 1]]), c='r', linewidth=4)
+            
+            ax.set_xlim((-0.5, 5.5))
+            ax.set_ylim((-0.7, 1.3))
+            ax.set_aspect('equal')
+
+            ax.set_title(title)
+
+        # Draw Reach Avoid and Avoid Only 
+        draw_cheetah_raa(info, "Reach Avoid", axes[0])
+        if config['EXP_NAME'] == 'HopperReachAlwaysAvoid':
+            draw_cheetah_raa(info_avoid, "Avoid Only", axes[1])
+
+        plt.savefig('model/{}/reach/trajectory_{:0>4d}'.format(config["DIR"], epoch), dpi=300)
+        return fig
+    
     elif config['EXP_NAME'] == 'F16ReachReach' or config['EXP_NAME'] == 'F16ReachAlwaysAvoid':
         
         if config['EXP_NAME'] == 'F16ReachReach':
@@ -947,31 +1045,8 @@ def plot_video_contour_RRAA(multi_info, epoch, config, save_video=False, prefix=
             
             plt.close(fig)
             plt.close("all")
-        
-
-        # Save frames as a video using PIL - don't do this in general
-        frames = [Image.fromarray(frame) for frame in frames]
-        if save_video: 
-            # video_path = 'model/{}/reach/trajectory_{:0>4d}.mp4'.format(config["DIR"], epoch)
-            # frames[0].save(video_path, save_all=True, append_images=frames[1:], duration=100, loop=0)
-            # mod prefix from / to _
-            prefix_underscore = prefix.replace("/", "_")
-            video_path = 'model/{}/reach/trajectory_{}{:0>4d}.mp4'.format(config["DIR"], prefix_underscore, epoch)
-            print("\n\nSaving video to: ", video_path)
-            imageio.mimsave(video_path, frames, fps=30)
-            if log_wandb: 
-                wandb_name = f"{prefix}trajectory video"
-                print("Logging video to wandb: ", wandb_name)
-                try: 
-                    wandb.log({wandb_name: wandb.Video(video_path, format="mp4")}, step=epoch)
-                except: 
-                    print("Error logging video to wandb")
-
-        end_time = time()
-        print("Time taken to plot and push video: ", end_time - start_time)
-        return frames
     
-    if config['EXP_NAME'] == 'HopperReachReach' \
+    elif config['EXP_NAME'] == 'HopperReachReach' \
         or config["EXP_NAME"] == 'HopperReachReach_max_CPPO' \
         or config["EXP_NAME"] == 'HopperReachReach_sum_CPPO'\
         or config['EXP_NAME'] == 'HopperReachReach_separated_CPPO':
@@ -1070,25 +1145,111 @@ def plot_video_contour_RRAA(multi_info, epoch, config, save_video=False, prefix=
             
             plt.close(fig)
             plt.close("all")
+
+    elif 'HalfCheetah' in config['EXP_NAME'] and 'Avoid' in config['EXP_NAME']:
         
-        # Save frames as a video using PIL - don't do this in general
-        frames = [Image.fromarray(frame) for frame in frames]
-        if save_video: 
-            # video_path = 'model/{}/reach/trajectory_{:0>4d}.mp4'.format(config["DIR"], epoch)
-            # frames[0].save(video_path, save_all=True, append_images=frames[1:], duration=100, loop=0)
-            # mod prefix from / to _
-            prefix_underscore = prefix.replace("/", "_")
-            video_path = 'model/{}/reach/trajectory_{}{:0>4d}.mp4'.format(config["DIR"], prefix_underscore, epoch)
-            print("\n\nSaving video to: ", video_path)
-            imageio.mimsave(video_path, frames, fps=30)
-            if log_wandb: 
-                wandb_name = f"{prefix}trajectory video"
-                print("Logging video to wandb: ", wandb_name)
-                try:
-                    wandb.log({wandb_name: wandb.Video(video_path, format="mp4")}, step=epoch)
-                except: 
-                    print("Error logging video to wandb")
-                    
-        end_time = time()
-        print("Time taken to plot and push video: ", end_time - start_time)
-        return frames
+        info, info_avoid = multi_info 
+
+        def draw_cheetah_raa(step, info, title, ax):
+            reach_idx = info.get('reach_index')
+            avoid_idx = info.get('avoid_index')
+
+            # Plot Reach  
+            draw_target = plt.Rectangle((3.25, -0.7), 0.5, 5., fill=False)
+
+            # Plot Avoid
+            draw_rectangle = plt.Rectangle((2., -0.7), 1., 0.25, facecolor="red", fill=True)
+            draw_rectangle2 = plt.Rectangle((4., -0.7), 1., 0.25, facecolor="red", fill=True)
+
+            ax.add_patch(draw_target)
+            ax.add_patch(draw_rectangle)
+            ax.add_patch(draw_rectangle2)
+
+            # indices = np.linspace(0, full_len, 11, dtype=int)
+            # for step_n, i in enumerate(indices):
+
+            def draw_body(ax, info, i, alpha, color_mode="normal"):
+                
+                if color_mode == "R":
+                    c1, c2, c3, c4, c5, c6, c7, c8 = 'g', 'g', 'g', 'g', 'g', 'g', 'g', 'g'
+                    linewidth=3
+                elif color_mode == "A":
+                    c1, c2, c3, c4, c5, c6, c7, c8 = 'r', 'r', 'r', 'r', 'r', 'r', 'r', 'r'
+                    linewidth=3
+                else:
+                    c1, c2, c3, c4, c5, c6, c7, c8 = 'r', 'g', 'm', 'g', 'r', 'm', 'g', 'r'
+                    linewidth=1
+
+                # Plot Cheetah Body 
+                ax.plot(np.array([info['head_pos'][i, 0], info['neck_pos'][i, 0]]),
+                        np.array([info['head_pos'][i, 1], info['neck_pos'][i, 1]]), c=c1, alpha=alpha, linewidth=linewidth)
+                ax.plot(np.array([info['neck_pos'][i, 0], info['back_pos'][i, 0]]),
+                        np.array([info['neck_pos'][i, 1], info['back_pos'][i, 1]]), c=c2, alpha=alpha)
+                ax.plot(np.array([info['neck_pos'][i, 0], info['front_thigh_pos'][i, 0]]),
+                        np.array([info['neck_pos'][i, 1], info['front_thigh_pos'][i, 1]]), c=c3, alpha=alpha, linewidth=linewidth)
+                ax.plot(np.array([info['front_thigh_pos'][i, 0], info['front_shin_pos'][i, 0]]),
+                        np.array([info['front_thigh_pos'][i, 1], info['front_shin_pos'][i, 1]]), c=c4, alpha=alpha, linewidth=linewidth)
+                ax.plot(np.array([info['front_foot_pos'][i, 0], info['front_shin_pos'][i, 0]]),
+                        np.array([info['front_foot_pos'][i, 1], info['front_shin_pos'][i, 1]]), c=c5, alpha=alpha, linewidth=linewidth)
+                ax.plot(np.array([info['back_pos'][i, 0], info['back_thigh_pos'][i, 0]]),
+                        np.array([info['back_pos'][i, 1], info['back_thigh_pos'][i, 1]]), c=c6, alpha=alpha, linewidth=linewidth)
+                ax.plot(np.array([info['back_thigh_pos'][i, 0], info['back_shin_pos'][i, 0]]),
+                        np.array([info['back_thigh_pos'][i, 1], info['back_shin_pos'][i, 1]]), c=c7, alpha=alpha, linewidth=linewidth)
+                ax.plot(np.array([info['back_foot_pos'][i, 0], info['back_shin_pos'][i, 0]]),
+                        np.array([info['back_foot_pos'][i, 1], info['back_shin_pos'][i, 1]]), c=c8, alpha=alpha, linewidth=linewidth)
+               
+            draw_body(ax, info, step, 0.9)
+
+            if reach_idx is not None and step >= reach_idx:
+                draw_body(ax, info, reach_idx_1, 0.9, color_mode = "R")
+
+            if avoid_idx is not None and step >= avoid_idx:
+                draw_body(ax, info, reach_idx_2, 0.9, color_mode = "A")
+            
+            ax.set_xlim((-0.5, 5.5))
+            ax.set_ylim((-0.7, 1.3))
+            ax.set_aspect('equal')
+
+            ax.set_title(title)
+
+        frames = []
+        full_len = info['head_pos'].shape[0]
+        num_frames = full_len//2
+        indices = np.linspace(0, full_len, num_frames, dtype=int)
+        for step_n in indices: 
+            # plt.figure(figsize=(12, 6*2))
+            fig, axes = plt.subplots(2, 1, figsize=(4, 4), dpi=100)  # Smaller and square figure
+            draw_cheetah_raa(step_n, info, "Reach Avoid", axes[0])
+            if config['EXP_NAME'] == 'HalfCheetahReachAlwaysAvoid':
+                draw_cheetah_raa(step_n, info_avoid, "Avoid Only", axes[1])
+            
+            # Render the figure to an image (smaller size)
+            fig.canvas.draw()
+            frame = np.frombuffer(fig.canvas.buffer_rgba(), dtype=np.uint8)
+            frame = frame.reshape(fig.canvas.get_width_height()[::-1] + (4,))  # RGBA (4 channels)
+            frames.append(frame)
+            
+            plt.close(fig)
+            plt.close("all")
+        
+    # Save frames as a video using PIL - don't do this in general
+    frames = [Image.fromarray(frame) for frame in frames]
+    if save_video: 
+        # video_path = 'model/{}/reach/trajectory_{:0>4d}.mp4'.format(config["DIR"], epoch)
+        # frames[0].save(video_path, save_all=True, append_images=frames[1:], duration=100, loop=0)
+        # mod prefix from / to _
+        prefix_underscore = prefix.replace("/", "_")
+        video_path = 'model/{}/reach/trajectory_{}{:0>4d}.mp4'.format(config["DIR"], prefix_underscore, epoch)
+        print("\n\nSaving video to: ", video_path)
+        imageio.mimsave(video_path, frames, fps=30)
+        if log_wandb: 
+            wandb_name = f"{prefix}trajectory video"
+            print("Logging video to wandb: ", wandb_name)
+            try:
+                wandb.log({wandb_name: wandb.Video(video_path, format="mp4")}, step=epoch)
+            except: 
+                print("Error logging video to wandb")
+                
+    end_time = time()
+    print("Time taken to plot and push video: ", end_time - start_time)
+    return frames

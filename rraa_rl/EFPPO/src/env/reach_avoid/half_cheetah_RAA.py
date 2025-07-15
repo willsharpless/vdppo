@@ -8,17 +8,17 @@ from brax.envs.base import State
 from .half_cheetah_random import HalfCheetahRandom
 from .half_cheetah_deterministic import HalfCheetahDeterministic
 
-@struct.dataclass
-class EnvState:
-    state: State
-    energy: float
-    reach: float
-    avoid: int
+# @struct.dataclass
+# class EnvState:
+#     state: State
+#     energy: float
+#     reach: float
+#     avoid: int
 
-@struct.dataclass
-class EnvParams:
-    min_energy: float = -400.0
-    max_energy: float = 800.0
+# @struct.dataclass
+# class EnvParams:
+#     min_energy: float = -400.0
+#     max_energy: float = 800.0
 
 @struct.dataclass
 class EnvStateRA:
@@ -124,12 +124,12 @@ class HalfCheetahReachAvoid:
 
     @partial(jax.jit, static_argnums=(0,))
     def is_avoid(self, front_foot_pos, back_foot_pos):
-        radius, box_width = 0.05, 0.5
+        radius, box_halfwidth = 0.05, 0.5
 
-        avoid_box_1_front = jnp.maximum((radius/box_width) * jnp.fabs(front_foot_pos[0] - 2.5), front_foot_pos[1] + 0.5) - radius
-        avoid_box_1_back = jnp.maximum((radius/box_width) * jnp.fabs(back_foot_pos[0] - 2.5), back_foot_pos[1] + 0.5) - radius
-        avoid_box_2_front = jnp.maximum((radius/box_width) * jnp.fabs(front_foot_pos[0] - 4.5), front_foot_pos[1] + 0.5) - radius
-        avoid_box_2_back = jnp.maximum((radius/box_width) * jnp.fabs(back_foot_pos[0] - 4.5), back_foot_pos[1] + 0.5) - radius
+        avoid_box_1_front = jnp.maximum((radius/box_halfwidth) * jnp.fabs(front_foot_pos[0] - 2.5), front_foot_pos[1] + 0.5) - radius
+        avoid_box_1_back = jnp.maximum((radius/box_halfwidth) * jnp.fabs(back_foot_pos[0] - 2.5), back_foot_pos[1] + 0.5) - radius
+        avoid_box_2_front = jnp.maximum((radius/box_halfwidth) * jnp.fabs(front_foot_pos[0] - 4.5), front_foot_pos[1] + 0.5) - radius
+        avoid_box_2_back = jnp.maximum((radius/box_halfwidth) * jnp.fabs(back_foot_pos[0] - 4.5), back_foot_pos[1] + 0.5) - radius
         
         avoid_value = jnp.maximum(
             jnp.maximum(-avoid_box_1_front, -avoid_box_1_back),
@@ -235,12 +235,12 @@ class HalfCheetahAvoidOnly:
 
     @partial(jax.jit, static_argnums=(0,))
     def is_avoid(self, front_foot_pos, back_foot_pos):
-        radius, box_width = 0.05, 0.5
+        radius, box_halfwidth = 0.05, 0.5
 
-        avoid_box_1_front = jnp.maximum((radius/box_width) * jnp.fabs(front_foot_pos[0] - 2.5), front_foot_pos[1] + 0.5) - radius
-        avoid_box_1_back = jnp.maximum((radius/box_width) * jnp.fabs(back_foot_pos[0] - 2.5), back_foot_pos[1] + 0.5) - radius
-        avoid_box_2_front = jnp.maximum((radius/box_width) * jnp.fabs(front_foot_pos[0] - 4.5), front_foot_pos[1] + 0.5) - radius
-        avoid_box_2_back = jnp.maximum((radius/box_width) * jnp.fabs(back_foot_pos[0] - 4.5), back_foot_pos[1] + 0.5) - radius
+        avoid_box_1_front = jnp.maximum((radius/box_halfwidth) * jnp.fabs(front_foot_pos[0] - 2.5), front_foot_pos[1] + 0.5) - radius
+        avoid_box_1_back = jnp.maximum((radius/box_halfwidth) * jnp.fabs(back_foot_pos[0] - 2.5), back_foot_pos[1] + 0.5) - radius
+        avoid_box_2_front = jnp.maximum((radius/box_halfwidth) * jnp.fabs(front_foot_pos[0] - 4.5), front_foot_pos[1] + 0.5) - radius
+        avoid_box_2_back = jnp.maximum((radius/box_halfwidth) * jnp.fabs(back_foot_pos[0] - 4.5), back_foot_pos[1] + 0.5) - radius
         
         avoid_value = jnp.maximum(
             jnp.maximum(-avoid_box_1_front, -avoid_box_1_back),

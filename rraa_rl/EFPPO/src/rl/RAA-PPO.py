@@ -69,7 +69,7 @@ def train(envs, env_paramss, config, rngs, env_test=None):
 
         ##################  Env step: Avoid Env ##################
 
-        init_type = "toinput" # "fullrandom" # "toinput" # "standard"
+        init_type = "standard" # "fullrandom" # "toinput" # "standard"
 
         # RESET ENV
         rng_avoid, _rng_avoid = jax.random.split(rng_avoid)
