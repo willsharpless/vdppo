@@ -473,9 +473,10 @@ def train(envs, env_paramss, config, rngs, env_test=None):
                 }, step=timestep)
             
         # Save video of trajectory 
-        if "Hopper" in config["EXP_NAME"]:
+        if "Hopper" in config["EXP_NAME"] or "HalfCheetah" in config["EXP_NAME"]:
             video_freq = 25 #25 
-            save_video = config["USE_WANDB"] #True 
+            # save_video = config["USE_WANDB"] #True 
+            save_video = True #FIXME
             if timestep % video_freq == 0 or timestep == total_timesteps - 1: 
                 video_frames = plot_video_contour_RRAA((info, info_avoid), timestep, config, save_video=save_video, log_wandb=config["USE_WANDB"])
                 # wandb.log({"trajectory_video": wandb.Video(np.array(video_frames), fps=10, format="mp4")})
@@ -595,7 +596,7 @@ def train(envs, env_paramss, config, rngs, env_test=None):
 if __name__ == "__main__":
     config = vars(get_args(sys.argv[1:]))
 
-    debug = False
+    debug = True
     if debug:
         # config["EXP_NAME"]="F16ReachAlwaysAvoid"
         # config["DIR"]="F16_raa_PE500_halfsamp2_TO80m80s_tjreset_g999"
@@ -621,7 +622,7 @@ if __name__ == "__main__":
         # config["NAME"]="F16_raa_PE500_halfsamp2_TO80m80s_tjreset_g999"
 
         config["EXP_NAME"]="HalfCheetahReachAlwaysAvoid"
-        config["DIR"]="halfcheetah_raa_init"
+        config["DIR"]="halfcheetah_raa_debug"
         config["LR"]=3e-4
         config["NUM_ENVS"]=128
         config["NUM_STEPS"]=400
@@ -641,7 +642,7 @@ if __name__ == "__main__":
         config["CUDA_USE"]="0"
         config["ANNEAL_LR"]=True,
         config["ANNEAL_ENT"]=True
-        config["NAME"]="halfcheetah_raa_init"
+        config["NAME"]="halfcheetah_raa_debug"
         # config["TEST_MODE"]=True # USES DETERMINISTIC MODELS
 
     config["NUM_UPDATES"] = int(
@@ -679,7 +680,7 @@ if __name__ == "__main__":
     config_test["TEST_MODE"] = True
     env_test = get_env(config_test)
 
-    config["USE_WANDB"] = True # False for debugging 
+    config["USE_WANDB"] = False # False for debugging 
     if config["USE_WANDB"]:
         wandb.init(project='EC-EFPPO-{}'.format(config["EXP_NAME"]), name=config["NAME"], config=config,
                    entity='braat_brrt')

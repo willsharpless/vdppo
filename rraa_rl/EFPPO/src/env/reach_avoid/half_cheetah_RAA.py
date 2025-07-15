@@ -189,7 +189,7 @@ class HalfCheetahAvoidOnly:
                     "front_thigh_pos": front_thigh_pos, "front_shin_pos": front_shin_pos, "front_foot_pos": front_foot_pos,
                     "back_thigh_pos": back_thigh_pos, "back_shin_pos": back_shin_pos, "back_foot_pos": back_foot_pos}
         observation = jnp.concatenate([next_state.obs, jnp.array([avoid_value, reach_value])])
-        next_state_new = EnvStateRA(next_state, avoid_value)
+        next_state_new = EnvStateAvoidOnly(next_state, avoid_value)
         reward = 0.
 
         return observation, next_state_new, reward, next_state.done > 0.5, pos_dict

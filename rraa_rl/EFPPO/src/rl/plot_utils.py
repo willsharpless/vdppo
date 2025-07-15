@@ -858,7 +858,7 @@ def plot_contour_RRAA(multi_info, epoch, config, policy_decision_sample=None):
 
         # Draw Reach Avoid and Avoid Only 
         draw_cheetah_raa(info, "Reach Avoid", axes[0])
-        if config['EXP_NAME'] == 'HopperReachAlwaysAvoid':
+        if config['EXP_NAME'] == 'HalfCheetahReachAlwaysAvoid':
             draw_cheetah_raa(info_avoid, "Avoid Only", axes[1])
 
         plt.savefig('model/{}/reach/trajectory_{:0>4d}'.format(config["DIR"], epoch), dpi=300)
@@ -1201,10 +1201,10 @@ def plot_video_contour_RRAA(multi_info, epoch, config, save_video=False, prefix=
             draw_body(ax, info, step, 0.9)
 
             if reach_idx is not None and step >= reach_idx:
-                draw_body(ax, info, reach_idx_1, 0.9, color_mode = "R")
+                draw_body(ax, info, reach_idx, 0.9, color_mode = "R")
 
             if avoid_idx is not None and step >= avoid_idx:
-                draw_body(ax, info, reach_idx_2, 0.9, color_mode = "A")
+                draw_body(ax, info, avoid_idx, 0.9, color_mode = "A")
             
             ax.set_xlim((-0.5, 5.5))
             ax.set_ylim((-0.7, 1.3))
