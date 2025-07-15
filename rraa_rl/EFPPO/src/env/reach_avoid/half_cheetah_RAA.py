@@ -113,9 +113,9 @@ class HalfCheetahReachAvoid:
     @partial(jax.jit, static_argnums=(0,))
     def is_reach(self, head_pos):
         radius, target_pos = 0.25, jnp.array([3.5, 0.0])
-        # reach = jnp.sqrt((head_pos[0] - target_pos[0]) ** 2 + (head_pos[1] - target_pos[1]) ** 2) - 0.2
-        # has_reached_goal = jnp.sqrt((head_pos[0] - target_pos[0]) ** 2 + (head_pos[1] - target_pos[1]) ** 2) < 0.2
-        reach_value = jnp.sqrt((head_pos[0] - target_pos[0]) ** 2) - radius
+        # reach = jnp.sqrt((head_pos[..., 0] - target_pos[0]) ** 2 + (head_pos[1] - target_pos[1]) ** 2) - 0.2
+        # has_reached_goal = jnp.sqrt((head_pos[..., 0] - target_pos[0]) ** 2 + (head_pos[1] - target_pos[1]) ** 2) < 0.2
+        reach_value = jnp.sqrt((head_pos[..., 0] - target_pos[0]) ** 2) - radius
         # has_reached_goal = reach_value < 0
         # reach_value = jnp.where(has_reached_goal, -3., reach_value)
         # is_avoid = (avoid_value == -1)
@@ -124,12 +124,12 @@ class HalfCheetahReachAvoid:
 
     @partial(jax.jit, static_argnums=(0,))
     def is_avoid(self, front_foot_pos, back_foot_pos):
-        radius, box_halfwidth = 0.05, 0.5
+        radius, box_halfwidth = 0.05, 0.1
 
-        avoid_box_1_front = -(jnp.maximum((radius/box_halfwidth) * jnp.fabs(front_foot_pos[0] - 2.5), front_foot_pos[1] + 0.5) - radius)
-        avoid_box_1_back = -(jnp.maximum((radius/box_halfwidth) * jnp.fabs(back_foot_pos[0] - 2.5), back_foot_pos[1] + 0.5) - radius)
-        avoid_box_2_front = -(jnp.maximum((radius/box_halfwidth) * jnp.fabs(front_foot_pos[0] - 4.5), front_foot_pos[1] + 0.5) - radius)
-        avoid_box_2_back = -(jnp.maximum((radius/box_halfwidth) * jnp.fabs(back_foot_pos[0] - 4.5), back_foot_pos[1] + 0.5) - radius)
+        avoid_box_1_front = -(jnp.maximum((radius/box_halfwidth) * jnp.fabs(front_foot_pos[..., 0] - 2.5), front_foot_pos[..., 1] + 0.5) - radius)
+        avoid_box_1_back = -(jnp.maximum((radius/box_halfwidth) * jnp.fabs(back_foot_pos[..., 0] - 2.5), back_foot_pos[..., 1] + 0.5) - radius)
+        avoid_box_2_front = -(jnp.maximum((radius/box_halfwidth) * jnp.fabs(front_foot_pos[..., 0] - 4.5), front_foot_pos[..., 1] + 0.5) - radius)
+        avoid_box_2_back = -(jnp.maximum((radius/box_halfwidth) * jnp.fabs(back_foot_pos[..., 0] - 4.5), back_foot_pos[..., 1] + 0.5) - radius)
         
         avoid_value = jnp.maximum(
             jnp.maximum(avoid_box_1_front, avoid_box_1_back),
@@ -224,9 +224,9 @@ class HalfCheetahAvoidOnly:
     @partial(jax.jit, static_argnums=(0,))
     def is_reach(self, head_pos):
         radius, target_pos = 0.25, jnp.array([3.5, 0.0])
-        # reach = jnp.sqrt((head_pos[0] - target_pos[0]) ** 2 + (head_pos[1] - target_pos[1]) ** 2) - 0.2
-        # has_reached_goal = jnp.sqrt((head_pos[0] - target_pos[0]) ** 2 + (head_pos[1] - target_pos[1]) ** 2) < 0.2
-        reach_value = jnp.sqrt((head_pos[0] - target_pos[0]) ** 2) - radius
+        # reach = jnp.sqrt((head_pos[..., 0] - target_pos[0]) ** 2 + (head_pos[1] - target_pos[1]) ** 2) - 0.2
+        # has_reached_goal = jnp.sqrt((head_pos[..., 0] - target_pos[0]) ** 2 + (head_pos[1] - target_pos[1]) ** 2) < 0.2
+        reach_value = jnp.sqrt((head_pos[..., 0] - target_pos[0]) ** 2) - radius
         # has_reached_goal = reach_value < 0
         # reach_value = jnp.where(has_reached_goal, -3., reach_value)
         # is_avoid = (avoid_value == -1)
@@ -235,12 +235,12 @@ class HalfCheetahAvoidOnly:
 
     @partial(jax.jit, static_argnums=(0,))
     def is_avoid(self, front_foot_pos, back_foot_pos):
-        radius, box_halfwidth = 0.05, 0.5
+        radius, box_halfwidth = 0.05, 0.1
 
-        avoid_box_1_front = -(jnp.maximum((radius/box_halfwidth) * jnp.fabs(front_foot_pos[0] - 2.5), front_foot_pos[1] + 0.5) - radius)
-        avoid_box_1_back = -(jnp.maximum((radius/box_halfwidth) * jnp.fabs(back_foot_pos[0] - 2.5), back_foot_pos[1] + 0.5) - radius)
-        avoid_box_2_front = -(jnp.maximum((radius/box_halfwidth) * jnp.fabs(front_foot_pos[0] - 4.5), front_foot_pos[1] + 0.5) - radius)
-        avoid_box_2_back = -(jnp.maximum((radius/box_halfwidth) * jnp.fabs(back_foot_pos[0] - 4.5), back_foot_pos[1] + 0.5) - radius)
+        avoid_box_1_front = -(jnp.maximum((radius/box_halfwidth) * jnp.fabs(front_foot_pos[..., 0] - 2.5), front_foot_pos[..., 1] + 0.5) - radius)
+        avoid_box_1_back = -(jnp.maximum((radius/box_halfwidth) * jnp.fabs(back_foot_pos[..., 0] - 2.5), back_foot_pos[..., 1] + 0.5) - radius)
+        avoid_box_2_front = -(jnp.maximum((radius/box_halfwidth) * jnp.fabs(front_foot_pos[..., 0] - 4.5), front_foot_pos[..., 1] + 0.5) - radius)
+        avoid_box_2_back = -(jnp.maximum((radius/box_halfwidth) * jnp.fabs(back_foot_pos[..., 0] - 4.5), back_foot_pos[..., 1] + 0.5) - radius)
         
         avoid_value = jnp.maximum(
             jnp.maximum(avoid_box_1_front, avoid_box_1_back),

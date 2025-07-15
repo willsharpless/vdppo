@@ -8,6 +8,9 @@ import imageio
 import wandb 
 from time import time 
 
+from rraa_rl.EFPPO.src.env.reach_avoid.half_cheetah_RAA import HalfCheetahReachAvoid, HalfCheetahAvoidOnly
+from jax import jit
+
 def calculate_consumption(traj_batch):
     reach_idx = (traj_batch.reach < 0).argmax(axis=0)
     energy = []
@@ -778,16 +781,26 @@ def plot_contour_RRAA(multi_info, epoch, config, policy_decision_sample=None):
             avoid_idx = info.get('avoid_index')
             full_len = info['head_pos'].shape[0]
 
-            # Plot Reach  
-            draw_target = plt.Rectangle((3.25, -0.7), 0.5, 5., fill=False)
+            # Plot Targets and Obstacles (old method)  
+            # draw_target = plt.Rectangle((3.25, -0.7), 0.5, 5., fill=False)
+            # draw_rectangle = plt.Rectangle((2., -0.7), 1., 0.25, facecolor="red", fill=True)
+            # draw_rectangle2 = plt.Rectangle((4., -0.7), 1., 0.25, facecolor="red", fill=True)
+            # ax.add_patch(draw_target)
+            # ax.add_patch(draw_rectangle)
+            # ax.add_patch(draw_rectangle2)
 
-            # Plot Avoid
-            draw_rectangle = plt.Rectangle((2., -0.7), 1., 0.25, facecolor="red", fill=True)
-            draw_rectangle2 = plt.Rectangle((4., -0.7), 1., 0.25, facecolor="red", fill=True)
-
-            ax.add_patch(draw_target)
-            ax.add_patch(draw_rectangle)
-            ax.add_patch(draw_rectangle2)
+            # Plot Targets and Obstacles (new method)
+            x = np.linspace(-0.5, 5.5, 400)
+            y = np.linspace(-0.7, 1.3, 400)
+            X, Y = np.meshgrid(x, y)
+            positions = np.stack([X, Y], axis=-1)  # shape (400, 400, 2)
+            model = HalfCheetahReachAvoid()
+            is_reach_np = jit(model.is_reach)
+            is_avoid_np = jit(model.is_avoid)
+            reach_values = np.array(is_reach_np(positions))
+            avoid_values = np.array(is_avoid_np(positions, positions))
+            ax.contourf(X, Y, reach_values, levels=[reach_values.min(), 0], colors=['green'], alpha=0.4)
+            ax.contourf(X, Y, avoid_values, levels=[0, avoid_values.max()], colors=['red'], alpha=0.4)
 
             indices = np.linspace(0, full_len, 11, dtype=int)
             for step_n, i in enumerate(indices):
@@ -824,7 +837,7 @@ def plot_contour_RRAA(multi_info, epoch, config, policy_decision_sample=None):
                 ax.plot(np.array([info['front_foot_pos'][i, 0], info['front_shin_pos'][i, 0]]),
                         np.array([info['front_foot_pos'][i, 1], info['front_shin_pos'][i, 1]]), c='g', linewidth=4)
                 ax.plot(np.array([info['back_pos'][i, 0], info['back_thigh_pos'][i, 0]]),
-                        np.array([info['back_pos'][i, 1], info['back_thigh_pos'][i, 1]]), c='g')
+                        np.array([info['back_pos'][i, 1], info['back_thigh_pos'][i, 1]]), c='g', linewidth=4)
                 ax.plot(np.array([info['back_thigh_pos'][i, 0], info['back_shin_pos'][i, 0]]),
                         np.array([info['back_thigh_pos'][i, 1], info['back_shin_pos'][i, 1]]), c='g', linewidth=4)
                 ax.plot(np.array([info['back_foot_pos'][i, 0], info['back_shin_pos'][i, 0]]),
@@ -1150,20 +1163,30 @@ def plot_video_contour_RRAA(multi_info, epoch, config, save_video=False, prefix=
         
         info, info_avoid = multi_info 
 
+        # Reward percomputation (targets & obstacles)
+        x = np.linspace(-0.5, 5.5, 400)
+        y = np.linspace(-0.7, 1.3, 400)
+        X, Y = np.meshgrid(x, y)
+        positions = np.stack([X, Y], axis=-1)  # shape (400, 400, 2)
+        model = HalfCheetahReachAvoid()
+        is_reach_np = jit(model.is_reach)
+        is_avoid_np = jit(model.is_avoid)
+        reach_values = np.array(is_reach_np(positions))
+        avoid_values = np.array(is_avoid_np(positions, positions))
+
         def draw_cheetah_raa(step, info, title, ax):
             reach_idx = info.get('reach_index')
             avoid_idx = info.get('avoid_index')
 
             # Plot Reach  
-            draw_target = plt.Rectangle((3.25, -0.7), 0.5, 5., fill=False)
-
-            # Plot Avoid
-            draw_rectangle = plt.Rectangle((2., -0.7), 1., 0.25, facecolor="red", fill=True)
-            draw_rectangle2 = plt.Rectangle((4., -0.7), 1., 0.25, facecolor="red", fill=True)
-
-            ax.add_patch(draw_target)
-            ax.add_patch(draw_rectangle)
-            ax.add_patch(draw_rectangle2)
+            # draw_target = plt.Rectangle((3.25, -0.7), 0.5, 5., fill=False)
+            # draw_rectangle = plt.Rectangle((2., -0.7), 1., 0.25, facecolor="red", fill=True)
+            # draw_rectangle2 = plt.Rectangle((4., -0.7), 1., 0.25, facecolor="red", fill=True)
+            # ax.add_patch(draw_target)
+            # ax.add_patch(draw_rectangle)
+            # ax.add_patch(draw_rectangle2)
+            ax.contourf(X, Y, reach_values, levels=[reach_values.min(), 0], colors=['green'], alpha=0.4)
+            ax.contourf(X, Y, avoid_values, levels=[0, avoid_values.max()], colors=['red'], alpha=0.4)
 
             # indices = np.linspace(0, full_len, 11, dtype=int)
             # for step_n, i in enumerate(indices):
@@ -1253,3 +1276,28 @@ def plot_video_contour_RRAA(multi_info, epoch, config, save_video=False, prefix=
     end_time = time()
     print("Time taken to plot and push video: ", end_time - start_time)
     return frames
+
+# def is_reach(head_pos):
+#     radius, target_pos = 0.25, np.array([3.5, 0.0])
+#     reach_value = np.sqrt((head_pos[..., 0] - target_pos[0]) ** 2) - radius
+
+#     # has_reached_goal = reach_value < 0
+#     # reach_value = np.where(has_reached_goal, -3., reach_value)
+
+#     return reach_value
+
+# def is_avoid(front_foot_pos, back_foot_pos):
+#     radius, box_halfwidth = 0.05, 0.5
+
+#     avoid_box_1_front = -(np.maximum((radius/box_halfwidth) * np.fabs(front_foot_pos[..., 0] - 2.5), front_foot_pos[..., 1] + 0.5) - radius)
+#     avoid_box_1_back = -(np.maximum((radius/box_halfwidth) * np.fabs(back_foot_pos[..., 0] - 2.5), back_foot_pos[..., 1] + 0.5) - radius)
+#     avoid_box_2_front = -(np.maximum((radius/box_halfwidth) * np.fabs(front_foot_pos[..., 0] - 4.5), front_foot_pos[..., 1] + 0.5) - radius)
+#     avoid_box_2_back = -(np.maximum((radius/box_halfwidth) * np.fabs(back_foot_pos[..., 0] - 4.5), back_foot_pos[..., 1] + 0.5) - radius)
+    
+#     avoid_value = np.maximum(
+#         np.maximum(avoid_box_1_front, avoid_box_1_back),
+#         np.maximum(avoid_box_2_front, avoid_box_2_back)
+#     )
+#     # avoid_value = np.where(avoid_value > 0, 10., avoid_value)
+
+#     return 10. * avoid_value
