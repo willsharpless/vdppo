@@ -1223,10 +1223,10 @@ def plot_video_contour_RRAA(multi_info, epoch, config, save_video=False, prefix=
                
             draw_body(ax, info, step, 0.9)
 
-            if reach_idx is not None and step >= reach_idx:
+            if reach_idx is not None and step >= reach_idx and reach_idx > 0:
                 draw_body(ax, info, reach_idx, 0.9, color_mode = "R")
 
-            if avoid_idx is not None and step >= avoid_idx:
+            if avoid_idx is not None and step >= avoid_idx and avoid_idx > 0:
                 draw_body(ax, info, avoid_idx, 0.9, color_mode = "A")
             
             ax.set_xlim((-0.5, 5.5))
