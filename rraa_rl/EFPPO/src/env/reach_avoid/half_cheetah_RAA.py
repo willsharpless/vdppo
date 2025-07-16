@@ -6,24 +6,11 @@ from brax.envs.wrappers.training import EpisodeWrapper, AutoResetWrapper
 from flax import struct
 from brax.envs.base import State
 from .half_cheetah_random import HalfCheetahRandom
-from .half_cheetah_deterministic import HalfCheetahDeterministic
-
-# @struct.dataclass
-# class EnvState:
-#     state: State
-#     energy: float
-#     reach: float
-#     avoid: int
-
-# @struct.dataclass
-# class EnvParams:
-#     min_energy: float = -400.0
-#     max_energy: float = 800.0
+from .half_cheetah_deterministic import HalfCheetahDeterministi
 
 @struct.dataclass
 class EnvStateRA:
     state: jax.Array = struct.field(default_factory=jax.Array)
-    time: int = 0
     avoid: float = 0.
     reach: float = 0.
     has_reached: float = 0.
@@ -31,14 +18,12 @@ class EnvStateRA:
 @struct.dataclass
 class EnvStateAvoidOnly:
     state: jax.Array = struct.field(default_factory=jax.Array)
-    time: int = 0
     avoid: float = 0.
 
 @struct.dataclass
 class EnvParamsEmpty:
     max_steps_in_episode: int = 5000
     pass
-
 
 class HalfCheetahReachAvoid:
     def __init__(self, backend="positional"):

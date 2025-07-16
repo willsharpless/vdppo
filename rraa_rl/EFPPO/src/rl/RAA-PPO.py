@@ -398,12 +398,6 @@ def train(envs, env_paramss, config, rngs, env_test=None):
         info = tree_index2(traj_batch.info, idx)
         info_avoid = tree_index2(traj_batch_avoid.info, idx)
 
-        ## FIXME 07/15/2025
-        # why does info['reach_index'] == info['avoid_index'] == 0?
-        # why is traj_batch.reach[:, 0] boolean but traj_batch.avoid[:, 0] is (positive) value?
-        # also seems like avoid value should be negative initially?
-        ## FIXME
-
         cnt_never_reached, cnt_crashed, cnt_crash_after_reach = calculate_reach_avoid_stats(traj_batch)
         (reach_perc, crash_perc, reach_avoid_perc) = calculate_reachavoid(traj_batch)
 
@@ -628,7 +622,7 @@ if __name__ == "__main__":
         # config["NAME"]="F16_raa_PE500_halfsamp2_TO80m80s_tjreset_g999"
 
         config["EXP_NAME"]="HalfCheetahReachAlwaysAvoid"
-        config["DIR"]="halfcheetah_raa_test"
+        config["DIR"]="halfcheetah_raa_test2"
         config["LR"]=3e-4
         config["NUM_ENVS"]=128
         config["NUM_STEPS"]=400
@@ -648,7 +642,7 @@ if __name__ == "__main__":
         config["CUDA_USE"]="0"
         config["ANNEAL_LR"]=True,
         config["ANNEAL_ENT"]=True
-        config["NAME"]="halfcheetah_raa_test"
+        config["NAME"]="halfcheetah_raa_test2"
         # config["TEST_MODE"]=True # USES DETERMINISTIC MODELS
 
     config["NUM_UPDATES"] = int(
