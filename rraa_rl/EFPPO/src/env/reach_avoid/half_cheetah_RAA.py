@@ -6,7 +6,7 @@ from brax.envs.wrappers.training import EpisodeWrapper, AutoResetWrapper
 from flax import struct
 from brax.envs.base import State
 from .half_cheetah_random import HalfCheetahRandom
-from .half_cheetah_deterministic import HalfCheetahDeterministi
+from .half_cheetah_deterministic import HalfCheetahDeterministic
 
 @struct.dataclass
 class EnvStateRA:
