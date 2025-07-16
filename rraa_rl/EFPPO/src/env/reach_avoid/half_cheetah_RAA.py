@@ -7,6 +7,7 @@ from flax import struct
 from brax.envs.base import State
 from .half_cheetah_random import HalfCheetahRandom
 from .half_cheetah_deterministic import HalfCheetahDeterministic
+from copy import deepcopy 
 
 @struct.dataclass
 class EnvStateRA:
@@ -248,4 +249,67 @@ class HalfCheetahAvoidOnly:
             high=1.0,
             shape=(self._env.action_size,),
         )
+    
+    @partial(jax.jit, static_argnums=(0,))
+    def reset_toinput(self, key, reset_obs, params=None):
+        # Reset the environment to a specific observation
+        
+        # # NOTE: OLD ATTEMPT - RUNS BUT MAY NOT WORK ? 
+        # old_state = self._env.reset(key)
+        # old_state = replace(old_state, obs=reset_obs[:12]) # set the obs
 
+        # Derived from Reset function in: 
+        # 1. brax.envs.hopper 
+        # 2. brax.envs.wrappers.training (EpisodeWrapper)
+        # 3. brax.envs.wrappers.auto_reset (AutoResetWrapper)
+        reset_obs = deepcopy(reset_obs[:18])
+
+        ## HOPPER RESET FIX -- DO WE NEED FOR CHEETAH?
+        # og_reset_obs = deepcopy(reset_obs)
+        # reset_obs = reset_obs.at[1].set(og_reset_obs[1] - 1.25) # FIXME: don't know where this comes from exactly figure it out
+
+        qpos = reset_obs[:9]
+        qvel = reset_obs[9:18]
+        pipeline_state = self._env.pipeline_init(qpos, qvel)
+        obs = self._env._get_obs(pipeline_state)
+        reward, done, zero = jnp.zeros(3)
+        # metrics = {
+        #     'reward_forward': zero,
+        #     'reward_ctrl': zero,
+        #     'reward_healthy': zero,
+        #     'x_position': zero,
+        #     'x_velocity': zero,
+        # }
+        metrics = {
+            'x_position': zero,
+            'x_velocity': zero,
+            'reward_ctrl': zero,
+            'reward_run': zero,
+        }
+        state = State(pipeline_state, obs, reward, done, metrics)
+        # Episode Metrics 
+        rng = key 
+        state.info['steps'] = jnp.zeros(rng.shape[:-1])
+        state.info['truncation'] = jnp.zeros(rng.shape[:-1])
+        # Keep separate record of episode done as state.info['done'] can be erased
+        # by AutoResetWrapper
+        state.info['episode_done'] = jnp.zeros(rng.shape[:-1])
+        episode_metrics = dict()
+        episode_metrics['sum_reward'] = jnp.zeros(rng.shape[:-1])
+        episode_metrics['length'] = jnp.zeros(rng.shape[:-1])
+        for metric_name in state.metrics.keys():
+            episode_metrics[metric_name] = jnp.zeros(rng.shape[:-1])
+        state.info['episode_metrics'] = episode_metrics
+        state.info['first_pipeline_state'] = state.pipeline_state
+        state.info['first_obs'] = state.obs
+
+        head_pos, _, _, _, _, front_foot_pos, _, _, back_foot_pos = self.calculate_position(state.obs)
+        avoid_value = self.is_avoid(front_foot_pos, back_foot_pos)
+        reach_value = self.is_reach(head_pos)
+        observation = jnp.concatenate([state.obs, jnp.array([avoid_value, reach_value])])
+        env_state = EnvStateAvoidOnly(state, avoid_value)
+
+        # FIXME: does the observation need to be transformed?
+        # observation = self._env.transform_obs(observation)?
+
+        return observation, env_state

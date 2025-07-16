@@ -69,7 +69,7 @@ def train(envs, env_paramss, config, rngs, env_test=None):
 
         ##################  Env step: Avoid Env ##################
 
-        init_type = "standard" # "fullrandom" # "toinput" # "standard"
+        init_type = "toinput" # "fullrandom" # "toinput" # "standard"
 
         # RESET ENV
         rng_avoid, _rng_avoid = jax.random.split(rng_avoid)
@@ -101,7 +101,7 @@ def train(envs, env_paramss, config, rngs, env_test=None):
             # random_index = jax.random.randint(_rng_reach1, shape=(untrans_traj_batch_observations_full.shape[0],), minval=0, maxval=untrans_traj_batch_observations_full.shape[1])
 
             # Multiple random indices
-            if "Hopper" in config["EXP_NAME"]:
+            if "Hopper" in config["EXP_NAME"] or "Cheetah" in config["EXP_NAME"]:
                 traj_batch_observations_full = traj_batch.obs 
                 untrans_traj_batch_observations_full = env.untransform_obs(traj_batch_observations_full)
                 untrans_traj_batch_observations_full = jnp.transpose(untrans_traj_batch_observations_full, axes=(1, 0, 2))
@@ -622,7 +622,7 @@ if __name__ == "__main__":
         # config["NAME"]="F16_raa_PE500_halfsamp2_TO80m80s_tjreset_g999"
 
         config["EXP_NAME"]="HalfCheetahReachAlwaysAvoid"
-        config["DIR"]="halfcheetah_raa_test2"
+        config["DIR"]="halfcheetah_raa_test_reset"
         config["LR"]=3e-4
         config["NUM_ENVS"]=128
         config["NUM_STEPS"]=400
@@ -642,7 +642,7 @@ if __name__ == "__main__":
         config["CUDA_USE"]="0"
         config["ANNEAL_LR"]=True,
         config["ANNEAL_ENT"]=True
-        config["NAME"]="halfcheetah_raa_test2"
+        config["NAME"]="halfcheetah_raa_test_reset"
         # config["TEST_MODE"]=True # USES DETERMINISTIC MODELS
 
     config["NUM_UPDATES"] = int(
