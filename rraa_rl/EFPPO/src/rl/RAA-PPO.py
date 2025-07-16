@@ -622,7 +622,7 @@ if __name__ == "__main__":
         # config["NAME"]="F16_raa_PE500_halfsamp2_TO80m80s_tjreset_g999"
 
         config["EXP_NAME"]="HalfCheetahReachAlwaysAvoid"
-        config["DIR"]="halfcheetah_raa_test_reset"
+        config["DIR"]="halfcheetah_raa_reset_avoidv2"
         config["LR"]=3e-4
         config["NUM_ENVS"]=128
         config["NUM_STEPS"]=400
@@ -642,7 +642,7 @@ if __name__ == "__main__":
         config["CUDA_USE"]="0"
         config["ANNEAL_LR"]=True,
         config["ANNEAL_ENT"]=True
-        config["NAME"]="halfcheetah_raa_test_reset"
+        config["NAME"]="halfcheetah_raa_reset_avoidv2"
         # config["TEST_MODE"]=True # USES DETERMINISTIC MODELS
 
     config["NUM_UPDATES"] = int(
@@ -680,7 +680,7 @@ if __name__ == "__main__":
     config_test["TEST_MODE"] = True
     env_test = get_env(config_test)
 
-    config["USE_WANDB"] = False # False for debugging 
+    config["USE_WANDB"] = True # False for debugging 
     if config["USE_WANDB"]:
         wandb.init(project='EC-EFPPO-{}'.format(config["EXP_NAME"]), name=config["NAME"], config=config,
                    entity='braat_brrt')

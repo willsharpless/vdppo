@@ -798,7 +798,7 @@ def plot_contour_RRAA(multi_info, epoch, config, policy_decision_sample=None):
             is_reach_np = jit(model.is_reach)
             is_avoid_np = jit(model.is_avoid)
             reach_values = np.array(is_reach_np(positions))
-            avoid_values = np.array(is_avoid_np(positions, positions))
+            avoid_values = np.array(is_avoid_np(positions, positions, positions, positions, positions, positions))
             ax.contourf(X, Y, reach_values, levels=[reach_values.min(), 0], colors=['green'], alpha=0.4)
             ax.contourf(X, Y, avoid_values, levels=[0, avoid_values.max()], colors=['red'], alpha=0.4)
 
@@ -1172,7 +1172,7 @@ def plot_video_contour_RRAA(multi_info, epoch, config, save_video=False, prefix=
         is_reach_np = jit(model.is_reach)
         is_avoid_np = jit(model.is_avoid)
         reach_values = np.array(is_reach_np(positions))
-        avoid_values = np.array(is_avoid_np(positions, positions))
+        avoid_values = np.array(is_avoid_np(positions, positions, positions, positions, positions, positions))
 
         def draw_cheetah_raa(step, info, title, ax):
             reach_idx = info.get('reach_index')
