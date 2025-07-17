@@ -775,6 +775,10 @@ def plot_contour_RRAA(multi_info, epoch, config, policy_decision_sample=None):
         info, info_avoid = multi_info 
         plt.figure(figsize=(12, 6*2))
         fig, axes = plt.subplots(2, 1)
+        axes_upperx = 5.5
+        axes_lowerx = -0.5
+        axes_uppery = 1.3
+        axes_lowery = -0.7
 
         def draw_cheetah_raa(info, title, ax):
             reach_idx = info.get('reach_index')
@@ -790,15 +794,15 @@ def plot_contour_RRAA(multi_info, epoch, config, policy_decision_sample=None):
             # ax.add_patch(draw_rectangle2)
 
             # Plot Targets and Obstacles (new method)
-            x = np.linspace(-0.5, 5.5, 400)
-            y = np.linspace(-0.7, 1.3, 400)
+            x = np.linspace(axes_lowerx, axes_upperx, 400)
+            y = np.linspace(axes_lowery, axes_uppery, 400)
             X, Y = np.meshgrid(x, y)
             positions = np.stack([X, Y], axis=-1)  # shape (400, 400, 2)
             model = HalfCheetahReachAvoid()
             is_reach_np = jit(model.is_reach)
             is_avoid_np = jit(model.is_avoid)
             reach_values = np.array(is_reach_np(positions))
-            avoid_values = np.array(is_avoid_np(positions, positions, positions, positions, positions, positions))
+            avoid_values = np.array(is_avoid_np(positions, positions, positions, positions, positions, positions, positions))
             ax.contourf(X, Y, reach_values, levels=[reach_values.min(), 0], colors=['green'], alpha=0.4)
             ax.contourf(X, Y, avoid_values, levels=[0, avoid_values.max()], colors=['red'], alpha=0.4)
 
@@ -863,8 +867,8 @@ def plot_contour_RRAA(multi_info, epoch, config, policy_decision_sample=None):
                 ax.plot(np.array([info['back_foot_pos'][i, 0], info['back_shin_pos'][i, 0]]),
                         np.array([info['back_foot_pos'][i, 1], info['back_shin_pos'][i, 1]]), c='r', linewidth=4)
             
-            ax.set_xlim((-0.5, 5.5))
-            ax.set_ylim((-0.7, 1.3))
+            ax.set_xlim((axes_lowerx, axes_upperx))
+            ax.set_ylim((axes_lowery, axes_uppery))
             ax.set_aspect('equal')
 
             ax.set_title(title)
@@ -1163,16 +1167,21 @@ def plot_video_contour_RRAA(multi_info, epoch, config, save_video=False, prefix=
         
         info, info_avoid = multi_info 
 
+        axes_upperx = 5.5
+        axes_lowerx = -0.5
+        axes_uppery = 1.3
+        axes_lowery = -0.7
+
         # Reward percomputation (targets & obstacles)
-        x = np.linspace(-0.5, 5.5, 400)
-        y = np.linspace(-0.7, 1.3, 400)
+        x = np.linspace(axes_lowerx, axes_upperx, 400)
+        y = np.linspace(axes_lowery, axes_uppery, 400)
         X, Y = np.meshgrid(x, y)
         positions = np.stack([X, Y], axis=-1)  # shape (400, 400, 2)
         model = HalfCheetahReachAvoid()
         is_reach_np = jit(model.is_reach)
         is_avoid_np = jit(model.is_avoid)
         reach_values = np.array(is_reach_np(positions))
-        avoid_values = np.array(is_avoid_np(positions, positions, positions, positions, positions, positions))
+        avoid_values = np.array(is_avoid_np(positions, positions, positions, positions, positions, positions, positions))
 
         def draw_cheetah_raa(step, info, title, ax):
             reach_idx = info.get('reach_index')
@@ -1229,8 +1238,8 @@ def plot_video_contour_RRAA(multi_info, epoch, config, save_video=False, prefix=
             if avoid_idx is not None and step >= avoid_idx and avoid_idx > 0:
                 draw_body(ax, info, avoid_idx, 0.9, color_mode = "A")
             
-            ax.set_xlim((-0.5, 5.5))
-            ax.set_ylim((-0.7, 1.3))
+            ax.set_xlim((axes_lowerx, axes_upperx))
+            ax.set_ylim((axes_lowery, axes_uppery))
             ax.set_aspect('equal')
 
             ax.set_title(title)
