@@ -80,18 +80,34 @@ def calculate_reach(traj_batch):
     return reach_perc, reach_idx
 
 
+# def calculate_reachalwaysavoid_old(traj_batch, idx, type="both"): 
+#     assert(type in ["both", "avoid" ])
+
+#     # First Avoid violation index
+#     all_avoid_idx = (traj_batch.avoid < 0).argmax(axis=0) # FIXME: Nikhil wrote this when sleep deprived
+#     avoid_idx = all_avoid_idx[idx]
+#     reach_idx = None 
+    
+#     if type == "both": 
+#         # First Reach Index
+#         all_reach_idx = (traj_batch.reach < 0).argmax(axis=0)
+#         reach_idx = all_reach_idx[idx]
+#     return reach_idx, avoid_idx 
+
 def calculate_reachalwaysavoid(traj_batch, idx, type="both"): 
     assert(type in ["both", "avoid" ])
 
     # First Avoid violation index
-    all_avoid_idx = (traj_batch.avoid < 0).argmax(axis=0)
-    avoid_idx = all_avoid_idx[idx]
+    crash_idx = (traj_batch.avoid > 0).argmax(axis=0)
+    crash_idx = np.where(np.any((traj_batch.avoid > 0) == 1, axis=0), crash_idx, -1)
+    avoid_idx = crash_idx[idx]
     reach_idx = None 
     
     if type == "both": 
         # First Reach Index
-        all_reach_idx = (traj_batch.reach < 0).argmax(axis=0)
-        reach_idx = all_reach_idx[idx]
+        reach_idx = (traj_batch.reach < 0).argmax(axis=0)
+        reach_idx = np.where(np.any((traj_batch.reach < 0) == 1, axis=0), reach_idx, -1)
+        reach_idx = reach_idx[idx]
     return reach_idx, avoid_idx 
 
 def calculate_minimal_reach(reach):
@@ -730,7 +746,7 @@ def plot_contour_RRAA(multi_info, epoch, config, policy_decision_sample=None):
                         np.array([info['leg_pos'][i, 1], info['foot_back_pos'][i, 1]]), c='m', alpha=alpha)
                 
             # Plot First Reach in Green 
-            if reach_idx is not None and reach_idx > 0:
+            if reach_idx is not None and reach_idx > -1:
                 ax.plot(np.array([info['head_pos'][reach_idx, 0], info['jaw_pos'][reach_idx, 0]]),
                         np.array([info['head_pos'][reach_idx, 1], info['jaw_pos'][reach_idx, 1]]), c='g', linewidth=4)
                 ax.plot(np.array([info['jaw_pos'][reach_idx, 0], info['thg_pos'][reach_idx, 0]]),
@@ -743,7 +759,7 @@ def plot_contour_RRAA(multi_info, epoch, config, policy_decision_sample=None):
                         np.array([info['leg_pos'][reach_idx, 1], info['foot_back_pos'][reach_idx, 1]]), c='g', linewidth=4)
                 
             # Plot Avoid Violation in Red
-            if avoid_idx is not None and avoid_idx > 0: 
+            if avoid_idx is not None and avoid_idx > -1: 
                 ax.plot(np.array([info['head_pos'][avoid_idx, 0], info['jaw_pos'][avoid_idx, 0]]),
                         np.array([info['head_pos'][avoid_idx, 1], info['jaw_pos'][avoid_idx, 1]]), c='r', linewidth=4)
                 ax.plot(np.array([info['jaw_pos'][avoid_idx, 0], info['thg_pos'][avoid_idx, 0]]),
@@ -806,66 +822,115 @@ def plot_contour_RRAA(multi_info, epoch, config, policy_decision_sample=None):
             ax.contourf(X, Y, reach_values, levels=[reach_values.min(), 0], colors=['green'], alpha=0.4)
             ax.contourf(X, Y, avoid_values, levels=[0, avoid_values.max()], colors=['red'], alpha=0.4)
 
-            indices = np.linspace(0, full_len, 11, dtype=int)
-            for step_n, i in enumerate(indices):
-                alpha = (step_n + 1) / 11 
+            def draw_body(ax, info, i, alpha, color_mode="normal"):
+                
+                if color_mode == "R":
+                    c1, c2, c3, c4, c5, c6, c7, c8 = 'g', 'g', 'g', 'g', 'g', 'g', 'g', 'g'
+                    linewidth=3
+                elif color_mode == "A":
+                    c1, c2, c3, c4, c5, c6, c7, c8 = 'r', 'r', 'r', 'r', 'r', 'r', 'r', 'r'
+                    linewidth=3
+                else:
+                    c1, c2, c3, c4, c5, c6, c7, c8 = 'r', 'g', 'm', 'g', 'r', 'm', 'g', 'r'
+                    linewidth=1
+
                 # Plot Cheetah Body 
                 ax.plot(np.array([info['head_pos'][i, 0], info['neck_pos'][i, 0]]),
-                        np.array([info['head_pos'][i, 1], info['neck_pos'][i, 1]]), c='r', alpha=alpha)
+                        np.array([info['head_pos'][i, 1], info['neck_pos'][i, 1]]), c=c1, alpha=alpha, linewidth=linewidth)
                 ax.plot(np.array([info['neck_pos'][i, 0], info['back_pos'][i, 0]]),
-                        np.array([info['neck_pos'][i, 1], info['back_pos'][i, 1]]), c='g', alpha=alpha)
+                        np.array([info['neck_pos'][i, 1], info['back_pos'][i, 1]]), c=c2, alpha=alpha, linewidth=linewidth)
                 ax.plot(np.array([info['neck_pos'][i, 0], info['front_thigh_pos'][i, 0]]),
-                        np.array([info['neck_pos'][i, 1], info['front_thigh_pos'][i, 1]]), c='m', alpha=alpha)
+                        np.array([info['neck_pos'][i, 1], info['front_thigh_pos'][i, 1]]), c=c3, alpha=alpha, linewidth=linewidth)
                 ax.plot(np.array([info['front_thigh_pos'][i, 0], info['front_shin_pos'][i, 0]]),
-                        np.array([info['front_thigh_pos'][i, 1], info['front_shin_pos'][i, 1]]), c='g', alpha=alpha)
+                        np.array([info['front_thigh_pos'][i, 1], info['front_shin_pos'][i, 1]]), c=c4, alpha=alpha, linewidth=linewidth)
                 ax.plot(np.array([info['front_foot_pos'][i, 0], info['front_shin_pos'][i, 0]]),
-                        np.array([info['front_foot_pos'][i, 1], info['front_shin_pos'][i, 1]]), c='r', alpha=alpha)
+                        np.array([info['front_foot_pos'][i, 1], info['front_shin_pos'][i, 1]]), c=c5, alpha=alpha, linewidth=linewidth)
                 ax.plot(np.array([info['back_pos'][i, 0], info['back_thigh_pos'][i, 0]]),
-                        np.array([info['back_pos'][i, 1], info['back_thigh_pos'][i, 1]]), c='m', alpha=alpha)
+                        np.array([info['back_pos'][i, 1], info['back_thigh_pos'][i, 1]]), c=c6, alpha=alpha, linewidth=linewidth)
                 ax.plot(np.array([info['back_thigh_pos'][i, 0], info['back_shin_pos'][i, 0]]),
-                        np.array([info['back_thigh_pos'][i, 1], info['back_shin_pos'][i, 1]]), c='g', alpha=alpha)
+                        np.array([info['back_thigh_pos'][i, 1], info['back_shin_pos'][i, 1]]), c=c7, alpha=alpha, linewidth=linewidth)
                 ax.plot(np.array([info['back_foot_pos'][i, 0], info['back_shin_pos'][i, 0]]),
-                        np.array([info['back_foot_pos'][i, 1], info['back_shin_pos'][i, 1]]), c='r', alpha=alpha)
+                        np.array([info['back_foot_pos'][i, 1], info['back_shin_pos'][i, 1]]), c=c8, alpha=alpha, linewidth=linewidth)
                 
-            # Plot First Reach in Green 
-            if reach_idx is not None and reach_idx > 0:
-                i = reach_idx
-                ax.plot(np.array([info['head_pos'][i, 0], info['neck_pos'][i, 0]]),
-                        np.array([info['head_pos'][i, 1], info['neck_pos'][i, 1]]), c='g', linewidth=4)
-                ax.plot(np.array([info['neck_pos'][i, 0], info['back_pos'][i, 0]]),
-                        np.array([info['neck_pos'][i, 1], info['back_pos'][i, 1]]), c='g', linewidth=4)
-                ax.plot(np.array([info['neck_pos'][i, 0], info['front_thigh_pos'][i, 0]]),
-                        np.array([info['neck_pos'][i, 1], info['front_thigh_pos'][i, 1]]), c='g', linewidth=4)
-                ax.plot(np.array([info['front_thigh_pos'][i, 0], info['front_shin_pos'][i, 0]]),
-                        np.array([info['front_thigh_pos'][i, 1], info['front_shin_pos'][i, 1]]), c='g', linewidth=4)
-                ax.plot(np.array([info['front_foot_pos'][i, 0], info['front_shin_pos'][i, 0]]),
-                        np.array([info['front_foot_pos'][i, 1], info['front_shin_pos'][i, 1]]), c='g', linewidth=4)
-                ax.plot(np.array([info['back_pos'][i, 0], info['back_thigh_pos'][i, 0]]),
-                        np.array([info['back_pos'][i, 1], info['back_thigh_pos'][i, 1]]), c='g', linewidth=4)
-                ax.plot(np.array([info['back_thigh_pos'][i, 0], info['back_shin_pos'][i, 0]]),
-                        np.array([info['back_thigh_pos'][i, 1], info['back_shin_pos'][i, 1]]), c='g', linewidth=4)
-                ax.plot(np.array([info['back_foot_pos'][i, 0], info['back_shin_pos'][i, 0]]),
-                        np.array([info['back_foot_pos'][i, 1], info['back_shin_pos'][i, 1]]), c='g', linewidth=4)
+            indices = np.linspace(0, full_len, 11, dtype=int)
+            for step_n, i in enumerate(indices):
+                alpha = (step_n + 1) / 11
+
+                reach_val = is_reach_np(info['head_pos'][i])
+                avoid_val = is_avoid_np(info['head_pos'][i], 
+                    info['front_thigh_pos'][i], info['front_shin_pos'][i], info['front_foot_pos'][i], 
+                    info['back_thigh_pos'][i], info['back_shin_pos'][i], info['back_foot_pos'][i])
+
+                if avoid_val > 0.:
+                    color_mode = "A"
+                elif reach_val < 0.:
+                    color_mode = "R"
+                else:
+                    color_mode = "normal"
+                draw_body(ax, info, i, alpha, color_mode=color_mode)
+
+            if reach_idx is not None and reach_idx > -1:
+                draw_body(ax, info, reach_idx, alpha, color_mode="R")
+            if avoid_idx is not None and avoid_idx > -1:
+                draw_body(ax, info, avoid_idx, alpha, color_mode="A")
+
+                # Plot Cheetah Body 
+                # ax.plot(np.array([info['head_pos'][i, 0], info['neck_pos'][i, 0]]),
+                #         np.array([info['head_pos'][i, 1], info['neck_pos'][i, 1]]), c='r', alpha=alpha)
+                # ax.plot(np.array([info['neck_pos'][i, 0], info['back_pos'][i, 0]]),
+                #         np.array([info['neck_pos'][i, 1], info['back_pos'][i, 1]]), c='g', alpha=alpha)
+                # ax.plot(np.array([info['neck_pos'][i, 0], info['front_thigh_pos'][i, 0]]),
+                #         np.array([info['neck_pos'][i, 1], info['front_thigh_pos'][i, 1]]), c='m', alpha=alpha)
+                # ax.plot(np.array([info['front_thigh_pos'][i, 0], info['front_shin_pos'][i, 0]]),
+                #         np.array([info['front_thigh_pos'][i, 1], info['front_shin_pos'][i, 1]]), c='g', alpha=alpha)
+                # ax.plot(np.array([info['front_foot_pos'][i, 0], info['front_shin_pos'][i, 0]]),
+                #         np.array([info['front_foot_pos'][i, 1], info['front_shin_pos'][i, 1]]), c='r', alpha=alpha)
+                # ax.plot(np.array([info['back_pos'][i, 0], info['back_thigh_pos'][i, 0]]),
+                #         np.array([info['back_pos'][i, 1], info['back_thigh_pos'][i, 1]]), c='m', alpha=alpha)
+                # ax.plot(np.array([info['back_thigh_pos'][i, 0], info['back_shin_pos'][i, 0]]),
+                #         np.array([info['back_thigh_pos'][i, 1], info['back_shin_pos'][i, 1]]), c='g', alpha=alpha)
+                # ax.plot(np.array([info['back_foot_pos'][i, 0], info['back_shin_pos'][i, 0]]),
+                #         np.array([info['back_foot_pos'][i, 1], info['back_shin_pos'][i, 1]]), c='r', alpha=alpha)
+                
+            # # Plot First Reach in Green 
+            # if reach_idx is not None and reach_idx > -1:
+            #     i = reach_idx
+            #     ax.plot(np.array([info['head_pos'][i, 0], info['neck_pos'][i, 0]]),
+            #             np.array([info['head_pos'][i, 1], info['neck_pos'][i, 1]]), c='g', linewidth=4)
+            #     ax.plot(np.array([info['neck_pos'][i, 0], info['back_pos'][i, 0]]),
+            #             np.array([info['neck_pos'][i, 1], info['back_pos'][i, 1]]), c='g', linewidth=4)
+            #     ax.plot(np.array([info['neck_pos'][i, 0], info['front_thigh_pos'][i, 0]]),
+            #             np.array([info['neck_pos'][i, 1], info['front_thigh_pos'][i, 1]]), c='g', linewidth=4)
+            #     ax.plot(np.array([info['front_thigh_pos'][i, 0], info['front_shin_pos'][i, 0]]),
+            #             np.array([info['front_thigh_pos'][i, 1], info['front_shin_pos'][i, 1]]), c='g', linewidth=4)
+            #     ax.plot(np.array([info['front_foot_pos'][i, 0], info['front_shin_pos'][i, 0]]),
+            #             np.array([info['front_foot_pos'][i, 1], info['front_shin_pos'][i, 1]]), c='g', linewidth=4)
+            #     ax.plot(np.array([info['back_pos'][i, 0], info['back_thigh_pos'][i, 0]]),
+            #             np.array([info['back_pos'][i, 1], info['back_thigh_pos'][i, 1]]), c='g', linewidth=4)
+            #     ax.plot(np.array([info['back_thigh_pos'][i, 0], info['back_shin_pos'][i, 0]]),
+            #             np.array([info['back_thigh_pos'][i, 1], info['back_shin_pos'][i, 1]]), c='g', linewidth=4)
+            #     ax.plot(np.array([info['back_foot_pos'][i, 0], info['back_shin_pos'][i, 0]]),
+            #             np.array([info['back_foot_pos'][i, 1], info['back_shin_pos'][i, 1]]), c='g', linewidth=4)
             
-            # Plot Avoid Violation in Red
-            if avoid_idx is not None and avoid_idx > 0: 
-                i = avoid_idx
-                ax.plot(np.array([info['head_pos'][i, 0], info['neck_pos'][i, 0]]),
-                        np.array([info['head_pos'][i, 1], info['neck_pos'][i, 1]]), c='r', linewidth=4)
-                ax.plot(np.array([info['neck_pos'][i, 0], info['back_pos'][i, 0]]),
-                        np.array([info['neck_pos'][i, 1], info['back_pos'][i, 1]]), c='r', linewidth=4)
-                ax.plot(np.array([info['neck_pos'][i, 0], info['front_thigh_pos'][i, 0]]),
-                        np.array([info['neck_pos'][i, 1], info['front_thigh_pos'][i, 1]]), c='r', linewidth=4)
-                ax.plot(np.array([info['front_thigh_pos'][i, 0], info['front_shin_pos'][i, 0]]),
-                        np.array([info['front_thigh_pos'][i, 1], info['front_shin_pos'][i, 1]]), c='r', linewidth=4)
-                ax.plot(np.array([info['front_foot_pos'][i, 0], info['front_shin_pos'][i, 0]]),
-                        np.array([info['front_foot_pos'][i, 1], info['front_shin_pos'][i, 1]]), c='r', linewidth=4)
-                ax.plot(np.array([info['back_pos'][i, 0], info['back_thigh_pos'][i, 0]]),
-                        np.array([info['back_pos'][i, 1], info['back_thigh_pos'][i, 1]]), c='r')
-                ax.plot(np.array([info['back_thigh_pos'][i, 0], info['back_shin_pos'][i, 0]]),
-                        np.array([info['back_thigh_pos'][i, 1], info['back_shin_pos'][i, 1]]), c='r', linewidth=4)
-                ax.plot(np.array([info['back_foot_pos'][i, 0], info['back_shin_pos'][i, 0]]),
-                        np.array([info['back_foot_pos'][i, 1], info['back_shin_pos'][i, 1]]), c='r', linewidth=4)
+            # # Plot Avoid Violation in Red
+            # if avoid_idx is not None and avoid_idx > -1: 
+            #     i = avoid_idx
+            #     ax.plot(np.array([info['head_pos'][i, 0], info['neck_pos'][i, 0]]),
+            #             np.array([info['head_pos'][i, 1], info['neck_pos'][i, 1]]), c='r', linewidth=4)
+            #     ax.plot(np.array([info['neck_pos'][i, 0], info['back_pos'][i, 0]]),
+            #             np.array([info['neck_pos'][i, 1], info['back_pos'][i, 1]]), c='r', linewidth=4)
+            #     ax.plot(np.array([info['neck_pos'][i, 0], info['front_thigh_pos'][i, 0]]),
+            #             np.array([info['neck_pos'][i, 1], info['front_thigh_pos'][i, 1]]), c='r', linewidth=4)
+            #     ax.plot(np.array([info['front_thigh_pos'][i, 0], info['front_shin_pos'][i, 0]]),
+            #             np.array([info['front_thigh_pos'][i, 1], info['front_shin_pos'][i, 1]]), c='r', linewidth=4)
+            #     ax.plot(np.array([info['front_foot_pos'][i, 0], info['front_shin_pos'][i, 0]]),
+            #             np.array([info['front_foot_pos'][i, 1], info['front_shin_pos'][i, 1]]), c='r', linewidth=4)
+            #     ax.plot(np.array([info['back_pos'][i, 0], info['back_thigh_pos'][i, 0]]),
+            #             np.array([info['back_pos'][i, 1], info['back_thigh_pos'][i, 1]]), c='r')
+            #     ax.plot(np.array([info['back_thigh_pos'][i, 0], info['back_shin_pos'][i, 0]]),
+            #             np.array([info['back_thigh_pos'][i, 1], info['back_shin_pos'][i, 1]]), c='r', linewidth=4)
+            #     ax.plot(np.array([info['back_foot_pos'][i, 0], info['back_shin_pos'][i, 0]]),
+            #             np.array([info['back_foot_pos'][i, 1], info['back_shin_pos'][i, 1]]), c='r', linewidth=4)
             
             ax.set_xlim((axes_lowerx, axes_upperx))
             ax.set_ylim((axes_lowery, axes_uppery))
@@ -1011,7 +1076,7 @@ def plot_video_contour_RRAA(multi_info, epoch, config, save_video=False, prefix=
                     np.array([info['leg_pos'][step, 1], info['foot_back_pos'][step, 1]]), c='m')
                 
             # Plot First Reach in Green 
-            if reach_idx is not None and reach_idx > 0:
+            if reach_idx is not None and reach_idx > -1:
                 ax.plot(np.array([info['head_pos'][reach_idx, 0], info['jaw_pos'][reach_idx, 0]]),
                         np.array([info['head_pos'][reach_idx, 1], info['jaw_pos'][reach_idx, 1]]), c='g', linewidth=4)
                 ax.plot(np.array([info['jaw_pos'][reach_idx, 0], info['thg_pos'][reach_idx, 0]]),
@@ -1024,7 +1089,7 @@ def plot_video_contour_RRAA(multi_info, epoch, config, save_video=False, prefix=
                         np.array([info['leg_pos'][reach_idx, 1], info['foot_back_pos'][reach_idx, 1]]), c='g', linewidth=4)
                 
             # Plot Avoid Violation in Red
-            if avoid_idx is not None and avoid_idx > 0: 
+            if avoid_idx is not None and avoid_idx > -1: 
                 ax.plot(np.array([info['head_pos'][avoid_idx, 0], info['jaw_pos'][avoid_idx, 0]]),
                         np.array([info['head_pos'][avoid_idx, 1], info['jaw_pos'][avoid_idx, 1]]), c='r', linewidth=4)
                 ax.plot(np.array([info['jaw_pos'][avoid_idx, 0], info['thg_pos'][avoid_idx, 0]]),
@@ -1229,14 +1294,26 @@ def plot_video_contour_RRAA(multi_info, epoch, config, save_video=False, prefix=
                         np.array([info['back_thigh_pos'][i, 1], info['back_shin_pos'][i, 1]]), c=c7, alpha=alpha, linewidth=linewidth)
                 ax.plot(np.array([info['back_foot_pos'][i, 0], info['back_shin_pos'][i, 0]]),
                         np.array([info['back_foot_pos'][i, 1], info['back_shin_pos'][i, 1]]), c=c8, alpha=alpha, linewidth=linewidth)
-               
-            draw_body(ax, info, step, 0.9)
 
-            if reach_idx is not None and step >= reach_idx and reach_idx > 0:
-                draw_body(ax, info, reach_idx, 0.9, color_mode = "R")
+            reach_val = is_reach_np(info['head_pos'][step])
+            avoid_val = is_avoid_np(info['head_pos'][step], 
+                info['front_thigh_pos'][step], info['front_shin_pos'][step], info['front_foot_pos'][step], 
+                info['back_thigh_pos'][step], info['back_shin_pos'][step], info['back_foot_pos'][step])
 
-            if avoid_idx is not None and step >= avoid_idx and avoid_idx > 0:
-                draw_body(ax, info, avoid_idx, 0.9, color_mode = "A")
+            if avoid_val > 0.:
+                color_mode = "A"
+            elif reach_val < 0.:
+                color_mode = "R"
+            else:
+                color_mode = "normal"
+
+            draw_body(ax, info, step, 0.9, color_mode=color_mode)
+
+            if reach_idx is not None and step >= reach_idx and reach_idx > -1:
+                draw_body(ax, info, reach_idx, 0.5, color_mode = "R")
+
+            if avoid_idx is not None and step >= avoid_idx and avoid_idx > -1:
+                draw_body(ax, info, avoid_idx, 0.5, color_mode = "A")
             
             ax.set_xlim((axes_lowerx, axes_upperx))
             ax.set_ylim((axes_lowery, axes_uppery))
