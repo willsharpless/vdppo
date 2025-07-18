@@ -791,7 +791,7 @@ def plot_contour_RRAA(multi_info, epoch, config, policy_decision_sample=None):
         info, info_avoid = multi_info 
         plt.figure(figsize=(12, 6*2))
         fig, axes = plt.subplots(2, 1)
-        axes_upperx = 5.5
+        axes_upperx = 8.5
         axes_lowerx = -0.5
         axes_uppery = 1.3
         axes_lowery = -0.7
@@ -1171,7 +1171,7 @@ def plot_video_contour_RRAA(multi_info, epoch, config, save_video=False, prefix=
         
         info, info_avoid = multi_info 
 
-        axes_upperx = 5.5
+        axes_upperx = 8.5
         axes_lowerx = -0.5
         axes_uppery = 1.3
         axes_lowery = -0.7
