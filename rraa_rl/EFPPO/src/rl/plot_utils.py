@@ -801,15 +801,7 @@ def plot_contour_RRAA(multi_info, epoch, config, policy_decision_sample=None):
             avoid_idx = info.get('avoid_index')
             full_len = info['head_pos'].shape[0]
 
-            # Plot Targets and Obstacles (old method)  
-            # draw_target = plt.Rectangle((3.25, -0.7), 0.5, 5., fill=False)
-            # draw_rectangle = plt.Rectangle((2., -0.7), 1., 0.25, facecolor="red", fill=True)
-            # draw_rectangle2 = plt.Rectangle((4., -0.7), 1., 0.25, facecolor="red", fill=True)
-            # ax.add_patch(draw_target)
-            # ax.add_patch(draw_rectangle)
-            # ax.add_patch(draw_rectangle2)
-
-            # Plot Targets and Obstacles (new method)
+            # Plot Targets and Obstacles
             x = np.linspace(axes_lowerx, axes_upperx, 400)
             y = np.linspace(axes_lowery, axes_uppery, 400)
             X, Y = np.meshgrid(x, y)
@@ -819,7 +811,12 @@ def plot_contour_RRAA(multi_info, epoch, config, policy_decision_sample=None):
             is_avoid_np = jit(model.is_avoid)
             reach_values = np.array(is_reach_np(positions))
             avoid_values = np.array(is_avoid_np(positions, positions, positions, positions, positions, positions, positions))
-            ax.contourf(X, Y, reach_values, levels=[reach_values.min(), 0], colors=['green'], alpha=0.4)
+            if reach_idx is not None:
+                ax.contourf(X, Y, np.maximum(reach_values, avoid_values), alpha=0.3, levels=20)
+            else:
+                ax.contourf(X, Y, avoid_values, alpha=0.3, levels=20)
+            if reach_idx is not None:
+                ax.contourf(X, Y, reach_values, levels=[reach_values.min(), 0], colors=['green'], alpha=0.4)
             ax.contourf(X, Y, avoid_values, levels=[0, avoid_values.max()], colors=['red'], alpha=0.4)
 
             def draw_body(ax, info, i, alpha, color_mode="normal"):
@@ -863,7 +860,7 @@ def plot_contour_RRAA(multi_info, epoch, config, policy_decision_sample=None):
 
                 if avoid_val > 0.:
                     color_mode = "A"
-                elif reach_val < 0.:
+                elif reach_idx is not None and reach_val < 0.:
                     color_mode = "R"
                 else:
                     color_mode = "normal"
@@ -874,64 +871,6 @@ def plot_contour_RRAA(multi_info, epoch, config, policy_decision_sample=None):
             if avoid_idx is not None and avoid_idx > -1:
                 draw_body(ax, info, avoid_idx, alpha, color_mode="A")
 
-                # Plot Cheetah Body 
-                # ax.plot(np.array([info['head_pos'][i, 0], info['neck_pos'][i, 0]]),
-                #         np.array([info['head_pos'][i, 1], info['neck_pos'][i, 1]]), c='r', alpha=alpha)
-                # ax.plot(np.array([info['neck_pos'][i, 0], info['back_pos'][i, 0]]),
-                #         np.array([info['neck_pos'][i, 1], info['back_pos'][i, 1]]), c='g', alpha=alpha)
-                # ax.plot(np.array([info['neck_pos'][i, 0], info['front_thigh_pos'][i, 0]]),
-                #         np.array([info['neck_pos'][i, 1], info['front_thigh_pos'][i, 1]]), c='m', alpha=alpha)
-                # ax.plot(np.array([info['front_thigh_pos'][i, 0], info['front_shin_pos'][i, 0]]),
-                #         np.array([info['front_thigh_pos'][i, 1], info['front_shin_pos'][i, 1]]), c='g', alpha=alpha)
-                # ax.plot(np.array([info['front_foot_pos'][i, 0], info['front_shin_pos'][i, 0]]),
-                #         np.array([info['front_foot_pos'][i, 1], info['front_shin_pos'][i, 1]]), c='r', alpha=alpha)
-                # ax.plot(np.array([info['back_pos'][i, 0], info['back_thigh_pos'][i, 0]]),
-                #         np.array([info['back_pos'][i, 1], info['back_thigh_pos'][i, 1]]), c='m', alpha=alpha)
-                # ax.plot(np.array([info['back_thigh_pos'][i, 0], info['back_shin_pos'][i, 0]]),
-                #         np.array([info['back_thigh_pos'][i, 1], info['back_shin_pos'][i, 1]]), c='g', alpha=alpha)
-                # ax.plot(np.array([info['back_foot_pos'][i, 0], info['back_shin_pos'][i, 0]]),
-                #         np.array([info['back_foot_pos'][i, 1], info['back_shin_pos'][i, 1]]), c='r', alpha=alpha)
-                
-            # # Plot First Reach in Green 
-            # if reach_idx is not None and reach_idx > -1:
-            #     i = reach_idx
-            #     ax.plot(np.array([info['head_pos'][i, 0], info['neck_pos'][i, 0]]),
-            #             np.array([info['head_pos'][i, 1], info['neck_pos'][i, 1]]), c='g', linewidth=4)
-            #     ax.plot(np.array([info['neck_pos'][i, 0], info['back_pos'][i, 0]]),
-            #             np.array([info['neck_pos'][i, 1], info['back_pos'][i, 1]]), c='g', linewidth=4)
-            #     ax.plot(np.array([info['neck_pos'][i, 0], info['front_thigh_pos'][i, 0]]),
-            #             np.array([info['neck_pos'][i, 1], info['front_thigh_pos'][i, 1]]), c='g', linewidth=4)
-            #     ax.plot(np.array([info['front_thigh_pos'][i, 0], info['front_shin_pos'][i, 0]]),
-            #             np.array([info['front_thigh_pos'][i, 1], info['front_shin_pos'][i, 1]]), c='g', linewidth=4)
-            #     ax.plot(np.array([info['front_foot_pos'][i, 0], info['front_shin_pos'][i, 0]]),
-            #             np.array([info['front_foot_pos'][i, 1], info['front_shin_pos'][i, 1]]), c='g', linewidth=4)
-            #     ax.plot(np.array([info['back_pos'][i, 0], info['back_thigh_pos'][i, 0]]),
-            #             np.array([info['back_pos'][i, 1], info['back_thigh_pos'][i, 1]]), c='g', linewidth=4)
-            #     ax.plot(np.array([info['back_thigh_pos'][i, 0], info['back_shin_pos'][i, 0]]),
-            #             np.array([info['back_thigh_pos'][i, 1], info['back_shin_pos'][i, 1]]), c='g', linewidth=4)
-            #     ax.plot(np.array([info['back_foot_pos'][i, 0], info['back_shin_pos'][i, 0]]),
-            #             np.array([info['back_foot_pos'][i, 1], info['back_shin_pos'][i, 1]]), c='g', linewidth=4)
-            
-            # # Plot Avoid Violation in Red
-            # if avoid_idx is not None and avoid_idx > -1: 
-            #     i = avoid_idx
-            #     ax.plot(np.array([info['head_pos'][i, 0], info['neck_pos'][i, 0]]),
-            #             np.array([info['head_pos'][i, 1], info['neck_pos'][i, 1]]), c='r', linewidth=4)
-            #     ax.plot(np.array([info['neck_pos'][i, 0], info['back_pos'][i, 0]]),
-            #             np.array([info['neck_pos'][i, 1], info['back_pos'][i, 1]]), c='r', linewidth=4)
-            #     ax.plot(np.array([info['neck_pos'][i, 0], info['front_thigh_pos'][i, 0]]),
-            #             np.array([info['neck_pos'][i, 1], info['front_thigh_pos'][i, 1]]), c='r', linewidth=4)
-            #     ax.plot(np.array([info['front_thigh_pos'][i, 0], info['front_shin_pos'][i, 0]]),
-            #             np.array([info['front_thigh_pos'][i, 1], info['front_shin_pos'][i, 1]]), c='r', linewidth=4)
-            #     ax.plot(np.array([info['front_foot_pos'][i, 0], info['front_shin_pos'][i, 0]]),
-            #             np.array([info['front_foot_pos'][i, 1], info['front_shin_pos'][i, 1]]), c='r', linewidth=4)
-            #     ax.plot(np.array([info['back_pos'][i, 0], info['back_thigh_pos'][i, 0]]),
-            #             np.array([info['back_pos'][i, 1], info['back_thigh_pos'][i, 1]]), c='r')
-            #     ax.plot(np.array([info['back_thigh_pos'][i, 0], info['back_shin_pos'][i, 0]]),
-            #             np.array([info['back_thigh_pos'][i, 1], info['back_shin_pos'][i, 1]]), c='r', linewidth=4)
-            #     ax.plot(np.array([info['back_foot_pos'][i, 0], info['back_shin_pos'][i, 0]]),
-            #             np.array([info['back_foot_pos'][i, 1], info['back_shin_pos'][i, 1]]), c='r', linewidth=4)
-            
             ax.set_xlim((axes_lowerx, axes_upperx))
             ax.set_ylim((axes_lowery, axes_uppery))
             ax.set_aspect('equal')
@@ -1259,9 +1198,13 @@ def plot_video_contour_RRAA(multi_info, epoch, config, save_video=False, prefix=
             # ax.add_patch(draw_target)
             # ax.add_patch(draw_rectangle)
             # ax.add_patch(draw_rectangle2)
-            ax.contourf(X, Y, reach_values, levels=[reach_values.min(), 0], colors=['green'], alpha=0.4)
+            if reach_idx is not None:
+                ax.contourf(X, Y, np.maximum(reach_values, avoid_values), alpha=0.3, levels=20)
+            else:
+                ax.contourf(X, Y, avoid_values, alpha=0.3, levels=20)
+            if reach_idx is not None:
+                ax.contourf(X, Y, reach_values, levels=[reach_values.min(), 0], colors=['green'], alpha=0.4)
             ax.contourf(X, Y, avoid_values, levels=[0, avoid_values.max()], colors=['red'], alpha=0.4)
-
             # indices = np.linspace(0, full_len, 11, dtype=int)
             # for step_n, i in enumerate(indices):
 
@@ -1302,7 +1245,7 @@ def plot_video_contour_RRAA(multi_info, epoch, config, save_video=False, prefix=
 
             if avoid_val > 0.:
                 color_mode = "A"
-            elif reach_val < 0.:
+            elif reach_idx is not None and reach_val < 0.:
                 color_mode = "R"
             else:
                 color_mode = "normal"

@@ -364,6 +364,92 @@ class HalfCheetahAvoidOnly:
         avoid_value = jnp.maximum(box_avoid_value, wall_avoid_value)
 
         return avoid_value
+    
+    ## TANH Verison
+    # @partial(jax.jit, static_argnums=(0,))
+    # def is_avoid(self, head_pos, front_thigh_pos, front_shin_pos, front_foot_pos, back_thigh_pos, back_shin_pos, back_foot_pos):
+    #     box_height, box_halfwidth, box_ycenter, box_front_xcenter, box_back_xcenter = 0.1, 0.25, -0.65, 2.5, 4.5
+    #     alpha = 2.
+
+    #     avoid_box_1_front_foot = -jnp.tanh(alpha * (jnp.maximum((box_height/box_halfwidth) * jnp.fabs(front_foot_pos[..., 0] - box_front_xcenter), front_foot_pos[..., 1] - box_ycenter) - box_height))
+    #     avoid_box_1_back_foot = -jnp.tanh(alpha * (jnp.maximum((box_height/box_halfwidth) * jnp.fabs(back_foot_pos[..., 0] - box_front_xcenter), back_foot_pos[..., 1] - box_ycenter) - box_height))
+    #     avoid_box_2_front_foot = -jnp.tanh(alpha * (jnp.maximum((box_height/box_halfwidth) * jnp.fabs(front_foot_pos[..., 0] - box_back_xcenter), front_foot_pos[..., 1] - box_ycenter) - box_height))
+    #     avoid_box_2_back_foot = -jnp.tanh(alpha * (jnp.maximum((box_height/box_halfwidth) * jnp.fabs(back_foot_pos[..., 0] - box_back_xcenter), back_foot_pos[..., 1] - box_ycenter) - box_height))
+        
+    #     avoid_box_1_front_thigh = -jnp.tanh(alpha * (jnp.maximum((box_height/box_halfwidth) * jnp.fabs(front_thigh_pos[..., 0] - box_front_xcenter), front_thigh_pos[..., 1] - box_ycenter) - box_height))
+    #     avoid_box_1_back_thigh = -jnp.tanh(alpha * (jnp.maximum((box_height/box_halfwidth) * jnp.fabs(back_thigh_pos[..., 0] - box_front_xcenter), back_thigh_pos[..., 1] - box_ycenter) - box_height))
+    #     avoid_box_2_front_thigh = -jnp.tanh(alpha * (jnp.maximum((box_height/box_halfwidth) * jnp.fabs(front_thigh_pos[..., 0] - box_back_xcenter), front_thigh_pos[..., 1] - box_ycenter) - box_height))
+    #     avoid_box_2_back_thigh = -jnp.tanh(alpha * (jnp.maximum((box_height/box_halfwidth) * jnp.fabs(back_thigh_pos[..., 0] - box_back_xcenter), back_thigh_pos[..., 1] - box_ycenter) - box_height))
+
+    #     avoid_box_1_front_shin = -jnp.tanh(alpha * (jnp.maximum((box_height/box_halfwidth) * jnp.fabs(front_shin_pos[..., 0] - box_front_xcenter), front_shin_pos[..., 1] - box_ycenter) - box_height))
+    #     avoid_box_1_back_shin = -jnp.tanh(alpha * (jnp.maximum((box_height/box_halfwidth) * jnp.fabs(back_shin_pos[..., 0] - box_front_xcenter), back_shin_pos[..., 1] - box_ycenter) - box_height))
+    #     avoid_box_2_front_shin = -jnp.tanh(alpha * (jnp.maximum((box_height/box_halfwidth) * jnp.fabs(front_shin_pos[..., 0] - box_back_xcenter), front_shin_pos[..., 1] - box_ycenter) - box_height))
+    #     avoid_box_2_back_shin = -jnp.tanh(alpha * (jnp.maximum((box_height/box_halfwidth) * jnp.fabs(back_shin_pos[..., 0] - box_back_xcenter), back_shin_pos[..., 1] - box_ycenter) - box_height))
+
+    #     avoid_box_1_head = -jnp.tanh(alpha * (jnp.maximum((box_height/box_halfwidth) * jnp.fabs(head_pos[..., 0] - box_front_xcenter), head_pos[..., 1] - box_ycenter) - box_height))
+    #     avoid_box_2_head = -jnp.tanh(alpha * (jnp.maximum((box_height/box_halfwidth) * jnp.fabs(head_pos[..., 0] - box_back_xcenter), head_pos[..., 1] - box_ycenter) - box_height))
+
+    #     box_avoid_value_foot = jnp.maximum(
+    #         jnp.maximum(avoid_box_1_front_foot, avoid_box_1_back_foot),
+    #         jnp.maximum(avoid_box_2_front_foot, avoid_box_2_back_foot)
+    #     )
+    #     box_avoid_value_shin = jnp.maximum(
+    #         jnp.maximum(avoid_box_1_front_shin, avoid_box_1_back_shin),
+    #         jnp.maximum(avoid_box_2_front_shin, avoid_box_2_back_shin)
+    #     )
+    #     box_avoid_value_thigh = jnp.maximum(
+    #         jnp.maximum(avoid_box_1_front_thigh, avoid_box_1_back_thigh),
+    #         jnp.maximum(avoid_box_2_front_thigh, avoid_box_2_back_thigh)
+    #     )
+    #     box_avoid_value_head = jnp.maximum(avoid_box_1_head, avoid_box_2_head)
+    #     box_avoid_value = jnp.maximum(
+    #         jnp.maximum(box_avoid_value_foot, box_avoid_value_shin),
+    #         jnp.maximum(box_avoid_value_thigh, box_avoid_value_head)
+    #     )
+
+    #     ## WALL AVOIDANCE
+    #     wall_height, wall_halfwidth = 1., 0.1
+    #     left_wall_x, right_wall_x = -0.5, 5.5
+
+    #     avoid_wall_1_front_foot = -jnp.tanh(alpha * (jnp.maximum((wall_height/wall_halfwidth) * jnp.fabs(front_foot_pos[..., 0] - left_wall_x), front_foot_pos[..., 1] - box_ycenter) - wall_height))
+    #     avoid_wall_1_back_foot = -jnp.tanh(alpha * (jnp.maximum((wall_height/wall_halfwidth) * jnp.fabs(back_foot_pos[..., 0] - left_wall_x), back_foot_pos[..., 1] - box_ycenter) - wall_height))
+    #     avoid_wall_2_front_foot = -jnp.tanh(alpha * (jnp.maximum((wall_height/wall_halfwidth) * jnp.fabs(front_foot_pos[..., 0] - right_wall_x), front_foot_pos[..., 1] - box_ycenter) - wall_height))
+    #     avoid_wall_2_back_foot = -jnp.tanh(alpha * (jnp.maximum((wall_height/wall_halfwidth) * jnp.fabs(back_foot_pos[..., 0] - right_wall_x), back_foot_pos[..., 1] - box_ycenter) - wall_height))
+
+    #     avoid_wall_1_front_thigh = -jnp.tanh(alpha * (jnp.maximum((wall_height/wall_halfwidth) * jnp.fabs(front_thigh_pos[..., 0] - left_wall_x), front_thigh_pos[..., 1] - box_ycenter) - wall_height))
+    #     avoid_wall_1_back_thigh = -jnp.tanh(alpha * (jnp.maximum((wall_height/wall_halfwidth) * jnp.fabs(back_thigh_pos[..., 0] - left_wall_x), back_thigh_pos[..., 1] - box_ycenter) - wall_height))
+    #     avoid_wall_2_front_thigh = -jnp.tanh(alpha * (jnp.maximum((wall_height/wall_halfwidth) * jnp.fabs(front_thigh_pos[..., 0] - right_wall_x), front_thigh_pos[..., 1] - box_ycenter) - wall_height))
+    #     avoid_wall_2_back_thigh = -jnp.tanh(alpha * (jnp.maximum((wall_height/wall_halfwidth) * jnp.fabs(back_thigh_pos[..., 0] - right_wall_x), back_thigh_pos[..., 1] - box_ycenter) - wall_height))
+
+    #     avoid_wall_1_front_shin = -jnp.tanh(alpha * (jnp.maximum((wall_height/wall_halfwidth) * jnp.fabs(front_shin_pos[..., 0] - left_wall_x), front_shin_pos[..., 1] - box_ycenter) - wall_height))
+    #     avoid_wall_1_back_shin = -jnp.tanh(alpha * (jnp.maximum((wall_height/wall_halfwidth) * jnp.fabs(back_shin_pos[..., 0] - left_wall_x), back_shin_pos[..., 1] - box_ycenter) - wall_height))
+    #     avoid_wall_2_front_shin = -jnp.tanh(alpha * (jnp.maximum((wall_height/wall_halfwidth) * jnp.fabs(front_shin_pos[..., 0] - right_wall_x), front_shin_pos[..., 1] - box_ycenter) - wall_height))
+    #     avoid_wall_2_back_shin = -jnp.tanh(alpha * (jnp.maximum((wall_height/wall_halfwidth) * jnp.fabs(back_shin_pos[..., 0] - right_wall_x), back_shin_pos[..., 1] - box_ycenter) - wall_height))
+        
+    #     avoid_wall_1_head = -jnp.tanh(alpha * (jnp.maximum((wall_height/wall_halfwidth) * jnp.fabs(head_pos[..., 0] - left_wall_x), head_pos[..., 1] - box_ycenter) - wall_height))
+    #     avoid_wall_2_head = -jnp.tanh(alpha * (jnp.maximum((wall_height/wall_halfwidth) * jnp.fabs(head_pos[..., 0] - right_wall_x), head_pos[..., 1] - box_ycenter) - wall_height))
+
+    #     wall_avoid_value_foot = jnp.maximum(
+    #         jnp.maximum(avoid_wall_1_front_foot, avoid_wall_1_back_foot),
+    #         jnp.maximum(avoid_wall_2_front_foot, avoid_wall_2_back_foot)
+    #     )
+    #     wall_avoid_value_shin = jnp.maximum(
+    #         jnp.maximum(avoid_wall_1_front_shin, avoid_wall_1_back_shin),
+    #         jnp.maximum(avoid_wall_2_front_shin, avoid_wall_2_back_shin)
+    #     )
+    #     wall_avoid_value_thigh = jnp.maximum(
+    #         jnp.maximum(avoid_wall_1_front_thigh, avoid_wall_1_back_thigh),
+    #         jnp.maximum(avoid_wall_2_front_thigh, avoid_wall_2_back_thigh)
+    #     )
+    #     wall_avoid_value_head = jnp.maximum(avoid_wall_1_head, avoid_wall_2_head)
+    #     wall_avoid_value = jnp.maximum(
+    #         jnp.maximum(wall_avoid_value_foot, wall_avoid_value_shin),
+    #         jnp.maximum(wall_avoid_value_thigh, wall_avoid_value_head)
+    #     )
+
+    #     avoid_value = jnp.maximum(box_avoid_value, wall_avoid_value)
+
+    #     return avoid_value
 
     def observation_space(self, params):
         return spaces.Box(
