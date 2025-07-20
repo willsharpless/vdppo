@@ -195,7 +195,7 @@ class HalfCheetahReachAvoid:
             jnp.maximum(wall_avoid_value_thigh, wall_avoid_value_head)
         )
 
-        avoid_value = jnp.maximum(box_avoid_value, 0.05 * wall_avoid_value)
+        avoid_value = jnp.maximum(10. * box_avoid_value, 0.01 * wall_avoid_value)
 
         return avoid_value
 
@@ -380,7 +380,7 @@ class HalfCheetahAvoidOnly:
             jnp.maximum(wall_avoid_value_thigh, wall_avoid_value_head)
         )
 
-        avoid_value = jnp.maximum(box_avoid_value, 0.05 * wall_avoid_value)
+        avoid_value = jnp.maximum(10. * box_avoid_value, 0.01 * wall_avoid_value)
 
         return avoid_value
     
@@ -466,7 +466,7 @@ class HalfCheetahAvoidOnly:
     #         jnp.maximum(wall_avoid_value_thigh, wall_avoid_value_head)
     #     )
 
-    #     avoid_value = jnp.maximum(box_avoid_value, 0.05 * wall_avoid_value)
+    #     avoid_value = jnp.maximum(10. * box_avoid_value, 0.01 * wall_avoid_value)
 
     #     return avoid_value
 
