@@ -810,7 +810,7 @@ def plot_contour_RRAA(multi_info, epoch, config, policy_decision_sample=None):
             is_reach_np = jit(model.is_reach)
             is_avoid_np = jit(model.is_avoid)
             reach_values = np.array(is_reach_np(positions))
-            avoid_values = np.array(is_avoid_np(positions, positions, positions, positions, positions, positions, positions))
+            avoid_values = np.array(is_avoid_np((positions, positions, positions, positions, positions, positions, positions, positions, positions)))
             if reach_idx is not None:
                 ax.contourf(X, Y, np.maximum(reach_values, avoid_values), alpha=0.3, levels=20)
             else:
@@ -854,9 +854,9 @@ def plot_contour_RRAA(multi_info, epoch, config, policy_decision_sample=None):
                 alpha = (step_n + 1) / 11
 
                 reach_val = is_reach_np(info['head_pos'][i])
-                avoid_val = is_avoid_np(info['head_pos'][i], 
+                avoid_val = is_avoid_np((info['head_pos'][i], info['neck_pos'][i], info['back_pos'][i],
                     info['front_thigh_pos'][i], info['front_shin_pos'][i], info['front_foot_pos'][i], 
-                    info['back_thigh_pos'][i], info['back_shin_pos'][i], info['back_foot_pos'][i])
+                    info['back_thigh_pos'][i], info['back_shin_pos'][i], info['back_foot_pos'][i]))
 
                 if avoid_val > 0.:
                     color_mode = "A"
@@ -1185,7 +1185,7 @@ def plot_video_contour_RRAA(multi_info, epoch, config, save_video=False, prefix=
         is_reach_np = jit(model.is_reach)
         is_avoid_np = jit(model.is_avoid)
         reach_values = np.array(is_reach_np(positions))
-        avoid_values = np.array(is_avoid_np(positions, positions, positions, positions, positions, positions, positions))
+        avoid_values = np.array(is_avoid_np((positions, positions, positions, positions, positions, positions, positions, positions, positions)))
 
         def draw_cheetah_raa(step, info, title, ax):
             reach_idx = info.get('reach_index')
@@ -1239,9 +1239,9 @@ def plot_video_contour_RRAA(multi_info, epoch, config, save_video=False, prefix=
                         np.array([info['back_foot_pos'][i, 1], info['back_shin_pos'][i, 1]]), c=c8, alpha=alpha, linewidth=linewidth)
 
             reach_val = is_reach_np(info['head_pos'][step])
-            avoid_val = is_avoid_np(info['head_pos'][step], 
+            avoid_val = is_avoid_np((info['head_pos'][step], info['neck_pos'][step], info['back_pos'][step],
                 info['front_thigh_pos'][step], info['front_shin_pos'][step], info['front_foot_pos'][step], 
-                info['back_thigh_pos'][step], info['back_shin_pos'][step], info['back_foot_pos'][step])
+                info['back_thigh_pos'][step], info['back_shin_pos'][step], info['back_foot_pos'][step]))
 
             if avoid_val > 0.:
                 color_mode = "A"
