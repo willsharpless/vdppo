@@ -14,6 +14,7 @@ from .baseline.hopper_avoid_ceiling_baseline import HopperAvoidCeilingBaseline, 
     HopperReachReachBaseline_augmented_sum, HopperReachReachBaseline_reward_cost_separated
 from .baseline.wind_field_baseline import WindFieldBaseline
 from .baseline.half_cheetah_avoid_baseline import HalfCheetahAvoidBaseline
+from .baseline.half_cheetah_RAA_baseline import HalfCheetahReachAlwaysAvoidBaseline_augmented
 
 from .baseline.F16_RAA_baseline import F16ReachAvoidBaseline
 from .baseline.F16_RR_baseline import F16ReachReachBaseline
@@ -319,6 +320,22 @@ def get_env(config):
         env_avoid.set_untransform_obs(untrans)
         return (env, env_avoid)
     
+    elif config["EXP_NAME"] == "HalfCheetahReachAlwaysAvoid_CPPO":
+        obs_dim = 18 + 1
+        vec1 = jnp.zeros(obs_dim, dtype=jnp.float32)
+        vec1 = vec1.at[0].set(2.5)
+        vec2 = jnp.ones(obs_dim, dtype=jnp.float32)
+        vec2 = vec2.at[0].set(3.)
+        
+        trans = partial(transform_observation, vec1, vec2)
+        untrans = partial(untransform_observation, vec1, vec2)
+
+        env = HalfCheetahReachAlwaysAvoidBaseline_augmented()
+        env = TransformObservation(env, trans)
+        env.set_untransform_obs(untrans)
+
+        return (env)
+
     elif config["EXP_NAME"] == "HalfCheetahReachReach": 
         vec1 = jnp.zeros(20, dtype=jnp.float32)
         vec1 = vec1.at[0].set(2.5)
@@ -343,7 +360,7 @@ def get_env(config):
         env1.set_untransform_obs(untrans)
         env2.set_untransform_obs(untrans)
         return (env, env1, env2)
-    
+        
     elif config["EXP_NAME"] == 'WindField':
         vec1 = jnp.zeros(14, dtype=jnp.float32)
         vec1 = vec1.at[-1].set(400.)

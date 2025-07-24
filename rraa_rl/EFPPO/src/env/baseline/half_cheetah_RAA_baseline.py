@@ -29,8 +29,8 @@ class EnvStateRAA:
     cost: float
 
 @struct.dataclass
-class EnvParamsEmpty:
-    pass
+class EnvParams:
+    gamma: float = 0.99
 
 class HalfCheetahReachAlwaysAvoidBaseline_augmented:
     def __init__(self, backend="positional"):
@@ -41,7 +41,7 @@ class HalfCheetahReachAlwaysAvoidBaseline_augmented:
         self._env = env
         self.action_size = env.action_size
         self.observation_size = (env.observation_size,)
-        self.default_params = EnvParamsEmpty()
+        self.default_params = EnvParams()
 
     @partial(jax.jit, static_argnums=(0,))
     def compute_observation(self, state, last_state=None): 
@@ -169,7 +169,7 @@ class HalfCheetahReachAlwaysAvoidBaseline_augmented:
         return spaces.Box(
             low=-jnp.inf,
             high=jnp.inf,
-            shape=(self._env.observation_size + 2,),
+            shape=(self._env.observation_size + 1,),
         )
 
     def action_space(self, params):

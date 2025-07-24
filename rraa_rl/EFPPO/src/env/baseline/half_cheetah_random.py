@@ -14,7 +14,7 @@ class HalfCheetahRandom(Halfcheetah):
         qpos = self.sys.init_q + jax.random.uniform(
             rng1, (self.sys.q_size(),), minval=low, maxval=hi
         )
-        qpos = qpos.at[0].set(qpos[0] + jax.random.uniform(rng3, minval=0., maxval=4.0))
+        qpos = qpos.at[0].set(qpos[0] + jax.random.uniform(rng3, minval=0.5, maxval=1.5))
         qvel = hi * jax.random.normal(rng2, (self.sys.qd_size(),))
 
         pipeline_state = self.pipeline_init(qpos, qvel)
