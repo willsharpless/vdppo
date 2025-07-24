@@ -217,7 +217,7 @@ def train(env, env_params, config, rng):
                 })
         
         # Save video of trajectory 
-        video_freq = 5 #25 
+        video_freq = 25 
         save_video = True 
         if timestep % video_freq == 0 or timestep == total_timesteps - 1: 
             video_frames = plot_video_contour_RRAA((info, None), timestep + 1, config, save_video=save_video, log_wandb=config["USE_WANDB"])
