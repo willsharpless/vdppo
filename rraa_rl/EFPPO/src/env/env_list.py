@@ -7,6 +7,7 @@ from .reach_avoid.hopper_avoid_ceiling import HopperReachReach, HopperReachReach
 from .reach_avoid.wind_field import WindField
 from .reach_avoid.half_cheetah_avoid import HalfCheetahAvoid, HalfCheetahAvoidDeterministic
 from .reach_avoid.half_cheetah_RAA import HalfCheetahReachAvoid, HalfCheetahAvoidOnly
+from .reach_avoid.half_cheetah_RR import HalfCheetahReachReach, HalfCheetahReach1, HalfCheetahReach2
 from .reach_avoid.safety_gym_avoid import PointAvoid
 from .baseline.pendulum_constraint_baseline import PendulumConstraintBaseline
 from .baseline.hopper_avoid_ceiling_baseline import HopperAvoidCeilingBaseline, HopperReachAlwaysAvoidBaseline_augmented, HopperReachReachBaseline_augmented_max, \
@@ -317,6 +318,31 @@ def get_env(config):
         env.set_untransform_obs(untrans)
         env_avoid.set_untransform_obs(untrans)
         return (env, env_avoid)
+    
+    elif config["EXP_NAME"] == "HalfCheetahReachReach": 
+        vec1 = jnp.zeros(20, dtype=jnp.float32)
+        vec1 = vec1.at[0].set(2.5)
+        # vec1 = vec1.at[-1].set(0.)
+        # vec1 = vec1.at[-2].set(0.)
+        vec2 = jnp.ones(20, dtype=jnp.float32)
+        vec2 = vec2.at[0].set(3.)
+        # vec2 = vec2.at[-1].set(1.)
+        # vec2 = vec2.at[-2].set(1.)
+        trans = partial(transform_observation, vec1, vec2)
+        untrans = partial(untransform_observation, vec1, vec2)
+
+        env = HalfCheetahReachReach()
+        env = TransformObservation(env, trans)
+        
+        env1 = HalfCheetahReach1() # TODO make determinstic
+        env1 = TransformObservation(env1, trans)
+        env2 = HalfCheetahReach2() # TODO make determinstic
+        env2 = TransformObservation(env2, trans)
+
+        env.set_untransform_obs(untrans)
+        env1.set_untransform_obs(untrans)
+        env2.set_untransform_obs(untrans)
+        return (env, env1, env2)
     
     elif config["EXP_NAME"] == 'WindField':
         vec1 = jnp.zeros(14, dtype=jnp.float32)

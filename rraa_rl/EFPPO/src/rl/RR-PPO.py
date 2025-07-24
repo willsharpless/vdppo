@@ -62,7 +62,7 @@ def train(envs, env_paramss, config, rng):
             env_step, runner_state, None, config["NUM_STEPS"]
         )
 
-        init_type = "toinput" # "standard", "toinput"
+        init_type = "toinput_goal" # "standard", "toinput", "toinput_goal"
         # RESET ENV - 1
         rng, _rng = jax.random.split(rng_og)
         reset_rng = jax.random.split(_rng, config["NUM_ENVS"])
@@ -70,14 +70,23 @@ def train(envs, env_paramss, config, rng):
         if init_type == "standard": 
             obsv_reach_1, env_state_reach_1 = jax.vmap(env_reach_1.reset, in_axes=(0, None))(reset_rng, env_params_reach_1)
         
-        elif init_type == "toinput": 
-            # Select random observations from standard rollout to use for initial avoid state 
+        elif "toinput" in init_type: 
             rng_reach1, _rng_reach1 = jax.random.split(rng)
-            random_index = jax.random.randint(_rng_reach1, shape=(config["NUM_ENVS"],), minval=0, maxval=config["NUM_STEPS"])
+            
+            ## Select first reach2 step in composed rollout for initial decomposed reach1 state 
+            if init_type == "toinput_goal":
+                random_index_pre = jax.random.randint(_rng_reach1, shape=(config["NUM_ENVS"],), minval=0, maxval=config["NUM_STEPS"])
+                reach2_idx_pre = (traj_batch.reach2 < 0).argmax(axis=0)
+                reach2_idx = jnp.where(jnp.any((traj_batch.reach2 < 0) == 1, axis=0), reach2_idx_pre, config["NUM_STEPS"])
+                random_index = jnp.where(jnp.any(traj_batch.reach2 < 0, axis=0), reach2_idx, random_index_pre)
+            
+            ## Select random step in composed rollout for initial decomposed reach1 state
+            else:
+                random_index = jax.random.randint(_rng_reach1, shape=(config["NUM_ENVS"],), minval=0, maxval=config["NUM_STEPS"])
             # random_index = jax.random.randint(_rng_reach1, shape=(untrans_traj_batch_observations_full.shape[0],), minval=0, maxval=untrans_traj_batch_observations_full.shape[1])
 
             # Multiple random indices
-            if "Hopper" in config["EXP_NAME"]:
+            if "Hopper" in config["EXP_NAME"] or "HalfCheetah" in config["EXP_NAME"]:
                 traj_batch_observations_full = traj_batch.obs 
                 untrans_traj_batch_observations_full = env.untransform_obs(traj_batch_observations_full)
                 untrans_traj_batch_observations_full = jnp.transpose(untrans_traj_batch_observations_full, axes=(1, 0, 2))
@@ -120,14 +129,23 @@ def train(envs, env_paramss, config, rng):
 
         #     obsv_reach_2, env_state_reach_2 = jax.vmap(env_reach_2.reset_toinput, in_axes=(0, 0, None))(reset_rng, untrans_traj_batch_observations, env_params_reach_2) 
 
-        elif init_type == "toinput": 
-            # Select random observations from standard rollout to use for initial avoid state 
+        elif "toinput" in init_type: 
             rng_reach2, _rng_reach2 = jax.random.split(rng)
-            random_index = jax.random.randint(_rng_reach2, shape=(config["NUM_ENVS"],), minval=0, maxval=config["NUM_STEPS"])
+            
+            ## Select first reach1 step in composed rollout for initial decomposed reach2 state 
+            if init_type == "toinput_goal":
+                random_index_pre = jax.random.randint(rng_reach2, shape=(config["NUM_ENVS"],), minval=0, maxval=config["NUM_STEPS"])
+                reach1_idx_pre = (traj_batch.reach1 < 0).argmax(axis=0)
+                reach1_idx = jnp.where(jnp.any((traj_batch.reach1 < 0) == 1, axis=0), reach1_idx_pre, config["NUM_STEPS"])
+                random_index = jnp.where(jnp.any(traj_batch.reach1 < 0, axis=0), reach1_idx, random_index_pre)
+
+            ## Select random step in composed rollout for initial decomposed reach2 state 
+            else:
+                random_index = jax.random.randint(rng_reach2, shape=(config["NUM_ENVS"],), minval=0, maxval=config["NUM_STEPS"])
             # random_index = jax.random.randint(_rng_reach1, shape=(untrans_traj_batch_observations_full.shape[0],), minval=0, maxval=untrans_traj_batch_observations_full.shape[1])
 
             # Multiple random indices
-            if "Hopper" in config["EXP_NAME"]:
+            if "Hopper" in config["EXP_NAME"] or "HalfCheetah" in config["EXP_NAME"]:
                 traj_batch_observations_full = traj_batch.obs 
                 untrans_traj_batch_observations_full = env.untransform_obs(traj_batch_observations_full)
                 untrans_traj_batch_observations_full = jnp.transpose(untrans_traj_batch_observations_full, axes=(1, 0, 2))
@@ -561,17 +579,17 @@ def train(envs, env_paramss, config, rng):
                     "Reach-Reach Success %": reach_perc,
                     })
             
-            if config["EXP_NAME"]=="HopperReachReach":
+            if config["EXP_NAME"]=="HopperReachReach" or config["EXP_NAME"]=="HalfCheetahReachReach":
                 wandb.log({
                     'trajectory_sample':wandb.Image(fig),
                     'policy_decision_sample':wandb.Image(fig2),
                 })
             
-            # Save video of trajectory 
-            if config["EXP_NAME"]=="HopperReachReach":
-                video_freq = 25 
-                if timestep % video_freq == 0 or timestep == total_timesteps - 1: 
-                    video_frames = plot_video_contour_RRAA((info, info_1, info_2), timestep, config, save_video=True)
+        # Save video of trajectory 
+        if config["EXP_NAME"]=="HopperReachReach" or config["EXP_NAME"]=="HalfCheetahReachReach":
+            video_freq = 25 
+            if timestep % video_freq == 0 or timestep == total_timesteps - 1: 
+                video_frames = plot_video_contour_RRAA((info, info_1, info_2), timestep, config, save_video=True, log_wandb=config["USE_WANDB"])
 
         plt.close("all")
         print(f"ITER TIME : {t1-t0:2.1f}s    SUCCESS : (DEC. R1)  {100*reach_1_perc_1:2.1f}%  (DEC. R2)  {100*reach_2_perc_2:2.1f}%  (COM. RR)  {100*reach_perc:2.1f}%")
@@ -609,29 +627,51 @@ if __name__ == "__main__":
         # config["NAME"]="hopper_debug"
         # config["TEST_MODE"]=True # USES DETERMINISTIC MODELS
 
-    # if debug:
-        config["EXP_NAME"]="F16ReachReach"
-        config["DIR"]="F16_rr_verttargs_cutsamp_To80m80s_tjreset_LR2e-3"
-        config["LR"]=2e-3
-        config["NUM_ENVS"]=256
-        config["NUM_STEPS"]=200
+        # config["EXP_NAME"]="F16ReachReach"
+        # config["DIR"]="F16_rr_verttargs_cutsamp_To80m80s_tjreset_LR2e-3"
+        # config["LR"]=2e-3
+        # config["NUM_ENVS"]=256
+        # config["NUM_STEPS"]=200
+        # config["TOTAL_TIMESTEPS"]=100_000_000
+        # config["STEP_SCAN"]=10
+        # config["UPDATE_EPOCHS"]=10
+        # config["NUM_MINIBATCHES"]=64
+        # config["GAMMA_ENERGY"]=1.0
+        # config["GAMMA_REACH_INIT"]=0.995
+        # config["GAMMA_REACH_FINAL"]=0.9995
+        # config["GAE_LAMBDA"]=0.95
+        # config["CLIP_EPS"]=0.2
+        # config["ENT_COEF"]=0.001
+        # config["VF_COEF"]=2.0
+        # config["MAX_GRAD_NORM"]=0.5
+        # config["ACTIVATION"]="tanh"
+        # config["CUDA_USE"]="0"
+        # config["ANNEAL_LR"]=True
+        # config["ANNEAL_ENT"]=True
+        # config["NAME"]="F16_rr_verttargs_cutsamp_To80m80s_tjreset_LR2e-3"
+
+        config["EXP_NAME"]="HalfCheetahReachReach"
+        config["DIR"]="halfcheetah_rr_resetgoal_reachv0.1"
+        config["LR"]=3e-4
+        config["NUM_ENVS"]=128
+        config["NUM_STEPS"]=400
         config["TOTAL_TIMESTEPS"]=100_000_000
-        config["STEP_SCAN"]=10
+        config["STEP_SCAN"]=4
         config["UPDATE_EPOCHS"]=10
-        config["NUM_MINIBATCHES"]=64
+        config["NUM_MINIBATCHES"]=32
         config["GAMMA_ENERGY"]=1.0
         config["GAMMA_REACH_INIT"]=0.995
         config["GAMMA_REACH_FINAL"]=0.9995
         config["GAE_LAMBDA"]=0.95
         config["CLIP_EPS"]=0.2
-        config["ENT_COEF"]=0.001
+        config["ENT_COEF"]=0.005
         config["VF_COEF"]=2.0
         config["MAX_GRAD_NORM"]=0.5
         config["ACTIVATION"]="tanh"
         config["CUDA_USE"]="0"
-        config["ANNEAL_LR"]=True
+        config["ANNEAL_LR"]=True,
         config["ANNEAL_ENT"]=True
-        config["NAME"]="F16_rr_verttargs_cutsamp_To80m80s_tjreset_LR2e-3"
+        config["NAME"]="halfcheetah_rr_resetgoal_reachv0.1"
     #     # config["TEST_MODE"]=True # USES DETERMINISTIC MODELS
 
     config["NUM_UPDATES"] = int(

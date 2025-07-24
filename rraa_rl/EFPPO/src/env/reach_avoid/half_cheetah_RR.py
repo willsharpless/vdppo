@@ -79,15 +79,38 @@ class HalfCheetahReachReachTemplate:
         return (head_pos, neck_pos, back_pos, front_thigh_pos, front_shin_pos, front_foot_pos,
                 back_thigh_pos, back_shin_pos, back_foot_pos), vels
 
+    # @partial(jax.jit, static_argnums=(0,))
+    # def is_reach1(self, poses, vels):
+    #     (head_pos, neck_pos, back_pos, front_thigh_pos, front_shin_pos,
+    #       front_foot_pos, back_thigh_pos, back_shin_pos, back_foot_pos) = poses
+    #     (x_vel, z_vel, y_ang_vel) = vels
+        
+    #     target_x_vel = 10.
+    #     reach1_value = -(x_vel - target_x_vel) # negative when speed achieved
+    #     return reach1_value * 10
+    
+    # @partial(jax.jit, static_argnums=(0,))
+    # def is_reach2(self, poses, vels):
+    #     (head_pos, neck_pos, back_pos, front_thigh_pos, front_shin_pos,
+    #       front_foot_pos, back_thigh_pos, back_shin_pos, back_foot_pos) = poses
+    #     (x_vel, z_vel, y_ang_vel) = vels
+        
+    #     target_ang_vel = 15.
+    #     reach2_value = -(jnp.fabs(y_ang_vel) - target_ang_vel) # negative when speed achieved
+    #     return reach2_value * 10
+
     @partial(jax.jit, static_argnums=(0,))
     def is_reach1(self, poses, vels):
         (head_pos, neck_pos, back_pos, front_thigh_pos, front_shin_pos,
           front_foot_pos, back_thigh_pos, back_shin_pos, back_foot_pos) = poses
         (x_vel, z_vel, y_ang_vel) = vels
         
-        target_x_vel = 10.
-        reach1_value = -(x_vel - target_x_vel) # negative when speed achieved
-        return reach1_value * 10
+        target_center, radius = [5., 1.], 0.1
+        target_pos = front_foot_pos
+        reach = jnp.sqrt((target_pos[..., 0] - target_center[0]) ** 2 + (target_pos[..., 1] - target_center[1]) ** 2) - radius
+        has_reached_goal = jnp.sqrt((target_pos[..., 0] - target_center[0]) ** 2 + (target_pos[..., 1] - target_center[1]) ** 2) < radius
+        value = jnp.where(has_reached_goal, -2.5, reach)
+        return value * 100.0
     
     @partial(jax.jit, static_argnums=(0,))
     def is_reach2(self, poses, vels):
@@ -95,9 +118,12 @@ class HalfCheetahReachReachTemplate:
           front_foot_pos, back_thigh_pos, back_shin_pos, back_foot_pos) = poses
         (x_vel, z_vel, y_ang_vel) = vels
         
-        target_ang_vel = 15.
-        reach1_value = -(jnp.fabs(y_ang_vel) - target_ang_vel) # negative when speed achieved
-        return reach1_value * 10
+        target_center, radius = [-5., 1.], 0.1
+        target_pos = back_foot_pos
+        reach = jnp.sqrt((target_pos[..., 0] - target_center[0]) ** 2 + (target_pos[..., 1] - target_center[1]) ** 2) - radius
+        has_reached_goal = jnp.sqrt((target_pos[..., 0] - target_center[0]) ** 2 + (target_pos[..., 1] - target_center[1]) ** 2) < radius
+        value = jnp.where(has_reached_goal, -2.5, reach)
+        return value * 100.0
 
     def observation_space(self, params):
         return spaces.Box(
