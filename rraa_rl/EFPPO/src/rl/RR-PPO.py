@@ -577,13 +577,13 @@ def train(envs, env_paramss, config, rng):
                     "Dec. Reach 1 Success %": reach_1_perc_1,
                     "Dec. Reach 2 Success %": reach_2_perc_2,
                     "Reach-Reach Success %": reach_perc,
-                    })
+                    }, step=timestep)
             
             if config["EXP_NAME"]=="HopperReachReach" or config["EXP_NAME"]=="HalfCheetahReachReach":
                 wandb.log({
                     'trajectory_sample':wandb.Image(fig),
                     'policy_decision_sample':wandb.Image(fig2),
-                })
+                }, step=timestep)
             
         # Save video of trajectory 
         if config["EXP_NAME"]=="HopperReachReach" or config["EXP_NAME"]=="HalfCheetahReachReach":
