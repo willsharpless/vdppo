@@ -1,10 +1,10 @@
 python ./rraa_rl/EFPPO/src/rl/CPPO_RR.py \
 --EXP_NAME=HalfCheetahReachReach_CPPO \
---DIR=halfcheetah_rr_cppo_test \
+--DIR=halfcheetah_rr_cppo_e150k_kp10 \
 --LR=3e-4 \
 --NUM_ENVS=128 \
 --NUM_STEPS=400 \
---TOTAL_TIMESTEPS=100_000_000 \
+--TOTAL_TIMESTEPS=150_000_000 \
 --STEP_SCAN=4 \
 --UPDATE_EPOCHS=10 \
 --NUM_MINIBATCHES=32 \
@@ -13,7 +13,7 @@ python ./rraa_rl/EFPPO/src/rl/CPPO_RR.py \
 --GAMMA_REACH_FINAL=0.9995 \
 --GAE_LAMBDA=0.95 \
 --LAMBDA_REACH=0.1 \
---K_P=1.0 \
+--K_P=10.0 \
 --THRESHOLD_CPPO=0. \
 --CLIP_EPS=0.2 \
 --ENT_COEF=0.005 \
@@ -23,4 +23,4 @@ python ./rraa_rl/EFPPO/src/rl/CPPO_RR.py \
 --CUDA_USE=1 \
 --ANNEAL_LR \
 --ANNEAL_ENT \
---NAME=halfcheetah_rr_cppo_test
+--NAME=halfcheetah_rr_cppo_e150k_kp10

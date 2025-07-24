@@ -655,7 +655,7 @@ if __name__ == "__main__":
         config["LR"]=3e-4
         config["NUM_ENVS"]=128
         config["NUM_STEPS"]=400
-        config["TOTAL_TIMESTEPS"]=100_000_000
+        config["TOTAL_TIMESTEPS"]=150_000_000
         config["STEP_SCAN"]=4
         config["UPDATE_EPOCHS"]=10
         config["NUM_MINIBATCHES"]=32
