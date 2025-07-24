@@ -115,7 +115,7 @@ class HalfCheetahReachReachBaseline_augmented:
             min_reach1_cost_input = jnp.where(has_reached_1, 0, min_reach1_cost_input)
             min_reach2_cost_input = jnp.where(has_reached_2, 0, min_reach2_cost_input)
         
-        cost = self.compute_cost(min_reach1_cost_input, min_reach2_cost_input, state.min_reach1, state.min_reach2, 
+        cost = self.compute_cost_accumulated(min_reach1_cost_input, min_reach2_cost_input, state.min_reach1, state.min_reach2, 
                                 reach1_value=reach1_cost_input, reach2_value=reach2_cost_input)
             
         (head_pos, neck_pos, back_pos, front_thigh_pos, front_shin_pos,
