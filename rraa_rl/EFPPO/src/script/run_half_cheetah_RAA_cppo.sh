@@ -1,6 +1,6 @@
 python ./rraa_rl/EFPPO/src/rl/CPPO_RAA.py \
 --EXP_NAME=HalfCheetahReachAlwaysAvoid_CPPO \
---DIR=halfcheetah_raa_cppo_init \
+--DIR=halfcheetah_raa_cppo_kp10 \
 --LR=3e-4 \
 --NUM_ENVS=128 \
 --NUM_STEPS=400 \
@@ -13,7 +13,7 @@ python ./rraa_rl/EFPPO/src/rl/CPPO_RAA.py \
 --GAMMA_REACH_FINAL=0.9995 \
 --GAE_LAMBDA=0.95 \
 --LAMBDA_REACH=0.1 \
---K_P=1.0 \
+--K_P=10. \
 --THRESHOLD_CPPO=0. \
 --CLIP_EPS=0.2 \
 --ENT_COEF=0.005 \
@@ -23,4 +23,4 @@ python ./rraa_rl/EFPPO/src/rl/CPPO_RAA.py \
 --CUDA_USE=1 \
 --ANNEAL_LR \
 --ANNEAL_ENT \
---NAME=halfcheetah_raa_cppo_init
+--NAME=halfcheetah_raa_cppo_kp10
