@@ -1,6 +1,6 @@
 python ./rraa_rl/EFPPO/src/rl/CPPO_RR.py \
 --EXP_NAME=HalfCheetahReachReach_CPPO \
---DIR=halfcheetah_rr_cppo_e150k_kp10 \
+--DIR=halfcheetah_rr_cppo_sum_e150k_kp10 \
 --LR=3e-4 \
 --NUM_ENVS=128 \
 --NUM_STEPS=400 \
@@ -23,4 +23,4 @@ python ./rraa_rl/EFPPO/src/rl/CPPO_RR.py \
 --CUDA_USE=1 \
 --ANNEAL_LR \
 --ANNEAL_ENT \
---NAME=halfcheetah_rr_cppo_e150k_kp10
+--NAME=halfcheetah_rr_cppo_sum_e150k_kp10
