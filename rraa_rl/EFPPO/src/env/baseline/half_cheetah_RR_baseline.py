@@ -22,7 +22,6 @@ class EnvStateR2:
 @struct.dataclass
 class EnvStateRR:
     state: jax.Array = struct.field(default_factory=jax.Array)
-    time: int = 0
     reach1: float = 0.
     reach2: float = 0.
     has_reached_1: float = 0.
@@ -48,11 +47,10 @@ class HalfCheetahReachReachBaseline_augmented:
         return cost 
     
     def compute_reward(self, state, last_state, params): 
-        return params.gamma * jnp.maximum(state.min_reach1, state.min_reach2) - jnp.maximum(last_state.min_reach1, last_state.min_reach2) 
+        # return params.gamma * jnp.maximum(state.min_reach1, state.min_reach2) - jnp.maximum(last_state.min_reach1, last_state.min_reach2) 
         # corresponds to accumulated max reward
         
-        # should we be using this?
-        # return params.gamma * (state.min_reach1 + state.min_reach2) - (last_state.min_reach1 + last_state.min_reach2)
+        return params.gamma * (state.min_reach1 + state.min_reach2) - (last_state.min_reach1 + last_state.min_reach2)
         # corresponds to accumulated sum reward
 
     def __init__(self, backend="positional", use_stl=False):
