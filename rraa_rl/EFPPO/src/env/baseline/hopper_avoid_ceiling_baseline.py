@@ -11,6 +11,8 @@ from copy import deepcopy
 from .hopper_random import HopperRandom
 from .hopper_deterministic import HopperDeterministic
 
+import numpy as np 
+
 @struct.dataclass
 class EnvState:
     state: State
