@@ -738,3 +738,226 @@ class HopperReachReachBaseline_reward_cost_separated(HopperReachReachBaseline_ba
             shape=(self._env.observation_size + 2),
         )
 
+
+####################### Baselines for PPO RR and RAA #######################
+"""
+MORL Baselines: 
+    Reward: 
+        RR: 0.5 r1 + 0.5 r2 before first reach, 1 * r(remaining reach) after first reach
+        RAA: 0.5 r - 0.5 a before first reach, -1 * a after first reach 
+"""
+class HopperReachReachBaseline_MORL(HopperReachReachBaseline_base): 
+    
+    @partial(jax.jit, static_argnums=(0,))  
+    def compute_cost(self, curr_min_reach1_value, curr_min_reach2_value, prev_min_reach1_value=None, prev_min_reach2_value=None,    
+                        reach1_value=None, reach2_value=None):
+        # NOTE: not used in MORL - but required for base CPPO implementation - so return 0
+        return jnp.zeros_like(reach2_value)
+    
+    @partial(jax.jit, static_argnums=(0,))
+    def compute_reward(self, state, last_state, params): 
+        # Before first reach reward = params.gamma * (0.5 * state.reach1 + 0.5 * state.reach2) - (0.5 * last_state.reach1 + 0.5 * last_state.reach2) 
+        # After first reach reward = params.gamma * state.reach1 - last_state.reach1 (or reach 2 depending on which one was reached first)
+
+        reward = jnp.zeros_like(state.reach1)
+        # Has Reached Checks:
+        reward = jnp.where(state.has_reached_1, params.gamma * state.reach2 - last_state.reach2, reward)
+        reward = jnp.where(state.has_reached_2, params.gamma * state.reach1 - last_state.reach1, reward)
+
+        # Before First Reach Checks: 
+        reward = jnp.where(jnp.logical_not(jnp.logical_and(state.has_reached_1, state.has_reached_2)), 
+                           params.gamma * (0.5 * state.reach1 + 0.5 * state.reach2) - (0.5 * last_state.reach1 + 0.5 * last_state.reach2), 
+                           reward)
+        return reward 
+
+    @partial(jax.jit, static_argnums=(0,))
+    def compute_observation(self, state):
+        # Compute observation for constrained MDP 
+        return jnp.concatenate([state.state.obs, jnp.array([state.has_reached_1, state.has_reached_2])])
+
+    def observation_space(self, params):
+        obs_size = self._env.observation_size
+
+        # The augmented observations are boolean values 
+        low = np.concatenate([
+            -np.inf * np.ones(obs_size),
+            np.zeros(2)
+        ])
+        high = np.concatenate([
+            np.inf * np.ones(obs_size),
+            np.ones(2)
+        ])
+
+        return spaces.Box(
+            low=low,
+            high=high,
+            dtype=np.float32
+        )
+
+class HopperReachAlwaysAvoidBaseline_MORL(HopperReachAlwaysAvoidBaseline_augmented):
+    
+    @partial(jax.jit, static_argnums=(0,))
+    def step(self, key, state, action, params=None):
+        u = jnp.tanh(action)
+        next_state = self._env.step(state.state, u)
+        head_pos, _, _, _, _, _ = self.calculate_position(next_state.obs)
+
+        avoid_value = self.is_avoid(head_pos)
+        reach_value = self.is_reach(head_pos)
+        min_reach = jnp.minimum(state.min_reach, reach_value) 
+        
+        # reward = params.gamma * reach_value - state.reach
+        # cost = avoid_value 
+
+        ######### MORL Modification: Reward and Cost #########
+        # RAA: 0.5 r - 0.5 a before first reach, -1 * a after first reach 
+        reward = jnp.zeros_like(reach_value)
+        # Has Reached Checcks: 
+        reward = jnp.where(state.min_reach <= 0, params.gamma * (0.5 * reach_value - 0.5 * avoid_value) - (0.5 * state.reach - 0.5 * state.avoid), reward)
+        # Avoid Checks: 
+        reward = jnp.where(state.min_reach > 0, params.gamma * avoid_value - state.avoid, reward)
+
+        cost = jnp.zeros_like(avoid_value) # NOTE: not used in MORL - but required for base CPPO implementation - so return 0
+        ######### MORL Modification: Reward and Cost #########
+
+        head_pos, jaw_pos, thg_pos, leg_pos, foot_front_pos, foot_back_pos = self.calculate_position(state.state.obs)
+        pos_dict = {"head_pos": head_pos, "jaw_pos": jaw_pos, "thg_pos": thg_pos, "leg_pos": leg_pos,
+                    "foot_front_pos": foot_front_pos, "foot_back_pos": foot_back_pos}
+
+        next_state_new = EnvStateRAA(next_state, reach_value, avoid_value, min_reach, cost)
+
+        observation = self.compute_observation(state=next_state_new, last_state=state)
+
+        done = False # NOTE: Force dones to false for always avoid - make last done true outside #(state.avoid > 0) | (state.reach < 0)
+        return observation, next_state_new, reward, done, pos_dict
+    
+    @partial(jax.jit, static_argnums=(0,))
+    def compute_observation(self, state, last_state=None): 
+        # Compute observation for constrained MDP
+        return jnp.concatenate([state.state.obs, jnp.array([state.min_reach <= 0])]) # Boolean has reached
+    
+    def observation_space(self, params):
+        obs_size = self._env.observation_size
+
+        # The augmented observations are boolean values 
+        low = np.concatenate([
+            -np.inf * np.ones(obs_size),
+            np.zeros(1)
+        ])
+        high = np.concatenate([
+            np.inf * np.ones(obs_size),
+            np.ones(1)
+        ])
+
+        return spaces.Box(
+            low=low,
+            high=high,
+            dtype=np.float32
+        )
+
+"""
+Sparse Baselines: 
+    Reward: 
+        RR: 1 on first reach (for either goal), 0 otherwise
+        RAA: 1 on first reach (for either goal), -1 if enter avoid, 0 otherwise
+"""
+class HopperReachReachBaseline_Sparse(): 
+    @partial(jax.jit, static_argnums=(0,))  
+    def compute_cost(self, curr_min_reach1_value, curr_min_reach2_value, prev_min_reach1_value=None, prev_min_reach2_value=None,    
+                        reach1_value=None, reach2_value=None):
+        # NOTE: not used in MORL - but required for base CPPO implementation - so return 0
+        return jnp.zeros_like(reach2_value)
+    
+    @partial(jax.jit, static_argnums=(0,))
+    def compute_reward(self, state, last_state, params): 
+        # reward: 1 on first reach (for either goal), 0 otherwise
+
+        reward = jnp.zeros_like(state.reach1)
+        
+        reward = jnp.where(jnp.logical_and(state.reach1 <= 0, jnp.logical_not(last_state.has_reached_1)), 1.0, reward)
+        reward = jnp.where(jnp.logical_and(state.reach2 <= 0, jnp.logical_not(last_state.has_reached_2)), 1.0, reward)
+
+        return reward 
+
+    @partial(jax.jit, static_argnums=(0,))
+    def compute_observation(self, state):
+        # Compute observation for constrained MDP 
+        return jnp.concatenate([state.state.obs, jnp.array([state.has_reached_1, state.has_reached_2])])
+
+    def observation_space(self, params):
+        obs_size = self._env.observation_size
+
+        # The augmented observations are boolean values 
+        low = np.concatenate([
+            -np.inf * np.ones(obs_size),
+            np.zeros(2)
+        ])
+        high = np.concatenate([
+            np.inf * np.ones(obs_size),
+            np.ones(2)
+        ])
+
+        return spaces.Box(
+            low=low,
+            high=high,
+            dtype=np.float32
+        )
+
+class HopperReachAlwaysAvoidBaseline_Sparse(): 
+    @partial(jax.jit, static_argnums=(0,))
+    def step(self, key, state, action, params=None):
+        u = jnp.tanh(action)
+        next_state = self._env.step(state.state, u)
+        head_pos, _, _, _, _, _ = self.calculate_position(next_state.obs)
+
+        avoid_value = self.is_avoid(head_pos)
+        reach_value = self.is_reach(head_pos)
+        min_reach = jnp.minimum(state.min_reach, reach_value) 
+        
+        # reward = params.gamma * reach_value - state.reach
+        # cost = avoid_value 
+
+        ######### MORL Modification: Reward and Cost #########
+        # RAA: 1 on first reach (for either goal), -1 if enter avoid, 0 otherwise
+        reward = jnp.zeros_like(reach_value)
+        
+        reward = jnp.where(jnp.logical_and(reach_value <= 0, jnp.logical_not(state.min_reach <= 0)), 1.0, reward)
+        reward = jnp.where(avoid_value > 0, -1.0, reward) # -1 if enter avoid
+
+        cost = jnp.zeros_like(avoid_value) # NOTE: not used in MORL - but required for base CPPO implementation - so return 0
+        ######### MORL Modification: Reward and Cost #########
+
+        head_pos, jaw_pos, thg_pos, leg_pos, foot_front_pos, foot_back_pos = self.calculate_position(state.state.obs)
+        pos_dict = {"head_pos": head_pos, "jaw_pos": jaw_pos, "thg_pos": thg_pos, "leg_pos": leg_pos,
+                    "foot_front_pos": foot_front_pos, "foot_back_pos": foot_back_pos}
+
+        next_state_new = EnvStateRAA(next_state, reach_value, avoid_value, min_reach, cost)
+
+        observation = self.compute_observation(state=next_state_new, last_state=state)
+
+        done = False # NOTE: Force dones to false for always avoid - make last done true outside #(state.avoid > 0) | (state.reach < 0)
+        return observation, next_state_new, reward, done, pos_dict
+    
+    @partial(jax.jit, static_argnums=(0,))
+    def compute_observation(self, state, last_state=None): 
+        # Compute observation for constrained MDP
+        return jnp.concatenate([state.state.obs, jnp.array([state.min_reach <= 0])]) # Boolean has reached
+    
+    def observation_space(self, params):
+        obs_size = self._env.observation_size
+
+        # The augmented observations are boolean values 
+        low = np.concatenate([
+            -np.inf * np.ones(obs_size),
+            np.zeros(1)
+        ])
+        high = np.concatenate([
+            np.inf * np.ones(obs_size),
+            np.ones(1)
+        ])
+
+        return spaces.Box(
+            low=low,
+            high=high,
+            dtype=np.float32
+        )
