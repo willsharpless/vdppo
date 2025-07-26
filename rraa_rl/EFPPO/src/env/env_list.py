@@ -378,6 +378,32 @@ def get_env(config):
 
         return (env)
         
+    elif config["EXP_NAME"] == "HalfCheetahReachReachDecomposed":
+        vec1 = jnp.zeros(18, dtype=jnp.float32)
+        vec1 = vec1.at[0].set(2.5)
+        vec2 = jnp.ones(18, dtype=jnp.float32)
+        vec2 = vec2.at[0].set(3.)
+        trans = partial(transform_observation, vec1, vec2)
+        untrans = partial(untransform_observation, vec1, vec2)
+        
+        from .baseline.half_cheetah_RR_baseline import HalfCheetahRR, HalfCheetahR1, HalfCheetahR2
+        if config["TEST_MODE"] == False:
+            env = HalfCheetahRR()
+            env1 = HalfCheetahR1()
+            env2 = HalfCheetahR2()
+        else:
+            env = HalfCheetahRR(deterministic=True)
+            env1 = HalfCheetahR1(deterministic=True)
+            env2 = HalfCheetahR2(deterministic=True)
+        
+        env = TransformObservation(env, trans)
+        env1 = TransformObservation(env1, trans)
+        env2 = TransformObservation(env2, trans)
+        env.set_untransform_obs(untrans)
+        env1.set_untransform_obs(untrans)
+        env2.set_untransform_obs(untrans)
+        return (env, env1, env2)
+
     elif config["EXP_NAME"] == 'WindField':
         vec1 = jnp.zeros(14, dtype=jnp.float32)
         vec1 = vec1.at[-1].set(400.)
