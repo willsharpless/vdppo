@@ -984,9 +984,9 @@ def plot_contour_RRAA(multi_info, epoch, config, policy_decision_sample=None):
         plt.savefig('model/{}/reach/trajectory_{:0>4d}'.format(config["DIR"], epoch), dpi=300)
         return fig
     
-    elif 'F16' in config['EXP_NAME'] and 'ReachReach' in config['EXP_NAME']:
+    elif 'F16' in config['EXP_NAME']:
         
-        if config['EXP_NAME'] == 'F16ReachReach':
+        if 'ReachReach' in config['EXP_NAME']:
             info, info_1, info_2 = multi_info
         else:
             info, info_avoid = multi_info
@@ -1021,11 +1021,11 @@ def plot_contour_RRAA(multi_info, epoch, config, policy_decision_sample=None):
 
         plt.figure(figsize=(12, 6))
         fig, ax = plt.subplots(1, 1)
-        if config['EXP_NAME'] == 'F16ReachReach':
+        if 'ReachReach' in config['EXP_NAME']:
             radius = 150
             draw_circle = plt.Circle((1200., 850), radius, facecolor="green", fill=True, alpha = 0.4)
             ax.add_patch(draw_circle)
-            draw_circle = plt.Circle((1200., 350), radius, facecolor="green", fill=True, alpha = 0.4)
+            draw_circle = plt.Circle((1200., 350), radius, facecolor="blue", fill=True, alpha = 0.4)
             ax.add_patch(draw_circle)
         else:
             draw_rectangle_1 = plt.Rectangle((1250., -0.1), 500., 1200., facecolor="green", fill=True, alpha = 0.4)
@@ -1066,7 +1066,7 @@ def plot_contour_RRAA(multi_info, epoch, config, policy_decision_sample=None):
         ax[2, 0].plot(info['state'][:, -2], label='PS_INT')
         ax[2, 0].plot(info['state'][:, -1], label='NYR_INT')
         ax[2, 0].legend()
-        plt.savefig('model/{}/state_traj/trajectory_{:0>4d}'.format(config["DIR"], epoch), dpi=300)
+        plt.savefig('model/{}/reach/trajectory_{:0>4d}_2'.format(config["DIR"], epoch), dpi=300)
         if config["USE_WANDB"]: 
             wandb.log({"trajectory_view3": wandb.Image(fig)}, step=epoch)
         plt.close("all")

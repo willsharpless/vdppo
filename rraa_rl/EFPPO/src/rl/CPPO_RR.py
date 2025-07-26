@@ -222,15 +222,15 @@ def train(env, env_params, config, rng):
                    "lambda": jnp.mean(loss_info['lambda'])}, step=timestep)
         
         if "Hopper" in config["EXP_NAME"] or "HalfCheetah" in config["EXP_NAME"]:
-                wandb.log({
-                    'trajectory_sample':wandb.Image(fig)
-                }, step=timestep)
+            wandb.log({
+                'trajectory_sample':wandb.Image(fig)
+            }, step=timestep)
         
-        # Save video of trajectory 
-        video_freq = 5 #25 
-        save_video = True 
-        if timestep % video_freq == 0 or timestep == total_timesteps - 1: 
-            video_frames = plot_video_contour_RRAA((info, None, None), timestep, config, save_video=save_video, log_wandb=config["USE_WANDB"])
+            # Save video of trajectory 
+            video_freq = 5 #25 
+            save_video = True 
+            if timestep % video_freq == 0 or timestep == total_timesteps - 1: 
+                video_frames = plot_video_contour_RRAA((info, None, None), timestep, config, save_video=save_video, log_wandb=config["USE_WANDB"])
 
         ####### RRAA Change ######
         print("Iteration {}: not reach 1 {} not reach 2 {} not reach both {} reward {} cost {}".format(timestep, cnt1, cnt2, cnt3, -jnp.mean(reward), jnp.mean(cost)))

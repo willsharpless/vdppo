@@ -211,16 +211,16 @@ def train(env, env_params, config, rng):
                     "cnt crash after reach ": cnt_crash_after_reach,
                    "lambda": jnp.mean(loss_info['lambda'])})
         
-        if "Hopper" in config["EXP_NAME"]:
-                wandb.log({
-                    'trajectory_sample':wandb.Image(fig),
-                })
+        if "Hopper" in config["EXP_NAME"] or "HalfCheetah" in config["EXP_NAME"]:
+            wandb.log({
+                'trajectory_sample':wandb.Image(fig),
+            })
         
-        # Save video of trajectory 
-        video_freq = 25 
-        save_video = True 
-        if timestep % video_freq == 0 or timestep == total_timesteps - 1: 
-            video_frames = plot_video_contour_RRAA((info, None), timestep + 1, config, save_video=save_video, log_wandb=config["USE_WANDB"])
+            # Save video of trajectory 
+            video_freq = 25 
+            save_video = True 
+            if timestep % video_freq == 0 or timestep == total_timesteps - 1: 
+                video_frames = plot_video_contour_RRAA((info, None), timestep + 1, config, save_video=save_video, log_wandb=config["USE_WANDB"])
         ####### RRAA Change ######
 
         print("Iteration {}: not reach {} reward {} cost {}".format(timestep, cnt, -jnp.mean(reward), jnp.mean(cost)))

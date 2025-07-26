@@ -24,7 +24,7 @@ python ./rraa_rl/EFPPO/src/rl/CPPO_RAA.py \
 --CUDA_USE=0 \
 --ANNEAL_LR \
 --ANNEAL_ENT \
---NAME=final_hopper_raa_ppo
+--NAME=final_f16_raa_ppo
 
 python ./rraa_rl/EFPPO/src/rl/CPPO_RAA.py \
 --EXP_NAME=F16ReachAlwaysAvoid_CPPO \
