@@ -236,7 +236,6 @@ def train(env, env_params, config, rng):
     return
 
 if __name__ == "__main__":
-    
     config = vars(get_args(sys.argv[1:]))
 
     config["USE_WANDB"] = True 

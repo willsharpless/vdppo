@@ -315,7 +315,7 @@ def get_env(config):
         trans = partial(transform_observation, vec1, vec2)
         untrans = partial(untransform_observation, vec1, vec2)
 
-        env = HopperReachReachBaseline_MORL(cost_type=config["ENV_COST_TYPE"], 
+        env = HopperReachReachBaseline_Sparse(cost_type=config["ENV_COST_TYPE"], 
                                                      use_stl=config["USE_STL"], 
                                                      cost_fn=config["ENV_COST_FN"])
         env = TransformObservation(env, trans)
