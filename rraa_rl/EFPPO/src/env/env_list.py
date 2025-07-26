@@ -192,7 +192,7 @@ def get_env(config):
         env_avoid.set_untransform_obs(untrans)
         return (env, env_avoid)
     
-    elif config["EXP_NAME"] == "HopperReachAlwaysAvoid_CPPO":
+    elif config["EXP_NAME"] == "HopperReachAlwaysAvoid_CPPO" or config["EXP_NAME"] == "HopperReachAlwaysAvoid_RCPPO":
         obs_dim = 12 + 1
         vec1 = jnp.zeros(obs_dim, dtype=jnp.float32)
         vec1 = vec1.at[0].set(1.)
@@ -224,7 +224,7 @@ def get_env(config):
 
         return (env)
     
-    elif config["EXP_NAME"] == "HopperReachReach_sum_CPPO":
+    elif config["EXP_NAME"] == "HopperReachReach_sum_CPPO" or config["EXP_NAME"] == "HopperReachReach_sum_RCPPO":
         obs_dim = 12 + 2
         vec1 = jnp.zeros(obs_dim, dtype=jnp.float32)
         vec1 = vec1.at[0].set(1.)

@@ -50,6 +50,32 @@ class Transition_reach(NamedTuple):
     info: jnp.ndarray
     reach: jnp.ndarray
 
+class Transition_rcppo_adapted_raa(NamedTuple):
+    done: jnp.ndarray
+    action: jnp.ndarray
+    value: jnp.ndarray
+    value_reach: jnp.ndarray
+    reward: jnp.ndarray
+    energy: jnp.ndarray
+    log_prob: jnp.ndarray
+    obs: jnp.ndarray
+    info: jnp.ndarray
+    reach: jnp.ndarray
+    avoid: jnp.ndarray
+
+class Transition_rcppo_adapted_rr(NamedTuple):
+    done: jnp.ndarray
+    action: jnp.ndarray
+    value: jnp.ndarray
+    value_reach: jnp.ndarray
+    reward: jnp.ndarray
+    energy: jnp.ndarray
+    log_prob: jnp.ndarray
+    obs: jnp.ndarray
+    info: jnp.ndarray
+    reach: jnp.ndarray
+    reach1: jnp.ndarray
+    reach2: jnp.ndarray
 
 class Transition_a(NamedTuple):
     done: jnp.ndarray

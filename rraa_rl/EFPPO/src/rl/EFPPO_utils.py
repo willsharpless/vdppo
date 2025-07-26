@@ -1,6 +1,9 @@
 import jax
 import jax.numpy as jnp
-from rraa_rl.EFPPO.src.rl.gae import Transition_reach, Transition_raa, Transition_rr, Transition_r1, Transition_r2, Transition_cppo, Transition_sac, Transition_a, Transition_ra, Transition_rr_cppo, Transition_r
+from rraa_rl.EFPPO.src.rl.gae import Transition_reach, Transition_raa, \
+    Transition_rr, Transition_r1, Transition_r2, Transition_cppo, Transition_sac, \
+        Transition_a, Transition_ra, Transition_rr_cppo, Transition_r, \
+        Transition_rcppo_adapted_raa, Transition_rcppo_adapted_rr
 
 def _env_step(env, env_params, runner_state, _):
     (train_state_policy, train_state_energy, train_state_h,
@@ -26,6 +29,64 @@ def _env_step(env, env_params, runner_state, _):
     transition = Transition_reach(
         done, action, value, value_h, reward, last_env_state.energy, log_prob, last_obs, info,
         last_env_state.reach
+    )
+    runner_state = (train_state_policy, train_state_energy, train_state_h,
+                    env_state, obsv, rng)
+    return runner_state, transition
+
+def _env_step_adapted_raa(env, env_params, runner_state, _):
+    (train_state_policy, train_state_energy, train_state_h,
+     last_env_state, last_obs, rng) = runner_state
+
+    # SELECT ACTION
+    rng, _rng = jax.random.split(rng)
+    pi = train_state_policy.apply_fn(train_state_policy.params, last_obs)
+    value = train_state_energy.apply_fn(train_state_energy.params, last_obs)
+    value_h = train_state_h.apply_fn(train_state_h.params, last_obs)
+
+    action = pi.sample(seed=_rng)
+    log_prob = pi.log_prob(action)
+
+    # STEP ENV
+    rng, _rng = jax.random.split(rng)
+    env_num = last_obs.shape[0]
+    rng_step = jax.random.split(_rng, env_num)
+    obsv, env_state, reward, done, info = jax.vmap(
+        env.step, in_axes=(0, 0, 0, None)
+    )(rng_step, last_env_state, action, env_params)
+
+    transition = Transition_rcppo_adapted_raa(
+        done, action, value, value_h, reward, last_env_state.cost, log_prob, last_obs, info,
+        last_env_state.reach, last_env_state.avoid
+    )
+    runner_state = (train_state_policy, train_state_energy, train_state_h,
+                    env_state, obsv, rng)
+    return runner_state, transition
+
+def _env_step_adapted_rr(env, env_params, runner_state, _):
+    (train_state_policy, train_state_energy, train_state_h,
+     last_env_state, last_obs, rng) = runner_state
+
+    # SELECT ACTION
+    rng, _rng = jax.random.split(rng)
+    pi = train_state_policy.apply_fn(train_state_policy.params, last_obs)
+    value = train_state_energy.apply_fn(train_state_energy.params, last_obs)
+    value_h = train_state_h.apply_fn(train_state_h.params, last_obs)
+
+    action = pi.sample(seed=_rng)
+    log_prob = pi.log_prob(action)
+
+    # STEP ENV
+    rng, _rng = jax.random.split(rng)
+    env_num = last_obs.shape[0]
+    rng_step = jax.random.split(_rng, env_num)
+    obsv, env_state, reward, done, info = jax.vmap(
+        env.step, in_axes=(0, 0, 0, None)
+    )(rng_step, last_env_state, action, env_params)
+
+    transition = Transition_rcppo_adapted_rr(
+        done, action, value, value_h, reward, last_env_state.cost, log_prob, last_obs, info,
+        jnp.maximum(last_env_state.min_reach1, last_env_state.min_reach2), last_env_state.reach1, last_env_state.reach2
     )
     runner_state = (train_state_policy, train_state_energy, train_state_h,
                     env_state, obsv, rng)

@@ -42,10 +42,10 @@ def calculate_reach_avoid_stats(traj_batch):
     share_crash_after_reach = cnt_crash_after_reach / (traj_batch.avoid.shape[1] - cnt_never_reached) if (traj_batch.avoid.shape[1] - cnt_never_reached) > 0 else 0
     return cnt_never_reached, cnt_crash, share_crash_after_reach
 
-def calculate_reachavoid(traj_batch):
-    reach_idx = (traj_batch.reach < 0).argmax(axis=0)
+def calculate_reachavoid(traj_batch, th=0):
+    reach_idx = (traj_batch.reach < (0 + th)).argmax(axis=0)
     crash_idx = (traj_batch.avoid > 0).argmax(axis=0)
-    reach_idx = np.where(np.any((traj_batch.reach < 0) == 1, axis=0), reach_idx, np.inf)
+    reach_idx = np.where(np.any((traj_batch.reach < (0 + th)) == 1, axis=0), reach_idx, np.inf)
     crash_idx = np.where(np.any((traj_batch.avoid > 0) == 1, axis=0), crash_idx, np.inf)
     # Find indices where reach < inf and avoid = inf
     reach_and_avoid_idx = np.where(crash_idx == np.inf, reach_idx, np.inf)
@@ -55,13 +55,13 @@ def calculate_reachavoid(traj_batch):
     reach_avoid_perc = ((reach_and_avoid_idx < np.inf).sum() / reach_and_avoid_idx.__len__()).item()
     return (reach_perc, crash_perc, reach_avoid_perc)
 
-def calculate_reachreach(traj_batch, reach_type="both"):
+def calculate_reachreach(traj_batch, reach_type="both", th=0):
     
     # Compute first reaching idx
-    reach_idx_1 = (traj_batch.reach1 < 0).argmax(axis=0) if reach_type in ["both", "1"] else None
-    reach_idx_2 = (traj_batch.reach2 < 0).argmax(axis=0) if reach_type in ["both", "2"] else None
-    reach_idx_1 = np.where(np.any((traj_batch.reach1 < 0) == 1, axis=0), reach_idx_1, np.inf) if reach_type in ["both", "1"] else None
-    reach_idx_2 = np.where(np.any((traj_batch.reach2 < 0) == 1, axis=0), reach_idx_2, np.inf) if reach_type in ["both", "2"] else None
+    reach_idx_1 = (traj_batch.reach1 < (0 + th)).argmax(axis=0) if reach_type in ["both", "1"] else None
+    reach_idx_2 = (traj_batch.reach2 < (0 + th)).argmax(axis=0) if reach_type in ["both", "2"] else None
+    reach_idx_1 = np.where(np.any((traj_batch.reach1 < (0 + th)) == 1, axis=0), reach_idx_1, np.inf) if reach_type in ["both", "1"] else None
+    reach_idx_2 = np.where(np.any((traj_batch.reach2 < (0 + th)) == 1, axis=0), reach_idx_2, np.inf) if reach_type in ["both", "2"] else None
     reach_idx = np.maximum(reach_idx_1, reach_idx_2) if reach_type in ["both"] else None
 
     # Compute Percentage
@@ -609,11 +609,7 @@ def plot_contour(train_state_energy, train_state_h, train_state_policy, info, ep
 
 def plot_contour_RRAA(multi_info, epoch, config, policy_decision_sample=None):
 
-    if config['EXP_NAME'] == 'HopperReachReach' \
-        or config["EXP_NAME"] == 'HopperReachReach_max_CPPO' \
-        or config["EXP_NAME"] == 'HopperReachReach_sum_CPPO' \
-        or config["EXP_NAME"] == 'HopperReachReachDecomposed' \
-        or config["EXP_NAME"] == "HopperReachReach_separated_CPPO": 
+    if 'Hopper' in config['EXP_NAME'] and 'ReachReach' in config["EXP_NAME"]: 
 
         info, info_1, info_2 = multi_info
 
@@ -703,9 +699,7 @@ def plot_contour_RRAA(multi_info, epoch, config, policy_decision_sample=None):
         return fig
     
         
-    elif config['EXP_NAME'] == 'HopperReachAlwaysAvoid' or config["EXP_NAME"] == "HopperReachAvoid" or \
-         config['EXP_NAME'] == 'HopperReachAlwaysAvoid_CPPO' or \
-         config['EXP_NAME'] == 'HopperAvoidCeilingBaseline': 
+    elif 'Hopper' in config['EXP_NAME'] and 'Avoid' in config["EXP_NAME"]: 
         
         info, info_avoid = multi_info 
         plt.figure(figsize=(12, 6*2))
@@ -990,7 +984,7 @@ def plot_contour_RRAA(multi_info, epoch, config, policy_decision_sample=None):
         plt.savefig('model/{}/reach/trajectory_{:0>4d}'.format(config["DIR"], epoch), dpi=300)
         return fig
     
-    elif config['EXP_NAME'] == 'F16ReachReach' or config['EXP_NAME'] == 'F16ReachAlwaysAvoid':
+    elif 'F16' in config['EXP_NAME'] and 'ReachReach' in config['EXP_NAME']:
         
         if config['EXP_NAME'] == 'F16ReachReach':
             info, info_1, info_2 = multi_info
@@ -1080,9 +1074,7 @@ def plot_contour_RRAA(multi_info, epoch, config, policy_decision_sample=None):
     
 def plot_video_contour_RRAA(multi_info, epoch, config, save_video=False, prefix="", log_wandb=True):
     start_time = time()
-    if config['EXP_NAME'] == 'HopperReachAlwaysAvoid' or \
-        config['EXP_NAME'] == 'HopperReachAlwaysAvoid_CPPO' or \
-         config['EXP_NAME'] == 'HopperAvoidCeilingBaseline': 
+    if 'Hopper' in config['EXP_NAME'] and 'Avoid' in config['EXP_NAME']: 
         
         info, info_avoid = multi_info 
 
@@ -1172,10 +1164,7 @@ def plot_video_contour_RRAA(multi_info, epoch, config, save_video=False, prefix=
             plt.close(fig)
             plt.close("all")
     
-    elif config['EXP_NAME'] == 'HopperReachReach' \
-        or config["EXP_NAME"] == 'HopperReachReach_max_CPPO' \
-        or config["EXP_NAME"] == 'HopperReachReach_sum_CPPO'\
-        or config['EXP_NAME'] == 'HopperReachReach_separated_CPPO':
+    elif 'Hopper' in config['EXP_NAME'] and 'ReachReach' in config['EXP_NAME']: 
         info, info_1, info_2 = multi_info
 
         def draw_hopper_rr(step, info, reach_idx_1, reach_idx_2, title, ax, target_type="both"):
