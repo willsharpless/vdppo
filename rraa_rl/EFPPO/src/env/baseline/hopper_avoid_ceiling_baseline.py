@@ -854,7 +854,7 @@ class HopperReachAlwaysAvoidBaseline_MORL(HopperReachAlwaysAvoidBaseline_augment
         return spaces.Box(
             low=low,
             high=high,
-            shape=(obs_size + 2),
+            shape=(obs_size + 1),
         )
 
 """
@@ -863,7 +863,7 @@ Sparse Baselines:
         RR: 1 on first reach (for either goal), 0 otherwise
         RAA: 1 on first reach (for either goal), -1 if enter avoid, 0 otherwise
 """
-class HopperReachReachBaseline_Sparse(): 
+class HopperReachReachBaseline_Sparse(HopperReachReachBaseline_base): 
     @partial(jax.jit, static_argnums=(0,))  
     def compute_cost(self, curr_min_reach1_value, curr_min_reach2_value, prev_min_reach1_value=None, prev_min_reach2_value=None,    
                         reach1_value=None, reach2_value=None):
@@ -902,10 +902,10 @@ class HopperReachReachBaseline_Sparse():
         return spaces.Box(
             low=low,
             high=high,
-            shape=(obs_size + 1 ),
+            shape=(obs_size + 2 ),
         )
 
-class HopperReachAlwaysAvoidBaseline_Sparse(): 
+class HopperReachAlwaysAvoidBaseline_Sparse(HopperReachAlwaysAvoidBaseline_augmented): 
     @partial(jax.jit, static_argnums=(0,))
     def step(self, key, state, action, params=None):
         u = jnp.tanh(action)
