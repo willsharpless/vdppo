@@ -216,12 +216,13 @@ def train(env, env_params, config, rng):
                     "cnt crashed ": cnt_crashed,
                     "cnt not reaching goal ": cnt_never_reached,
                     "cnt crash after reach ": cnt_crash_after_reach,
-                   "lambda": jnp.mean(loss_info['lambda'])})
+                   "lambda": jnp.mean(loss_info['lambda'])}, 
+                   step=timestep)
         
-        if "Hopper" in config["EXP_NAME"]:
+        if "Hopper" in config["EXP_NAME"] or "Cheetah" in config["EXP_NAME"]:
                 wandb.log({
                     'trajectory_sample':wandb.Image(fig),
-                })
+                }, step=timestep)
         
         # Save video of trajectory 
         video_freq = 5 #25 
