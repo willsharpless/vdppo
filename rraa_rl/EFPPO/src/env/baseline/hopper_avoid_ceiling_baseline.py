@@ -793,7 +793,7 @@ class HopperReachReachBaseline_MORL(HopperReachReachBaseline_base):
         return spaces.Box(
             low=low,
             high=high,
-            dtype=np.float32
+            shape=(obs_size + 2),
         )
 
 class HopperReachAlwaysAvoidBaseline_MORL(HopperReachAlwaysAvoidBaseline_augmented):
@@ -854,7 +854,7 @@ class HopperReachAlwaysAvoidBaseline_MORL(HopperReachAlwaysAvoidBaseline_augment
         return spaces.Box(
             low=low,
             high=high,
-            dtype=np.float32
+            shape=(obs_size + 2),
         )
 
 """
@@ -902,7 +902,7 @@ class HopperReachReachBaseline_Sparse():
         return spaces.Box(
             low=low,
             high=high,
-            dtype=np.float32
+            shape=(obs_size + 1 ),
         )
 
 class HopperReachAlwaysAvoidBaseline_Sparse(): 
@@ -961,5 +961,5 @@ class HopperReachAlwaysAvoidBaseline_Sparse():
         return spaces.Box(
             low=low,
             high=high,
-            dtype=np.float32
+            shape=(obs_size + 1 ),
         )
