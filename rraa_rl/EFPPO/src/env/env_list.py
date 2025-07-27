@@ -195,8 +195,10 @@ def get_env(config):
     
     elif config["EXP_NAME"] == "HopperReachAlwaysAvoid_CPPO" \
         or config["EXP_NAME"] == "HopperReachAlwaysAvoid_RCPPO" \
-            or config["EXP_NAME"] == "HopperReachAlwaysAvoid_RESPO":
-
+            or config["EXP_NAME"] == "HopperReachAlwaysAvoid_RESPO" \
+                or config["EXP_NAME"] == "HopperReachAlwaysAvoidBaseline_MORL" \
+                    or config["EXP_NAME"] == "HopperReachAlwaysAvoidBaseline_Sparse":
+        
         obs_dim = 12 + 1
         vec1 = jnp.zeros(obs_dim, dtype=jnp.float32)
         vec1 = vec1.at[0].set(1.)
@@ -206,36 +208,6 @@ def get_env(config):
         untrans = partial(untransform_observation, vec1, vec2)
 
         env = HopperReachAlwaysAvoidBaseline_augmented()
-        env = TransformObservation(env, trans)
-        env.set_untransform_obs(untrans)
-
-        return (env)
-    
-    elif config["EXP_NAME"] == "HopperReachAlwaysAvoidBaseline_MORL":
-        obs_dim = 12 + 1
-        vec1 = jnp.zeros(obs_dim, dtype=jnp.float32)
-        vec1 = vec1.at[0].set(1.)
-        vec2 = jnp.ones(obs_dim, dtype=jnp.float32) 
-        
-        trans = partial(transform_observation, vec1, vec2)
-        untrans = partial(untransform_observation, vec1, vec2)
-
-        env = HopperReachAlwaysAvoidBaseline_MORL()
-        env = TransformObservation(env, trans)
-        env.set_untransform_obs(untrans)
-
-        return (env)
-    
-    elif config["EXP_NAME"] == "HopperReachAlwaysAvoidBaseline_Sparse":
-        obs_dim = 12 + 1
-        vec1 = jnp.zeros(obs_dim, dtype=jnp.float32)
-        vec1 = vec1.at[0].set(1.)
-        vec2 = jnp.ones(obs_dim, dtype=jnp.float32) 
-        
-        trans = partial(transform_observation, vec1, vec2)
-        untrans = partial(untransform_observation, vec1, vec2)
-
-        env = HopperReachAlwaysAvoidBaseline_Sparse()
         env = TransformObservation(env, trans)
         env.set_untransform_obs(untrans)
 
@@ -257,10 +229,12 @@ def get_env(config):
         env.set_untransform_obs(untrans)
 
         return (env)
-    
+        
     elif config["EXP_NAME"] == "HopperReachReach_sum_CPPO" \
-            or config["EXP_NAME"] == "HopperReachReach_sum_RCPPO" \
-                or config["EXP_NAME"] == "HopperReachReach_sum_RESPO":
+        or config["EXP_NAME"] == "HopperReachReach_sum_RCPPO" \
+            or config["EXP_NAME"] == "HopperReachReach_RESPO" \
+                or config["EXP_NAME"] == "HopperReachReachBaseline_MORL" \
+                    or config["EXP_NAME"] == "HopperReachReachBaseline_Sparse":
         
         obs_dim = 12 + 2
         vec1 = jnp.zeros(obs_dim, dtype=jnp.float32)
@@ -288,40 +262,6 @@ def get_env(config):
         untrans = partial(untransform_observation, vec1, vec2)
 
         env = HopperReachReachBaseline_reward_cost_separated(cost_type=config["ENV_COST_TYPE"], 
-                                                     use_stl=config["USE_STL"], 
-                                                     cost_fn=config["ENV_COST_FN"])
-        env = TransformObservation(env, trans)
-        env.set_untransform_obs(untrans)
-
-        return (env)
-    
-    elif config["EXP_NAME"] == "HopperReachReachBaseline_MORL":
-        obs_dim = 12 + 2
-        vec1 = jnp.zeros(obs_dim, dtype=jnp.float32)
-        vec1 = vec1.at[0].set(1.)
-        vec2 = jnp.ones(obs_dim, dtype=jnp.float32)
-        
-        trans = partial(transform_observation, vec1, vec2)
-        untrans = partial(untransform_observation, vec1, vec2)
-
-        env = HopperReachReachBaseline_MORL(cost_type=config["ENV_COST_TYPE"], 
-                                                     use_stl=config["USE_STL"], 
-                                                     cost_fn=config["ENV_COST_FN"])
-        env = TransformObservation(env, trans)
-        env.set_untransform_obs(untrans)
-
-        return (env)
-    
-    elif config["EXP_NAME"] == "HopperReachReachBaseline_Sparse":
-        obs_dim = 12 + 2
-        vec1 = jnp.zeros(obs_dim, dtype=jnp.float32)
-        vec1 = vec1.at[0].set(1.)
-        vec2 = jnp.ones(obs_dim, dtype=jnp.float32)
-        
-        trans = partial(transform_observation, vec1, vec2)
-        untrans = partial(untransform_observation, vec1, vec2)
-
-        env = HopperReachReachBaseline_MORL(cost_type=config["ENV_COST_TYPE"], 
                                                      use_stl=config["USE_STL"], 
                                                      cost_fn=config["ENV_COST_FN"])
         env = TransformObservation(env, trans)
