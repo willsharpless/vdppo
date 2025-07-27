@@ -38,6 +38,34 @@ class Transition_rr_cppo(NamedTuple):
     reach1: jnp.ndarray
     reach2: jnp.ndarray
 
+class Transition_raa_respo(NamedTuple):
+    done: jnp.ndarray
+    action: jnp.ndarray
+    value: jnp.ndarray
+    value_prob: jnp.ndarray
+    value_cost: jnp.ndarray
+    reward: jnp.ndarray
+    cost: jnp.ndarray
+    log_prob: jnp.ndarray
+    obs: jnp.ndarray
+    info: jnp.ndarray
+    reach: jnp.ndarray
+    avoid: jnp.ndarray
+
+class Transition_rr_respo(NamedTuple):
+    done: jnp.ndarray
+    action: jnp.ndarray
+    value: jnp.ndarray
+    value_prob: jnp.ndarray
+    value_cost: jnp.ndarray
+    reward: jnp.ndarray
+    cost: jnp.ndarray
+    log_prob: jnp.ndarray
+    obs: jnp.ndarray
+    info: jnp.ndarray
+    reach1: jnp.ndarray
+    reach2: jnp.ndarray    
+
 class Transition_reach(NamedTuple):
     done: jnp.ndarray
     action: jnp.ndarray

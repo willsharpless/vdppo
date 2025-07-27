@@ -1,7 +1,7 @@
 import jax
 import jax.numpy as jnp
 from rraa_rl.EFPPO.src.rl.gae import Transition_reach, Transition_raa, \
-    Transition_rr, Transition_r1, Transition_r2, Transition_cppo, Transition_sac, \
+    Transition_rr, Transition_r1, Transition_r2, Transition_cppo, Transition_raa_respo, Transition_rr_respo, Transition_sac, \
         Transition_a, Transition_ra, Transition_rr_cppo, Transition_r, \
         Transition_rcppo_adapted_raa, Transition_rcppo_adapted_rr
 
@@ -1507,7 +1507,7 @@ def _cppo_update(config, update_state, ent):
                     advantages_value, targets_value, advantages_cost, targets_cost, rng)
     return update_state, total_loss
 
-def _respo_update(config, update_state, ent):
+def _respo_update_oswins(config, update_state, ent):
     (train_state_policy, train_state_value, train_state_cost, traj_batch,
      advantages_value, targets_value, advantages_cost, targets_cost, rng) = update_state
     rng, _rng = jax.random.split(rng)
@@ -1629,6 +1629,162 @@ def _respo_update(config, update_state, ent):
         _update_minbatch, (train_state_policy, train_state_value, train_state_cost), minibatches
     )
     update_state = (train_state_policy, train_state_value, train_state_cost, traj_batch,
+                    advantages_value, targets_value, advantages_cost, targets_cost, rng)
+    return update_state, total_loss
+
+def _respo_update(config, update_state, ent):
+    (train_state_policy, train_state_value, train_state_prob, train_state_cost, traj_batch,
+     advantages_value, targets_value, advantages_cost, targets_cost, rng) = update_state
+    rng, _rng = jax.random.split(rng)
+
+    def _update_minbatch(train_state, batch_info):
+        train_state_policy, train_state_value, train_state_prob, train_state_cost = train_state
+        traj_batch, advantages_value, targets_value, advantages_cost, targets_cost = batch_info
+
+        def _loss_fn_prob(params, traj_batch, targets_prob):
+            # RERUN NETWORK
+            value_prob = train_state_prob.apply_fn(params, traj_batch.obs)
+
+            # CALCULATE VALUE LOSS FOR REF FUNCTION
+            value_pred_clipped_prob = traj_batch.value_prob + (
+                    value_prob - traj_batch.value_prob
+            ).clip(-config["CLIP_EPS"], config["CLIP_EPS"])
+            value_losses_prob = jnp.square(value_prob - targets_prob)
+            value_losses_clipped_prob = jnp.square(value_pred_clipped_prob - targets_prob)
+            value_loss_prob = (
+                    0.5 * jnp.maximum(value_losses_prob, value_losses_clipped_prob).mean()
+            )
+
+            total_loss = config["VF_COEF"] * value_loss_prob
+            return total_loss, value_loss_prob
+        
+        def _loss_fn_cost(params, traj_batch, targets_cost):
+            # RERUN NETWORK
+            value_cost = train_state_cost.apply_fn(params, traj_batch.obs)
+
+            # CALCULATE VALUE LOSS FOR REACH FUNCTION
+            value_pred_clipped_cost = traj_batch.value_cost + (
+                    value_cost - traj_batch.value_cost
+            ).clip(-config["CLIP_EPS"], config["CLIP_EPS"])
+            value_losses_cost = jnp.square(value_cost - targets_cost)
+            value_losses_clipped_cost = jnp.square(value_pred_clipped_cost - targets_cost)
+            value_loss_cost = (
+                    0.5 * jnp.maximum(value_losses_cost, value_losses_clipped_cost).mean()
+            )
+            lambda_new = jnp.clip(targets_cost.mean() - config['THRESHOLD_CPPO'], 0) * config['K_P']
+            # FIXME: this is the CPPO lagrangian update but RESPO uses another neural net technically
+            # FIXME FIXME FIXME: instead going to set a static lambda for now
+
+            total_loss = config["VF_COEF"] * value_loss_cost
+            return total_loss, (value_loss_cost, lambda_new)
+
+        def _loss_fn_value(params, traj_batch, targets_value):
+            # RERUN NETWORK
+            value = train_state_value.apply_fn(params, traj_batch.obs)
+
+            # CALCULATE VALUE LOSS FOR NORMAL VALUE FUNCTION
+            value_pred_clipped = traj_batch.value + (
+                    value - traj_batch.value
+            ).clip(-config["CLIP_EPS"], config["CLIP_EPS"])
+            value_losses = jnp.square(value - targets_value)
+            value_losses_clipped = jnp.square(value_pred_clipped - targets_value)
+            value_loss_value = (
+                    0.5 * jnp.maximum(value_losses, value_losses_clipped).mean()
+            )
+
+            total_loss = config["VF_COEF"] * value_loss_value
+            return total_loss, value_loss_value
+
+        def _loss_fn_policy(params, traj_batch, gae):
+            # RERUN NETWORK
+            pi = train_state_policy.apply_fn(params, traj_batch.obs)
+            log_prob = pi.log_prob(traj_batch.action)
+
+            # CALCULATE ACTOR LOSS
+            ratio = jnp.exp(log_prob - traj_batch.log_prob)
+            gae = (gae - gae.mean()) / (gae.std() + 1e-8)
+            loss_actor1 = ratio * gae
+            loss_actor2 = (
+                    jnp.clip(
+                        ratio,
+                        1.0 - config["CLIP_EPS"],
+                        1.0 + config["CLIP_EPS"],
+                    )
+                    * gae
+            )
+            loss_actor = jnp.maximum(loss_actor1, loss_actor2)
+            loss_actor = loss_actor.mean()
+            entropy = pi.entropy().mean()
+
+            total_loss = (
+                    loss_actor
+                    - ent * entropy
+            )
+            return total_loss, (loss_actor, entropy)
+
+        grad_fn = jax.value_and_grad(_loss_fn_policy, has_aux=True)
+        total_loss_policy, grads = grad_fn(
+            train_state_policy.params, traj_batch, (advantages_value * (1-traj_batch.value_prob) + \
+                                                    advantages_cost * (train_state_policy.lambda_coef * (1-traj_batch.value_prob) + traj_batch.value_prob))
+                                                   / (1 + train_state_policy.lambda_coef)
+        )
+        train_state_policy = train_state_policy.apply_gradients(grads=grads)
+        # FIXME? technically RESPO doesnt use advantages but that seems crazy to me (Will) & Nikhil, maybe this advantage adaptation will work?
+
+        grad_fn = jax.value_and_grad(_loss_fn_value, has_aux=True)
+        total_loss_value, grads = grad_fn(
+            train_state_value.params, traj_batch, targets_value
+        )
+        train_state_value = train_state_value.apply_gradients(grads=grads)
+
+        grad_fn = jax.value_and_grad(_loss_fn_cost, has_aux=True)
+        total_loss_cost, grads = grad_fn(
+            train_state_cost.params, traj_batch, targets_cost
+        )
+        train_state_cost = train_state_cost.apply_gradients(grads=grads)
+
+        value_prob_next = jnp.concatenate([traj_batch.value_prob[1:], traj_batch.value_prob[-2:-1]], axis=0)
+        targets_prob = jnp.maximum(traj_batch.cost > 0, config["GAMMA_ENERGY"] * value_prob_next)
+        grad_fn = jax.value_and_grad(_loss_fn_prob, has_aux=True)
+        total_loss_prob, grads = grad_fn(
+            train_state_prob.params, traj_batch, targets_prob
+        )
+        train_state_prob = train_state_prob.apply_gradients(grads=grads)
+        
+        # lambda_change = jnp.where(True, config['LAMBDA_REACH'], total_loss_cost[1][1]) # FIXME: Forced true
+        lambda_change = jnp.where(config['FIX_LAMBDA'], config['LAMBDA_REACH'], total_loss_cost[1][1])
+        train_state_policy = train_state_policy.replace(lambda_coef=lambda_change)
+
+        return (train_state_policy, train_state_value, train_state_prob, train_state_cost), {"actor_loss": total_loss_policy[1][0],
+                                                                         "entropy_loss": total_loss_policy[1][1],
+                                                                         "value_loss": total_loss_value[1],
+                                                                         "cost_loss": total_loss_cost[1][0],
+                                                                         "prob_loss": total_loss_prob[1],
+                                                                         "lambda": lambda_change}
+
+    rng, _rng = jax.random.split(rng)
+    batch_size = config["MINIBATCH_SIZE"] * config["NUM_MINIBATCHES"]
+    assert (
+            batch_size == config["NUM_STEPS"] * config["NUM_ENVS"]
+    ), "batch size must be equal to number of steps * number of envs"
+    permutation = jax.random.permutation(_rng, batch_size)
+    batch = (traj_batch, advantages_value, targets_value, advantages_cost, targets_cost)
+    batch = jax.tree_util.tree_map(
+        lambda x: x.reshape((batch_size,) + x.shape[2:]), batch
+    )
+    shuffled_batch = jax.tree_util.tree_map(
+        lambda x: jnp.take(x, permutation, axis=0), batch
+    )
+    minibatches = jax.tree_util.tree_map(
+        lambda x: jnp.reshape(
+            x, [config["NUM_MINIBATCHES"], -1] + list(x.shape[1:])
+        ),
+        shuffled_batch,
+    )
+    (train_state_policy, train_state_value, train_state_prob, train_state_cost), total_loss = jax.lax.scan(
+        _update_minbatch, (train_state_policy, train_state_value, train_state_prob, train_state_cost), minibatches
+    )
+    update_state = (train_state_policy, train_state_value, train_state_prob, train_state_cost, traj_batch,
                     advantages_value, targets_value, advantages_cost, targets_cost, rng)
     return update_state, total_loss
 
@@ -1775,7 +1931,64 @@ def _env_step_cppo_RAA(env, env_params, runner_state, _):
     )
     runner_state = (train_state_policy, train_state_value, train_state_cost, env_state, obsv, rng)
     return runner_state, transition
-    
+
+def _env_step_rr_respo(env, env_params, runner_state, _):
+    train_state_policy, train_state_value, train_state_prob, train_state_cost, last_env_state, last_obs, rng = runner_state
+
+    # SELECT ACTION
+    rng, _rng = jax.random.split(rng)
+    pi = train_state_policy.apply_fn(train_state_policy.params, last_obs)
+    value = train_state_value.apply_fn(train_state_value.params, last_obs)
+    value_prob = train_state_prob.apply_fn(train_state_prob.params, last_obs)
+    value_cost = train_state_cost.apply_fn(train_state_cost.params, last_obs)
+
+    action = pi.sample(seed=_rng)
+    log_prob = pi.log_prob(action)
+
+    # STEP ENV
+    rng, _rng = jax.random.split(rng)
+    env_num = last_obs.shape[0]
+    rng_step = jax.random.split(_rng, env_num)
+    obsv, env_state, reward, done, info = jax.vmap(
+        env.step, in_axes=(0, 0, 0, None)
+    )(rng_step, last_env_state, action, env_params)
+
+    transition = Transition_rr_respo(
+        done, action, value, value_prob, value_cost, reward, env_state.cost,
+        log_prob, last_obs, info, last_env_state.reach1, env_state.reach2
+    )
+    runner_state = (train_state_policy, train_state_value, train_state_prob, train_state_cost, env_state, obsv, rng)
+    return runner_state, transition
+
+def _env_step_raa_respo(env, env_params, runner_state, _):
+    train_state_policy, train_state_value, train_state_prob, train_state_cost, last_env_state, last_obs, rng = runner_state
+
+    # SELECT ACTION
+    rng, _rng = jax.random.split(rng)
+    pi = train_state_policy.apply_fn(train_state_policy.params, last_obs)
+    value = train_state_value.apply_fn(train_state_value.params, last_obs)
+    value_prob = train_state_prob.apply_fn(train_state_prob.params, last_obs)
+    value_cost = train_state_cost.apply_fn(train_state_cost.params, last_obs)
+
+    action = pi.sample(seed=_rng)
+    log_prob = pi.log_prob(action)
+
+    # STEP ENV
+    rng, _rng = jax.random.split(rng)
+    env_num = last_obs.shape[0]
+    rng_step = jax.random.split(_rng, env_num)
+    obsv, env_state, reward, done, info = jax.vmap(
+        env.step, in_axes=(0, 0, 0, None)
+    )(rng_step, last_env_state, action, env_params)
+
+    done = (env_state.reach < 0.) | (env_state.avoid > 0)
+
+    transition = Transition_raa_respo(
+        done, action, value, value_prob, value_cost, reward, env_state.cost,
+        log_prob, last_obs, info, last_env_state.reach, env_state.avoid
+    )
+    runner_state = (train_state_policy, train_state_value, train_state_prob, train_state_cost, env_state, obsv, rng)
+    return runner_state, transition
 
 def _cppo_update_RAA(config, update_state, ent):
     (train_state_policy, train_state_value, train_state_cost, traj_batch,
