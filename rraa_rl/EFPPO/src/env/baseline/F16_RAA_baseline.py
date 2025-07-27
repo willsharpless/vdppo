@@ -5,6 +5,7 @@ os.environ["XLA_PYTHON_CLIENT_PREALLOCATE"] = "false"
 import jax
 import jax.numpy as jnp
 from jax import lax
+from functools import partial
 from gymnax.environments import environment, spaces
 from typing import Tuple, Optional
 import chex
@@ -132,6 +133,16 @@ class F16ReachAvoidBaseline(environment.Environment):
         """Default environment parameters for Environment."""
         default = EnvParams()
         return default
+    
+    @partial(jax.jit, static_argnums=(0,))
+    def compute_reward(self, state, action, avoid_value, reach_value, params=None):
+        # Compute reward for constrained MDP
+        return params.gamma * reach_value - state.reach
+
+    @partial(jax.jit, static_argnums=(0,))
+    def compute_cost(self, state, action, avoid_value, reach_value, params=None):
+        # Compute cost for constrained MDP
+        return state.avoid
 
     def step_env(
         self,
@@ -181,9 +192,9 @@ class F16ReachAvoidBaseline(environment.Environment):
         
         has_reached = reach_value < 0
         min_reach = jnp.minimum(reach_value, state.reach)
-        
-        reward = params.gamma * reach_value - state.reach
-        cost = avoid_value
+
+        reward = self.compute_reward(state=state, action=action, avoid_value=avoid_value, reach_value=reach_value, params=params) #params.gamma * reach_value - state.reach
+        cost = self.compute_cost(state=state, action=action, avoid_value=avoid_value, reach_value=reach_value, params=params) #avoid_value
 
         a_state_new = jnp.where(avoid_value <= 0, a_state_new, state.state)
 

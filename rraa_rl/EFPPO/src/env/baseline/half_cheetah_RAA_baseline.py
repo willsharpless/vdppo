@@ -61,6 +61,16 @@ class HalfCheetahReachAlwaysAvoidBaseline_augmented:
         return observation, env_state
 
     @partial(jax.jit, static_argnums=(0,))
+    def compute_reward(self, state, action, avoid_value, reach_value, params=None):
+        # Compute reward for constrained MDP
+        return params.gamma * reach_value - state.reach
+
+    @partial(jax.jit, static_argnums=(0,))
+    def compute_cost(self, state, action, avoid_value, reach_value, params=None):
+        # Compute cost for constrained MDP
+        return state.avoid
+
+    @partial(jax.jit, static_argnums=(0,))
     def step(self, key, state, action, params=None):
         u = jnp.tanh(action)
         next_state = self._env.step(state.state, u)
@@ -69,8 +79,8 @@ class HalfCheetahReachAlwaysAvoidBaseline_augmented:
         reach_value = self.is_reach(poses[0])
         min_reach = jnp.minimum(state.min_reach, reach_value)
 
-        reward = params.gamma * reach_value - state.reach
-        cost = avoid_value
+        reward = self.compute_reward(state=state, action=action, avoid_value=avoid_value, reach_value=reach_value, params=params) #params.gamma * reach_value - state.reach
+        cost = self.compute_cost(state=state, action=action, avoid_value=avoid_value, reach_value=reach_value, params=params) #avoid_value
 
         (head_pos, neck_pos, back_pos, front_thigh_pos, front_shin_pos,
          front_foot_pos, back_thigh_pos, back_shin_pos, back_foot_pos) = self.calculate_position(state.state.obs)

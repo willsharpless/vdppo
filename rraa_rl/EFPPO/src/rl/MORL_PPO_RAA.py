@@ -271,6 +271,98 @@ if __name__ == "__main__":
     os.environ["XLA_PYTHON_CLIENT_PREALLOCATE"] = "false"
     os.environ["CUDA_VISIBLE_DEVICES"] = config['CUDA_USE']
     env = get_env(config)
+
+    from gymnax.environments import spaces
+    import numpy as np 
+
+    if "Sparse" in config["EXP_NAME"]: 
+        @partial(jax.jit, static_argnums=(0,))
+        def compute_reward(self, state, action, avoid_value, reach_value, params=None):
+            ######### MORL Modification: Reward and Cost #########
+            # RAA: 1 on first reach (for either goal), -1 if enter avoid, 0 otherwise
+            reward = jnp.zeros_like(reach_value)
+            
+            reward = jnp.where(jnp.logical_and(reach_value <= 0, jnp.logical_not(state.min_reach <= 0)), 1.0, reward)
+            reward = jnp.where(avoid_value > 0, -1.0, reward) # -1 if enter avoid
+            ######### MORL Modification: Reward and Cost #########
+            return reward 
+        
+        @partial(jax.jit, static_argnums=(0,))
+        def compute_cost(self, state, action, avoid_value, reach_value, params=None):
+            # NOTE: not used in MORL - but required for base CPPO implementation - so return 0
+            return jnp.zeros_like(avoid_value)
+        
+        @partial(jax.jit, static_argnums=(0,))
+        def compute_observation(self, state, last_state=None): 
+            # Compute observation for constrained MDP
+            return jnp.concatenate([state.state.obs, jnp.array([state.min_reach <= 0])]) # Boolean has reached
+        
+        def observation_space(self, params):
+            obs_size = self._env.observation_size
+            if type(obs_size) is tuple:
+                obs_size = obs_size[0]
+
+            # The augmented observations are boolean values 
+            low = np.concatenate([
+                -np.inf * np.ones(obs_size),
+                np.zeros(1)
+            ])
+            high = np.concatenate([
+                np.inf * np.ones(obs_size),
+                np.ones(1)
+            ])
+
+            return spaces.Box(
+                low=low,
+                high=high,
+                shape=(obs_size + 1 ),
+            )
+        
+    elif "MORL" in config["EXP_NAME"]:
+        # MORL Environment Baseline
+        @partial(jax.jit, static_argnums=(0,))
+        def compute_reward(self, state, action, avoid_value, reach_value, params=None): 
+            ######## MORL Modification: Reward and Cost #########
+            # RAA: 0.5 r - 0.5 a before first reach, -1 * a after first reach 
+            reward = jnp.zeros_like(reach_value)
+            # Has Reached Checcks: 
+            reward = jnp.where(state.min_reach <= 0, params.gamma * (0.5 * reach_value - 0.5 * avoid_value) - (0.5 * state.reach - 0.5 * state.avoid), reward)
+            # Avoid Checks: 
+            reward = jnp.where(state.min_reach > 0, params.gamma * avoid_value - state.avoid, reward)
+            ######### MORL Modification: Reward and Cost #########
+            return reward 
+        
+        @partial(jax.jit, static_argnums=(0,))
+        def compute_cost(self, state, action, avoid_value, reach_value, params=None):
+            # NOTE: not used in MORL - but required for base CPPO implementation - so return 0
+            return jnp.zeros_like(avoid_value)
+        
+        @partial(jax.jit, static_argnums=(0,))
+        def compute_observation(self, state, last_state=None): 
+            # Compute observation for constrained MDP
+            return jnp.concatenate([state.state.obs, jnp.array([state.min_reach <= 0])]) # Boolean has reached
+        
+        def observation_space(self, params):
+            obs_size = self._env.observation_size
+            if type(obs_size) is tuple:
+                obs_size = obs_size[0]
+
+            # The augmented observations are boolean values 
+            low = np.concatenate([
+                -np.inf * np.ones(obs_size),
+                np.zeros(1)
+            ])
+            high = np.concatenate([
+                np.inf * np.ones(obs_size),
+                np.ones(1)
+            ])
+
+            return spaces.Box(
+                low=low,
+                high=high,
+                shape=(obs_size + 1),
+            )
+
     env_params = env.default_params
     print(env_params)
     env_params = env_params.replace(gamma=config["GAMMA_ENERGY"])

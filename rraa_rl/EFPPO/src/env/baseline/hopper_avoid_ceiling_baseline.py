@@ -355,6 +355,16 @@ class HopperReachAlwaysAvoidBaseline_augmented:
         return observation, env_state
     
     @partial(jax.jit, static_argnums=(0,))
+    def compute_reward(self, state, action, avoid_value, reach_value, params=None):
+        # Compute reward for constrained MDP
+        return params.gamma * reach_value - state.reach
+
+    @partial(jax.jit, static_argnums=(0,))
+    def compute_cost(self, state, action, avoid_value, reach_value, params=None):
+        # Compute cost for constrained MDP
+        return state.avoid
+    
+    @partial(jax.jit, static_argnums=(0,))
     def step(self, key, state, action, params=None):
         u = jnp.tanh(action)
         next_state = self._env.step(state.state, u)
@@ -364,8 +374,8 @@ class HopperReachAlwaysAvoidBaseline_augmented:
         reach_value = self.is_reach(head_pos)
         min_reach = jnp.minimum(state.min_reach, reach_value) 
         
-        reward = params.gamma * reach_value - state.reach
-        cost = avoid_value 
+        reward = self.compute_reward(state=state, action=action, avoid_value=avoid_value, reach_value=reach_value, params=params) #params.gamma * reach_value - state.reach
+        cost = self.compute_cost(state=state, action=action, avoid_value=avoid_value, reach_value=reach_value, params=params) #avoid_value
 
         head_pos, jaw_pos, thg_pos, leg_pos, foot_front_pos, foot_back_pos = self.calculate_position(state.state.obs)
         pos_dict = {"head_pos": head_pos, "jaw_pos": jaw_pos, "thg_pos": thg_pos, "leg_pos": leg_pos,
@@ -798,40 +808,58 @@ class HopperReachReachBaseline_MORL(HopperReachReachBaseline_base):
 
 class HopperReachAlwaysAvoidBaseline_MORL(HopperReachAlwaysAvoidBaseline_augmented):
     
-    @partial(jax.jit, static_argnums=(0,))
-    def step(self, key, state, action, params=None):
-        u = jnp.tanh(action)
-        next_state = self._env.step(state.state, u)
-        head_pos, _, _, _, _, _ = self.calculate_position(next_state.obs)
+    # @partial(jax.jit, static_argnums=(0,))
+    # def step(self, key, state, action, params=None):
+    #     u = jnp.tanh(action)
+    #     next_state = self._env.step(state.state, u)
+    #     head_pos, _, _, _, _, _ = self.calculate_position(next_state.obs)
 
-        avoid_value = self.is_avoid(head_pos)
-        reach_value = self.is_reach(head_pos)
-        min_reach = jnp.minimum(state.min_reach, reach_value) 
+    #     avoid_value = self.is_avoid(head_pos)
+    #     reach_value = self.is_reach(head_pos)
+    #     min_reach = jnp.minimum(state.min_reach, reach_value) 
         
-        # reward = params.gamma * reach_value - state.reach
-        # cost = avoid_value 
+    #     # reward = params.gamma * reach_value - state.reach
+    #     # cost = avoid_value 
 
-        ######### MORL Modification: Reward and Cost #########
+    #     ######### MORL Modification: Reward and Cost #########
+    #     # RAA: 0.5 r - 0.5 a before first reach, -1 * a after first reach 
+    #     reward = jnp.zeros_like(reach_value)
+    #     # Has Reached Checcks: 
+    #     reward = jnp.where(state.min_reach <= 0, params.gamma * (0.5 * reach_value - 0.5 * avoid_value) - (0.5 * state.reach - 0.5 * state.avoid), reward)
+    #     # Avoid Checks: 
+    #     reward = jnp.where(state.min_reach > 0, params.gamma * avoid_value - state.avoid, reward)
+
+    #     cost = jnp.zeros_like(avoid_value) # NOTE: not used in MORL - but required for base CPPO implementation - so return 0
+    #     ######### MORL Modification: Reward and Cost #########
+
+    #     head_pos, jaw_pos, thg_pos, leg_pos, foot_front_pos, foot_back_pos = self.calculate_position(state.state.obs)
+    #     pos_dict = {"head_pos": head_pos, "jaw_pos": jaw_pos, "thg_pos": thg_pos, "leg_pos": leg_pos,
+    #                 "foot_front_pos": foot_front_pos, "foot_back_pos": foot_back_pos}
+
+    #     next_state_new = EnvStateRAA(next_state, reach_value, avoid_value, min_reach, cost)
+
+    #     observation = self.compute_observation(state=next_state_new, last_state=state)
+
+    #     done = False # NOTE: Force dones to false for always avoid - make last done true outside #(state.avoid > 0) | (state.reach < 0)
+    #     return observation, next_state_new, reward, done, pos_dict
+
+
+    @partial(jax.jit, static_argnums=(0,))
+    def compute_reward(self, state, action, avoid_value, reach_value, params=None): 
+        ######## MORL Modification: Reward and Cost #########
         # RAA: 0.5 r - 0.5 a before first reach, -1 * a after first reach 
         reward = jnp.zeros_like(reach_value)
         # Has Reached Checcks: 
         reward = jnp.where(state.min_reach <= 0, params.gamma * (0.5 * reach_value - 0.5 * avoid_value) - (0.5 * state.reach - 0.5 * state.avoid), reward)
         # Avoid Checks: 
         reward = jnp.where(state.min_reach > 0, params.gamma * avoid_value - state.avoid, reward)
-
-        cost = jnp.zeros_like(avoid_value) # NOTE: not used in MORL - but required for base CPPO implementation - so return 0
         ######### MORL Modification: Reward and Cost #########
-
-        head_pos, jaw_pos, thg_pos, leg_pos, foot_front_pos, foot_back_pos = self.calculate_position(state.state.obs)
-        pos_dict = {"head_pos": head_pos, "jaw_pos": jaw_pos, "thg_pos": thg_pos, "leg_pos": leg_pos,
-                    "foot_front_pos": foot_front_pos, "foot_back_pos": foot_back_pos}
-
-        next_state_new = EnvStateRAA(next_state, reach_value, avoid_value, min_reach, cost)
-
-        observation = self.compute_observation(state=next_state_new, last_state=state)
-
-        done = False # NOTE: Force dones to false for always avoid - make last done true outside #(state.avoid > 0) | (state.reach < 0)
-        return observation, next_state_new, reward, done, pos_dict
+        return reward 
+    
+    @partial(jax.jit, static_argnums=(0,))
+    def compute_cost(self, state, action, avoid_value, reach_value, params=None):
+        # NOTE: not used in MORL - but required for base CPPO implementation - so return 0
+        return jnp.zeros_like(avoid_value)
     
     @partial(jax.jit, static_argnums=(0,))
     def compute_observation(self, state, last_state=None): 
@@ -906,39 +934,56 @@ class HopperReachReachBaseline_Sparse(HopperReachReachBaseline_base):
         )
 
 class HopperReachAlwaysAvoidBaseline_Sparse(HopperReachAlwaysAvoidBaseline_augmented): 
-    @partial(jax.jit, static_argnums=(0,))
-    def step(self, key, state, action, params=None):
-        u = jnp.tanh(action)
-        next_state = self._env.step(state.state, u)
-        head_pos, _, _, _, _, _ = self.calculate_position(next_state.obs)
+    
+    # @partial(jax.jit, static_argnums=(0,))
+    # def step(self, key, state, action, params=None):
+    #     u = jnp.tanh(action)
+    #     next_state = self._env.step(state.state, u)
+    #     head_pos, _, _, _, _, _ = self.calculate_position(next_state.obs)
 
-        avoid_value = self.is_avoid(head_pos)
-        reach_value = self.is_reach(head_pos)
-        min_reach = jnp.minimum(state.min_reach, reach_value) 
+    #     avoid_value = self.is_avoid(head_pos)
+    #     reach_value = self.is_reach(head_pos)
+    #     min_reach = jnp.minimum(state.min_reach, reach_value) 
         
-        # reward = params.gamma * reach_value - state.reach
-        # cost = avoid_value 
+    #     # reward = params.gamma * reach_value - state.reach
+    #     # cost = avoid_value 
 
+    #     ######### MORL Modification: Reward and Cost #########
+    #     # RAA: 1 on first reach (for either goal), -1 if enter avoid, 0 otherwise
+    #     reward = jnp.zeros_like(reach_value)
+        
+    #     reward = jnp.where(jnp.logical_and(reach_value <= 0, jnp.logical_not(state.min_reach <= 0)), 1.0, reward)
+    #     reward = jnp.where(avoid_value > 0, -1.0, reward) # -1 if enter avoid
+
+    #     cost = jnp.zeros_like(avoid_value) # NOTE: not used in MORL - but required for base CPPO implementation - so return 0
+    #     ######### MORL Modification: Reward and Cost #########
+
+    #     head_pos, jaw_pos, thg_pos, leg_pos, foot_front_pos, foot_back_pos = self.calculate_position(state.state.obs)
+    #     pos_dict = {"head_pos": head_pos, "jaw_pos": jaw_pos, "thg_pos": thg_pos, "leg_pos": leg_pos,
+    #                 "foot_front_pos": foot_front_pos, "foot_back_pos": foot_back_pos}
+
+    #     next_state_new = EnvStateRAA(next_state, reach_value, avoid_value, min_reach, cost)
+
+    #     observation = self.compute_observation(state=next_state_new, last_state=state)
+
+    #     done = False # NOTE: Force dones to false for always avoid - make last done true outside #(state.avoid > 0) | (state.reach < 0)
+    #     return observation, next_state_new, reward, done, pos_dict
+
+    @partial(jax.jit, static_argnums=(0,))
+    def compute_reward(self, state, action, avoid_value, reach_value, params=None):
         ######### MORL Modification: Reward and Cost #########
         # RAA: 1 on first reach (for either goal), -1 if enter avoid, 0 otherwise
         reward = jnp.zeros_like(reach_value)
         
         reward = jnp.where(jnp.logical_and(reach_value <= 0, jnp.logical_not(state.min_reach <= 0)), 1.0, reward)
         reward = jnp.where(avoid_value > 0, -1.0, reward) # -1 if enter avoid
-
-        cost = jnp.zeros_like(avoid_value) # NOTE: not used in MORL - but required for base CPPO implementation - so return 0
         ######### MORL Modification: Reward and Cost #########
-
-        head_pos, jaw_pos, thg_pos, leg_pos, foot_front_pos, foot_back_pos = self.calculate_position(state.state.obs)
-        pos_dict = {"head_pos": head_pos, "jaw_pos": jaw_pos, "thg_pos": thg_pos, "leg_pos": leg_pos,
-                    "foot_front_pos": foot_front_pos, "foot_back_pos": foot_back_pos}
-
-        next_state_new = EnvStateRAA(next_state, reach_value, avoid_value, min_reach, cost)
-
-        observation = self.compute_observation(state=next_state_new, last_state=state)
-
-        done = False # NOTE: Force dones to false for always avoid - make last done true outside #(state.avoid > 0) | (state.reach < 0)
-        return observation, next_state_new, reward, done, pos_dict
+        return reward 
+    
+    @partial(jax.jit, static_argnums=(0,))
+    def compute_cost(self, state, action, avoid_value, reach_value, params=None):
+        # NOTE: not used in MORL - but required for base CPPO implementation - so return 0
+        return jnp.zeros_like(avoid_value)
     
     @partial(jax.jit, static_argnums=(0,))
     def compute_observation(self, state, last_state=None): 
