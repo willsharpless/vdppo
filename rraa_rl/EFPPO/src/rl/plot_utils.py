@@ -1337,6 +1337,7 @@ def plot_contour_RRAA(multi_info, epoch, config, policy_decision_sample=None):
     
 def plot_video_contour_RRAA(multi_info, epoch, config, save_video=False, prefix="", log_wandb=True):
     start_time = time()
+    frames = None
     if 'Hopper' in config['EXP_NAME'] and 'Avoid' in config['EXP_NAME']: 
         
         info, info_avoid = multi_info 
@@ -2070,26 +2071,28 @@ def plot_video_contour_RRAA(multi_info, epoch, config, save_video=False, prefix=
             plt.close("all")
         
     # Save frames as a video using PIL - don't do this in general
-    frames = [Image.fromarray(frame) for frame in frames]
-    if save_video: 
-        # video_path = 'model/{}/reach/trajectory_{:0>4d}.mp4'.format(config["DIR"], epoch)
-        # frames[0].save(video_path, save_all=True, append_images=frames[1:], duration=100, loop=0)
-        # mod prefix from / to _
-        prefix_underscore = prefix.replace("/", "_")
-        video_path = 'model/{}/reach/trajectory_{}{:0>4d}.mp4'.format(config["DIR"], prefix_underscore, epoch)
-        print("\n\nSaving video to: ", video_path)
-        imageio.mimsave(video_path, frames, fps=30)
-        if log_wandb: 
-            wandb_name = f"{prefix}trajectory video"
-            print("Logging video to wandb: ", wandb_name)
-            try:
-                wandb.log({wandb_name: wandb.Video(video_path, format="mp4")}, step=epoch)
-            except: 
-                print("Error logging video to wandb")
-                
-    end_time = time()
-    print("Time taken to plot and push video: ", end_time - start_time)
-    return frames
+    
+    if frames is not None: 
+        frames = [Image.fromarray(frame) for frame in frames]
+        if save_video: 
+            # video_path = 'model/{}/reach/trajectory_{:0>4d}.mp4'.format(config["DIR"], epoch)
+            # frames[0].save(video_path, save_all=True, append_images=frames[1:], duration=100, loop=0)
+            # mod prefix from / to _
+            prefix_underscore = prefix.replace("/", "_")
+            video_path = 'model/{}/reach/trajectory_{}{:0>4d}.mp4'.format(config["DIR"], prefix_underscore, epoch)
+            print("\n\nSaving video to: ", video_path)
+            imageio.mimsave(video_path, frames, fps=30)
+            if log_wandb: 
+                wandb_name = f"{prefix}trajectory video"
+                print("Logging video to wandb: ", wandb_name)
+                try:
+                    wandb.log({wandb_name: wandb.Video(video_path, format="mp4")}, step=epoch)
+                except: 
+                    print("Error logging video to wandb")
+                    
+        end_time = time()
+        print("Time taken to plot and push video: ", end_time - start_time)
+        return frames
 
 def add_sphere(ax, center, radius=1.0, resolution=30, color='green', alpha=0.5):
     u = np.linspace(0, 2 * np.pi, resolution)
