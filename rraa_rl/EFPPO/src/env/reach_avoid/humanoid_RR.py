@@ -38,9 +38,9 @@ class EnvParamsEmpty:
 
 class HumanoidReachReachTemplate:
     def __init__(self, backend="positional"):
-        env = HumanoidRandom(backend=backend, terminate_when_unhealthy=False,
+        env = HumanoidRandom(backend=backend, terminate_when_unhealthy=True,
                            exclude_current_positions_from_observation=False)
-        env = EpisodeWrapper(env, episode_length=1000, action_repeat=1)
+        env = EpisodeWrapper(env, episode_length=1000, action_repeat=2) # FIXME: do we want 2 action repeats (like hopper)?
         env = AutoResetWrapper(env)
         self._env = env
         self.action_size = env.action_size
@@ -148,7 +148,8 @@ class HumanoidReachReach(HumanoidReachReachTemplate):
         next_state_new = EnvStateRR(next_state, reach1_value, reach2_value, has_reached_1, has_reached_2)
         reward = 0.
         # done = next_state.done > 0.5
-        done = jnp.logical_or(has_reached_1, has_reached_2)
+        done = jnp.logical_or(next_state.done > 0.5, jnp.logical_and(has_reached_1, has_reached_2))
+        # FIXME, does the logical_or (bug) exist if HalfCheetah classes??
 
         return observation, next_state_new, reward, done, poses
     
@@ -176,6 +177,7 @@ class HumanoidReach1(HumanoidReachReachTemplate):
         reward = 0.
         done = next_state.done > 0.5
         # done = has_reached_1
+        # FIXME, does the logical_or (bug) exist if HalfCheetah classes??
 
         return observation, next_state_new, reward, done, poses
     
