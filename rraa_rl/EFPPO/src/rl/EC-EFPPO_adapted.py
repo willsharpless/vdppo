@@ -409,7 +409,7 @@ def train(env, env_params, config, rng, env_test=None):
             video_freq = 25 
             save_video = True 
             if timestep % video_freq == 0 or timestep == total_timesteps - 1: 
-                video_frames = plot_video_contour_RRAA((info, None), timestep + 1, config, save_video=save_video, log_wandb=True)
+                video_frames = plot_video_contour_RRAA((info, None), timestep + 1, config, save_video=save_video, log_wandb=config["USE_WANDB"])
 
             print("Iteration {}: not reach {} reward {} cost {}".format(timestep, cnt, -jnp.mean(reward), jnp.mean(cost)))
             print("Time {}".format(t1-t0))
@@ -511,7 +511,8 @@ if __name__ == "__main__":
     config_test = copy(config)
     config_test["TEST_MODE"] = True
     env_test = get_env(config_test)
-    if True: 
+    config["USE_WANDB"] = True 
+    if config["USE_WANDB"]: 
         wandb.init(project='EC-EFPPO-{}'.format(config["EXP_NAME"]), name=config["NAME"], config=config,
                 entity='braat_brrt')
     env_params = env.default_params
