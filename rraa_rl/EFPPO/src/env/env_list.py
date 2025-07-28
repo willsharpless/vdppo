@@ -616,7 +616,7 @@ def get_env(config):
         env = F16AvoidBaseline()
 
     elif config["EXP_NAME"] == 'HumanoidReachReach':
-        obs_dim_base = 246 # or 300, or 376?
+        obs_dim_base = 246
         from .reach_avoid.humanoid_RR import HumanoidReachReach, HumanoidReach1, HumanoidReach2
         vec1 = jnp.zeros(obs_dim_base + 2, dtype=jnp.float32)
         vec1 = vec1.at[2].set(1.) # starts at z=1.4
@@ -624,6 +624,7 @@ def get_env(config):
         # vec1 = vec1.at[0].set(0.)
         trans = partial(transform_observation, vec1, vec2)
         untrans = partial(untransform_observation, vec1, vec2)
+        # FIXME: are these means and variances the best to use?
 
         env = HumanoidReachReach()
         env1 = HumanoidReach1()
@@ -639,6 +640,26 @@ def get_env(config):
         # env.set_untransform_obs(untrans) # Not implemented
         # env_avoid.set_untransform_obs(untrans)
         return (env, env1, env2)
+    
+    elif config["EXP_NAME"] == "HumanoidReachAlwaysAvoid": 
+        obs_dim_base = 246
+        from .reach_avoid.humanoid_RAA import HumanoidReachAvoid, HumanoidAvoidOnly
+        vec1 = jnp.zeros(obs_dim_base + 2, dtype=jnp.float32)
+        vec1 = vec1.at[2].set(1.) # starts at z=1.4
+        vec2 = jnp.ones(obs_dim_base + 2, dtype=jnp.float32)
+        # vec1 = vec1.at[0].set(0.)
+        trans = partial(transform_observation, vec1, vec2)
+        untrans = partial(untransform_observation, vec1, vec2)
+        # FIXME: are these means and variances the best to use?
+
+        env = HumanoidReachAvoid()
+        env_avoid = HumanoidAvoidOnly() 
+        env = TransformObservation(env, trans)
+        env_avoid = TransformObservation(env_avoid, trans)
+
+        env.set_untransform_obs(untrans)
+        env_avoid.set_untransform_obs(untrans)
+        return (env, env_avoid)
 
     else:
         raise Exception("No Given Environment")

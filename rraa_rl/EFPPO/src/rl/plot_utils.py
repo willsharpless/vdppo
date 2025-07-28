@@ -1,5 +1,6 @@
 import numpy as np
 import matplotlib.pyplot as plt
+from mpl_toolkits.mplot3d.art3d import Poly3DCollection
 from matplotlib.colors import CenteredNorm
 from mpl_toolkits.mplot3d import Axes3D
 
@@ -11,7 +12,8 @@ from time import time
 
 from rraa_rl.EFPPO.src.env.reach_avoid.half_cheetah_RAA import HalfCheetahReachAvoid, HalfCheetahAvoidOnly
 from rraa_rl.EFPPO.src.env.reach_avoid.half_cheetah_RR import HalfCheetahReachReach, HalfCheetahReach1, HalfCheetahReach2
-from rraa_rl.EFPPO.src.env.reach_avoid.humanoid_RR import HumanoidReachReach, HumanoidReach1, HumanoidReach2, HUMANOID_TARGET_RIGHT, HUMANOID_TARGET_LEFT, HUMANOID_TARGET_RADIUS
+from rraa_rl.EFPPO.src.env.reach_avoid.humanoid_RR import HumanoidReachReach, HUMANOID_TARGET_RIGHT, HUMANOID_TARGET_LEFT, HUMANOID_TARGET_RADIUS
+from rraa_rl.EFPPO.src.env.reach_avoid.humanoid_RAA import HumanoidReachAvoid, HUMANOID_RAA_TARGET, HUMANOID_RAA_TARGET_RADIUS, HUMANOID_RAA_BOX_RADIUS, HUMANOID_RAA_FLOOR_HEIGHT
 from jax import jit
 
 def calculate_consumption(traj_batch):
@@ -1115,6 +1117,136 @@ def plot_contour_RRAA(multi_info, epoch, config, policy_decision_sample=None):
         plt.savefig('model/{}/reach/trajectory_{:0>4d}'.format(config["DIR"], epoch), dpi=300)
         return fig
     
+    elif 'Humanoid' in config['EXP_NAME'] and 'Avoid' in config['EXP_NAME']:
+
+        info, info_avoid = multi_info
+        fig = plt.figure(figsize=(12, 6))
+        ax1 = fig.add_subplot(121, projection='3d')
+        ax2 = fig.add_subplot(122, projection='3d')
+        axes = [ax1, ax2]
+        axes_upperx = HUMANOID_RAA_BOX_RADIUS
+        axes_lowerx = -(HUMANOID_RAA_BOX_RADIUS)
+        axes_uppery = HUMANOID_RAA_BOX_RADIUS
+        axes_lowery = -(HUMANOID_RAA_BOX_RADIUS)
+        axes_upperz = 1.5
+        axes_lowerz = -0.1
+
+        def draw_humanoid_raa(info, title, ax, mode="both"):
+            reach_idx = info.get('reach_index')
+            avoid_idx = info.get('avoid_index')
+            full_len = info['head_pos'].shape[0]
+
+            # Plot Targets and Obstacles
+            add_box_3d(ax, center=np.array([0., 0., HUMANOID_RAA_FLOOR_HEIGHT/2.]), size=2*np.array([HUMANOID_RAA_BOX_RADIUS, HUMANOID_RAA_BOX_RADIUS, HUMANOID_RAA_FLOOR_HEIGHT]), alpha=0.05) # floor
+            add_box_3d(ax, center=np.array([HUMANOID_RAA_BOX_RADIUS + 0.05, 0., 0.5]), size=2*np.array([0.1, HUMANOID_RAA_BOX_RADIUS-0.1, 0.5])) # wall
+            add_box_3d(ax, center=np.array([-(HUMANOID_RAA_BOX_RADIUS + 0.05), 0., 0.5]), size=2*np.array([0.1, HUMANOID_RAA_BOX_RADIUS-0.1, 0.5])) # wall
+            add_box_3d(ax, center=np.array([0., HUMANOID_RAA_BOX_RADIUS + 0.05, 0.5]), size=2*np.array([HUMANOID_RAA_BOX_RADIUS-0.1, 0.1, 0.5])) # wall
+            add_box_3d(ax, center=np.array([0., -(HUMANOID_RAA_BOX_RADIUS + 0.05), 0.5]), size=2*np.array([HUMANOID_RAA_BOX_RADIUS-0.1, 0.1, 0.5])) # wall
+            if mode == "both":
+                add_cylinder(ax, HUMANOID_RAA_TARGET, radius=HUMANOID_RAA_TARGET_RADIUS, height=2., resolution=10, alpha=0.4, color='green') # target
+
+            model = HumanoidReachAvoid()
+            is_reach_np = jit(model.is_reach)
+            is_avoid_np = jit(model.is_avoid)
+
+            def draw_body_3d(ax, info, i, alpha, color_mode="normal"):
+                if color_mode == "R":
+                    c1, c2, c3, c4, c5, c6 = ['g'] * 6
+                    linewidth = 3
+                elif color_mode == "A":
+                    c1, c2, c3, c4, c5, c6 = ['r'] * 6
+                    linewidth = 3
+                else:
+                    # head to shoulders, arms, hips to knees/feet
+                    c1, c2, c3, c4, c5, c6 = 'k', 'r', 'm', 'g', 'c', 'b'
+                    linewidth = 1
+
+                def line(p1, p2, color):
+                    ax.plot(
+                        [p1[0], p2[0]],
+                        [p1[1], p2[1]],
+                        [p1[2], p2[2]],
+                        c=color, alpha=alpha, linewidth=linewidth
+                    )
+
+                # Joint locations
+                head = info["head_pos"][i]
+                torso = info["torso"][i]
+                lwaist = info["lwaist"][i]
+                pelvis = info["pelvis"][i]
+                
+                left_upper_arm = info["left_upper_arm"][i]
+                right_upper_arm = info["right_upper_arm"][i]
+                left_lower_arm = info["left_lower_arm"][i]
+                right_lower_arm = info["right_lower_arm"][i]
+                left_hand = info["left_hand"][i]
+                right_hand = info["right_hand"][i]
+
+                left_thigh = info["left_thigh"][i]
+                right_thigh = info["right_thigh"][i]
+                left_shin = info["left_shin"][i]
+                right_shin = info["right_shin"][i]
+                left_foot = info["left_foot"][i]
+                right_foot = info["right_foot"][i]
+
+                # Draw abdomen
+                line(head, torso, c6)
+                line(torso, lwaist, c2)
+                line(lwaist, pelvis, c3)
+
+                # Draw arms
+                line(torso, left_upper_arm, c4)
+                line(torso, right_upper_arm, c4)
+                line(left_upper_arm, left_lower_arm, c5)
+                line(left_lower_arm, left_hand, c1)
+                line(right_upper_arm, right_lower_arm, c5)
+                line(right_lower_arm, right_hand, c1)
+
+                # Draw legs
+                line(pelvis, left_thigh, c4)
+                line(pelvis, right_thigh, c4)
+                line(left_thigh, left_shin, c5)
+                line(left_shin, left_foot, c1)
+                line(right_thigh, right_shin, c5)
+                line(right_shin, right_foot, c1)    
+            
+            indices = np.linspace(0, full_len, 11, dtype=int)
+            for step_n, i in enumerate(indices):
+                alpha = (step_n + 1) / 11
+
+                step_poses = {k: info[k][i] for k in info.keys() if not k in ['reach_index', 'avoid_index']}
+
+                reach_val = is_reach_np(step_poses)
+                avoid_val = is_avoid_np(step_poses)
+
+                if avoid_val > 0.:
+                    color_mode = "A"
+                elif reach_idx is not None and reach_val < 0.:
+                    color_mode = "R"
+                else:
+                    color_mode = "normal"
+                draw_body_3d(ax, info, i, alpha, color_mode=color_mode)
+
+            if reach_idx is not None and reach_idx > -1:
+                draw_body_3d(ax, info, reach_idx, alpha, color_mode="R")
+            if avoid_idx is not None and avoid_idx > -1:
+                draw_body_3d(ax, info, avoid_idx, alpha, color_mode="A")
+
+            ax.set_xlim((axes_lowerx, axes_upperx))
+            ax.set_ylim((axes_lowery, axes_uppery))
+            ax.set_zlim((axes_lowerz, axes_upperz))
+            ax.set_aspect('equal')
+            ax.set_title(title)
+            ax.view_init(elev=45, azim=-45)
+
+        # Draw Reach Avoid and Avoid Only 
+        draw_humanoid_raa(info, "Reach Avoid", axes[0])
+        if config['EXP_NAME'] == 'HumanoidReachAlwaysAvoid':
+            draw_humanoid_raa(info_avoid, "Avoid Only", axes[1], mode="avoid")
+
+        plt.savefig('model/{}/reach/trajectory_{:0>4d}'.format(config["DIR"], epoch), dpi=300)
+        return fig
+    
     elif 'F16' in config['EXP_NAME']:
         
         if 'ReachReach' in config['EXP_NAME']:
@@ -1797,6 +1929,145 @@ def plot_video_contour_RRAA(multi_info, epoch, config, save_video=False, prefix=
             
             plt.close(fig)
             plt.close("all")
+
+    elif 'Humanoid' in config['EXP_NAME'] and 'Avoid' in config['EXP_NAME']:
+
+        info, info_avoid = multi_info
+
+        axes_upperx = HUMANOID_RAA_BOX_RADIUS
+        axes_lowerx = -(HUMANOID_RAA_BOX_RADIUS)
+        axes_uppery = HUMANOID_RAA_BOX_RADIUS
+        axes_lowery = -(HUMANOID_RAA_BOX_RADIUS)
+        axes_upperz = 1.5
+        axes_lowerz = -0.1
+
+        def draw_humanoid_raa(step, info, title, ax, mode="both"):
+            reach_idx = info.get('reach_index')
+            avoid_idx = info.get('avoid_index')
+
+            # Plot Targets and Obstacles
+            add_box_3d(ax, center=np.array([0., 0., HUMANOID_RAA_FLOOR_HEIGHT/2.]), size=2*np.array([HUMANOID_RAA_BOX_RADIUS, HUMANOID_RAA_BOX_RADIUS, HUMANOID_RAA_FLOOR_HEIGHT]), alpha=0.05) # floor
+            add_box_3d(ax, center=np.array([HUMANOID_RAA_BOX_RADIUS + 0.05, 0., 0.5]), size=2*np.array([0.1, HUMANOID_RAA_BOX_RADIUS-0.1, 0.5])) # wall
+            add_box_3d(ax, center=np.array([-(HUMANOID_RAA_BOX_RADIUS + 0.05), 0., 0.5]), size=2*np.array([0.1, HUMANOID_RAA_BOX_RADIUS-0.1, 0.5])) # wall
+            add_box_3d(ax, center=np.array([0., HUMANOID_RAA_BOX_RADIUS + 0.05, 0.5]), size=2*np.array([HUMANOID_RAA_BOX_RADIUS-0.1, 0.1, 0.5])) # wall
+            add_box_3d(ax, center=np.array([0., -(HUMANOID_RAA_BOX_RADIUS + 0.05), 0.5]), size=2*np.array([HUMANOID_RAA_BOX_RADIUS-0.1, 0.1, 0.5])) # wall
+            if mode == "both":
+                add_cylinder(ax, HUMANOID_RAA_TARGET, radius=HUMANOID_RAA_TARGET_RADIUS, height=2., resolution=10, alpha=0.4, color='green') # target
+
+            model = HumanoidReachAvoid()
+            is_reach_np = jit(model.is_reach)
+            is_avoid_np = jit(model.is_avoid)
+
+            def draw_body_3d(ax, info, i, alpha, color_mode="normal"):
+                if color_mode == "R":
+                    c1, c2, c3, c4, c5, c6 = ['g'] * 6
+                    linewidth = 3
+                elif color_mode == "A":
+                    c1, c2, c3, c4, c5, c6 = ['r'] * 6
+                    linewidth = 3
+                else:
+                    # head to shoulders, arms, hips to knees/feet
+                    c1, c2, c3, c4, c5, c6 = 'k', 'r', 'm', 'g', 'c', 'b'
+                    linewidth = 1
+
+                def line(p1, p2, color):
+                    ax.plot(
+                        [p1[0], p2[0]],
+                        [p1[1], p2[1]],
+                        [p1[2], p2[2]],
+                        c=color, alpha=alpha, linewidth=linewidth
+                    )
+
+                # Joint locations
+                head = info["head_pos"][i]
+                torso = info["torso"][i]
+                lwaist = info["lwaist"][i]
+                pelvis = info["pelvis"][i]
+                
+                left_upper_arm = info["left_upper_arm"][i]
+                right_upper_arm = info["right_upper_arm"][i]
+                left_lower_arm = info["left_lower_arm"][i]
+                right_lower_arm = info["right_lower_arm"][i]
+                left_hand = info["left_hand"][i]
+                right_hand = info["right_hand"][i]
+
+                left_thigh = info["left_thigh"][i]
+                right_thigh = info["right_thigh"][i]
+                left_shin = info["left_shin"][i]
+                right_shin = info["right_shin"][i]
+                left_foot = info["left_foot"][i]
+                right_foot = info["right_foot"][i]
+
+                # Draw abdomen
+                line(head, torso, c6)
+                line(torso, lwaist, c2)
+                line(lwaist, pelvis, c3)
+
+                # Draw arms
+                line(torso, left_upper_arm, c4)
+                line(torso, right_upper_arm, c4)
+                line(left_upper_arm, left_lower_arm, c5)
+                line(left_lower_arm, left_hand, c1)
+                line(right_upper_arm, right_lower_arm, c5)
+                line(right_lower_arm, right_hand, c1)
+
+                # Draw legs
+                line(pelvis, left_thigh, c4)
+                line(pelvis, right_thigh, c4)
+                line(left_thigh, left_shin, c5)
+                line(left_shin, left_foot, c1)
+                line(right_thigh, right_shin, c5)
+                line(right_shin, right_foot, c1)    
+            
+            step_poses = {k: info[k][step] for k in info.keys() if not k in ['reach_index', 'avoid_index']}
+            reach_val = is_reach_np(step_poses)
+            avoid_val = is_avoid_np(step_poses)
+
+            if avoid_val > 0.:
+                color_mode = "A"
+            elif reach_idx is not None and reach_val < 0.:
+                color_mode = "R"
+            else:
+                color_mode = "normal"
+
+            draw_body_3d(ax, info, step, 0.9, color_mode=color_mode)
+
+            if reach_idx is not None and step >= reach_idx and reach_idx > -1:
+                draw_body_3d(ax, info, reach_idx, 0.5, color_mode = "R")
+
+            if avoid_idx is not None and step >= avoid_idx and avoid_idx > -1:
+                draw_body_3d(ax, info, avoid_idx, 0.5, color_mode = "A")
+
+            ax.set_xlim((axes_lowerx, axes_upperx))
+            ax.set_ylim((axes_lowery, axes_uppery))
+            ax.set_zlim((axes_lowerz, axes_upperz))
+            ax.set_aspect('equal')
+            ax.set_title(title)
+            ax.view_init(elev=45, azim=-45)
+
+        frames = []
+        full_len = info['head_pos'].shape[0]
+        num_frames = full_len//4
+        indices = np.linspace(0, full_len, num_frames, dtype=int)
+        for step_n in indices: 
+
+            fig = plt.figure(figsize=(12, 6))
+            ax1 = fig.add_subplot(121, projection='3d')
+            ax2 = fig.add_subplot(122, projection='3d')
+            axes = [ax1, ax2]
+
+            draw_humanoid_raa(step_n, info, "Reach Avoid", axes[0], mode="both")
+            if config['EXP_NAME'] == 'HumanoidReachAlwaysAvoid':
+                draw_humanoid_raa(step_n, info_avoid, "Avoid Only", axes[1], mode="avoid")
+            
+            # Render the figure to an image (smaller size)
+            fig.canvas.draw()
+            frame = np.frombuffer(fig.canvas.buffer_rgba(), dtype=np.uint8)
+            frame = frame.reshape(fig.canvas.get_width_height()[::-1] + (4,))  # RGBA (4 channels)
+            frames.append(frame)
+            
+            plt.close(fig)
+            plt.close("all")
         
     # Save frames as a video using PIL - don't do this in general
     frames = [Image.fromarray(frame) for frame in frames]
@@ -1839,6 +2110,45 @@ def add_sphere(ax, center, radius=1.0, resolution=30, color='green', alpha=0.5):
     y = center[1] + radius * np.cos(theta)
     z = center[2] + radius * np.sin(theta)
     ax.plot3D(x, y, z, color='k', linewidth=lw, alpha=0.8)
+
+def add_cylinder(ax, center, radius=1.0, height=1.0, resolution=30, color='green', alpha=0.5):
+    u = np.linspace(0, 2 * np.pi, resolution)
+    z = np.linspace(0, height, resolution)
+    U, Z = np.meshgrid(u, z)
+    X = center[0] + radius * np.cos(U)
+    Y = center[1] + radius * np.sin(U)
+    Z = center[2] + Z  # lift base to z = center[2]
+    
+    ax.plot_surface(X, Y, Z, color=color, alpha=alpha, linewidth=0, shade=True)
+
+def add_box_3d(ax, center, size, color='red', alpha=0.1):
+    """
+    Draws a 3D axis-aligned box given center and size (width, height, depth).
+    eg. add_box_3d(ax, center=np.array([1000., 525, 550]), size=np.array([2000., 50, 1100]))
+    """
+    cx, cy, cz = center
+    sx, sy, sz = size[0] / 2, size[1] / 2, size[2] / 2
+
+    # Define the 8 corners of the box
+    points = np.array([[cx - sx, cy - sy, cz - sz],
+                       [cx + sx, cy - sy, cz - sz],
+                       [cx + sx, cy + sy, cz - sz],
+                       [cx - sx, cy + sy, cz - sz],
+                       [cx - sx, cy - sy, cz + sz],
+                       [cx + sx, cy - sy, cz + sz],
+                       [cx + sx, cy + sy, cz + sz],
+                       [cx - sx, cy + sy, cz + sz]])
+
+    # Define 6 box faces using the indices
+    faces = [[points[j] for j in [0,1,2,3]],
+             [points[j] for j in [4,5,6,7]],
+             [points[j] for j in [0,1,5,4]],
+             [points[j] for j in [2,3,7,6]],
+             [points[j] for j in [1,2,6,5]],
+             [points[j] for j in [4,7,3,0]]]
+
+    box = Poly3DCollection(faces, facecolors=color, linewidths=0.3, edgecolors='k', alpha=alpha)
+    ax.add_collection3d(box)
 
 # def is_reach(head_pos):
 #     radius, target_pos = 0.25, np.array([3.5, 0.0])

@@ -94,7 +94,7 @@ def train(envs, env_paramss, config, rng):
                 obsv_reach_1, env_state_reach_1 = jax.vmap(env_reach_1.reset_toinput, in_axes=(0, 0, None))(reset_rng, untrans_traj_batch_observations, env_params_reach_1) 
 
             elif "Humanoid" in config["EXP_NAME"]:
-                # FIXME: humanoid obs need an action, meaning we would need to pass reset action too, for now just zeros
+                # FIXME: humanoid._get_obs() needs an action, meaning we should pass reset action too, for now just zeros
                 traj_batch_observations_full = traj_batch.obs 
                 untrans_traj_batch_observations_full = env.untransform_obs(traj_batch_observations_full)
                 untrans_traj_batch_observations_full = jnp.transpose(untrans_traj_batch_observations_full, axes=(1, 0, 2))
@@ -165,7 +165,7 @@ def train(envs, env_paramss, config, rng):
                 obsv_reach_2, env_state_reach_2 = jax.vmap(env_reach_2.reset_toinput, in_axes=(0, 0, None))(reset_rng, untrans_traj_batch_observations, env_params_reach_2) 
 
             elif "Humanoid" in config["EXP_NAME"]:
-                # FIXME: humanoid obs need an action, meaning we would need to pass reset action too, for now just zeros
+                # FIXME: humanoid._get_obs() needs an action, meaning we should pass reset action too, for now just zeros
                 traj_batch_observations_full = traj_batch.obs 
                 untrans_traj_batch_observations_full = env.untransform_obs(traj_batch_observations_full)
                 untrans_traj_batch_observations_full = jnp.transpose(untrans_traj_batch_observations_full, axes=(1, 0, 2))
