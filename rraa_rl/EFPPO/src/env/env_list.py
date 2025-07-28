@@ -332,7 +332,12 @@ def get_env(config):
         env_avoid.set_untransform_obs(untrans)
         return (env, env_avoid)
     
-    elif config["EXP_NAME"] == "HalfCheetahReachAlwaysAvoid_CPPO":
+    elif config["EXP_NAME"] == "HalfCheetahReachAlwaysAvoid_CPPO" \
+        or config["EXP_NAME"] == "HalfCheetahReachAlwaysAvoid_RCPPO" \
+            or config["EXP_NAME"] == "HalfCheetahReachAlwaysAvoid_RESPO" \
+                or config["EXP_NAME"] == "HalfCheetahReachAlwaysAvoidBaseline_MORL" \
+                    or config["EXP_NAME"] == "HalfCheetahReachAlwaysAvoidBaseline_Sparse":
+        
         obs_dim = 18 + 1
         vec1 = jnp.zeros(obs_dim, dtype=jnp.float32)
         vec1 = vec1.at[0].set(2.5)
@@ -373,7 +378,12 @@ def get_env(config):
         env2.set_untransform_obs(untrans)
         return (env, env1, env2)
     
-    elif config["EXP_NAME"] == "HalfCheetahReachReach_CPPO":
+    elif config["EXP_NAME"] == "HalfCheetahReachReach_CPPO" \
+        or config["EXP_NAME"] == "HalfCheetahReachReach_RCPPO" \
+            or config["EXP_NAME"] == "HalfCheetahReachReach_RESPO" \
+                or config["EXP_NAME"] == "HalfCheetahReachReachBaseline_MORL" \
+                    or config["EXP_NAME"] == "HalfCheetahReachReachBaseline_Sparse":
+        
         obs_dim = 18 + 2
         vec1 = jnp.zeros(obs_dim, dtype=jnp.float32)
         vec1 = vec1.at[0].set(2.5)
@@ -489,7 +499,12 @@ def get_env(config):
         # env_avoid.set_untransform_obs(untrans)
         return (env, env_avoid)
     
-    elif config["EXP_NAME"] == 'F16ReachAlwaysAvoid_CPPO':
+    elif config["EXP_NAME"] == "F16ReachAlwaysAvoid_CPPO" \
+        or config["EXP_NAME"] == "F16ReachAlwaysAvoid_RCPPO" \
+            or config["EXP_NAME"] == "F16ReachAlwaysAvoid_RESPO" \
+                or config["EXP_NAME"] == "F16ReachAlwaysAvoidBaseline_MORL" \
+                    or config["EXP_NAME"] == "F16ReachAlwaysAvoidBaseline_Sparse":
+        
         from .reach_avoid.F16_RAA import F16ReachAvoid, F16AvoidOnly
 
         obs_dim = 26 - 2 + 1
@@ -529,7 +544,12 @@ def get_env(config):
         # env_avoid.set_untransform_obs(untrans)
         return (env, env1, env2)
 
-    elif config["EXP_NAME"] == 'F16ReachReach_CPPO':
+    elif config["EXP_NAME"] == "F16ReachReach_CPPO" \
+        or config["EXP_NAME"] == "F16ReachReach_RCPPO" \
+            or config["EXP_NAME"] == "F16ReachReach_RESPO" \
+                or config["EXP_NAME"] == "F16ReachReachBaseline_MORL" \
+                    or config["EXP_NAME"] == "F16ReachReachBaseline_Sparse":
+        
         from .baseline.F16_RR_baseline import F16ReachReachBaseline
         
         vec1 = jnp.zeros(26, dtype=jnp.float32)
