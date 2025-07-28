@@ -1658,9 +1658,9 @@ def plot_video_contour_RRAA(multi_info, epoch, config, save_video=False, prefix=
 
             # Plot Targets and Obstacles
             if mode == "both" or mode == "reach1":
-                add_sphere(ax, HUMANOID_TARGET_RIGHT, radius=HUMANOID_TARGET_RADIUS, resolution=30, alpha=0.4, color='green')
+                add_sphere(ax, HUMANOID_TARGET_RIGHT, radius=HUMANOID_TARGET_RADIUS, resolution=10, alpha=0.4, color='green')
             if mode == "both" or mode == "reach2":
-                add_sphere(ax, HUMANOID_TARGET_LEFT, radius=HUMANOID_TARGET_RADIUS, resolution=30, alpha=0.4, color='blue')
+                add_sphere(ax, HUMANOID_TARGET_LEFT, radius=HUMANOID_TARGET_RADIUS, resolution=10, alpha=0.4, color='blue')
 
             model = HumanoidReachReach()
             is_reach1_np = jit(model.is_reach1)
@@ -1763,7 +1763,7 @@ def plot_video_contour_RRAA(multi_info, epoch, config, save_video=False, prefix=
         reach_idx_2 = int(reach_idx_2.item()) if reach_idx_2.item() != np.inf else -1
         
         frames = []
-        num_frames = full_len//2
+        num_frames = full_len//4
         indices = np.linspace(0, full_len, num_frames, dtype=int)
         if config['EXP_NAME'] == 'HumanoidReachReach':
             reach_idx_1_reach1 = info_1['reach_index_1'].item()
@@ -1771,7 +1771,7 @@ def plot_video_contour_RRAA(multi_info, epoch, config, save_video=False, prefix=
             
         for step_n in indices: 
 
-            fig = plt.figure(figsize=(20, 6), dpi=100)
+            fig = plt.figure(figsize=(20, 6), dpi=50)
             ax1 = fig.add_subplot(131, projection='3d')
             ax2 = fig.add_subplot(132, projection='3d')
             ax3 = fig.add_subplot(133, projection='3d')

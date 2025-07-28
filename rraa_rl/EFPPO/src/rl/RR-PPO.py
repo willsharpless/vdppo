@@ -609,9 +609,8 @@ def train(envs, env_paramss, config, rng):
                 }, step=timestep)
             
         # Save video of trajectory 
-        if "F16" not in config["EXP_NAME"] and False:
-            video_freq = 25 
-            if timestep % video_freq == 0 or timestep == total_timesteps - 1: 
+        if "F16" not in config["EXP_NAME"]:
+            if timestep % config['VIDEO_FREQ'] == 0 or timestep == total_timesteps - 1: 
                 video_frames = plot_video_contour_RRAA((info, info_1, info_2), timestep, config, save_video=True, log_wandb=config["USE_WANDB"])
 
         plt.close("all")
@@ -697,7 +696,7 @@ if __name__ == "__main__":
         # config["NAME"]="halfcheetah_rr_resetgoal_reachv0.1"
 
         config["EXP_NAME"]="HumanoidReachReach"
-        config["DIR"]="humanoid_rr_debug"
+        config["DIR"]="humanoid_rr_debug_gif_faster_fixed"
         config["LR"]=3e-4
         config["NUM_ENVS"]=128
         config["NUM_STEPS"]=400
@@ -717,7 +716,7 @@ if __name__ == "__main__":
         config["CUDA_USE"]="0"
         config["ANNEAL_LR"]=True,
         config["ANNEAL_ENT"]=True
-        config["NAME"]="humanoid_rr_debug"
+        config["NAME"]="humanoid_rr_debug_gif_faster_fixed"
     #     # config["TEST_MODE"]=True # USES DETERMINISTIC MODELS
 
     config["NUM_UPDATES"] = int(
@@ -760,6 +759,12 @@ if __name__ == "__main__":
     if config["LOAD_DECOMPOSED"]:
         config["LOAD_DEC_DIR"] ="hopper_reachreach_idxsMAX_switchfix_augstate_obsfix_long"
         config["LOAD_DEC_DIR_MODEL"] ="checkpoint_859"
+
+    if 'VIDEO_FREQ' not in config.keys():
+        if 'Humanoid' in config['EXP_NAME']:
+            config['VIDEO_FREQ'] = 200
+        else:
+            config['VIDEO_FREQ'] = 25
 
     rng = jax.random.PRNGKey(20)
     out = train(envs, env_paramss, config, rng) # TODO assumes same env params (should be tuple if diff)
