@@ -8,6 +8,7 @@ from .reach_avoid.wind_field import WindField
 from .reach_avoid.half_cheetah_avoid import HalfCheetahAvoid, HalfCheetahAvoidDeterministic
 from .reach_avoid.half_cheetah_RAA import HalfCheetahReachAvoid, HalfCheetahAvoidOnly
 from .reach_avoid.half_cheetah_RR import HalfCheetahReachReach, HalfCheetahReach1, HalfCheetahReach2
+from .reach_avoid.humanoid_RR import HumanoidReachReach, HumanoidReach1, HumanoidReach2
 from .reach_avoid.safety_gym_avoid import PointAvoid
 from .baseline.pendulum_constraint_baseline import PendulumConstraintBaseline
 from .baseline.hopper_avoid_ceiling_baseline import HopperAvoidCeilingBaseline, HopperReachAlwaysAvoidBaseline_augmented, HopperReachReachBaseline_augmented_max, \
@@ -593,6 +594,31 @@ def get_env(config):
     elif config["EXP_NAME"] == 'F16AvoidBaseline':
         from .baseline.F16_avoid_baseline import F16AvoidBaseline
         env = F16AvoidBaseline()
+
+    elif config["EXP_NAME"] == 'HumanoidReachReach':
+        obs_dim_base = 246 # or 300, or 376?
+        from .reach_avoid.humanoid_RR import HumanoidReachReach, HumanoidReach1, HumanoidReach2
+        vec1 = jnp.zeros(obs_dim_base + 2, dtype=jnp.float32)
+        vec1 = vec1.at[2].set(1.) # starts at z=1.4
+        vec2 = jnp.ones(obs_dim_base + 2, dtype=jnp.float32)
+        # vec1 = vec1.at[0].set(0.)
+        trans = partial(transform_observation, vec1, vec2)
+        untrans = partial(untransform_observation, vec1, vec2)
+
+        env = HumanoidReachReach()
+        env1 = HumanoidReach1()
+        env2 = HumanoidReach2()
+
+        env = TransformObservation(env, trans)
+        env1= TransformObservation(env1, trans)
+        env2= TransformObservation(env2, trans)
+        env.set_untransform_obs(untrans)
+        env1.set_untransform_obs(untrans)
+        env2.set_untransform_obs(untrans)
+
+        # env.set_untransform_obs(untrans) # Not implemented
+        # env_avoid.set_untransform_obs(untrans)
+        return (env, env1, env2)
 
     else:
         raise Exception("No Given Environment")

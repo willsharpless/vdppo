@@ -93,11 +93,22 @@ def train(envs, env_paramss, config, rng):
                 untrans_traj_batch_observations = jax.vmap(lambda obs, idx: obs[idx])(untrans_traj_batch_observations_full, random_index)
                 obsv_reach_1, env_state_reach_1 = jax.vmap(env_reach_1.reset_toinput, in_axes=(0, 0, None))(reset_rng, untrans_traj_batch_observations, env_params_reach_1) 
 
+            elif "Humanoid" in config["EXP_NAME"]:
+                # FIXME: humanoid obs need an action, meaning we would need to pass reset action too, for now just zeros
+                traj_batch_observations_full = traj_batch.obs 
+                untrans_traj_batch_observations_full = env.untransform_obs(traj_batch_observations_full)
+                untrans_traj_batch_observations_full = jnp.transpose(untrans_traj_batch_observations_full, axes=(1, 0, 2))
+                untrans_traj_batch_observations = jax.vmap(lambda obs, idx: obs[idx])(untrans_traj_batch_observations_full, random_index)
+                obsv_reach_1, env_state_reach_1 = jax.vmap(env_reach_1.reset_toinput, in_axes=(0, 0, None))(reset_rng, untrans_traj_batch_observations, env_params_reach_1) 
+
             elif "F16" in config["EXP_NAME"]:
                 traj_batch_states = traj_batch.info['state']
                 traj_batch_states = jnp.transpose(traj_batch_states, axes=(1, 0, 2))
                 reset_states = jax.vmap(lambda obs, idx: obs[idx])(traj_batch_states, random_index)
                 obsv_reach_1, env_state_reach_1 = jax.vmap(env_reach_1.reset_env_toinput, in_axes=(0, None))(reset_states, env_params_reach_1) 
+            
+            else:
+                raise NotImplementedError("Unknown environment type for toinput reset")
         
         rng, _rng = jax.random.split(rng)
         runner_state_standard_reach_1 = (train_state_policy, train_state_value, env_state_reach_1, obsv_reach_1, _rng)
@@ -153,6 +164,15 @@ def train(envs, env_paramss, config, rng):
                 # obsv_reach_1, env_state_reach_1 = jax.vmap(env_reach_1.reset_toinput, in_axes=(0, 0, None))(reset_rng, untrans_traj_batch_observations, env_params_reach_1) 
                 obsv_reach_2, env_state_reach_2 = jax.vmap(env_reach_2.reset_toinput, in_axes=(0, 0, None))(reset_rng, untrans_traj_batch_observations, env_params_reach_2) 
 
+            elif "Humanoid" in config["EXP_NAME"]:
+                # FIXME: humanoid obs need an action, meaning we would need to pass reset action too, for now just zeros
+                traj_batch_observations_full = traj_batch.obs 
+                untrans_traj_batch_observations_full = env.untransform_obs(traj_batch_observations_full)
+                untrans_traj_batch_observations_full = jnp.transpose(untrans_traj_batch_observations_full, axes=(1, 0, 2))
+                untrans_traj_batch_observations = jax.vmap(lambda obs, idx: obs[idx])(untrans_traj_batch_observations_full, random_index)
+                # obsv_reach_1, env_state_reach_1 = jax.vmap(env_reach_1.reset_toinput, in_axes=(0, 0, None))(reset_rng, untrans_traj_batch_observations, env_params_reach_1) 
+                obsv_reach_2, env_state_reach_2 = jax.vmap(env_reach_2.reset_toinput, in_axes=(0, 0, None))(reset_rng, untrans_traj_batch_observations, env_params_reach_2) 
+
             elif "F16" in config["EXP_NAME"]:
                 traj_batch_states = traj_batch.info['state']
                 traj_batch_states = jnp.transpose(traj_batch_states, axes=(1, 0, 2))
@@ -160,6 +180,9 @@ def train(envs, env_paramss, config, rng):
                 # obsv_reach_1, env_state_reach_1 = jax.vmap(env_reach_1.reset_env_toinput, in_axes=(0, None))(reset_states, env_params_reach_1) 
                 obsv_reach_2, env_state_reach_2 = jax.vmap(env_reach_2.reset_env_toinput, in_axes=(0, None))(reset_states, env_params_reach_2) 
         
+            else:
+                raise NotImplementedError("Unknown environment type for toinput reset")
+
         rng, _rng = jax.random.split(rng)
         runner_state_standard_reach_2 = (train_state_policy, train_state_value, env_state_reach_2, obsv_reach_2, _rng)
         
@@ -579,14 +602,14 @@ def train(envs, env_paramss, config, rng):
                     "Reach-Reach Success %": reach_perc,
                     }, step=timestep)
             
-            if config["EXP_NAME"]=="HopperReachReach" or config["EXP_NAME"]=="HalfCheetahReachReach":
+            if "F16" not in config["EXP_NAME"]: # FIXME make f16 methods uniform
                 wandb.log({
                     'trajectory_sample':wandb.Image(fig),
                     'policy_decision_sample':wandb.Image(fig2),
                 }, step=timestep)
             
         # Save video of trajectory 
-        if config["EXP_NAME"]=="HopperReachReach" or config["EXP_NAME"]=="HalfCheetahReachReach":
+        if "F16" not in config["EXP_NAME"] and False:
             video_freq = 25 
             if timestep % video_freq == 0 or timestep == total_timesteps - 1: 
                 video_frames = plot_video_contour_RRAA((info, info_1, info_2), timestep, config, save_video=True, log_wandb=config["USE_WANDB"])
@@ -650,8 +673,31 @@ if __name__ == "__main__":
         # config["ANNEAL_ENT"]=True
         # config["NAME"]="F16_rr_verttargs_cutsamp_To80m80s_tjreset_LR2e-3"
 
-        config["EXP_NAME"]="HalfCheetahReachReach"
-        config["DIR"]="halfcheetah_rr_resetgoal_reachv0.1"
+        # config["EXP_NAME"]="HalfCheetahReachReach"
+        # config["DIR"]="halfcheetah_rr_resetgoal_reachv0.1"
+        # config["LR"]=3e-4
+        # config["NUM_ENVS"]=128
+        # config["NUM_STEPS"]=400
+        # config["TOTAL_TIMESTEPS"]=150_000_000
+        # config["STEP_SCAN"]=4
+        # config["UPDATE_EPOCHS"]=10
+        # config["NUM_MINIBATCHES"]=32
+        # config["GAMMA_ENERGY"]=1.0
+        # config["GAMMA_REACH_INIT"]=0.995
+        # config["GAMMA_REACH_FINAL"]=0.9995
+        # config["GAE_LAMBDA"]=0.95
+        # config["CLIP_EPS"]=0.2
+        # config["ENT_COEF"]=0.005
+        # config["VF_COEF"]=2.0
+        # config["MAX_GRAD_NORM"]=0.5
+        # config["ACTIVATION"]="tanh"
+        # config["CUDA_USE"]="0"
+        # config["ANNEAL_LR"]=True,
+        # config["ANNEAL_ENT"]=True
+        # config["NAME"]="halfcheetah_rr_resetgoal_reachv0.1"
+
+        config["EXP_NAME"]="HumanoidReachReach"
+        config["DIR"]="humanoid_rr_debug"
         config["LR"]=3e-4
         config["NUM_ENVS"]=128
         config["NUM_STEPS"]=400
@@ -671,7 +717,7 @@ if __name__ == "__main__":
         config["CUDA_USE"]="0"
         config["ANNEAL_LR"]=True,
         config["ANNEAL_ENT"]=True
-        config["NAME"]="halfcheetah_rr_resetgoal_reachv0.1"
+        config["NAME"]="humanoid_rr_debug"
     #     # config["TEST_MODE"]=True # USES DETERMINISTIC MODELS
 
     config["NUM_UPDATES"] = int(
@@ -705,7 +751,7 @@ if __name__ == "__main__":
         env_params_reach_2 = env_params_reach_2.replace(index=config['SECTION'])
     env_paramss = (env_params, env_params_reach_1, env_params_reach_2)
 
-    config["USE_WANDB"] = True #not debug # False for debugging
+    config["USE_WANDB"] = False #not debug # False for debugging
     if config["USE_WANDB"]:
         wandb.init(project='EC-EFPPO-{}'.format(config["EXP_NAME"]), name=config["NAME"], config=config,
                    entity='braat_brrt')

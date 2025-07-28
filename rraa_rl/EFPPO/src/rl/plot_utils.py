@@ -1,6 +1,7 @@
 import numpy as np
 import matplotlib.pyplot as plt
 from matplotlib.colors import CenteredNorm
+from mpl_toolkits.mplot3d import Axes3D
 
 from rraa_rl.EFPPO.src.rl.utils import get_BuRd
 from PIL import Image
@@ -10,6 +11,7 @@ from time import time
 
 from rraa_rl.EFPPO.src.env.reach_avoid.half_cheetah_RAA import HalfCheetahReachAvoid, HalfCheetahAvoidOnly
 from rraa_rl.EFPPO.src.env.reach_avoid.half_cheetah_RR import HalfCheetahReachReach, HalfCheetahReach1, HalfCheetahReach2
+from rraa_rl.EFPPO.src.env.reach_avoid.humanoid_RR import HumanoidReachReach, HumanoidReach1, HumanoidReach2, HUMANOID_TARGET_RIGHT, HUMANOID_TARGET_LEFT, HUMANOID_TARGET_RADIUS
 from jax import jit
 
 def calculate_consumption(traj_batch):
@@ -983,6 +985,135 @@ def plot_contour_RRAA(multi_info, epoch, config, policy_decision_sample=None):
 
         plt.savefig('model/{}/reach/trajectory_{:0>4d}'.format(config["DIR"], epoch), dpi=300)
         return fig
+
+    elif 'Humanoid' in config['EXP_NAME'] and 'ReachReach' in config['EXP_NAME']:
+
+        info, info_1, info_2 = multi_info
+        fig = plt.figure(figsize=(20, 6))
+        ax1 = fig.add_subplot(131, projection='3d')
+        ax2 = fig.add_subplot(132, projection='3d')
+        ax3 = fig.add_subplot(133, projection='3d')
+        axes = [ax1, ax2, ax3]
+        axes_upperx = 3.5
+        axes_lowerx = -0.5
+        axes_uppery = 0.5
+        axes_lowery = -3.5
+        axes_upperz = 1.5
+        axes_lowerz = -0.1
+
+        def draw_humanoid_rr(info, title, ax, mode="both"):
+            reach1_idx = info.get('reach1_index')
+            reach2_idx = info.get('reach2_index')
+            full_len = info['head_pos'].shape[0]
+
+            # Plot Targets and Obstacles
+            if mode == "both" or mode == "reach1":
+                add_sphere(ax, HUMANOID_TARGET_RIGHT, radius=HUMANOID_TARGET_RADIUS, resolution=30, alpha=0.4, color='green')
+            if mode == "both" or mode == "reach2":
+                add_sphere(ax, HUMANOID_TARGET_LEFT, radius=HUMANOID_TARGET_RADIUS, resolution=30, alpha=0.4, color='blue')
+
+            model = HumanoidReachReach()
+            is_reach1_np = jit(model.is_reach1)
+            is_reach2_np = jit(model.is_reach2)
+
+            def draw_body_3d(ax, info, i, alpha, color_mode="normal"):
+                if color_mode == "reach1":
+                    c1, c2, c3, c4, c5, c6 = ['g'] * 6
+                    linewidth = 3
+                elif color_mode == "reach2":
+                    c1, c2, c3, c4, c5, c6 = ['b'] * 6
+                    linewidth = 3
+                else:
+                    # head to shoulders, arms, hips to knees/feet
+                    c1, c2, c3, c4, c5, c6 = 'k', 'r', 'm', 'g', 'c', 'b'
+                    linewidth = 1
+
+                def line(p1, p2, color):
+                    ax.plot(
+                        [p1[0], p2[0]],
+                        [p1[1], p2[1]],
+                        [p1[2], p2[2]],
+                        c=color, alpha=alpha, linewidth=linewidth
+                    )
+
+                # Joint locations
+                head = info["head_pos"][i]
+                torso = info["torso"][i]
+                lwaist = info["lwaist"][i]
+                pelvis = info["pelvis"][i]
+                
+                left_upper_arm = info["left_upper_arm"][i]
+                right_upper_arm = info["right_upper_arm"][i]
+                left_lower_arm = info["left_lower_arm"][i]
+                right_lower_arm = info["right_lower_arm"][i]
+                left_hand = info["left_hand"][i]
+                right_hand = info["right_hand"][i]
+
+                left_thigh = info["left_thigh"][i]
+                right_thigh = info["right_thigh"][i]
+                left_shin = info["left_shin"][i]
+                right_shin = info["right_shin"][i]
+                left_foot = info["left_foot"][i]
+                right_foot = info["right_foot"][i]
+
+                # Draw abdomen
+                line(head, torso, c6)
+                line(torso, lwaist, c2)
+                line(lwaist, pelvis, c3)
+
+                # Draw arms
+                line(torso, left_upper_arm, c4)
+                line(torso, right_upper_arm, c4)
+                line(left_upper_arm, left_lower_arm, c5)
+                line(left_lower_arm, left_hand, c1)
+                line(right_upper_arm, right_lower_arm, c5)
+                line(right_lower_arm, right_hand, c1)
+
+                # Draw legs
+                line(pelvis, left_thigh, c4)
+                line(pelvis, right_thigh, c4)
+                line(left_thigh, left_shin, c5)
+                line(left_shin, left_foot, c1)
+                line(right_thigh, right_shin, c5)
+                line(right_shin, right_foot, c1)    
+            
+            indices = np.linspace(0, full_len, 11, dtype=int)
+            for step_n, i in enumerate(indices):
+                alpha = (step_n + 1) / 11
+
+                step_poses = {k: info[k][i] for k in info.keys() if not k in ['reach_index_1', 'reach_index_2']}
+
+                reach1_val = is_reach1_np(step_poses)
+                reach2_val = is_reach2_np(step_poses)
+
+                if reach1_val < 0.:
+                    color_mode = "reach1"
+                elif reach2_val < 0.:
+                    color_mode = "reach2"
+                else:
+                    color_mode = "normal"
+                draw_body_3d(ax, info, i, alpha, color_mode=color_mode)
+
+            if reach1_idx is not None and reach1_idx > -1:
+                draw_body_3d(ax, info, reach1_idx, alpha, color_mode="reach1")
+            if reach2_idx is not None and reach2_idx > -1:
+                draw_body_3d(ax, info, reach2_idx, alpha, color_mode="reach2")
+
+            ax.set_xlim((axes_lowerx, axes_upperx))
+            ax.set_ylim((axes_lowery, axes_uppery))
+            ax.set_zlim((axes_lowerz, axes_upperz))
+            ax.set_aspect('equal')
+            ax.set_title(title)
+            ax.view_init(elev=10, azim=-45)
+
+        # Draw Reach Avoid and Avoid Only 
+        draw_humanoid_rr(info, "Reach Reach", axes[0])
+        if config['EXP_NAME'] == 'HumanoidReachReach':
+            draw_humanoid_rr(info_1, "Reach 1", axes[1], mode="reach1")
+            draw_humanoid_rr(info_2, "Reach 2", axes[2], mode="reach2")
+
+        plt.savefig('model/{}/reach/trajectory_{:0>4d}'.format(config["DIR"], epoch), dpi=300)
+        return fig
     
     elif 'F16' in config['EXP_NAME']:
         
@@ -1511,6 +1642,161 @@ def plot_video_contour_RRAA(multi_info, epoch, config, save_video=False, prefix=
             
             plt.close(fig)
             plt.close("all")
+
+    elif 'Humanoid' in config['EXP_NAME'] and 'ReachReach' in config['EXP_NAME']:
+        
+        info, info_1, info_2 = multi_info
+
+        axes_upperx = 3.5
+        axes_lowerx = -0.5
+        axes_uppery = 0.5
+        axes_lowery = -3.5
+        axes_upperz = 1.5
+        axes_lowerz = -0.1
+
+        def draw_humanoid_rr(step, info, reach1_idx, reach2_idx, title, ax, mode="both"):
+
+            # Plot Targets and Obstacles
+            if mode == "both" or mode == "reach1":
+                add_sphere(ax, HUMANOID_TARGET_RIGHT, radius=HUMANOID_TARGET_RADIUS, resolution=30, alpha=0.4, color='green')
+            if mode == "both" or mode == "reach2":
+                add_sphere(ax, HUMANOID_TARGET_LEFT, radius=HUMANOID_TARGET_RADIUS, resolution=30, alpha=0.4, color='blue')
+
+            model = HumanoidReachReach()
+            is_reach1_np = jit(model.is_reach1)
+            is_reach2_np = jit(model.is_reach2)
+
+            def draw_body_3d(ax, info, i, alpha, color_mode="normal"):
+                if color_mode == "reach1":
+                    c1, c2, c3, c4, c5, c6 = ['g'] * 6
+                    linewidth = 3
+                elif color_mode == "reach2":
+                    c1, c2, c3, c4, c5, c6 = ['b'] * 6
+                    linewidth = 3
+                else:
+                    # head to shoulders, arms, hips to knees/feet
+                    c1, c2, c3, c4, c5, c6 = 'k', 'r', 'm', 'g', 'c', 'b'
+                    linewidth = 1
+
+                def line(p1, p2, color):
+                    ax.plot(
+                        [p1[0], p2[0]],
+                        [p1[1], p2[1]],
+                        [p1[2], p2[2]],
+                        c=color, alpha=alpha, linewidth=linewidth
+                    )
+
+                # Joint locations
+                head = info["head_pos"][i]
+                torso = info["torso"][i]
+                lwaist = info["lwaist"][i]
+                pelvis = info["pelvis"][i]
+                
+                left_upper_arm = info["left_upper_arm"][i]
+                right_upper_arm = info["right_upper_arm"][i]
+                left_lower_arm = info["left_lower_arm"][i]
+                right_lower_arm = info["right_lower_arm"][i]
+                left_hand = info["left_hand"][i]
+                right_hand = info["right_hand"][i]
+
+                left_thigh = info["left_thigh"][i]
+                right_thigh = info["right_thigh"][i]
+                left_shin = info["left_shin"][i]
+                right_shin = info["right_shin"][i]
+                left_foot = info["left_foot"][i]
+                right_foot = info["right_foot"][i]
+
+                # Draw abdomen
+                line(head, torso, c6)
+                line(torso, lwaist, c2)
+                line(lwaist, pelvis, c3)
+
+                # Draw arms
+                line(torso, left_upper_arm, c4)
+                line(torso, right_upper_arm, c4)
+                line(left_upper_arm, left_lower_arm, c5)
+                line(left_lower_arm, left_hand, c1)
+                line(right_upper_arm, right_lower_arm, c5)
+                line(right_lower_arm, right_hand, c1)
+
+                # Draw legs
+                line(pelvis, left_thigh, c4)
+                line(pelvis, right_thigh, c4)
+                line(left_thigh, left_shin, c5)
+                line(left_shin, left_foot, c1)
+                line(right_thigh, right_shin, c5)
+                line(right_shin, right_foot, c1) 
+            
+            step_poses = {k: info[k][step] for k in info.keys() if not k in ['reach_index_1', 'reach_index_2']}
+            reach1_val = is_reach1_np(step_poses)
+            reach2_val = is_reach2_np(step_poses)
+
+            if reach1_val < 0.:
+                color_mode = "reach1"
+            elif reach2_val < 0.:
+                color_mode = "reach2"
+            else:
+                color_mode = "normal"
+
+            draw_body_3d(ax, info, step, 0.9, color_mode=color_mode)
+
+            if reach1_idx is not None and step >= reach1_idx and reach1_idx > -1:
+                draw_body_3d(ax, info, reach1_idx, 0.5, color_mode="reach1")
+
+            if reach2_idx is not None and step >= reach2_idx and reach2_idx > -1:
+                draw_body_3d(ax, info, reach2_idx, 0.5, color_mode="reach2")
+            
+            ax.set_xlim((axes_lowerx, axes_upperx))
+            ax.set_ylim((axes_lowery, axes_uppery))
+            ax.set_zlim((axes_lowerz, axes_upperz))
+            ax.set_aspect('equal')
+            ax.set_title(title)
+            ax.view_init(elev=10, azim=-45)
+
+        # DEFINE VIDEO LENGTH TO DUAL-REACHING OR FULL TRAJ
+        reach_idx_1 = info['reach_index_1']
+        reach_idx_2 = info['reach_index_2']
+
+        full_len = np.maximum(reach_idx_1, reach_idx_2)
+        full_len = info['head_pos'].shape[0] if full_len.item() == np.inf else int(full_len.item())
+        reach_idx_1 = int(reach_idx_1.item()) if reach_idx_1.item() != np.inf else -1
+        reach_idx_2 = int(reach_idx_2.item()) if reach_idx_2.item() != np.inf else -1
+        
+        frames = []
+        num_frames = full_len//2
+        indices = np.linspace(0, full_len, num_frames, dtype=int)
+        if config['EXP_NAME'] == 'HumanoidReachReach':
+            reach_idx_1_reach1 = info_1['reach_index_1'].item()
+            reach_idx_2_reach2 = info_2['reach_index_2'].item()
+            
+        for step_n in indices: 
+
+            fig = plt.figure(figsize=(20, 6), dpi=100)
+            ax1 = fig.add_subplot(131, projection='3d')
+            ax2 = fig.add_subplot(132, projection='3d')
+            ax3 = fig.add_subplot(133, projection='3d')
+            axes = [ax1, ax2, ax3]
+
+            draw_humanoid_rr(step_n, info, reach_idx_1, reach_idx_2, "Reach Reach", axes[0], mode="both")
+
+            if config['EXP_NAME'] == 'HumanoidReachReach':
+                # AFTER DECOMPOSED REACH, DRAW LAST POINT
+                if step_n >= reach_idx_1_reach1:
+                    reach_idx_1_reach1 = step_n
+                if step_n >= reach_idx_2_reach2:
+                    reach_idx_2_reach2 = step_n
+
+                draw_humanoid_rr(step_n, info_1, reach_idx_1_reach1, -1, "Reach 1", axes[1], mode="reach1")
+                draw_humanoid_rr(step_n, info_2, -1, reach_idx_2_reach2, "Reach 2", axes[2], mode="reach2")
+                
+            # Render the figure to an image (smaller size)
+            fig.canvas.draw()
+            frame = np.frombuffer(fig.canvas.buffer_rgba(), dtype=np.uint8)
+            frame = frame.reshape(fig.canvas.get_width_height()[::-1] + (4,))  # RGBA (4 channels)
+            frames.append(frame)
+            
+            plt.close(fig)
+            plt.close("all")
         
     # Save frames as a video using PIL - don't do this in general
     frames = [Image.fromarray(frame) for frame in frames]
@@ -1533,6 +1819,26 @@ def plot_video_contour_RRAA(multi_info, epoch, config, save_video=False, prefix=
     end_time = time()
     print("Time taken to plot and push video: ", end_time - start_time)
     return frames
+
+def add_sphere(ax, center, radius=1.0, resolution=30, color='green', alpha=0.5):
+    u = np.linspace(0, 2 * np.pi, resolution)
+    v = np.linspace(0, np.pi, resolution)
+    x = center[0] + radius * np.outer(np.cos(u), np.sin(v))
+    y = center[1] + radius * np.outer(np.sin(u), np.sin(v))
+    z = center[2] + radius * np.outer(np.ones_like(u), np.cos(v))
+    ax.plot_surface(x, y, z, color=color, alpha=alpha, linewidth=0, shade=True)
+
+    lw=0.2
+    theta = np.linspace(0, 2 * np.pi, resolution)
+    x = center[0] + radius * np.cos(theta)
+    y = center[1] + radius * np.sin(theta)
+    z = np.full_like(x, center[2])
+    ax.plot3D(x, y, z, color='k', linewidth=lw, alpha=0.8)
+
+    x = np.full_like(theta, center[0])
+    y = center[1] + radius * np.cos(theta)
+    z = center[2] + radius * np.sin(theta)
+    ax.plot3D(x, y, z, color='k', linewidth=lw, alpha=0.8)
 
 # def is_reach(head_pos):
 #     radius, target_pos = 0.25, np.array([3.5, 0.0])
