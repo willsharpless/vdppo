@@ -308,7 +308,7 @@ def train(env, env_params, config, rng, env_test=None):
             info = tree_index2(traj_batch.info, idx)
             
             ((reach_1_perc, reach_2_perc, reach_perc),
-                (reach_idx_1, reach_idx_2, reach_idx)) = calculate_reachreach(traj_batch, offset=0.5)
+                (reach_idx_1, reach_idx_2, reach_idx)) = calculate_reachreach(traj_batch, th=0.5)
             info["reach_index_1"] = reach_idx_1[idx]
             info["reach_index_2"] = reach_idx_2[idx]
 
