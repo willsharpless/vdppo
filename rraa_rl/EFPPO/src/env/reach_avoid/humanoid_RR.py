@@ -7,12 +7,15 @@ from flax import struct
 from brax.envs.base import State
 from .humanoid_base import HumanoidDeterministic, HumanoidRandom
 from copy import deepcopy 
+from jax import lax
 
 from jax.numpy import sin, cos
 from jax.scipy.spatial.transform import Rotation as R
 
 HUMANOID_TARGET_RIGHT, HUMANOID_TARGET_LEFT = [0., -2., 1.], [2., 0., 1.]
 HUMANOID_TARGET_RADIUS = 0.1 
+HUMANOID_TORSO_MIN_Z = 1.
+HUMANOID_TORSO_MAX_Z = 2.
 
 @struct.dataclass
 class EnvStateR1:
@@ -38,7 +41,7 @@ class EnvParamsEmpty:
 
 class HumanoidReachReachTemplate:
     def __init__(self, backend="positional"):
-        env = HumanoidRandom(backend=backend, terminate_when_unhealthy=True,
+        env = HumanoidRandom(backend=backend, terminate_when_unhealthy=False,
                            exclude_current_positions_from_observation=False)
         env = EpisodeWrapper(env, episode_length=1000, action_repeat=2) # FIXME: do we want 2 action repeats (like hopper)?
         env = AutoResetWrapper(env)
@@ -88,13 +91,15 @@ class HumanoidReachReachTemplate:
         return link_pos
 
     @partial(jax.jit, static_argnums=(0,))
-    def is_reach1(self, poses):        
+    def is_reach1(self, poses):
         target_center, radius = HUMANOID_TARGET_RIGHT, HUMANOID_TARGET_RADIUS
         target_pos = poses["right_hand"]
         reach = jnp.sqrt((target_pos[..., 0] - target_center[0]) ** 2 + \
                          (target_pos[..., 1] - target_center[1]) ** 2 + \
                          (target_pos[..., 2] - target_center[2]) ** 2) - radius
         value = jnp.where(reach < 0., -2.5, reach)
+        value = jnp.where(poses['torso'][..., 2] < HUMANOID_TORSO_MIN_Z, 10., value) # unhealthy (interal catch doesnt work with gae)
+        value = jnp.where(poses['torso'][..., 2] > HUMANOID_TORSO_MAX_Z, 10., value) # unhealthy (interal catch doesnt work with gae)
         return value * 100.0
     
     @partial(jax.jit, static_argnums=(0,))
@@ -105,6 +110,8 @@ class HumanoidReachReachTemplate:
                          (target_pos[..., 1] - target_center[1]) ** 2 + \
                          (target_pos[..., 2] - target_center[2]) ** 2) - radius
         value = jnp.where(reach < 0., -2.5, reach)
+        value = jnp.where(poses['torso'][..., 2] < HUMANOID_TORSO_MIN_Z, 10., value) # unhealthy (interal catch doesnt work with gae)
+        value = jnp.where(poses['torso'][..., 2] > HUMANOID_TORSO_MAX_Z, 10., value) # unhealthy (interal catch doesnt work with gae)
         return value * 100.0
 
     def observation_space(self, params):
@@ -137,7 +144,15 @@ class HumanoidReachReach(HumanoidReachReachTemplate):
     @partial(jax.jit, static_argnums=(0,))
     def step(self, key, state, action, params=None):
         u = jnp.tanh(action)
-        next_state = self._env.step(state.state, u)
+        next_state_raw = self._env.step(state.state, u)
+
+        ## Freeze if (current) state unhealthy
+        unhealthy = jnp.logical_or(
+            state.state.pipeline_state.x.pos[0, 2] < HUMANOID_TORSO_MIN_Z,
+            state.state.pipeline_state.x.pos[0, 2] > HUMANOID_TORSO_MAX_Z
+        )
+        next_state = lax.cond(unhealthy, lambda _: state.state, lambda _: next_state_raw, operand=None,)        
+
         poses = self.calculate_position(next_state)
         reach1_value = self.is_reach1(poses)
         reach2_value = self.is_reach2(poses)
@@ -167,7 +182,15 @@ class HumanoidReach1(HumanoidReachReachTemplate):
     @partial(jax.jit, static_argnums=(0,))
     def step(self, key, state, action, params=None):
         u = jnp.tanh(action)
-        next_state = self._env.step(state.state, u)
+        next_state_raw = self._env.step(state.state, u)
+
+        ## Freeze if (current) state unhealthy
+        unhealthy = jnp.logical_or(
+            state.state.pipeline_state.x.pos[0, 2] < HUMANOID_TORSO_MIN_Z,
+            state.state.pipeline_state.x.pos[0, 2] > HUMANOID_TORSO_MAX_Z
+        )
+        next_state = lax.cond(unhealthy, lambda _: state.state, lambda _: next_state_raw, operand=None,)  
+        
         poses = self.calculate_position(next_state)
         reach1_value = self.is_reach1(poses)
         reach2_value = self.is_reach2(poses)
@@ -246,7 +269,15 @@ class HumanoidReach2(HumanoidReachReachTemplate):
     @partial(jax.jit, static_argnums=(0,))
     def step(self, key, state, action, params=None):
         u = jnp.tanh(action)
-        next_state = self._env.step(state.state, u)
+        next_state_raw = self._env.step(state.state, u)
+
+        ## Freeze if (current) state unhealthy
+        unhealthy = jnp.logical_or(
+            state.state.pipeline_state.x.pos[0, 2] < HUMANOID_TORSO_MIN_Z,
+            state.state.pipeline_state.x.pos[0, 2] > HUMANOID_TORSO_MAX_Z
+        )
+        next_state = lax.cond(unhealthy, lambda _: state.state, lambda _: next_state_raw, operand=None,)  
+
         poses = self.calculate_position(next_state)
         reach1_value = self.is_reach1(poses)
         reach2_value = self.is_reach2(poses)

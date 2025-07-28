@@ -27,6 +27,8 @@ from rraa_rl.EFPPO.src.rl.gae import (Transition_reach,
                               calculate_gae_reach, calculate_gae_reach2, calculate_gae_reach3, calculate_gae_reach4,
                               calculate_indexs, calculate_indexs2, calculate_indexs3, calculate_indexs3_rr, calculate_indexs_rr)
 
+from rraa_rl.EFPPO.src.env.reach_avoid.humanoid_RR import HUMANOID_TORSO_MIN_Z, HUMANOID_TORSO_MAX_Z
+
 class TrainState(train_state.TrainState):
     mean: Any
     variance: Any
@@ -94,11 +96,20 @@ def train(envs, env_paramss, config, rng):
                 obsv_reach_1, env_state_reach_1 = jax.vmap(env_reach_1.reset_toinput, in_axes=(0, 0, None))(reset_rng, untrans_traj_batch_observations, env_params_reach_1) 
 
             elif "Humanoid" in config["EXP_NAME"]:
+
+                ## Filter Unhealthy Humanoid Trajectories from reset
+                unhealthy_traj = jnp.any(jnp.logical_or(
+                    traj_batch.info['torso'][..., 2] < HUMANOID_TORSO_MIN_Z,
+                    traj_batch.info['torso'][..., 2] > HUMANOID_TORSO_MAX_Z
+                ), axis=0)
+                random_index_healthy = jnp.where(unhealthy_traj, reach2_idx_pre, random_index) 
+                # when unhealthy -> set first reach2 index and if no reach2, then init (argmax defaults to 0)
+
                 # FIXME: humanoid._get_obs() needs an action, meaning we should pass reset action too, for now just zeros
                 traj_batch_observations_full = traj_batch.obs 
                 untrans_traj_batch_observations_full = env.untransform_obs(traj_batch_observations_full)
                 untrans_traj_batch_observations_full = jnp.transpose(untrans_traj_batch_observations_full, axes=(1, 0, 2))
-                untrans_traj_batch_observations = jax.vmap(lambda obs, idx: obs[idx])(untrans_traj_batch_observations_full, random_index)
+                untrans_traj_batch_observations = jax.vmap(lambda obs, idx: obs[idx])(untrans_traj_batch_observations_full, random_index_healthy)
                 obsv_reach_1, env_state_reach_1 = jax.vmap(env_reach_1.reset_toinput, in_axes=(0, 0, None))(reset_rng, untrans_traj_batch_observations, env_params_reach_1) 
 
             elif "F16" in config["EXP_NAME"]:
@@ -165,11 +176,20 @@ def train(envs, env_paramss, config, rng):
                 obsv_reach_2, env_state_reach_2 = jax.vmap(env_reach_2.reset_toinput, in_axes=(0, 0, None))(reset_rng, untrans_traj_batch_observations, env_params_reach_2) 
 
             elif "Humanoid" in config["EXP_NAME"]:
+
+                ## Filter Unhealthy Humanoid Trajectories from reset
+                unhealthy_traj = jnp.any(jnp.logical_or(
+                    traj_batch.info['torso'][..., 2] < HUMANOID_TORSO_MIN_Z,
+                    traj_batch.info['torso'][..., 2] > HUMANOID_TORSO_MAX_Z
+                ), axis=0)
+                random_index_healthy = jnp.where(unhealthy_traj, reach1_idx_pre, random_index) # set to init when unhealthy
+                # when unhealthy -> set first reach1 index and if no reach1, then init (argmax defaults to 0)
+
                 # FIXME: humanoid._get_obs() needs an action, meaning we should pass reset action too, for now just zeros
                 traj_batch_observations_full = traj_batch.obs 
                 untrans_traj_batch_observations_full = env.untransform_obs(traj_batch_observations_full)
                 untrans_traj_batch_observations_full = jnp.transpose(untrans_traj_batch_observations_full, axes=(1, 0, 2))
-                untrans_traj_batch_observations = jax.vmap(lambda obs, idx: obs[idx])(untrans_traj_batch_observations_full, random_index)
+                untrans_traj_batch_observations = jax.vmap(lambda obs, idx: obs[idx])(untrans_traj_batch_observations_full, random_index_healthy)
                 # obsv_reach_1, env_state_reach_1 = jax.vmap(env_reach_1.reset_toinput, in_axes=(0, 0, None))(reset_rng, untrans_traj_batch_observations, env_params_reach_1) 
                 obsv_reach_2, env_state_reach_2 = jax.vmap(env_reach_2.reset_toinput, in_axes=(0, 0, None))(reset_rng, untrans_traj_batch_observations, env_params_reach_2) 
 
@@ -622,7 +642,7 @@ def train(envs, env_paramss, config, rng):
 if __name__ == "__main__":
     config = vars(get_args(sys.argv[1:]))
 
-    debug = True
+    debug = False
     if debug:
         # config["EXP_NAME"]="HopperReachReach"
         # config["DIR"]="hopper_reachreach_debug"
@@ -696,7 +716,7 @@ if __name__ == "__main__":
         # config["NAME"]="halfcheetah_rr_resetgoal_reachv0.1"
 
         config["EXP_NAME"]="HumanoidReachReach"
-        config["DIR"]="humanoid_rr_debug_gif_faster_fixed"
+        config["DIR"]="humanoid_rr_debug_customhealthy"
         config["LR"]=3e-4
         config["NUM_ENVS"]=128
         config["NUM_STEPS"]=400
@@ -714,9 +734,9 @@ if __name__ == "__main__":
         config["MAX_GRAD_NORM"]=0.5
         config["ACTIVATION"]="tanh"
         config["CUDA_USE"]="0"
-        config["ANNEAL_LR"]=True,
+        config["ANNEAL_LR"]=True
         config["ANNEAL_ENT"]=True
-        config["NAME"]="humanoid_rr_debug_gif_faster_fixed"
+        config["NAME"]="humanoid_rr_debug_customhealthy"
     #     # config["TEST_MODE"]=True # USES DETERMINISTIC MODELS
 
     config["NUM_UPDATES"] = int(
@@ -750,7 +770,7 @@ if __name__ == "__main__":
         env_params_reach_2 = env_params_reach_2.replace(index=config['SECTION'])
     env_paramss = (env_params, env_params_reach_1, env_params_reach_2)
 
-    config["USE_WANDB"] = False #not debug # False for debugging
+    config["USE_WANDB"] = True #not debug # False for debugging
     if config["USE_WANDB"]:
         wandb.init(project='EC-EFPPO-{}'.format(config["EXP_NAME"]), name=config["NAME"], config=config,
                    entity='braat_brrt')
