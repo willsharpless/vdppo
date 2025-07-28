@@ -11,7 +11,7 @@ from copy import deepcopy
 from jax.numpy import sin, cos
 from jax.scipy.spatial.transform import Rotation as R
 
-HUMANOID_TARGET_RIGHT, HUMANOID_TARGET_LEFT = [0., -2., 0.25], [2., 0., 0.75]
+HUMANOID_TARGET_RIGHT, HUMANOID_TARGET_LEFT = [0., -2., 1.], [2., 0., 1.]
 HUMANOID_TARGET_RADIUS = 0.1 
 
 @struct.dataclass
@@ -68,12 +68,13 @@ class HumanoidReachReachTemplate:
             offset_world = rot.apply(offset_local)
             return pos + offset_world
         
-        hand_offset = jnp.array([0.0, 0.0, -0.18])
-        foot_offset = jnp.array([0.0, 0.0, -0.12])
+        l_hand_offset = jnp.array([0.18, -0.18, 0.18])
+        r_hand_offset = jnp.array([0.18, 0.18, 0.18])
+        foot_offset = jnp.array([0.0, 0.0, -0.425])
         head_offset = jnp.array([0.0, 0.0, +0.25])
         
-        l_hand_pos = extend_along_quat(link_pos["left_lower_arm"], link_rot["left_lower_arm"], hand_offset)
-        r_hand_pos = extend_along_quat(link_pos["right_lower_arm"], link_rot["right_lower_arm"], hand_offset)
+        l_hand_pos = extend_along_quat(link_pos["left_lower_arm"], link_rot["left_lower_arm"], l_hand_offset)
+        r_hand_pos = extend_along_quat(link_pos["right_lower_arm"], link_rot["right_lower_arm"], r_hand_offset)
         l_foot_pos = extend_along_quat(link_pos["left_shin"], link_rot["left_shin"], foot_offset)
         r_foot_pos = extend_along_quat(link_pos["right_shin"], link_rot["right_shin"], foot_offset)
         head_pos = extend_along_quat(link_pos["torso"], link_rot["torso"], head_offset)
