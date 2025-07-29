@@ -14,7 +14,7 @@ from jax.scipy.spatial.transform import Rotation as R
 
 HUMANOID_TARGET_RIGHT, HUMANOID_TARGET_LEFT = [0., -2., 1.], [2., 0., 1.]
 HUMANOID_TARGET_RADIUS = 0.1 
-HUMANOID_TORSO_MIN_Z = 1.
+HUMANOID_TORSO_MIN_Z = 0.75
 HUMANOID_TORSO_MAX_Z = 2.
 
 @struct.dataclass
@@ -43,7 +43,7 @@ class HumanoidReachReachTemplate:
     def __init__(self, backend="positional"):
         env = HumanoidRandom(backend=backend, terminate_when_unhealthy=False,
                            exclude_current_positions_from_observation=False)
-        env = EpisodeWrapper(env, episode_length=1000, action_repeat=2) # FIXME: do we want 2 action repeats (like hopper)?
+        env = EpisodeWrapper(env, episode_length=400, action_repeat=2) # FIXME: do we want 2 action repeats (like hopper)?
         env = AutoResetWrapper(env)
         self._env = env
         self.action_size = env.action_size
@@ -97,6 +97,7 @@ class HumanoidReachReachTemplate:
         reach = jnp.sqrt((target_pos[..., 0] - target_center[0]) ** 2 + \
                          (target_pos[..., 1] - target_center[1]) ** 2 + \
                          (target_pos[..., 2] - target_center[2]) ** 2) - radius
+        reach = jnp.maximum(reach, HUMANOID_TORSO_MIN_Z - poses['torso'][..., 2]) # penalize if torso is too low
         value = jnp.where(reach < 0., -2.5, reach)
         value = jnp.where(poses['torso'][..., 2] < HUMANOID_TORSO_MIN_Z, 10., value) # unhealthy (interal catch doesnt work with gae)
         value = jnp.where(poses['torso'][..., 2] > HUMANOID_TORSO_MAX_Z, 10., value) # unhealthy (interal catch doesnt work with gae)
@@ -109,6 +110,7 @@ class HumanoidReachReachTemplate:
         reach = jnp.sqrt((target_pos[..., 0] - target_center[0]) ** 2 + \
                          (target_pos[..., 1] - target_center[1]) ** 2 + \
                          (target_pos[..., 2] - target_center[2]) ** 2) - radius
+        reach = jnp.maximum(reach, HUMANOID_TORSO_MIN_Z - poses['torso'][..., 2]) # penalize if torso is too low
         value = jnp.where(reach < 0., -2.5, reach)
         value = jnp.where(poses['torso'][..., 2] < HUMANOID_TORSO_MIN_Z, 10., value) # unhealthy (interal catch doesnt work with gae)
         value = jnp.where(poses['torso'][..., 2] > HUMANOID_TORSO_MAX_Z, 10., value) # unhealthy (interal catch doesnt work with gae)
