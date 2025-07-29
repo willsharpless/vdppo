@@ -55,7 +55,6 @@ def morl_replace_raa(env):
     # MORL Environment Baseline
     print("\n\nUsing MORL Replacement for HopperReachAlwaysAvoidBaseline\n\n")
 
-
     # @partial(jax.jit, static_argnums=(0,))
     def compute_reward(self, state, action, avoid_value, reach_value, params=None): 
         ######## MORL Modification: Reward and Cost #########
@@ -79,10 +78,16 @@ def morl_replace_raa(env):
         # NOTE: not used in MORL - but required for base CPPO implementation - so return 0
         return jnp.zeros_like(avoid_value)
     
-    # @partial(jax.jit, static_argnums=(0,))
-    def compute_observation(self, state, last_state=None): 
-        # Compute observation for constrained MDP
-        return jnp.concatenate([state.state.obs, jnp.array([state.min_reach <= 0])]) # Boolean has reached
+    if "F16" in str(env._env.__class__):
+        # @partial(jax.jit, static_argnums=(0,))
+        def compute_observation(self, state):
+            # Compute observation for constrained MDP
+            return jnp.concatenate([self.get_obs(state), jnp.array([state.min_reach <= 0])]) # Boolean has reached
+    else: 
+        # @partial(jax.jit, static_argnums=(0,))
+        def compute_observation(self, state, last_state=None): 
+            # Compute observation for constrained MDP
+            return jnp.concatenate([state.state.obs, jnp.array([state.min_reach <= 0])]) # Boolean has reached
     
     def observation_space(self, params):
         # print("In MORL Environment: Observation Space")
@@ -138,11 +143,17 @@ def sparse_replace_raa(env): \
         # NOTE: not used in MORL - but required for base CPPO implementation - so return 0
         return jnp.zeros_like(avoid_value)
     
-    # @partial(jax.jit, static_argnums=(0,))
-    def compute_observation(self, state, last_state=None): 
-        # jax.debug.print("In Sparse Environment: compute observation")
-        # Compute observation for constrained MDP
-        return jnp.concatenate([state.state.obs, jnp.array([state.min_reach <= 0])]) # Boolean has reached
+    if "F16" in str(env._env.__class__):
+        # @partial(jax.jit, static_argnums=(0,))
+        def compute_observation(self, state):
+            # Compute observation for constrained MDP
+            return jnp.concatenate([self.get_obs(state), jnp.array([state.min_reach <= 0])]) # Boolean has reached
+    else: 
+        # @partial(jax.jit, static_argnums=(0,))
+        def compute_observation(self, state, last_state=None): 
+            # jax.debug.print("In Sparse Environment: compute observation")
+            # Compute observation for constrained MDP
+            return jnp.concatenate([state.state.obs, jnp.array([state.min_reach <= 0])]) # Boolean has reached
     
     def observation_space(self, params):
         # print("In Sparse Environment: Observation Space")
@@ -405,12 +416,18 @@ if __name__ == "__main__":
     env = get_env(config)
 
     ########### MORL Changes ###########
-    assert(config["EXP_NAME"] in ["HopperReachAlwaysAvoidBaseline_MORL", "HopperReachAlwaysAvoidBaseline_Sparse"])
+    permissible_env_list = ["HopperReachAlwaysAvoidBaseline_MORL", "HopperReachAlwaysAvoidBaseline_Sparse", \
+                            "F16ReachAlwaysAvoidBaseline_MORL", "F16ReachAlwaysAvoidBaseline_Sparse", \
+                            "HalfCheetahReachAlwaysAvoidBaseline_MORL", "HalfCheetahReachAlwaysAvoidBaseline_Sparse"]
 
-    if config["EXP_NAME"] == "HopperReachAlwaysAvoidBaseline_MORL":
+    assert(config["EXP_NAME"] in permissible_env_list)
+
+    if "MORL" in config["EXP_NAME"]:
         env = morl_replace_raa(env)
-    elif config["EXP_NAME"] == "HopperReachAlwaysAvoidBaseline_Sparse":
+    elif "Sparse" in config["EXP_NAME"]:
         env = sparse_replace_raa(env)
+    else: 
+        raise NotImplementedError("Environment not implemented for MORL PPO RAA: {}".format(config["EXP_NAME"]))
 
     ########### MORL Changes ###########
 

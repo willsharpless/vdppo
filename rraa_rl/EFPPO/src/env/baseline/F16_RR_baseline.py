@@ -132,6 +132,7 @@ class F16ReachReachBaseline(environment.Environment):
 
         self._dt = 0.05
         self._env = F16()
+        self._env.observation_size = 24
 
     @property
     def default_params(self) -> EnvParams:
@@ -208,7 +209,7 @@ class F16ReachReachBaseline(environment.Environment):
         reward = self.compute_reward(state=next_state_new, last_state=state, params=params)
 
         # observation = jnp.concatenate([self.get_obs(state), jnp.array([reach1_value, reach2_value])]) # might need a squeeze here
-        observation = jnp.concatenate([self.get_obs(next_state_new), jnp.array([min_reach1, min_reach2])]).squeeze()
+        observation = self.compute_observation(state=next_state_new) #jnp.concatenate([self.get_obs(next_state_new), jnp.array([min_reach1, min_reach2])]).squeeze()
 
         # next_energy = jnp.clip(state.energy - 4 * jnp.sum(control_raw ** 2), params.min_energy, params.max_energy)
         # next_state_new = EnvState(state=a_state_new, time=state.time + 1, energy=next_energy,
@@ -370,6 +371,9 @@ class F16ReachReachBaseline(environment.Environment):
         value_corr = (jnp.fabs(state[self.PE]) - 500.) / 5
 
         return jnp.maximum(jnp.maximum(jnp.maximum(value_geof, value_grnd), value_corr), value_roof)
+
+    def compute_observation(self, state): 
+        return jnp.concatenate([self.get_obs(state), jnp.array([state.min_reach1, state.min_reach2])]).squeeze()
 
     def get_obs(self, state: EnvStateRR) -> chex.Array:
         """Return angle in polar coordinates and change."""
