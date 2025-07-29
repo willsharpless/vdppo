@@ -88,10 +88,15 @@ def morl_replace_rr(env):
                         reward)
         return reward 
 
-    # @partial(jax.jit, static_argnums=(0,))
-    def compute_observation(self, state):
-        # Compute observation for constrained MDP 
-        return jnp.concatenate([state.state.obs, jnp.array([state.has_reached_1, state.has_reached_2])])
+    if "F16" in str(env._env.__class__):
+        # @partial(jax.jit, static_argnums=(0,))
+        def compute_observation(self, state):
+            # Compute observation for constrained MDP
+            return jnp.concatenate([self.get_obs(state), jnp.array([state.has_reached_1, state.has_reached_2])])
+    else: # @partial(jax.jit, static_argnums=(0,))
+        def compute_observation(self, state):
+            # Compute observation for constrained MDP 
+            return jnp.concatenate([state.state.obs, jnp.array([state.has_reached_1, state.has_reached_2])])
 
     def observation_space(self, params):
         obs_size = self._env.observation_size
@@ -145,10 +150,17 @@ def sparse_replace_rr(env):
 
         return reward 
 
-    # @partial(jax.jit, static_argnums=(0,))
-    def compute_observation(self, state):
-        # Compute observation for constrained MDP 
-        return jnp.concatenate([state.state.obs, jnp.array([state.has_reached_1, state.has_reached_2])])
+    if "F16" in str(env._env.__class__):
+        # @partial(jax.jit, static_argnums=(0,))
+        def compute_observation(self, state):
+            # Compute observation for constrained MDP
+            return jnp.concatenate([self.get_obs(state), jnp.array([state.has_reached_1, state.has_reached_2])])
+    
+    
+    else: # @partial(jax.jit, static_argnums=(0,))
+        def compute_observation(self, state):
+            # Compute observation for constrained MDP 
+            return jnp.concatenate([state.state.obs, jnp.array([state.has_reached_1, state.has_reached_2])])
 
     def observation_space(self, params):
         obs_size = self._env.observation_size
@@ -456,13 +468,17 @@ if __name__ == "__main__":
     env = get_env(config)
 
     ########### MORL Changes ###########
+    permissible_env_list = ["HopperReachReachBaseline_MORL", "HopperReachReachBaseline_Sparse", \
+                            "F16ReachReachBaseline_MORL", "F16ReachReachBaseline_Sparse", \
+                            "HalfCheetahReachReachBaseline_MORL", "HalfCheetahReachReachBaseline_Sparse"]
+    assert(config["EXP_NAME"] in permissible_env_list)
 
-    assert(config["EXP_NAME"] in ["HopperReachReachBaseline_MORL", "HopperReachReachBaseline_Sparse"])
-
-    if config["EXP_NAME"] == "HopperReachReachBaseline_MORL":
+    if "MORL" in config["EXP_NAME"]:
         env = morl_replace_rr(env)
-    elif config["EXP_NAME"] == "HopperReachReachBaseline_Sparse":
+    elif "Sparse" in config["EXP_NAME"]:
         env = sparse_replace_rr(env)
+    else: 
+        raise NotImplementedError("Environment {} not implemented for MORL PPO RR".format(config["EXP_NAME"]))
         
     ########### MORL Changes ###########
 
