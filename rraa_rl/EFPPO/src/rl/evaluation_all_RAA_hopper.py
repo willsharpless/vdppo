@@ -19,7 +19,7 @@ import imageio
 from rraa_rl.EFPPO.src.rl.arguments import get_args
 from rraa_rl.EFPPO.src.env.env_list import get_env
 from rraa_rl.EFPPO.src.model.actorcritic import Policy_Network, Value_Network, ActorCritic_Continuous, Policy_Network_Discrete, MoGPolicy_Network
-from rraa_rl.EFPPO.src.rl.EFPPO_utils import _env_step_raa_vanilla, _env_step_raa_vanilla_deterministic, _env_step_cppo_RAA, _env_step_ra_vanilla
+from rraa_rl.EFPPO.src.rl.EFPPO_utils import _env_step_raa_vanilla, _env_step_raa_vanilla_deterministic, _env_step_cppo_RAA, _env_step_ra_vanilla, _env_step_adapted_raa, _env_step_raa_respo
 # from rraa_rl.EFPPO.src.rl.plot_utils import calculate_reachreach
 from rraa_rl.EFPPO.src.rl.root_finding import Bisection
 from rraa_rl.EFPPO.src.rl.utils import tree_index1, tree_index2, optimizer
@@ -35,19 +35,38 @@ def calculate_reachavoid(traj_batch):
     reach_perc = ((reach_idx < np.inf).sum() / reach_idx.__len__()).item()
     crash_perc = ((crash_idx < np.inf).sum() / crash_idx.__len__()).item()
     reach_avoid_perc = ((reach_and_avoid_idx < np.inf).sum() / reach_and_avoid_idx.__len__()).item()
-    return (reach_perc, crash_perc, reach_avoid_perc), (reach_idx, crash_idx, reach_and_avoid_idx)
+
+    reach_or_avoid_one = np.logical_or(reach_idx < np.inf, crash_idx == np.inf)
+    reach_or_avoid_one_perc = reach_or_avoid_one.sum() / reach_or_avoid_one.__len__()
+
+    min_values = np.maximum(np.min(traj_batch.reach, axis=0), np.max(traj_batch.avoid, axis=0))
+
+    return (reach_perc, crash_perc, reach_avoid_perc), (reach_idx, crash_idx, reach_and_avoid_idx), reach_or_avoid_one_perc, min_values.mean().item(), min_values.std().item()
 
 def plot_scores(traj_batches, config):
 
     (traj_batch_HJPPO, 
         traj_batch_HJPPO_d, 
         traj_batch_CPPO, 
-        traj_batch_RA) = traj_batches
+        traj_batch_RA,
+        traj_batch_PPOLAG,
+        traj_batch_PPO,
+        traj_batch_RCPPO,
+        traj_batch_RESPO,
+        traj_batch_MORL,
+        traj_batch_SPARSE
+    ) = traj_batches
     
     raa_scores_HJPPO = calculate_reachavoid(traj_batch_HJPPO)
     raa_scores_HJPPO_d = calculate_reachavoid(traj_batch_HJPPO_d)
     raa_scores_CPPO = calculate_reachavoid(traj_batch_CPPO)
     raa_scores_RA = calculate_reachavoid(traj_batch_RA)
+    raa_scores_PPOLAG = calculate_reachavoid(traj_batch_PPOLAG)
+    raa_scores_PPO = calculate_reachavoid(traj_batch_PPO)
+    raa_scores_RCPPO = calculate_reachavoid(traj_batch_RCPPO)
+    raa_scores_RESPO = calculate_reachavoid(traj_batch_RESPO)
+    raa_scores_MORL = calculate_reachavoid(traj_batch_MORL)
+    raa_scores_SPARSE = calculate_reachavoid(traj_batch_SPARSE)
 
     # (avoid perc, reach avoid idx)
     # raa_scores_HJPPO = (raa_scores_HJPPO[0][-1], raa_scores_HJPPO[1][-1])
@@ -56,22 +75,36 @@ def plot_scores(traj_batches, config):
     # raa_scores_RA = (raa_scores_RA[0][-1], raa_scores_RA[1][-1])
 
     raa_scores_all = [
-        ("CPPO", raa_scores_CPPO),
+        ("SPARSE", raa_scores_SPARSE),
+        ("MORL", raa_scores_MORL),
+        ("RESPPO", raa_scores_RESPO),
+        ("RCPPO", raa_scores_RCPPO),
+        ("PPO", raa_scores_PPO),
+        ("PPO-LAG", raa_scores_PPOLAG),
+        ("C-PPO", raa_scores_CPPO),
         ("RA", raa_scores_RA),
-        ("DO-HJ-PPO", raa_scores_HJPPO_d),
-        # ("DO-HJ-PPO", raa_scores_HJPPO),
+        ("DOHJPPO", raa_scores_HJPPO_d),
+        # ("DOHJPPO", raa_scores_HJPPO),
     ]
 
     # Extract data
     labels = []
     reach_avoid_percs = []
+    reach_or_avoid_percs = []
     mean_idxs = []
     std_idxs = []
+    min_val_means = []
+    min_val_stds = []
 
     for tag, scores in raa_scores_all:
         
         reach_avoid_perc = scores[0][2]
         idxs = scores[1][2]
+
+        reach_or_avoid_perc = scores[2]
+        min_val_mean = scores[3]
+        min_val_std = scores[4]
+
         # finite_mask = jnp.isfinite(idxs)
         # finite_idxs = idxs[finite_mask]
         # mean_idx = jnp.mean(finite_idxs) if finite_idxs.size > 0 else jnp.nan
@@ -85,11 +118,15 @@ def plot_scores(traj_batches, config):
 
         labels.append(tag)
         reach_avoid_percs.append(reach_avoid_perc)
+        reach_or_avoid_percs.append(reach_or_avoid_perc)
+        min_val_means.append(min_val_mean)
+        min_val_stds.append(min_val_std)
+
         mean_idxs.append(mean_idx)
         std_idxs.append(std_idx)
 
     # Plotting
-    fig, axes = plt.subplots(2, 1, figsize=(7, 4.5), sharex=False)
+    fig, axes = plt.subplots(4, 1, figsize=(12, 4.5), sharex=False)
     palette = sns.color_palette("deep", n_colors=len(raa_scores_all))[::-1]
     colors = {label: color for label, color in zip(labels, palette)}
         
@@ -107,7 +144,7 @@ def plot_scores(traj_batches, config):
     axes[0].spines[['top', 'right', 'left']].set_visible(False)
     axes[0].set_facecolor("#e6ecf2")
     for tick_label in axes[0].get_yticklabels():
-        if tick_label.get_text() == "DO-HJ-PPO":
+        if tick_label.get_text() == "DOHJPPO":
             tick_label.set_fontweight("bold")
             tick_label.set_fontsize(12)
 
@@ -123,7 +160,43 @@ def plot_scores(traj_batches, config):
     axes[1].spines[['top', 'right', 'left']].set_visible(False)
     axes[1].set_facecolor("#e6ecf2")
     for tick_label in axes[1].get_yticklabels():
-        if tick_label.get_text() == "DO-HJ-PPO":
+        if tick_label.get_text() == "DOHJPPO":
+            tick_label.set_fontweight("bold")
+            tick_label.set_fontsize(12)
+
+    # Mean optimal value bar plot with error bars
+    for i, label in enumerate(labels):
+        axes[2].barh(label, -min_val_means[i], xerr=min_val_stds[i]/2, color=colors[label], capsize=4)
+    axes[2].set_title(r"HOPPER-RAA: Maximum Value ($\uparrow$)", fontsize=12)
+    axes[2].set_xlabel(r"Value")
+    axes[2].set_yticks(np.arange(len(labels)))
+    axes[2].set_yticklabels(labels, ha='right', fontsize=10)
+    axes[2].tick_params(axis='y', pad=10)
+    axes[2].grid(True, color='white', axis="x", linestyle="--", alpha=0.5)
+    axes[2].spines[['top', 'right', 'left']].set_visible(False)
+    axes[2].set_facecolor("#e6ecf2")
+    for tick_label in axes[2].get_yticklabels():
+        if tick_label.get_text() == "DOHJPPO":
+            tick_label.set_fontweight("bold")
+            tick_label.set_fontsize(12)
+
+    # Reach At least onepercentage bar plot
+    for i, label in enumerate(labels):
+        axes[3].barh(label, reach_or_avoid_percs[i], color=colors[label])
+    # axes[0].set_xlim(0.7, 1.0)
+    axes[3].set_title(r"HOPPER-RAA: Reached or Avoided Percentage ($\uparrow$)", fontsize=12)
+    axes[3].set_xlabel(r"Percentage")
+    axes[3].set_yticks(np.arange(len(labels)))
+    axes[3].set_yticklabels(labels, ha='right', fontsize=10)
+    # axes[0].set_xticklabels([r'0\%', r'20\%', r'40\%', r'60\%', r'80\%', r'100\%'])
+    # axes[0].set_xticks([0, 0.2, 0.4, 0.6, 0.8, 1.0], labels=[r'$0\%$', r'$20\%$', r'$40\%$', r'$60\%$', r'$80\%$', r'$100\%$'])
+    # axes[0].set_xticks([0.75, 0.8, 0.85, 0.9, 0.95, 1.0], labels=[r'$75\%$', r'$80\%$', r'$85\%$', r'$90\%$', r'$95\%$', r'$100\%$'])
+    axes[3].tick_params(axis='y', pad=10)  # move labels away from bars
+    axes[3].grid(True, color='white', axis="x", linestyle="--", alpha=0.5)
+    axes[3].spines[['top', 'right', 'left']].set_visible(False)
+    axes[3].set_facecolor("#e6ecf2")
+    for tick_label in axes[3].get_yticklabels():
+        if tick_label.get_text() == "DOHJPPO":
             tick_label.set_fontweight("bold")
             tick_label.set_fontsize(12)
 
@@ -156,16 +229,32 @@ def load_traj(file_path):
     return traj_batch
 
 def test(envs, env_paramss, config, rngs, saving_traj=False):
-    rng_1, rng_2, rng_3, rng_4  = rngs
+    rng_1, rng_2, rng_3, rng_4, rng_5, rng_6, rng_7, rng_8, rng_9, rng_10, rng_11, rng_12 = rngs
 
-    env_HJPPO, env_HJPPO_avoid, env_CPPO, env_RA = envs # COMPOSED (RAA) + 2 DECOMPOSED (R1 + R2)
+    (env_HJPPO, env_HJPPO_avoid,
+        env_CPPO, env_RA,
+        env_PPOLAG, env_PPO, env_RCPPO, env_RESPO,
+        env_MORL, env_SPARSE
+    ) = envs # COMPOSED (RAA) + 2 DECOMPOSED (R1 + R2)
+
     env_params_HJPPO, env_params_HJPPO_avoid, env_params_CPPO, env_params_RA = env_paramss
+    (env_params_HJPPO, env_params_HJPPO_avoid, env_params_CPPO,
+        env_params_RA,
+        env_params_PPOLAG, env_params_PPO, env_params_RCPPO, env_params_RESPO,
+        env_params_MORL, env_params_SPARSE
+    ) = env_paramss
 
     # DEFINE ENV STEP WRAPPERS
     env_step_HJPPO = partial(_env_step_raa_vanilla, env_HJPPO, env_params_HJPPO)
     env_step_HJPPO_d = partial(_env_step_raa_vanilla_deterministic, env_HJPPO, env_params_HJPPO)
     env_step_CPPO= partial(_env_step_cppo_RAA, env_CPPO, env_params_CPPO)
     env_step_RA = partial(_env_step_ra_vanilla, env_RA, env_params_RA)
+    env_step_PPOLAG = partial(_env_step_cppo_RAA, env_PPOLAG, env_params_PPOLAG)
+    env_step_PPO = partial(_env_step_cppo_RAA, env_PPO, env_params_PPO)
+    env_step_RCPPO = partial(_env_step_adapted_raa, env_RCPPO, env_params_RCPPO)
+    env_step_RESPO = partial(_env_step_raa_respo, env_RESPO, env_params_RESPO)
+    env_step_MORL = partial(_env_step_cppo_RAA, env_MORL, env_params_MORL)
+    env_step_SPARSE = partial(_env_step_cppo_RAA, env_SPARSE, env_params_SPARSE)
     tx = optimizer(config)
 
     ########################################## LOAD HJ-PPO #################################################
