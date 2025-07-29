@@ -28,13 +28,13 @@ from rraa_rl.EFPPO.src.rl.utils import tree_index1, tree_index2, optimizer
 
 from rraa_rl.EFPPO.src.rl.MORL_PPO_RR import sparse_replace_rr, morl_replace_rr
 
-def calculate_reachreach(traj_batch, reach_type="both"):
+def calculate_reachreach(traj_batch, reach_type="both", offset=0.0):
     
     # Compute first reaching idx
-    reach_idx_1 = (traj_batch.reach1 < 0).argmax(axis=0) if reach_type in ["both", "1"] else None
-    reach_idx_2 = (traj_batch.reach2 < 0).argmax(axis=0) if reach_type in ["both", "2"] else None
-    reach_idx_1 = jnp.where(jnp.any((traj_batch.reach1 < 0) == 1, axis=0), reach_idx_1, jnp.inf) if reach_type in ["both", "1"] else None
-    reach_idx_2 = jnp.where(jnp.any((traj_batch.reach2 < 0) == 1, axis=0), reach_idx_2, jnp.inf) if reach_type in ["both", "2"] else None
+    reach_idx_1 = (traj_batch.reach1 < 0 + offset).argmax(axis=0) if reach_type in ["both", "1"] else None
+    reach_idx_2 = (traj_batch.reach2 < 0 + offset).argmax(axis=0) if reach_type in ["both", "2"] else None
+    reach_idx_1 = jnp.where(jnp.any((traj_batch.reach1 < 0 + offset) == 1, axis=0), reach_idx_1, jnp.inf) if reach_type in ["both", "1"] else None
+    reach_idx_2 = jnp.where(jnp.any((traj_batch.reach2 < 0 + offset) == 1, axis=0), reach_idx_2, jnp.inf) if reach_type in ["both", "2"] else None
     reach_idx = jnp.maximum(reach_idx_1, reach_idx_2) if reach_type in ["both"] else None
 
     # Compute
@@ -68,18 +68,19 @@ def plot_scores(traj_batches, config):
         traj_batch_SPARSE
     ) = traj_batches
     
-    rr_scores_HJPPO = calculate_reachreach(traj_batch_HJPPO)
-    rr_scores_HJPPO_d = calculate_reachreach(traj_batch_HJPPO_d)
-    rr_scores_CPPOv1 = calculate_reachreach(traj_batch_CPPOv1)
-    rr_scores_CPPOv2 = calculate_reachreach(traj_batch_CPPOv2)
-    rr_scores_CPPOv3 = calculate_reachreach(traj_batch_CPPOv3)
-    rr_scores_dSTL = calculate_reachreach(traj_batch_dSTL)
-    rr_scores_PPOLAG = calculate_reachreach(traj_batch_PPOLAG)
-    rr_scores_PPO = calculate_reachreach(traj_batch_PPO)
-    rr_scores_RCPPO = calculate_reachreach(traj_batch_RCPPO)
-    rr_scores_RESPO = calculate_reachreach(traj_batch_RESPO)
-    rr_scores_MORL = calculate_reachreach(traj_batch_MORL)
-    rr_scores_SPARSE = calculate_reachreach(traj_batch_SPARSE)
+    offset = 0.5
+    rr_scores_HJPPO = calculate_reachreach(traj_batch_HJPPO, offset=offset)
+    rr_scores_HJPPO_d = calculate_reachreach(traj_batch_HJPPO_d, offset=offset)
+    rr_scores_CPPOv1 = calculate_reachreach(traj_batch_CPPOv1, offset=offset)
+    rr_scores_CPPOv2 = calculate_reachreach(traj_batch_CPPOv2, offset=offset)
+    rr_scores_CPPOv3 = calculate_reachreach(traj_batch_CPPOv3, offset=offset)
+    rr_scores_dSTL = calculate_reachreach(traj_batch_dSTL, offset=offset)
+    rr_scores_PPOLAG = calculate_reachreach(traj_batch_PPOLAG, offset=offset)
+    rr_scores_PPO = calculate_reachreach(traj_batch_PPO, offset=offset)
+    rr_scores_RCPPO = calculate_reachreach(traj_batch_RCPPO, offset=offset)
+    rr_scores_RESPO = calculate_reachreach(traj_batch_RESPO, offset=offset)
+    rr_scores_MORL = calculate_reachreach(traj_batch_MORL, offset=offset)
+    rr_scores_SPARSE = calculate_reachreach(traj_batch_SPARSE, offset=offset)
 
     rr_scores_all = [
         ("SPARSE", rr_scores_SPARSE),
@@ -129,7 +130,7 @@ def plot_scores(traj_batches, config):
         std_idxs.append(std_idx)
 
         # Print Score with Fixed width label
-        print(f"{tag:<10} - Success: {reach_perc:.2f}%, Mean Index: {mean_idx:.3f}, Max Value Mean: {-min_val_mean:.3f}")
+        print(f"{tag:<10} - Success: {reach_perc:.2f}%, reach_one_perc: {reach_one_perc:.2f}%, Mean Index: {mean_idx:.3f}, Max Value Mean: {-min_val_mean:.3f}")
 
     # Plotting
     fig, axes = plt.subplots(4, 1, figsize=(14, 4.5), sharex=False)
@@ -939,8 +940,8 @@ if __name__ == "__main__":
         config['TEST_DIR'] = "eval_all_rebuttal"
         config['NAME_TAG'] = "Hopper_RR_072825"
 
-    config["NUM_ENVS"]=10 #1000
-    config["NUM_STEPS"]=10 #500
+    config["NUM_ENVS"]=1000
+    config["NUM_STEPS"]=500
     config["ACTIVATION"]="tanh"
 
     envs_HJPPO = get_env(config)
