@@ -69,41 +69,37 @@ def train(envs, env_paramss, config, rngs, env_test=None):
 
         ##################  Env step: Avoid Env ##################
 
-        init_type = "toinput_goal" # "fullrandom" # "toinput" # "toinput_goal" # "standard"
+        init_type = "toinput_safegoal" # "fullrandom" # "toinput" # "toinput_goal" # "toinput_safegoal" # "standard"
 
         # RESET ENV
         rng_avoid, _rng_avoid = jax.random.split(rng_avoid)
         reset_rng_avoid = jax.random.split(_rng_avoid, config["NUM_ENVS"])
-
-        # if init_type == "toinput":   
-        #     # Select random observations from standard rollout to use for initial avoid state 
-        #     traj_batch_observations = traj_batch.obs #traj_batch.obs # avoid function
-
-        #     untrans_traj_batch_observations = env.untransform_obs(traj_batch_observations)
-
-        #     untrans_traj_batch_observations = jnp.transpose(untrans_traj_batch_observations, axes=(1, 0, 2))
-        #     rng_avoid, _rng_avoid = jax.random.split(rng_avoid)
-            
-        #     # Single random index
-        #     # random_index = jax.random.randint(_rng_avoid, shape=(), minval=0, maxval=untrans_traj_batch_observations.shape[1])
-        #     # untrans_traj_batch_observations = untrans_traj_batch_observations[:, random_index, :]
-
-        #     # Multiple random indices
-        #     random_index = jax.random.randint(_rng_avoid, shape=(untrans_traj_batch_observations.shape[0],), minval=0, maxval=untrans_traj_batch_observations.shape[1])
-        #     untrans_traj_batch_observations = jax.vmap(lambda obs, idx: obs[idx])(untrans_traj_batch_observations, random_index)
-
-        #     obsv_avoid, env_state_avoid = jax.vmap(env_avoid.reset_toinput, in_axes=(0, 0, None))(reset_rng_avoid, untrans_traj_batch_observations, env_params_avoid) 
         
-        if init_type == "toinput" or init_type == "toinput_goal": 
-            # Select random observations from standard rollout to use for initial avoid state 
+        if "toinput" in init_type: 
+            # Select observations from standard rollout to use for initial avoid state 
 
+            # Init to first reached state, if none then random
             if init_type == "toinput_goal":
                 random_index_pre = jax.random.randint(_rng_avoid, shape=(config["NUM_ENVS"],), minval=0, maxval=config["NUM_STEPS"])
                 reach_idx = (traj_batch.reach < 0).argmax(axis=0)
                 random_index = jnp.where(jnp.any((traj_batch.reach < 0), axis=0), reach_idx, random_index_pre)
+
+            # Init to first reached state if avoided, if none then random before crash
+            elif init_type == "toinput_safegoal":
+                avoid_idx_pre = (traj_batch.avoid > 0).argmax(axis=0)
+                avoid_idx = jnp.where(jnp.any((traj_batch.avoid > 0) == 1, axis=0), avoid_idx_pre, config["NUM_STEPS"])
+
+                reach_idx_pre = (traj_batch.reach < 0).argmax(axis=0)
+                reach_idx = jnp.where(jnp.any((traj_batch.reach < 0) == 1, axis=0), reach_idx_pre, config["NUM_STEPS"])
+
+                random_index_precrash = jax.random.randint(_rng_avoid, shape=(config["NUM_ENVS"],), minval=0, maxval=avoid_idx) # sample before crashing
+                random_index = jnp.where(jnp.logical_and(jnp.any((traj_batch.reach < 0) == 1, axis=0), # reached
+                                                         jnp.minimum(reach_idx, avoid_idx) == reach_idx), # reached before crash
+                                                      reach_idx, random_index_precrash)
+
+            # Init to random point along rollout
             else:
                 random_index = jax.random.randint(_rng_avoid, shape=(config["NUM_ENVS"],), minval=0, maxval=config["NUM_STEPS"])
-            # random_index = jax.random.randint(_rng_reach1, shape=(untrans_traj_batch_observations_full.shape[0],), minval=0, maxval=untrans_traj_batch_observations_full.shape[1])
 
             # Multiple random indices
             if "Hopper" in config["EXP_NAME"] or "Cheetah" in config["EXP_NAME"]:
@@ -479,7 +475,7 @@ def train(envs, env_paramss, config, rngs, env_test=None):
                         # 'trajectory_sample_R1':wandb.Image(fig1), 'trajectory_sample_R2':wandb.Image(fig2)
                     }, step=timestep)
             
-            if "Hopper" in config["EXP_NAME"] or "HalfCheetah" in config["EXP_NAME"]:
+            if "F16" not in config["EXP_NAME"]:
                 wandb.log({
                     'trajectory_sample':wandb.Image(fig),
                     'policy_decision_sample':wandb.Image(fig2),
@@ -605,7 +601,7 @@ def train(envs, env_paramss, config, rngs, env_test=None):
 if __name__ == "__main__":
     config = vars(get_args(sys.argv[1:]))
 
-    debug = True
+    debug = False
     if debug:
         # config["EXP_NAME"]="F16ReachAlwaysAvoid"
         # config["DIR"]="F16_raa_PE500_halfsamp2_TO80m80s_tjreset_g999"
@@ -712,7 +708,7 @@ if __name__ == "__main__":
     config_test["TEST_MODE"] = True
     env_test = get_env(config_test)
 
-    config["USE_WANDB"] = False # False for debugging 
+    config["USE_WANDB"] = True # False for debugging 
     if config["USE_WANDB"]:
         wandb.init(project='EC-EFPPO-{}'.format(config["EXP_NAME"]), name=config["NAME"], config=config,
                    entity='braat_brrt')
