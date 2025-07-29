@@ -1,6 +1,6 @@
 python ./rraa_rl/EFPPO/src/rl/RAA-PPO.py \
 --EXP_NAME=HumanoidReachAlwaysAvoid \
---DIR=humanoid_raa_unhlt_ar2_stdreset_rmagfix \
+--DIR=humanoid_raa_unhlt_ar2_stdreset_rmagfix_avoidlowtorso_customhlty \
 --LR=3e-4 \
 --NUM_ENVS=128 \
 --NUM_STEPS=400 \
@@ -20,4 +20,4 @@ python ./rraa_rl/EFPPO/src/rl/RAA-PPO.py \
 --CUDA_USE=0 \
 --ANNEAL_LR \
 --ANNEAL_ENT \
---NAME=humanoid_raa_unhlt_ar2_stdreset_rmagfix
+--NAME=humanoid_raa_unhlt_ar2_stdreset_rmagfix_avoidlowtorso_customhlty

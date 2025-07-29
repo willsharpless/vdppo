@@ -10,11 +10,14 @@ from copy import deepcopy
 
 from jax.numpy import sin, cos
 from jax.scipy.spatial.transform import Rotation as R
+from jax import lax
 
 HUMANOID_RAA_TARGET = [2., 0., 0.] #z-pos unused
 HUMANOID_RAA_TARGET_RADIUS = 0.25 
 HUMANOID_RAA_BOX_RADIUS = 3. 
 HUMANOID_RAA_FLOOR_HEIGHT = 0.1 
+HUMANOID_TORSO_MIN_Z = 1.
+HUMANOID_TORSO_MAX_Z = 2.
 
 @struct.dataclass
 class EnvStateRA:
@@ -36,7 +39,7 @@ class HumanoidReachAlwaysAvoidTemplate:
     def __init__(self, backend="positional"):
         env = HumanoidRandom(backend=backend, terminate_when_unhealthy=False,
                            exclude_current_positions_from_observation=False)
-        env = EpisodeWrapper(env, episode_length=1000, action_repeat=2) # FIXME: do we want 2 action repeats (like hopper)?
+        env = EpisodeWrapper(env, episode_length=400, action_repeat=2) # FIXME: do we want 2 action repeats (like hopper)?
         env = AutoResetWrapper(env)
         self._env = env
         self.action_size = env.action_size
@@ -104,6 +107,9 @@ class HumanoidReachAlwaysAvoidTemplate:
             avoid = -(pos[..., 2] - HUMANOID_RAA_FLOOR_HEIGHT)
             floor_avoid_value = jnp.maximum(floor_avoid_value, avoid)
 
+        ## LOW TORSO AVOIDANCE
+        torso_avoid_value = -(poses["torso"][..., 2] - HUMANOID_TORSO_MIN_Z)
+
         ## WALL AVOIDANCE
         wall_avoid_value = -jnp.inf
         for key in poses.keys():
@@ -111,7 +117,7 @@ class HumanoidReachAlwaysAvoidTemplate:
             avoid = jnp.maximum(pos[..., 0], pos[..., 1]) - HUMANOID_RAA_BOX_RADIUS
             wall_avoid_value = jnp.maximum(wall_avoid_value, avoid)
 
-        avoid_value = jnp.maximum(floor_avoid_value, wall_avoid_value)    
+        avoid_value = jnp.maximum(jnp.maximum(floor_avoid_value, wall_avoid_value), torso_avoid_value)
 
         return avoid_value
 
@@ -144,7 +150,14 @@ class HumanoidReachAvoid(HumanoidReachAlwaysAvoidTemplate):
     @partial(jax.jit, static_argnums=(0,))
     def step(self, key, state, action, params=None):
         u = jnp.tanh(action)
-        next_state = self._env.step(state.state, u)
+        next_state_raw = self._env.step(state.state, u)
+
+        ## Freeze if (current) state unhealthy
+        unhealthy = jnp.logical_or(
+            state.state.pipeline_state.x.pos[0, 2] < HUMANOID_TORSO_MIN_Z,
+            state.state.pipeline_state.x.pos[0, 2] > HUMANOID_TORSO_MAX_Z
+        )
+        next_state = lax.cond(unhealthy, lambda _: state.state, lambda _: next_state_raw, operand=None,) 
         poses = self.calculate_position(next_state)
         avoid_value = self.is_avoid(poses)
         reach_value = self.is_reach(poses)
@@ -172,7 +185,14 @@ class HumanoidAvoidOnly(HumanoidReachAlwaysAvoidTemplate):
     @partial(jax.jit, static_argnums=(0,))
     def step(self, key, state, action, params=None):
         u = jnp.tanh(action)
-        next_state = self._env.step(state.state, u)
+        next_state_raw = self._env.step(state.state, u)
+
+        ## Freeze if (current) state unhealthy
+        unhealthy = jnp.logical_or(
+            state.state.pipeline_state.x.pos[0, 2] < HUMANOID_TORSO_MIN_Z,
+            state.state.pipeline_state.x.pos[0, 2] > HUMANOID_TORSO_MAX_Z
+        )
+        next_state = lax.cond(unhealthy, lambda _: state.state, lambda _: next_state_raw, operand=None,) 
         poses = self.calculate_position(next_state)
         avoid_value = self.is_avoid(poses)
         reach_value = self.is_reach(poses)
