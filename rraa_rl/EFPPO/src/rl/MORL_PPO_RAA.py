@@ -9,6 +9,7 @@ import os
 import pdb
 import sys
 import time
+import types
 
 import wandb
 sys.path.append("/home/mepear_gc")
@@ -44,6 +45,137 @@ def calculate_reward_cost(traj_batch):
     return jnp.array(reward), jnp.array(cost), cnt
 
 
+######## JIT REPLACEMENT UTILS ########
+import numpy as np
+from gymnax.environments import spaces
+
+from rraa_rl.EFPPO.src.rl.jax_jit_replacement_utils import patch_env_methods
+
+def morl_replace_raa(env): 
+    # MORL Environment Baseline
+    print("\n\nUsing MORL Replacement for HopperReachAlwaysAvoidBaseline\n\n")
+
+
+    # @partial(jax.jit, static_argnums=(0,))
+    def compute_reward(self, state, action, avoid_value, reach_value, params=None): 
+        ######## MORL Modification: Reward and Cost #########
+        # RAA: 0.5 r - 0.5 a before first reach, -1 * a after first reach 
+        reward = jnp.zeros_like(reach_value)
+
+        # NOTE: Negative reward is good for CPPO
+        # Inside reach set: -ve 
+        # Inside avoid set: +ve
+        
+        # Has Reached Checcks: 
+        reward = jnp.where(state.min_reach > 0, params.gamma * (0.5 * reach_value + 0.5 * avoid_value) - (0.5 * state.reach + 0.5 * state.avoid), reward)
+        # Avoid Checks: After reach only avoid
+        reward = jnp.where(state.min_reach <= 0, params.gamma * avoid_value - state.avoid, reward)
+        
+        ######### MORL Modification: Reward and Cost #########
+        return reward 
+    
+    # @partial(jax.jit, static_argnums=(0,))
+    def compute_cost(self, state, action, avoid_value, reach_value, params=None):
+        # NOTE: not used in MORL - but required for base CPPO implementation - so return 0
+        return jnp.zeros_like(avoid_value)
+    
+    # @partial(jax.jit, static_argnums=(0,))
+    def compute_observation(self, state, last_state=None): 
+        # Compute observation for constrained MDP
+        return jnp.concatenate([state.state.obs, jnp.array([state.min_reach <= 0])]) # Boolean has reached
+    
+    def observation_space(self, params):
+        # print("In MORL Environment: Observation Space")
+        obs_size = self._env.observation_size
+        if type(obs_size) is tuple:
+            obs_size = obs_size[0]
+
+        # The augmented observations are boolean values 
+        low = np.concatenate([
+            -np.inf * np.ones(obs_size),
+            np.zeros(1)
+        ])
+        high = np.concatenate([
+            np.inf * np.ones(obs_size),
+            np.ones(1)
+        ])
+
+        return spaces.Box(
+            low=low,
+            high=high,
+            shape=(obs_size + 1),
+        )
+    
+    patch_env_methods(env._env, {
+        "compute_cost": compute_cost,
+        "compute_reward": compute_reward,
+        "compute_observation": compute_observation,
+    })
+    env._env.observation_space = types.MethodType(observation_space, env._env)
+    return env 
+
+def sparse_replace_raa(env): \
+    # Sparse Environment Baseline
+    print("\n\nUsing Sparse Replacement for HopperReachAlwaysAvoidBaseline\n\n")
+
+    # @partial(jax.jit, static_argnums=(0,))
+    def compute_reward(self, state, action, avoid_value, reach_value, params=None):
+        # jax.debug.print("In Sparse Environment: compute reward")
+        ######### MORL Modification: Reward and Cost #########
+        # RAA: 1 on first reach (for either goal), -1 if enter avoid, 0 otherwise
+        reward = jnp.zeros_like(reach_value)
+        
+        reward = jnp.where(jnp.logical_and(reach_value <= 0, jnp.logical_not(state.min_reach <= 0)), 1.0, reward)
+        reward = jnp.where(avoid_value > 0, -1.0, reward) # -1 if enter avoid
+
+        reward = -reward # TODO: NS: VERIFY: Negative reward good 
+        ######### MORL Modification: Reward and Cost #########
+        return reward 
+    
+    # @partial(jax.jit, static_argnums=(0,))
+    def compute_cost(self, state, action, avoid_value, reach_value, params=None):
+        # jax.debug.print("In Sparse Environment: compute cost")
+        # NOTE: not used in MORL - but required for base CPPO implementation - so return 0
+        return jnp.zeros_like(avoid_value)
+    
+    # @partial(jax.jit, static_argnums=(0,))
+    def compute_observation(self, state, last_state=None): 
+        # jax.debug.print("In Sparse Environment: compute observation")
+        # Compute observation for constrained MDP
+        return jnp.concatenate([state.state.obs, jnp.array([state.min_reach <= 0])]) # Boolean has reached
+    
+    def observation_space(self, params):
+        # print("In Sparse Environment: Observation Space")
+        obs_size = self._env.observation_size
+        if type(obs_size) is tuple:
+            obs_size = obs_size[0]
+
+        # The augmented observations are boolean values 
+        low = np.concatenate([
+            -np.inf * np.ones(obs_size),
+            np.zeros(1)
+        ])
+        high = np.concatenate([
+            np.inf * np.ones(obs_size),
+            np.ones(1)
+        ])
+
+        return spaces.Box(
+            low=low,
+            high=high,
+            shape=(obs_size + 1 ),
+        )
+    
+    patch_env_methods(env._env, {
+        "compute_cost": compute_cost,
+        "compute_reward": compute_reward,
+        "compute_observation": compute_observation,
+    })
+    env._env.observation_space = types.MethodType(observation_space, env._env)
+    return env 
+    
+
+######## JIT REPLACEMENT UTILS ########
 
 class TrainState(train_state.TrainState):
     lambda_coef: Any
@@ -272,96 +404,15 @@ if __name__ == "__main__":
     os.environ["CUDA_VISIBLE_DEVICES"] = config['CUDA_USE']
     env = get_env(config)
 
-    from gymnax.environments import spaces
-    import numpy as np 
+    ########### MORL Changes ###########
+    assert(config["EXP_NAME"] in ["HopperReachAlwaysAvoidBaseline_MORL", "HopperReachAlwaysAvoidBaseline_Sparse"])
 
-    if "Sparse" in config["EXP_NAME"]: 
-        @partial(jax.jit, static_argnums=(0,))
-        def compute_reward(self, state, action, avoid_value, reach_value, params=None):
-            ######### MORL Modification: Reward and Cost #########
-            # RAA: 1 on first reach (for either goal), -1 if enter avoid, 0 otherwise
-            reward = jnp.zeros_like(reach_value)
-            
-            reward = jnp.where(jnp.logical_and(reach_value <= 0, jnp.logical_not(state.min_reach <= 0)), 1.0, reward)
-            reward = jnp.where(avoid_value > 0, -1.0, reward) # -1 if enter avoid
-            ######### MORL Modification: Reward and Cost #########
-            return reward 
-        
-        @partial(jax.jit, static_argnums=(0,))
-        def compute_cost(self, state, action, avoid_value, reach_value, params=None):
-            # NOTE: not used in MORL - but required for base CPPO implementation - so return 0
-            return jnp.zeros_like(avoid_value)
-        
-        @partial(jax.jit, static_argnums=(0,))
-        def compute_observation(self, state, last_state=None): 
-            # Compute observation for constrained MDP
-            return jnp.concatenate([state.state.obs, jnp.array([state.min_reach <= 0])]) # Boolean has reached
-        
-        def observation_space(self, params):
-            obs_size = self._env.observation_size
-            if type(obs_size) is tuple:
-                obs_size = obs_size[0]
+    if config["EXP_NAME"] == "HopperReachAlwaysAvoidBaseline_MORL":
+        env = morl_replace_raa(env)
+    elif config["EXP_NAME"] == "HopperReachAlwaysAvoidBaseline_Sparse":
+        env = sparse_replace_raa(env)
 
-            # The augmented observations are boolean values 
-            low = np.concatenate([
-                -np.inf * np.ones(obs_size),
-                np.zeros(1)
-            ])
-            high = np.concatenate([
-                np.inf * np.ones(obs_size),
-                np.ones(1)
-            ])
-
-            return spaces.Box(
-                low=low,
-                high=high,
-                shape=(obs_size + 1 ),
-            )
-        
-    elif "MORL" in config["EXP_NAME"]:
-        # MORL Environment Baseline
-        @partial(jax.jit, static_argnums=(0,))
-        def compute_reward(self, state, action, avoid_value, reach_value, params=None): 
-            ######## MORL Modification: Reward and Cost #########
-            # RAA: 0.5 r - 0.5 a before first reach, -1 * a after first reach 
-            reward = jnp.zeros_like(reach_value)
-            # Has Reached Checcks: 
-            reward = jnp.where(state.min_reach <= 0, params.gamma * (0.5 * reach_value - 0.5 * avoid_value) - (0.5 * state.reach - 0.5 * state.avoid), reward)
-            # Avoid Checks: 
-            reward = jnp.where(state.min_reach > 0, params.gamma * avoid_value - state.avoid, reward)
-            ######### MORL Modification: Reward and Cost #########
-            return reward 
-        
-        @partial(jax.jit, static_argnums=(0,))
-        def compute_cost(self, state, action, avoid_value, reach_value, params=None):
-            # NOTE: not used in MORL - but required for base CPPO implementation - so return 0
-            return jnp.zeros_like(avoid_value)
-        
-        @partial(jax.jit, static_argnums=(0,))
-        def compute_observation(self, state, last_state=None): 
-            # Compute observation for constrained MDP
-            return jnp.concatenate([state.state.obs, jnp.array([state.min_reach <= 0])]) # Boolean has reached
-        
-        def observation_space(self, params):
-            obs_size = self._env.observation_size
-            if type(obs_size) is tuple:
-                obs_size = obs_size[0]
-
-            # The augmented observations are boolean values 
-            low = np.concatenate([
-                -np.inf * np.ones(obs_size),
-                np.zeros(1)
-            ])
-            high = np.concatenate([
-                np.inf * np.ones(obs_size),
-                np.ones(1)
-            ])
-
-            return spaces.Box(
-                low=low,
-                high=high,
-                shape=(obs_size + 1),
-            )
+    ########### MORL Changes ###########
 
     env_params = env.default_params
     print(env_params)

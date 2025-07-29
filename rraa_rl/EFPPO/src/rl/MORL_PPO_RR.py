@@ -55,6 +55,132 @@ def calculate_reward_cost(traj_batch):
     return jnp.array(reward), jnp.array(cost), cnt1, cnt2, cnt3
 ####### RRAA Change ######
 
+######## JIT REPLACEMENT UTILS ########
+import types 
+import numpy as np
+from gymnax.environments import spaces
+
+from rraa_rl.EFPPO.src.rl.jax_jit_replacement_utils import patch_env_methods
+
+def morl_replace_rr(env): 
+    # MORL Environment Baseline
+    print("\n\nUsing MORL Replacement for HopperReachReachBaseline\n\n")
+
+    # @partial(jax.jit, static_argnums=(0,))  
+    def compute_cost(self, curr_min_reach1_value, curr_min_reach2_value, prev_min_reach1_value=None, prev_min_reach2_value=None,    
+                        reach1_value=None, reach2_value=None):
+        # NOTE: not used in MORL - but required for base CPPO implementation - so return 0
+        return jnp.zeros_like(reach2_value)
+    
+    # @partial(jax.jit, static_argnums=(0,))
+    def compute_reward(self, state, last_state, params): 
+        # Before first reach reward = params.gamma * (0.5 * state.reach1 + 0.5 * state.reach2) - (0.5 * last_state.reach1 + 0.5 * last_state.reach2) 
+        # After first reach reward = params.gamma * state.reach1 - last_state.reach1 (or reach 2 depending on which one was reached first)
+
+        reward = jnp.zeros_like(state.reach1)
+        # Has Reached Checks:
+        reward = jnp.where(state.has_reached_1, params.gamma * state.reach2 - last_state.reach2, reward)
+        reward = jnp.where(state.has_reached_2, params.gamma * state.reach1 - last_state.reach1, reward)
+
+        # Before First Reach Checks: 
+        reward = jnp.where(jnp.logical_not(jnp.logical_and(state.has_reached_1, state.has_reached_2)), 
+                        params.gamma * (0.5 * state.reach1 + 0.5 * state.reach2) - (0.5 * last_state.reach1 + 0.5 * last_state.reach2), 
+                        reward)
+        return reward 
+
+    # @partial(jax.jit, static_argnums=(0,))
+    def compute_observation(self, state):
+        # Compute observation for constrained MDP 
+        return jnp.concatenate([state.state.obs, jnp.array([state.has_reached_1, state.has_reached_2])])
+
+    def observation_space(self, params):
+        obs_size = self._env.observation_size
+        if type(obs_size) is tuple:
+            obs_size = obs_size[0]
+
+        # The augmented observations are boolean values 
+        low = np.concatenate([
+            -np.inf * np.ones(obs_size),
+            np.zeros(2)
+        ])
+        high = np.concatenate([
+            np.inf * np.ones(obs_size),
+            np.ones(2)
+        ])
+
+        return spaces.Box(
+            low=low,
+            high=high,
+            shape=(obs_size + 2),
+        )
+    
+    patch_env_methods(env._env, {
+        "compute_cost": compute_cost,
+        "compute_reward": compute_reward,
+        "compute_observation": compute_observation,
+    })
+    env._env.observation_space = types.MethodType(observation_space, env._env)
+    return env 
+
+def sparse_replace_rr(env): 
+    # Sparse Environment Baseline 
+    print("\n\nUsing Sparse Replacement for HopperReachReachBaseline\n\n")
+
+    # @partial(jax.jit, static_argnums=(0,))  
+    def compute_cost(self, curr_min_reach1_value, curr_min_reach2_value, prev_min_reach1_value=None, prev_min_reach2_value=None,    
+                        reach1_value=None, reach2_value=None):
+        # NOTE: not used in MORL - but required for base CPPO implementation - so return 0
+        return jnp.zeros_like(reach2_value)
+    
+    # @partial(jax.jit, static_argnums=(0,))
+    def compute_reward(self, state, last_state, params): 
+        # reward: 1 on first reach (for either goal), 0 otherwise
+
+        reward = jnp.zeros_like(state.reach1)
+        
+        reward = jnp.where(jnp.logical_and(state.reach1 <= 0, jnp.logical_not(last_state.has_reached_1)), 1.0, reward)
+        reward = jnp.where(jnp.logical_and(state.reach2 <= 0, jnp.logical_not(last_state.has_reached_2)), 1.0, reward)
+
+        reward = -reward # NOTE: -ve reward is good
+
+        return reward 
+
+    # @partial(jax.jit, static_argnums=(0,))
+    def compute_observation(self, state):
+        # Compute observation for constrained MDP 
+        return jnp.concatenate([state.state.obs, jnp.array([state.has_reached_1, state.has_reached_2])])
+
+    def observation_space(self, params):
+        obs_size = self._env.observation_size
+        if type(obs_size) is tuple:
+            obs_size = obs_size[0]
+
+        # The augmented observations are boolean values 
+        low = np.concatenate([
+            -np.inf * np.ones(obs_size),
+            np.zeros(2)
+        ])
+        high = np.concatenate([
+            np.inf * np.ones(obs_size),
+            np.ones(2)
+        ])
+
+        return spaces.Box(
+            low=low,
+            high=high,
+            shape=(obs_size + 2 ),
+        )
+
+    patch_env_methods(env._env, {
+        "compute_cost": compute_cost,
+        "compute_reward": compute_reward,
+        "compute_observation": compute_observation,
+    })
+    env._env.observation_space = types.MethodType(observation_space, env._env)
+    return env 
+    
+
+######## JIT REPLACEMENT UTILS ########
 
 class TrainState(train_state.TrainState):
     lambda_coef: Any
@@ -330,112 +456,14 @@ if __name__ == "__main__":
     env = get_env(config)
 
     ########### MORL Changes ###########
-    import numpy as np 
-    from gymnax.environments import spaces
 
     assert(config["EXP_NAME"] in ["HopperReachReachBaseline_MORL", "HopperReachReachBaseline_Sparse"])
-    
-    if "Sparse" in config["EXP_NAME"]: 
-        # Sparse Environment Baseline 
-        @partial(jax.jit, static_argnums=(0,))  
-        def compute_cost(self, curr_min_reach1_value, curr_min_reach2_value, prev_min_reach1_value=None, prev_min_reach2_value=None,    
-                            reach1_value=None, reach2_value=None):
-            # NOTE: not used in MORL - but required for base CPPO implementation - so return 0
-            return jnp.zeros_like(reach2_value)
+
+    if config["EXP_NAME"] == "HopperReachReachBaseline_MORL":
+        env = morl_replace_rr(env)
+    elif config["EXP_NAME"] == "HopperReachReachBaseline_Sparse":
+        env = sparse_replace_rr(env)
         
-        @partial(jax.jit, static_argnums=(0,))
-        def compute_reward(self, state, last_state, params): 
-            # reward: 1 on first reach (for either goal), 0 otherwise
-
-            reward = jnp.zeros_like(state.reach1)
-            
-            reward = jnp.where(jnp.logical_and(state.reach1 <= 0, jnp.logical_not(last_state.has_reached_1)), 1.0, reward)
-            reward = jnp.where(jnp.logical_and(state.reach2 <= 0, jnp.logical_not(last_state.has_reached_2)), 1.0, reward)
-
-            return reward 
-
-        @partial(jax.jit, static_argnums=(0,))
-        def compute_observation(self, state):
-            # Compute observation for constrained MDP 
-            return jnp.concatenate([state.state.obs, jnp.array([state.has_reached_1, state.has_reached_2])])
-
-        def observation_space(self, params):
-            obs_size = self._env.observation_size
-            if type(obs_size) is tuple:
-                obs_size = obs_size[0]
-
-            # The augmented observations are boolean values 
-            low = np.concatenate([
-                -np.inf * np.ones(obs_size),
-                np.zeros(2)
-            ])
-            high = np.concatenate([
-                np.inf * np.ones(obs_size),
-                np.ones(2)
-            ])
-
-            return spaces.Box(
-                low=low,
-                high=high,
-                shape=(obs_size + 2 ),
-            )
-        
-    elif "MORL" in config["EXP_NAME"]:
-        # MORL Environment Baseline
-        @partial(jax.jit, static_argnums=(0,))  
-        def compute_cost(self, curr_min_reach1_value, curr_min_reach2_value, prev_min_reach1_value=None, prev_min_reach2_value=None,    
-                            reach1_value=None, reach2_value=None):
-            # NOTE: not used in MORL - but required for base CPPO implementation - so return 0
-            return jnp.zeros_like(reach2_value)
-        
-        @partial(jax.jit, static_argnums=(0,))
-        def compute_reward(self, state, last_state, params): 
-            # Before first reach reward = params.gamma * (0.5 * state.reach1 + 0.5 * state.reach2) - (0.5 * last_state.reach1 + 0.5 * last_state.reach2) 
-            # After first reach reward = params.gamma * state.reach1 - last_state.reach1 (or reach 2 depending on which one was reached first)
-
-            reward = jnp.zeros_like(state.reach1)
-            # Has Reached Checks:
-            reward = jnp.where(state.has_reached_1, params.gamma * state.reach2 - last_state.reach2, reward)
-            reward = jnp.where(state.has_reached_2, params.gamma * state.reach1 - last_state.reach1, reward)
-
-            # Before First Reach Checks: 
-            reward = jnp.where(jnp.logical_not(jnp.logical_and(state.has_reached_1, state.has_reached_2)), 
-                            params.gamma * (0.5 * state.reach1 + 0.5 * state.reach2) - (0.5 * last_state.reach1 + 0.5 * last_state.reach2), 
-                            reward)
-            return reward 
-
-        @partial(jax.jit, static_argnums=(0,))
-        def compute_observation(self, state):
-            # Compute observation for constrained MDP 
-            return jnp.concatenate([state.state.obs, jnp.array([state.has_reached_1, state.has_reached_2])])
-
-        def observation_space(self, params):
-            obs_size = self._env.observation_size
-            if type(obs_size) is tuple:
-                obs_size = obs_size[0]
-
-            # The augmented observations are boolean values 
-            low = np.concatenate([
-                -np.inf * np.ones(obs_size),
-                np.zeros(2)
-            ])
-            high = np.concatenate([
-                np.inf * np.ones(obs_size),
-                np.ones(2)
-            ])
-
-            return spaces.Box(
-                low=low,
-                high=high,
-                shape=(obs_size + 2),
-            )
-        
-    # Change the environment functions for experiment
-    import types
-    env.compute_cost = types.MethodType(compute_cost, env)
-    env.compute_reward = types.MethodType(compute_reward, env)
-    env.compute_observation = types.MethodType(compute_observation, env)
-    env.observation_space = types.MethodType(observation_space, env)
     ########### MORL Changes ###########
 
 

@@ -1,6 +1,6 @@
 python ./rraa_rl/EFPPO/src/rl/RR-PPO.py \
 --EXP_NAME=HumanoidReachReach \
---DIR=humanoid_rr_hihand_ar2 \
+--DIR=humanoid_rr_hihand_ar2_customhlthy \
 --LR=3e-4 \
 --NUM_ENVS=128 \
 --NUM_STEPS=400 \
@@ -20,4 +20,4 @@ python ./rraa_rl/EFPPO/src/rl/RR-PPO.py \
 --CUDA_USE=0 \
 --ANNEAL_LR \
 --ANNEAL_ENT \
---NAME=humanoid_rr_hihand_ar2
+--NAME=humanoid_rr_hihand_ar2_customhlthy
