@@ -69,7 +69,7 @@ def train(envs, env_paramss, config, rngs, env_test=None):
 
         ##################  Env step: Avoid Env ##################
 
-        init_type = "toinput_safegoal" # "fullrandom" # "toinput" # "toinput_goal" # "toinput_safegoal" # "standard"
+        init_type = "standard" # "fullrandom" # "toinput" # "toinput_goal" # "toinput_safegoal" # "standard"
 
         # RESET ENV
         rng_avoid, _rng_avoid = jax.random.split(rng_avoid)
@@ -720,7 +720,7 @@ if __name__ == "__main__":
 
     if 'VIDEO_FREQ' not in config.keys():
         if 'Humanoid' in config['EXP_NAME']:
-            config['VIDEO_FREQ'] = 200
+            config['VIDEO_FREQ'] = 100
         else:
             config['VIDEO_FREQ'] = 25
 

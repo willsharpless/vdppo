@@ -90,7 +90,7 @@ class HumanoidReachAlwaysAvoidTemplate:
         reach = jnp.sqrt((target_pos[..., 0] - target_center[0]) ** 2 + \
                          (target_pos[..., 1] - target_center[1]) ** 2) - radius
         value = jnp.where(reach < 0., -2.5, reach)
-        return value * 100.0
+        return value
     
     @partial(jax.jit, static_argnums=(0,))
     def is_avoid(self, poses):
