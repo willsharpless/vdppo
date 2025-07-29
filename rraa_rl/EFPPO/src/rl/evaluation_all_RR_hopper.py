@@ -1045,7 +1045,7 @@ if __name__ == "__main__":
     envs = (
         env_HJPPO, env_HJPPO_1, env_HJPPO_2, 
         env_CPPO_v1, env_CPPO_v2, env_CPPO_v3, env_dSTL, env_dSTL_1, env_dSTL_2,
-        env_PPOLAG, env_PPO, env_RCPPO, env_RESPO, env_MORL, env_MORL
+        env_PPOLAG, env_PPO, env_RCPPO, env_RESPO, env_MORL, env_SPARSE
     )
     env_paramss = (
         env_HJPPO.default_params, env_HJPPO_1.default_params, env_HJPPO_2.default_params,

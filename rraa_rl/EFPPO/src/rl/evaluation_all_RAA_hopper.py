@@ -24,6 +24,8 @@ from rraa_rl.EFPPO.src.rl.EFPPO_utils import _env_step_raa_vanilla, _env_step_ra
 from rraa_rl.EFPPO.src.rl.root_finding import Bisection
 from rraa_rl.EFPPO.src.rl.utils import tree_index1, tree_index2, optimizer
 
+from rraa_rl.EFPPO.src.rl.MORL_PPO_RAA import sparse_replace_raa, morl_replace_raa
+
 def calculate_reachavoid(traj_batch):
     reach_idx = (traj_batch.reach < 0).argmax(axis=0)
     crash_idx = (traj_batch.avoid > 0).argmax(axis=0)
@@ -327,7 +329,7 @@ def test(envs, env_paramss, config, rngs, saving_traj=False):
         # lambda_coef=0.,
     )
 
-    ########################################## LOAD DECOMPOSED STL #################################################
+    ########################################## LOAD DECOMPOSED RA #################################################
 
     raw_restored_RA = checkpoints.restore_checkpoint(ckpt_dir=os.path.abspath('model/{}/{}'.format(
         config["DIR_RA"], config["DIR_MODEL_RA"])), target=None)
@@ -350,6 +352,209 @@ def test(envs, env_paramss, config, rngs, saving_traj=False):
         params=raw_restored_RA['value_network']['params'],
         tx=tx,
     )
+
+    ########################################## LOAD PPOLAG & PPO #################################################
+
+    ## PPOLAG
+    raw_restored_PPOLAG = checkpoints.restore_checkpoint(ckpt_dir=os.path.abspath('{}/{}/{}'.format(
+        config["BASE_MODEL_DIR"], config["DIR_PPOLAG"], config["DIR_MODEL_PPOLAG"])), target=None)
+    
+    path = os.path.abspath('{}/{}/{}'.format(config["BASE_MODEL_DIR"], config["DIR_PPOLAG"], config["DIR_MODEL_PPOLAG"]))
+
+    policy_network_PPOLAG = Policy_Network(
+        env_PPOLAG.action_space(env_params_PPOLAG).shape[0], activation=config["ACTIVATION"]
+    )
+
+    train_state_policy_PPOLAG = TrainState.create(
+        apply_fn=policy_network_PPOLAG.apply,
+        params=raw_restored_PPOLAG['policy_network']['params'],
+        tx=tx,
+        # lambda_coef=0.,
+    )
+
+    value_network_PPOLAG = Value_Network(activation=config["ACTIVATION"])
+    train_state_value_PPOLAG = TrainState.create(
+        apply_fn=value_network_PPOLAG.apply,
+        params=raw_restored_PPOLAG['value_network']['params'],
+        tx=tx,
+        # lambda_coef=0.,
+    )
+
+    value_network_cost_PPOLAG = Value_Network(activation=config["ACTIVATION"])
+    train_state_cost_PPOLAG = TrainState.create(
+        apply_fn=value_network_cost_PPOLAG.apply,
+        params=raw_restored_PPOLAG['cost_network']['params'],
+        tx=tx,
+        # lambda_coef=0.,
+    )
+
+    ## PPO
+    raw_restored_PPO = checkpoints.restore_checkpoint(ckpt_dir=os.path.abspath('{}/{}/{}'.format(
+        config["BASE_MODEL_DIR"], config["DIR_PPO"], config["DIR_MODEL_PPO"])), target=None)
+
+    policy_network_PPO = Policy_Network(
+        env_PPO.action_space(env_params_PPO).shape[0], activation=config["ACTIVATION"]
+    )
+
+    train_state_policy_PPO = TrainState.create(
+        apply_fn=policy_network_PPO.apply,
+        params=raw_restored_PPO['policy_network']['params'],
+        tx=tx,
+        # lambda_coef=0.,
+    )
+
+    value_network_PPO = Value_Network(activation=config["ACTIVATION"])
+    train_state_value_PPO = TrainState.create(
+        apply_fn=value_network_PPO.apply,
+        params=raw_restored_PPO['value_network']['params'],
+        tx=tx,
+        # lambda_coef=0.,
+    )
+
+    value_network_cost_PPO = Value_Network(activation=config["ACTIVATION"])
+    train_state_cost_PPO = TrainState.create(
+        apply_fn=value_network_cost_PPO.apply,
+        params=raw_restored_PPO['cost_network']['params'],
+        tx=tx,
+        # lambda_coef=0.,
+    )
+
+    ########################################## LOAD RCPPO & RESPO #################################################
+
+    ## RCPPO
+    raw_restored_RCPPO = checkpoints.restore_checkpoint(ckpt_dir=os.path.abspath('{}/{}/{}'.format(
+        config["BASE_MODEL_DIR"], config["DIR_RCPPO"], config["DIR_MODEL_RCPPO"])), target=None)
+
+    policy_network_RCPPO = Policy_Network(
+        env_RCPPO.action_space(env_params_RCPPO).shape[0], activation=config["ACTIVATION"]
+    )
+
+    train_state_policy_RCPPO = TrainState.create(
+        apply_fn=policy_network_RCPPO.apply,
+        params=raw_restored_RCPPO['policy_network']['params'],
+        tx=tx,
+        # lambda_coef=0.,
+    )
+
+    value_network_energy_RCPPO = Value_Network(activation=config["ACTIVATION"])
+    train_state_energy_RCPPO = TrainState.create(
+        apply_fn=value_network_energy_RCPPO.apply,
+        params=raw_restored_RCPPO['energy_network']['params'],
+        tx=tx,
+        # lambda_coef=0.,
+    )
+
+    value_network_h_RCPPO = Value_Network(activation=config["ACTIVATION"])
+    train_state_h_RCPPO = TrainState.create(
+        apply_fn=value_network_h_RCPPO.apply,
+        params=raw_restored_RCPPO['reach_network']['params'],
+        tx=tx,
+        # lambda_coef=0.,
+    )
+
+    ## RESPO
+    raw_restored_RESPO = checkpoints.restore_checkpoint(ckpt_dir=os.path.abspath('{}/{}/{}'.format(
+        config["BASE_MODEL_DIR"], config["DIR_RESPO"], config["DIR_MODEL_RESPO"])), target=None)
+
+    policy_network_RESPO = Policy_Network(
+        env_RESPO.action_space(env_params_RESPO).shape[0], activation=config["ACTIVATION"]
+    )
+
+    train_state_policy_RESPO = TrainState.create(
+        apply_fn=policy_network_RESPO.apply,
+        params=raw_restored_RESPO['policy_network']['params'],
+        tx=tx,
+        # lambda_coef=0.,
+    )
+
+    value_network_RESPO = Value_Network(activation=config["ACTIVATION"])
+    train_state_value_RESPO = TrainState.create(
+        apply_fn=value_network_RESPO.apply,
+        params=raw_restored_RESPO['value_network']['params'],
+        tx=tx,
+        # lambda_coef=0.,
+    )
+
+    value_network_prob_RESPO = Value_Network(activation=config["ACTIVATION"])
+    train_state_prob_RESPO = TrainState.create(
+        apply_fn=value_network_prob_RESPO.apply,
+        params=raw_restored_RESPO['prob_network']['params'],
+        tx=tx,
+        # lambda_coef=0.,
+    )
+
+    value_network_cost_RESPO = Value_Network(activation=config["ACTIVATION"])
+    train_state_cost_RESPO = TrainState.create(
+        apply_fn=value_network_cost_RESPO.apply,
+        params=raw_restored_RESPO['cost_network']['params'],
+        tx=tx,
+        # lambda_coef=0.,
+    )
+
+    ########################################## LOAD MORL & SPARSE #################################################
+
+    ## MORL
+    raw_restored_MORL = checkpoints.restore_checkpoint(ckpt_dir=os.path.abspath('{}/{}/{}'.format(
+        config["BASE_MODEL_DIR"], config["DIR_MORL"], config["DIR_MODEL_MORL"])), target=None)
+
+    policy_network_MORL = Policy_Network(
+        env_MORL.action_space(env_params_MORL).shape[0], activation=config["ACTIVATION"]
+    )
+
+    train_state_policy_MORL = TrainState.create(
+        apply_fn=policy_network_MORL.apply,
+        params=raw_restored_MORL['policy_network']['params'],
+        tx=tx,
+        # lambda_coef=0.,
+    )
+
+    value_network_MORL = Value_Network(activation=config["ACTIVATION"])
+    train_state_value_MORL = TrainState.create(
+        apply_fn=value_network_MORL.apply,
+        params=raw_restored_MORL['value_network']['params'],
+        tx=tx,
+        # lambda_coef=0.,
+    )
+
+    value_network_cost_MORL = Value_Network(activation=config["ACTIVATION"])
+    train_state_cost_MORL = TrainState.create(
+        apply_fn=value_network_cost_MORL.apply,
+        params=raw_restored_MORL['cost_network']['params'],
+        tx=tx,
+        # lambda_coef=0.,
+    )
+
+    ## SPARSE
+    raw_restored_SPARSE = checkpoints.restore_checkpoint(ckpt_dir=os.path.abspath('{}/{}/{}'.format(
+        config["BASE_MODEL_DIR"], config["DIR_SPARSE"], config["DIR_MODEL_SPARSE"])), target=None)
+
+    policy_network_SPARSE = Policy_Network(
+        env_SPARSE.action_space(env_params_SPARSE).shape[0], activation=config["ACTIVATION"]
+    )
+
+    train_state_policy_SPARSE = TrainState.create(
+        apply_fn=policy_network_SPARSE.apply,
+        params=raw_restored_SPARSE['policy_network']['params'],
+        tx=tx,
+        # lambda_coef=0.,
+    )
+
+    value_network_SPARSE = Value_Network(activation=config["ACTIVATION"])
+    train_state_value_SPARSE = TrainState.create(
+        apply_fn=value_network_SPARSE.apply,
+        params=raw_restored_SPARSE['value_network']['params'],
+        tx=tx,
+        # lambda_coef=0.,
+    )
+
+    value_network_cost_SPARSE = Value_Network(activation=config["ACTIVATION"])
+    train_state_cost_SPARSE = TrainState.create(
+        apply_fn=value_network_cost_SPARSE.apply,
+        params=raw_restored_SPARSE['cost_network']['params'],
+        tx=tx,
+        # lambda_coef=0.,
+    )
+
 
     ########################################## ROLL OUT MODELS #################################################
 
@@ -422,6 +627,102 @@ def test(envs, env_paramss, config, rngs, saving_traj=False):
 
     if saving_traj: save_traj(traj_batch_RA, config, 'RA', sample_size=5)
 
+        ## MODEL 7 : PPOLAG
+
+    print("Rolling Out PPO-LAG")
+    rng_7, _rng_7 = jax.random.split(rng_7)
+    reset_rng_7 = jax.random.split(_rng_7, config["NUM_ENVS"])
+    obsv_7, env_state_7 = jax.vmap(env_PPOLAG.reset, in_axes=(0, None))(reset_rng_7, env_params_PPOLAG)
+
+    rng_7, _rng_7 = jax.random.split(rng_7)
+    runner_state = (train_state_policy_PPOLAG, train_state_value_PPOLAG, train_state_cost_PPOLAG, env_state_7, obsv_7, _rng_7)
+
+    runner_state, traj_batch_PPOLAG = jax.lax.scan(
+        env_step_PPOLAG, runner_state, None, config["NUM_STEPS"]
+    )
+
+    if saving_traj: save_traj(traj_batch_PPOLAG, config, 'PPOLAG', sample_size=5)
+
+    ## MODEL 8 : PPO
+
+    print("Rolling Out PPO")
+    rng_8, _rng_8 = jax.random.split(rng_8)
+    reset_rng_8 = jax.random.split(_rng_8, config["NUM_ENVS"])
+    obsv_8, env_state_8 = jax.vmap(env_PPO.reset, in_axes=(0, None))(reset_rng_8, env_params_PPO)
+
+    rng_8, _rng_8 = jax.random.split(rng_8)
+    runner_state = (train_state_policy_PPO, train_state_value_PPO, train_state_cost_PPO, env_state_8, obsv_8, _rng_8)
+
+    runner_state, traj_batch_PPO = jax.lax.scan(
+        env_step_PPO, runner_state, None, config["NUM_STEPS"]
+    )
+
+    if saving_traj: save_traj(traj_batch_PPO, config, 'PPO', sample_size=5)
+
+    ## MODEL 8 : RCPPO
+
+    print("Rolling Out RC-PPO")
+    rng_9, _rng_9 = jax.random.split(rng_9)
+    reset_rng_9 = jax.random.split(_rng_9, config["NUM_ENVS"])
+    obsv_9, env_state_9 = jax.vmap(env_RCPPO.reset, in_axes=(0, None))(reset_rng_9, env_params_RCPPO)
+
+    rng_9, _rng_9 = jax.random.split(rng_9)
+    runner_state = (train_state_policy_RCPPO, train_state_energy_RCPPO, train_state_h_RCPPO, env_state_9, obsv_9, _rng_9)
+
+    runner_state, traj_batch_RCPPO = jax.lax.scan(
+        env_step_RCPPO, runner_state, None, config["NUM_STEPS"]
+    )
+
+    if saving_traj: save_traj(traj_batch_RCPPO, config, 'RCPPO', sample_size=5)
+
+    ## MODEL 8 : RESPO
+
+    print("Rolling Out RESPO")
+    rng_10, _rng_10 = jax.random.split(rng_10)
+    reset_rng_10 = jax.random.split(_rng_10, config["NUM_ENVS"])
+    obsv_10, env_state_10 = jax.vmap(env_RESPO.reset, in_axes=(0, None))(reset_rng_10, env_params_RESPO)
+
+    rng_10, _rng_10 = jax.random.split(rng_10)
+    runner_state = (train_state_policy_RESPO, train_state_value_RESPO, train_state_prob_RESPO, train_state_cost_RESPO, env_state_10, obsv_10, _rng_10)
+
+    runner_state, traj_batch_RESPO = jax.lax.scan(
+        env_step_RESPO, runner_state, None, config["NUM_STEPS"]
+    )
+
+    if saving_traj: save_traj(traj_batch_RESPO, config, 'RESPO', sample_size=5)
+
+    ## MODEL 9 : MORL
+
+    print("Rolling Out MORL")
+    rng_11, _rng_11 = jax.random.split(rng_11)
+    reset_rng_11 = jax.random.split(_rng_11, config["NUM_ENVS"])
+    obsv_11, env_state_11 = jax.vmap(env_MORL.reset, in_axes=(0, None))(reset_rng_11, env_params_MORL)
+
+    rng_11, _rng_11 = jax.random.split(rng_11)
+    runner_state = (train_state_policy_MORL, train_state_value_MORL, train_state_cost_MORL, env_state_11, obsv_11, _rng_11)
+
+    runner_state, traj_batch_MORL = jax.lax.scan(
+        env_step_MORL, runner_state, None, config["NUM_STEPS"]
+    )
+
+    if saving_traj: save_traj(traj_batch_MORL, config, 'MORL', sample_size=5)
+
+    ## MODEL 10 : SPARSE
+
+    print("Rolling Out SPARSE")
+    rng_12, _rng_12 = jax.random.split(rng_12)
+    reset_rng_12 = jax.random.split(_rng_12, config["NUM_ENVS"])
+    obsv_12, env_state_12 = jax.vmap(env_SPARSE.reset, in_axes=(0, None))(reset_rng_12, env_params_SPARSE)
+
+    rng_12, _rng_12 = jax.random.split(rng_12)
+    runner_state = (train_state_policy_SPARSE, train_state_value_SPARSE, train_state_cost_SPARSE, env_state_12, obsv_12, _rng_12)
+
+    runner_state, traj_batch_SPARSE = jax.lax.scan(
+        env_step_SPARSE, runner_state, None, config["NUM_STEPS"]
+    )
+
+    if saving_traj: save_traj(traj_batch_SPARSE, config, 'SPARSE', sample_size=5)
+
     return traj_batch_HJPPO, traj_batch_HJPPO_d, traj_batch_CPPO, traj_batch_RA
 
 if __name__ == "__main__":
@@ -441,6 +742,24 @@ if __name__ == "__main__":
 
         config["DIR_RA"]="BASELINE_hopper_reachavoid_final_nikhil" #"stonkens_models/hopper_reachavoid_final"
         config["DIR_MODEL_RA"]="checkpoint_240" #"best_244"
+
+        config["DIR_PPOLAG"]="BASELINE_hopper_raa_ppolag_lam0p01"
+        config["DIR_MODEL_PPOLAG"]="best_207"
+
+        config["DIR_PPO"]="BASELINE_hopper_raa_ppo"
+        config["DIR_MODEL_PPO"]="best_49" # "checkpoint_243"
+
+        config["DIR_RCPPO"]="BASELINE_hopper_raa_rcppo"
+        config["DIR_MODEL_RCPPO"]="best_142" # "checkpoint_243"
+
+        config["DIR_RESPO"]="BASELINE_hopper_raa_respo"
+        config["DIR_MODEL_RESPO"]="checkpoint_105"
+
+        config["DIR_MORL"]="final_hopper_raa_morl"#"BASELINE_hopper_reachreach_morl"
+        config["DIR_MODEL_MORL"]="checkpoint_243"
+
+        config["DIR_SPARSE"]="final_hopper_raa_sparse"#"BASELINE_hopper_reachreach_sparse"
+        config["DIR_MODEL_SPARSE"]="best_18" # "checkpoint_243"
 
         print(os.path.abspath('model/{}/{}'.format(config["DIR_RA"], config["DIR_MODEL_RA"])))
         print(os.path.exists(os.path.abspath('model/{}/{}'.format(config["DIR_RA"], config["DIR_MODEL_RA"]))))
@@ -469,19 +788,91 @@ if __name__ == "__main__":
     config_RA["EXP_NAME"] = "HopperReachAvoid"
     env_RA = get_env(config_RA)
 
+    ## PPO LAG
+    config_PPOLAG = copy.deepcopy(config)
+    config_PPOLAG["EXP_NAME"] = "HopperReachAlwaysAvoid_CPPO"
+    config_PPOLAG["ENV_REWARD_TYPE"] = "accumulated" # reward
+    config_PPOLAG["ENV_COST_FN"] = "sum" # cost_fn
+    config_PPOLAG["ENV_COST_TYPE"] = "accumulated" # cost
+    config_PPOLAG["CPPO_UPDATE_TYPE"] = "mean" # update
+    config_PPOLAG["USE_STL"] = False # stl 
+    env_PPOLAG = get_env(config_PPOLAG)
+
+    ## PPO
+    config_PPO = copy.deepcopy(config)
+    config_PPO["EXP_NAME"] = "HopperReachAlwaysAvoid_CPPO"
+    config_PPO["ENV_REWARD_TYPE"] = "accumulated" # reward
+    config_PPO["ENV_COST_FN"] = "sum" # cost_fn
+    config_PPO["ENV_COST_TYPE"] = "accumulated" # cost
+    config_PPO["CPPO_UPDATE_TYPE"] = "mean" # update
+    config_PPO["USE_STL"] = False # stl 
+    env_PPO = get_env(config_PPO)
+
+    ## RCPPO
+    config_RCPPO = copy.deepcopy(config)
+    config_RCPPO["EXP_NAME"] = "HopperReachAlwaysAvoid_RCPPO"
+    config_RCPPO["ENV_REWARD_TYPE"] = "accumulated" # reward
+    config_RCPPO["ENV_COST_FN"] = "sum" # cost_fn
+    config_RCPPO["ENV_COST_TYPE"] = "accumulated" # cost
+    config_RCPPO["CPPO_UPDATE_TYPE"] = "mean" # update
+    config_RCPPO["USE_STL"] = False # stl 
+    env_RCPPO = get_env(config_RCPPO)
+
+    ## RESPO
+    config_RESPO = copy.deepcopy(config)
+    config_RESPO["EXP_NAME"] = "HopperReachAlwaysAvoid_RESPO" #"HopperReachReach_sum_RESPO"
+    config_RESPO["ENV_REWARD_TYPE"] = "accumulated" # reward
+    config_RESPO["ENV_COST_FN"] = "sum" # cost_fn
+    config_RESPO["ENV_COST_TYPE"] = "accumulated" # cost
+    config_RESPO["CPPO_UPDATE_TYPE"] = "mean" # update
+    config_RESPO["USE_STL"] = False # stl 
+    env_RESPO = get_env(config_RESPO)
+
+    ## MORL
+    config_MORL = copy.deepcopy(config)
+    config_MORL["EXP_NAME"] = "HopperReachAlwaysAvoidBaseline_MORL"
+    config_MORL["ENV_REWARD_TYPE"] = "accumulated" # reward
+    config_MORL["ENV_COST_FN"] = "sum" # cost_fn
+    config_MORL["ENV_COST_TYPE"] = "accumulated" # cost
+    config_MORL["CPPO_UPDATE_TYPE"] = "mean" # update
+    config_MORL["USE_STL"] = False # stl 
+    env_MORL = get_env(config_MORL)
+    env_MORL = morl_replace_raa(env_MORL)
+
+    ## SPARSE
+    config_SPARSE = copy.deepcopy(config)
+    config_SPARSE["EXP_NAME"] = "HopperReachAlwaysAvoidBaseline_Sparse"
+    config_SPARSE["ENV_REWARD_TYPE"] = "accumulated" # reward
+    config_SPARSE["ENV_COST_FN"] = "sum" # cost_fn
+    config_SPARSE["ENV_COST_TYPE"] = "accumulated" # cost
+    config_SPARSE["CPPO_UPDATE_TYPE"] = "mean" # update
+    config_SPARSE["USE_STL"] = False # stl 
+    env_SPARSE = get_env(config_SPARSE)
+    env_SPARSE = sparse_replace_raa(env_SPARSE)
+
     envs = (
         env_HJPPO, env_HJPPO_avoid, 
-        env_CPPO, env_RA
+        env_CPPO, env_RA,
+        env_PPOLAG, env_PPO, env_RCPPO, env_RESPO, env_MORL, env_SPARSE
     )
     env_paramss = (
-        env_HJPPO.default_params, env_HJPPO_avoid.default_params, env_CPPO.default_params, env_RA.default_params 
+        env_HJPPO.default_params, env_HJPPO_avoid.default_params, env_CPPO.default_params, env_RA.default_params,
+        env_PPOLAG.default_params, env_PPO.default_params, env_RCPPO.default_params, env_RESPO.default_params, env_MORL.default_params, env_SPARSE.default_params 
     )
 
     rng_1 = jax.random.PRNGKey(20)
     rng_2 = jax.random.PRNGKey(20)
     rng_3 = jax.random.PRNGKey(20)
     rng_4 = jax.random.PRNGKey(20)
-    rngs = (rng_1, rng_2, rng_3, rng_4)
+    rng_5 = jax.random.PRNGKey(20)
+    rng_6 = jax.random.PRNGKey(20)
+    rng_7 = jax.random.PRNGKey(20)
+    rng_8 = jax.random.PRNGKey(20)
+    rng_9 = jax.random.PRNGKey(20)
+    rng_10 = jax.random.PRNGKey(20)
+    rng_11 = jax.random.PRNGKey(20)
+    rng_12 = jax.random.PRNGKey(20)
+    rngs = (rng_1, rng_2, rng_3, rng_4, rng_5, rng_6, rng_7, rng_8, rng_9, rng_10, rng_11, rng_12)
     # folder = os.path.exists("model/{}/traj".format(config['DIR']))
 
     os.environ["XLA_PYTHON_CLIENT_PREALLOCATE"] = "false"
