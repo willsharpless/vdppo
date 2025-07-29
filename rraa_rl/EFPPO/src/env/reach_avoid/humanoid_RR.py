@@ -14,7 +14,8 @@ from jax.scipy.spatial.transform import Rotation as R
 
 HUMANOID_TARGET_RIGHT, HUMANOID_TARGET_LEFT = [0., -2., 1.], [2., 0., 1.]
 HUMANOID_TARGET_RADIUS = 0.1 
-HUMANOID_TORSO_MIN_Z = 0.75
+HUMANOID_TORSO_MIN_Z = 0.9
+HUMANOID_TORSO_TARGET_Z = 1.1
 HUMANOID_TORSO_MAX_Z = 2.
 
 @struct.dataclass
@@ -97,7 +98,7 @@ class HumanoidReachReachTemplate:
         reach = jnp.sqrt((target_pos[..., 0] - target_center[0]) ** 2 + \
                          (target_pos[..., 1] - target_center[1]) ** 2 + \
                          (target_pos[..., 2] - target_center[2]) ** 2) - radius
-        reach = jnp.maximum(reach, HUMANOID_TORSO_MIN_Z - poses['torso'][..., 2]) # penalize if torso is too low
+        reach = jnp.maximum(reach, HUMANOID_TORSO_TARGET_Z - poses['torso'][..., 2]) # penalize if torso is too low
         value = jnp.where(reach < 0., -2.5, reach)
         value = jnp.where(poses['torso'][..., 2] < HUMANOID_TORSO_MIN_Z, 10., value) # unhealthy (interal catch doesnt work with gae)
         value = jnp.where(poses['torso'][..., 2] > HUMANOID_TORSO_MAX_Z, 10., value) # unhealthy (interal catch doesnt work with gae)
@@ -110,7 +111,7 @@ class HumanoidReachReachTemplate:
         reach = jnp.sqrt((target_pos[..., 0] - target_center[0]) ** 2 + \
                          (target_pos[..., 1] - target_center[1]) ** 2 + \
                          (target_pos[..., 2] - target_center[2]) ** 2) - radius
-        reach = jnp.maximum(reach, HUMANOID_TORSO_MIN_Z - poses['torso'][..., 2]) # penalize if torso is too low
+        reach = jnp.maximum(reach, HUMANOID_TORSO_TARGET_Z - poses['torso'][..., 2]) # penalize if torso is too low
         value = jnp.where(reach < 0., -2.5, reach)
         value = jnp.where(poses['torso'][..., 2] < HUMANOID_TORSO_MIN_Z, 10., value) # unhealthy (interal catch doesnt work with gae)
         value = jnp.where(poses['torso'][..., 2] > HUMANOID_TORSO_MAX_Z, 10., value) # unhealthy (interal catch doesnt work with gae)
