@@ -80,7 +80,7 @@ def morl_replace_raa(env):
     
     if "F16" in str(env._env.__class__):
         # @partial(jax.jit, static_argnums=(0,))
-        def compute_observation(self, state):
+        def compute_observation(self, state, last_state=None):
             # Compute observation for constrained MDP
             return jnp.concatenate([self.get_obs(state), jnp.array([state.min_reach <= 0])]) # Boolean has reached
     else: 
@@ -145,7 +145,7 @@ def sparse_replace_raa(env): \
     
     if "F16" in str(env._env.__class__):
         # @partial(jax.jit, static_argnums=(0,))
-        def compute_observation(self, state):
+        def compute_observation(self, state, last_state=None):
             # Compute observation for constrained MDP
             return jnp.concatenate([self.get_obs(state), jnp.array([state.min_reach <= 0])]) # Boolean has reached
     else: 

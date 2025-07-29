@@ -90,11 +90,11 @@ def morl_replace_rr(env):
 
     if "F16" in str(env._env.__class__):
         # @partial(jax.jit, static_argnums=(0,))
-        def compute_observation(self, state):
+        def compute_observation(self, state, last_state=None):
             # Compute observation for constrained MDP
             return jnp.concatenate([self.get_obs(state), jnp.array([state.has_reached_1, state.has_reached_2])])
     else: # @partial(jax.jit, static_argnums=(0,))
-        def compute_observation(self, state):
+        def compute_observation(self, state, last_state=None):
             # Compute observation for constrained MDP 
             return jnp.concatenate([state.state.obs, jnp.array([state.has_reached_1, state.has_reached_2])])
 
@@ -152,14 +152,14 @@ def sparse_replace_rr(env):
 
     if "F16" in str(env._env.__class__):
         # @partial(jax.jit, static_argnums=(0,))
-        def compute_observation(self, state):
+        def compute_observation(self, state, last_state=None):
             # Compute observation for constrained MDP
             return jnp.concatenate([self.get_obs(state), jnp.array([state.has_reached_1, state.has_reached_2])])
     
     
     else: # @partial(jax.jit, static_argnums=(0,))
-        def compute_observation(self, state):
-            # Compute observation for constrained MDP 
+        def compute_observation(self, state, last_state=None):
+            # Compute observation for constrained MDP
             return jnp.concatenate([state.state.obs, jnp.array([state.has_reached_1, state.has_reached_2])])
 
     def observation_space(self, params):
