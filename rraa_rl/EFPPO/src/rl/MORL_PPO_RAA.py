@@ -67,9 +67,9 @@ def morl_replace_raa(env):
         # Inside avoid set: +ve
         
         # Has Reached Checcks: 
-        reward = jnp.where(state.min_reach <= 0, params.gamma * (0.5 * reach_value + 0.5 * avoid_value) - (0.5 * state.reach + 0.5 * state.avoid), reward)
+        reward = jnp.where(state.min_reach > 0, params.gamma * (0.5 * reach_value + 0.5 * avoid_value) - (0.5 * state.reach + 0.5 * state.avoid), reward)
         # Avoid Checks: After reach only avoid
-        reward = jnp.where(state.min_reach > 0, params.gamma * avoid_value - state.avoid, reward)
+        reward = jnp.where(state.min_reach <= 0, params.gamma * avoid_value - state.avoid, reward)
         
         ######### MORL Modification: Reward and Cost #########
         return reward 
