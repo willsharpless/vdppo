@@ -43,7 +43,7 @@ def calculate_reachreach(traj_batch, reach_type="both"):
     reach_perc = (reach_idx < jnp.inf).sum() / reach_idx.__len__() if reach_type in ["both"] else None
 
     reach_one = jnp.logical_or(reach_idx_1 < jnp.inf, reach_idx_2 < jnp.inf) if reach_type in ["both"] else None
-    reach_one_perc = (reach_one < jnp.inf).sum() / reach_one.__len__() if reach_type in ["both"] else None
+    reach_one_perc = reach_one.sum() / reach_one.__len__() if reach_type in ["both"] else None
 
     reach_percs = (reach_1_perc.item(), reach_2_perc.item(), reach_perc.item())
     reach_idxs = (reach_idx_1, reach_idx_2, reach_idx)
@@ -127,7 +127,6 @@ def plot_scores(traj_batches, config):
 
         mean_idxs.append(mean_idx)
         std_idxs.append(std_idx)
-        std_idxs.append(std_idx)
 
         # Print Score with Fixed width label
         print(f"{tag:<10} - Success: {reach_perc:.2f}%, Mean Index: {mean_idx:.3f}, Max Value Mean: {-min_val_mean:.3f}")
@@ -205,7 +204,7 @@ def plot_scores(traj_batches, config):
     axes[3].spines[['top', 'right', 'left']].set_visible(False)
     axes[3].set_facecolor("#e6ecf2")
     for tick_label in axes[3].get_yticklabels():
-        if tick_label.get_text() == "DO-HJ-PPO":
+        if tick_label.get_text() == "DOHJPPO":
             tick_label.set_fontweight("bold")
             tick_label.set_fontsize(12)
 
