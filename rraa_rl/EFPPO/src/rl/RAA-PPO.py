@@ -69,7 +69,7 @@ def train(envs, env_paramss, config, rngs, env_test=None):
 
         ##################  Env step: Avoid Env ##################
 
-        init_type = "standard" # "fullrandom" # "toinput" # "toinput_goal" # "toinput_safegoal" # "standard"
+        init_type = "toinput_safegoal" # "fullrandom" # "toinput" # "toinput_goal" # "toinput_safegoal" # "standard"
 
         # RESET ENV
         rng_avoid, _rng_avoid = jax.random.split(rng_avoid)
@@ -601,7 +601,7 @@ def train(envs, env_paramss, config, rngs, env_test=None):
 if __name__ == "__main__":
     config = vars(get_args(sys.argv[1:]))
 
-    debug = False
+    debug = True
     if debug:
         # config["EXP_NAME"]="F16ReachAlwaysAvoid"
         # config["DIR"]="F16_raa_PE500_halfsamp2_TO80m80s_tjreset_g999"
@@ -626,35 +626,12 @@ if __name__ == "__main__":
         # config["ANNEAL_ENT"]=True
         # config["NAME"]="F16_raa_PE500_halfsamp2_TO80m80s_tjreset_g999"
 
-        # config["EXP_NAME"]="HalfCheetahReachAlwaysAvoid"
-        # config["DIR"]="halfcheetah_raa_resetgoal_donefix_avoidv9"
-        # config["LR"]=3e-4
-        # config["NUM_ENVS"]=128
-        # config["NUM_STEPS"]=400
-        # config["TOTAL_TIMESTEPS"]=100_000_000
-        # config["STEP_SCAN"]=4
-        # config["UPDATE_EPOCHS"]=10
-        # config["NUM_MINIBATCHES"]=32
-        # config["GAMMA_ENERGY"]=1.0
-        # config["GAMMA_REACH_INIT"]=0.995
-        # config["GAMMA_REACH_FINAL"]=0.9995
-        # config["GAE_LAMBDA"]=0.95
-        # config["CLIP_EPS"]=0.2
-        # config["ENT_COEF"]=0.005
-        # config["VF_COEF"]=2.0
-        # config["MAX_GRAD_NORM"]=0.5
-        # config["ACTIVATION"]="tanh"
-        # config["CUDA_USE"]="0"
-        # config["ANNEAL_LR"]=True,
-        # config["ANNEAL_ENT"]=True
-        # config["NAME"]="halfcheetah_raa_resetgoal_donefix_avoidv9"
-
-        config["EXP_NAME"]="HumanoidReachAlwaysAvoid"
-        config["DIR"]="humanoid_raa_debug"
+        config["EXP_NAME"]="HalfCheetahReachAlwaysAvoid"
+        config["DIR"]="halfcheetah_raa_resetgoalsafe_avoidv9"
         config["LR"]=3e-4
         config["NUM_ENVS"]=128
         config["NUM_STEPS"]=400
-        config["TOTAL_TIMESTEPS"]=500_000_000
+        config["TOTAL_TIMESTEPS"]=100_000_000
         config["STEP_SCAN"]=4
         config["UPDATE_EPOCHS"]=10
         config["NUM_MINIBATCHES"]=32
@@ -670,7 +647,30 @@ if __name__ == "__main__":
         config["CUDA_USE"]="0"
         config["ANNEAL_LR"]=True,
         config["ANNEAL_ENT"]=True
-        config["NAME"]="humanoid_raa_debug"
+        config["NAME"]="halfcheetah_raa_resetgoalsafe_avoidv9"
+
+        # config["EXP_NAME"]="HumanoidReachAlwaysAvoid"
+        # config["DIR"]="humanoid_raa_debug"
+        # config["LR"]=3e-4
+        # config["NUM_ENVS"]=128
+        # config["NUM_STEPS"]=400
+        # config["TOTAL_TIMESTEPS"]=500_000_000
+        # config["STEP_SCAN"]=4
+        # config["UPDATE_EPOCHS"]=10
+        # config["NUM_MINIBATCHES"]=32
+        # config["GAMMA_ENERGY"]=1.0
+        # config["GAMMA_REACH_INIT"]=0.995
+        # config["GAMMA_REACH_FINAL"]=0.9995
+        # config["GAE_LAMBDA"]=0.95
+        # config["CLIP_EPS"]=0.2
+        # config["ENT_COEF"]=0.005
+        # config["VF_COEF"]=2.0
+        # config["MAX_GRAD_NORM"]=0.5
+        # config["ACTIVATION"]="tanh"
+        # config["CUDA_USE"]="0"
+        # config["ANNEAL_LR"]=True,
+        # config["ANNEAL_ENT"]=True
+        # config["NAME"]="humanoid_raa_debug"
         # config["TEST_MODE"]=True # USES DETERMINISTIC MODELS
 
     config["NUM_UPDATES"] = int(
@@ -722,7 +722,7 @@ if __name__ == "__main__":
         if 'Humanoid' in config['EXP_NAME']:
             config['VIDEO_FREQ'] = 100
         else:
-            config['VIDEO_FREQ'] = 25
+            config['VIDEO_FREQ'] = 50
 
     rng_composed = jax.random.PRNGKey(20)
     rng_avoid = jax.random.PRNGKey(20)  # FIXME: Maybe?
