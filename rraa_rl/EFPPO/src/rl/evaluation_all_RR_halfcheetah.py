@@ -68,7 +68,7 @@ def plot_scores(traj_batches, config):
         traj_batch_SPARSE
     ) = traj_batches
     
-    offset = 0.5
+    offset = 0.
     rr_scores_HJPPO = calculate_reachreach(traj_batch_HJPPO, offset=offset)
     rr_scores_HJPPO_d = calculate_reachreach(traj_batch_HJPPO_d, offset=offset)
     rr_scores_CPPOv1 = calculate_reachreach(traj_batch_CPPOv1, offset=offset)
@@ -93,8 +93,8 @@ def plot_scores(traj_batches, config):
         # ("CPPO-v2", rr_scores_CPPOv2),
         # ("CPPO-v1", rr_scores_CPPOv1),
         ("D-STL", rr_scores_dSTL),
-        ("DOHJPPO", rr_scores_HJPPO_d),
-        # ("HJPPO", rr_scores_HJPPO),
+        # ("DOHJPPO", rr_scores_HJPPO_d),
+        ("DOHJPPO", rr_scores_HJPPO),
     ]
 
     # Extract data
@@ -906,8 +906,8 @@ if __name__ == "__main__":
 
         config["BASE_MODEL_DIR"] = "model_rebuttal_results"
 
-        config["DIR_HJPPO"]="BASELINE_halfcheetah_rr_resetgoal_reachv0.2"
-        config["DIR_MODEL_HJPPO"]="best_477"
+        config["DIR_HJPPO"]="BASELINE_halfcheetah_rr_resetgoal_reachv0.1_rerun"
+        config["DIR_MODEL_HJPPO"]="best_699"
 
         config["DIR_CPPOv1"]="BASELINE_halfcheetah_rr_cppo_sum_e150k_kp1"
         config["DIR_MODEL_CPPOv1"]="checkpoint_731"

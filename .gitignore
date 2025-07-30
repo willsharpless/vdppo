@@ -8,6 +8,7 @@
 /rraa_rl/EFPPO/model/hopper_avoid_ceiling/**
 /model/*
 /model_rebuttal_results/*
+/model_rebuttal_results_NIKHIL/*
 
 # Ignore all experiments
 /rraa_rl/exp/**
