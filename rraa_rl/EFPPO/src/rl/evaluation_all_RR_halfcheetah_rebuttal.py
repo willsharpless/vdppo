@@ -941,7 +941,7 @@ if __name__ == "__main__":
         config['NAME_TAG'] = "HalfCheetah_RR_072825"
 
     config["NUM_ENVS"]=1000
-    config["NUM_STEPS"]=500
+    config["NUM_STEPS"]=400
     config["ACTIVATION"]="tanh"
 
     envs_HJPPO = get_env(config)
