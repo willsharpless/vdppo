@@ -127,6 +127,8 @@ def plot_scores(traj_batches, config):
         mean_idxs.append(mean_idx)
         std_idxs.append(std_idx)
 
+        print(f"{tag:<10} - Success: {reach_avoid_perc:.2f}%, Mean Index: {mean_idx:.1f}, RorA: {reach_or_avoid_perc:.2f}%, Max Value Mean: {-min_val_mean:.3f}")
+
     # Plotting
     fig, axes = plt.subplots(4, 1, figsize=(12, 4.5), sharex=False)
     palette = sns.color_palette("deep", n_colors=len(raa_scores_all))[::-1]
@@ -239,7 +241,6 @@ def test(envs, env_paramss, config, rngs, saving_traj=False):
         env_MORL, env_SPARSE
     ) = envs # COMPOSED (RAA) + 2 DECOMPOSED (R1 + R2)
 
-    env_params_HJPPO, env_params_HJPPO_avoid, env_params_CPPO, env_params_RA = env_paramss
     (env_params_HJPPO, env_params_HJPPO_avoid, env_params_CPPO,
         env_params_RA,
         env_params_PPOLAG, env_params_PPO, env_params_RCPPO, env_params_RESPO,
@@ -261,8 +262,8 @@ def test(envs, env_paramss, config, rngs, saving_traj=False):
 
     ########################################## LOAD HJ-PPO #################################################
 
-    raw_restored = checkpoints.restore_checkpoint(ckpt_dir=os.path.abspath('model/{}/{}'.format(
-        config["DIR_HJPPO"], config["DIR_MODEL_HJPPO"])), target=None)
+    raw_restored = checkpoints.restore_checkpoint(ckpt_dir=os.path.abspath('{}/{}/{}'.format(
+        config["BASE_MODEL_DIR"], config["DIR_HJPPO"], config["DIR_MODEL_HJPPO"])), target=None)
 
     ## LOAD POLICY NETWORKS
     policy_network_HJPPO = Policy_Network(
@@ -299,8 +300,8 @@ def test(envs, env_paramss, config, rngs, saving_traj=False):
     ########################################## LOAD CPPO #################################################
 
     ## CPPO
-    raw_restored_CPPO = checkpoints.restore_checkpoint(ckpt_dir=os.path.abspath('model/{}/{}'.format(
-        config["DIR_CPPO"], config["DIR_MODEL_CPPO"])), target=None)
+    raw_restored_CPPO = checkpoints.restore_checkpoint(ckpt_dir=os.path.abspath('{}/{}/{}'.format(
+        config["BASE_MODEL_DIR"], config["DIR_CPPO"], config["DIR_MODEL_CPPO"])), target=None)
 
     policy_network_CPPO = Policy_Network(
         env_CPPO.action_space(env_params_CPPO).shape[0], activation=config["ACTIVATION"]
@@ -331,8 +332,8 @@ def test(envs, env_paramss, config, rngs, saving_traj=False):
 
     ########################################## LOAD DECOMPOSED RA #################################################
 
-    raw_restored_RA = checkpoints.restore_checkpoint(ckpt_dir=os.path.abspath('model/{}/{}'.format(
-        config["DIR_RA"], config["DIR_MODEL_RA"])), target=None)
+    raw_restored_RA = checkpoints.restore_checkpoint(ckpt_dir=os.path.abspath('{}/{}/{}'.format(
+        config["BASE_MODEL_DIR"], config["DIR_RA"], config["DIR_MODEL_RA"])), target=None)
     
     ## LOAD POLICY NETWORKS
     policy_network_RA = MoGPolicy_Network(
@@ -359,8 +360,6 @@ def test(envs, env_paramss, config, rngs, saving_traj=False):
     raw_restored_PPOLAG = checkpoints.restore_checkpoint(ckpt_dir=os.path.abspath('{}/{}/{}'.format(
         config["BASE_MODEL_DIR"], config["DIR_PPOLAG"], config["DIR_MODEL_PPOLAG"])), target=None)
     
-    path = os.path.abspath('{}/{}/{}'.format(config["BASE_MODEL_DIR"], config["DIR_PPOLAG"], config["DIR_MODEL_PPOLAG"]))
-
     policy_network_PPOLAG = Policy_Network(
         env_PPOLAG.action_space(env_params_PPOLAG).shape[0], activation=config["ACTIVATION"]
     )
@@ -389,7 +388,7 @@ def test(envs, env_paramss, config, rngs, saving_traj=False):
     )
 
     ## PPO
-    raw_restored_PPO = checkpoints.restore_checkpoint(ckpt_dir=os.path.abspath('{}/{}/{}'.format(
+    raw_restored_PPO = checkpoints.restore_checkpoint(ckpt_dir=os.path.abspath('model/{}/{}'.format(
         config["BASE_MODEL_DIR"], config["DIR_PPO"], config["DIR_MODEL_PPO"])), target=None)
 
     policy_network_PPO = Policy_Network(
@@ -422,7 +421,7 @@ def test(envs, env_paramss, config, rngs, saving_traj=False):
     ########################################## LOAD RCPPO & RESPO #################################################
 
     ## RCPPO
-    raw_restored_RCPPO = checkpoints.restore_checkpoint(ckpt_dir=os.path.abspath('{}/{}/{}'.format(
+    raw_restored_RCPPO = checkpoints.restore_checkpoint(ckpt_dir=os.path.abspath('model/{}/{}'.format(
         config["BASE_MODEL_DIR"], config["DIR_RCPPO"], config["DIR_MODEL_RCPPO"])), target=None)
 
     policy_network_RCPPO = Policy_Network(
@@ -453,7 +452,7 @@ def test(envs, env_paramss, config, rngs, saving_traj=False):
     )
 
     ## RESPO
-    raw_restored_RESPO = checkpoints.restore_checkpoint(ckpt_dir=os.path.abspath('{}/{}/{}'.format(
+    raw_restored_RESPO = checkpoints.restore_checkpoint(ckpt_dir=os.path.abspath('model/{}/{}'.format(
         config["BASE_MODEL_DIR"], config["DIR_RESPO"], config["DIR_MODEL_RESPO"])), target=None)
 
     policy_network_RESPO = Policy_Network(
@@ -494,7 +493,7 @@ def test(envs, env_paramss, config, rngs, saving_traj=False):
     ########################################## LOAD MORL & SPARSE #################################################
 
     ## MORL
-    raw_restored_MORL = checkpoints.restore_checkpoint(ckpt_dir=os.path.abspath('{}/{}/{}'.format(
+    raw_restored_MORL = checkpoints.restore_checkpoint(ckpt_dir=os.path.abspath('model/{}/{}'.format(
         config["BASE_MODEL_DIR"], config["DIR_MORL"], config["DIR_MODEL_MORL"])), target=None)
 
     policy_network_MORL = Policy_Network(
@@ -525,7 +524,7 @@ def test(envs, env_paramss, config, rngs, saving_traj=False):
     )
 
     ## SPARSE
-    raw_restored_SPARSE = checkpoints.restore_checkpoint(ckpt_dir=os.path.abspath('{}/{}/{}'.format(
+    raw_restored_SPARSE = checkpoints.restore_checkpoint(ckpt_dir=os.path.abspath('model/{}/{}'.format(
         config["BASE_MODEL_DIR"], config["DIR_SPARSE"], config["DIR_MODEL_SPARSE"])), target=None)
 
     policy_network_SPARSE = Policy_Network(
@@ -723,7 +722,7 @@ def test(envs, env_paramss, config, rngs, saving_traj=False):
 
     if saving_traj: save_traj(traj_batch_SPARSE, config, 'SPARSE', sample_size=5)
 
-    return traj_batch_HJPPO, traj_batch_HJPPO_d, traj_batch_CPPO, traj_batch_RA
+    return traj_batch_HJPPO, traj_batch_HJPPO_d, traj_batch_CPPO, traj_batch_RA, traj_batch_PPOLAG, traj_batch_PPO, traj_batch_RCPPO, traj_batch_RESPO, traj_batch_MORL, traj_batch_SPARSE
 
 if __name__ == "__main__":
     config = vars(get_args(sys.argv[1:]))
@@ -731,9 +730,11 @@ if __name__ == "__main__":
     debug = True
     if debug:
         config["EXP_NAME"]="HopperReachAlwaysAvoid"
+        config["BASE_MODEL_DIR"] = "model_rebuttal_results"
 
         # config["DIR_HJPPO"]="hopper_raa_final_nikhil"#"stonkens_models/hopper_reachalwaysavoid"
         # config["DIR_MODEL_HJPPO"]="checkpoint_160"#"best_126" # FIXME NIKHIL'S CODE, but where is checkpoint_160?
+        
         config["DIR_HJPPO"]="BASELINE_hopper_raa_final_nikhil"#"stonkens_models/hopper_reachalwaysavoid"
         config["DIR_MODEL_HJPPO"]="checkpoint_242"#"best_126"
 
@@ -744,28 +745,28 @@ if __name__ == "__main__":
         config["DIR_MODEL_RA"]="checkpoint_240" #"best_244"
 
         config["DIR_PPOLAG"]="BASELINE_hopper_raa_ppolag_lam0p01"
-        config["DIR_MODEL_PPOLAG"]="best_207"
+        config["DIR_MODEL_PPOLAG"]="best_130"
 
         config["DIR_PPO"]="BASELINE_hopper_raa_ppo"
-        config["DIR_MODEL_PPO"]="best_49" # "checkpoint_243"
+        config["DIR_MODEL_PPO"]="best_152" # "checkpoint_243"
 
         config["DIR_RCPPO"]="BASELINE_hopper_raa_rcppo"
-        config["DIR_MODEL_RCPPO"]="best_142" # "checkpoint_243"
+        config["DIR_MODEL_RCPPO"]="best_179" # "checkpoint_243"
 
         config["DIR_RESPO"]="BASELINE_hopper_raa_respo"
-        config["DIR_MODEL_RESPO"]="checkpoint_105"
+        config["DIR_MODEL_RESPO"]="best_50"
 
-        config["DIR_MORL"]="final_hopper_raa_morl"#"BASELINE_hopper_reachreach_morl"
-        config["DIR_MODEL_MORL"]="checkpoint_243"
+        config["DIR_MORL"]="BASELINE_hopper_raa_morl"#"BASELINE_hopper_reachreach_morl"
+        config["DIR_MODEL_MORL"]="best_242"
 
-        config["DIR_SPARSE"]="final_hopper_raa_sparse"#"BASELINE_hopper_reachreach_sparse"
-        config["DIR_MODEL_SPARSE"]="best_18" # "checkpoint_243"
+        config["DIR_SPARSE"]="BASELINE_hopper_raa_sparse"#"BASELINE_hopper_reachreach_sparse"
+        config["DIR_MODEL_SPARSE"]="best_113" # "checkpoint_243"
 
         print(os.path.abspath('model/{}/{}'.format(config["DIR_RA"], config["DIR_MODEL_RA"])))
         print(os.path.exists(os.path.abspath('model/{}/{}'.format(config["DIR_RA"], config["DIR_MODEL_RA"]))))
 
-        config['TEST_DIR'] = "eval_all_figs"
-        config['NAME_TAG'] = "Hopper_RAA_061925"
+        config['TEST_DIR'] = "eval_all_rebuttal"
+        config['NAME_TAG'] = "Hopper_RAA_072925"
 
     config["NUM_ENVS"]=1000
     config["NUM_STEPS"]=500
