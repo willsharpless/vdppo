@@ -970,7 +970,7 @@ if __name__ == "__main__":
 
     ## RCPPO
     config_RCPPO = copy.deepcopy(config)
-    config_RCPPO["EXP_NAME"] = "F16ReachAlwaysAvoid_RCPPO"
+    config_RCPPO["EXP_NAME"] = "F16ReachReach_RCPPO"
     config_RCPPO["ENV_REWARD_TYPE"] = "accumulated" # reward
     config_RCPPO["ENV_COST_FN"] = "sum" # cost_fn
     config_RCPPO["ENV_COST_TYPE"] = "accumulated" # cost
@@ -980,7 +980,7 @@ if __name__ == "__main__":
 
     ## RESPO
     config_RESPO = copy.deepcopy(config)
-    config_RESPO["EXP_NAME"] = "F16ReachAlwaysAvoid_RESPO" 
+    config_RESPO["EXP_NAME"] = "F16ReachReach_RESPO" 
     config_RESPO["ENV_REWARD_TYPE"] = "accumulated" # reward
     config_RESPO["ENV_COST_FN"] = "sum" # cost_fn
     config_RESPO["ENV_COST_TYPE"] = "accumulated" # cost
@@ -990,7 +990,7 @@ if __name__ == "__main__":
 
     ## MORL
     config_MORL = copy.deepcopy(config)
-    config_MORL["EXP_NAME"] = "F16ReachAlwaysAvoidBaseline_MORL"
+    config_MORL["EXP_NAME"] = "F16ReachReachBaseline_MORL"
     config_MORL["ENV_REWARD_TYPE"] = "accumulated" # reward
     config_MORL["ENV_COST_FN"] = "sum" # cost_fn
     config_MORL["ENV_COST_TYPE"] = "accumulated" # cost
@@ -1001,7 +1001,7 @@ if __name__ == "__main__":
 
     ## SPARSE
     config_SPARSE = copy.deepcopy(config)
-    config_SPARSE["EXP_NAME"] = "F16ReachAlwaysAvoidBaseline_Sparse"
+    config_SPARSE["EXP_NAME"] = "F16ReachReachBaseline_Sparse"
     config_SPARSE["ENV_REWARD_TYPE"] = "accumulated" # reward
     config_SPARSE["ENV_COST_FN"] = "sum" # cost_fn
     config_SPARSE["ENV_COST_TYPE"] = "accumulated" # cost

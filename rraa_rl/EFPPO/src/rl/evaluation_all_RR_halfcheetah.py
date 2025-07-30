@@ -904,38 +904,38 @@ if __name__ == "__main__":
 
         config["BASE_MODEL_DIR"] = "model_rebuttal_results"
 
-        config["DIR_HJPPO"]="BASELINE_halfcheetah_reachreach_50M"
-        config["DIR_MODEL_HJPPO"]="best_34"
+        config["DIR_HJPPO"]="BASELINE_halfcheetah_rr_resetgoal_reachv0.2"
+        config["DIR_MODEL_HJPPO"]="best_477"
 
-        config["DIR_CPPOv1"]="BASELINE_final_halfcheetah_rr_cppomax_raccum_cfnmax_caccum_umin_V1--LR=3e-4"
-        config["DIR_MODEL_CPPOv1"]="checkpoint_243"
+        config["DIR_CPPOv1"]="BASELINE_halfcheetah_rr_cppo_sum_e150k_kp1"
+        config["DIR_MODEL_CPPOv1"]="checkpoint_731"
 
-        config["DIR_CPPOv2"]="BASELINE_final_halfcheetah_rr_cpposum_raccum_cfnmax_caccum_umin_V1"
-        config["DIR_MODEL_CPPOv2"]="checkpoint_243"
+        config["DIR_CPPOv2"]="BASELINE_halfcheetah_rr_cppo_sum_e150k_kp1"
+        config["DIR_MODEL_CPPOv2"]="checkpoint_731"
 
-        config["DIR_CPPOv3"]="BASELINE_final_halfcheetah_rr_cpposum_raccum_cfnsum_caccum_umean_V2"
-        config["DIR_MODEL_CPPOv3"]="checkpoint_214"
+        config["DIR_CPPOv3"]="BASELINE_halfcheetah_rr_cppo_sum_e150k_kp1"
+        config["DIR_MODEL_CPPOv3"]="checkpoint_731"
 
-        config["DIR_DSTL"]="BASELINE_halfcheetah_reachreach_decomposed"
-        config["DIR_MODEL_DSTL"]="best_35"
+        config["DIR_DSTL"]="BASELINE_halfcheetah_rr_decomposed"
+        config["DIR_MODEL_DSTL"]="best_285"
 
         config["DIR_PPOLAG"]="BASELINE_halfcheetah_rr_ppolag_sum_lam0p01"
-        config["DIR_MODEL_PPOLAG"]="best_207"
+        config["DIR_MODEL_PPOLAG"]="checkpoint_730"
 
         config["DIR_PPO"]="BASELINE_halfcheetah_rr_ppo_sum"
-        config["DIR_MODEL_PPO"]="best_49" # "checkpoint_243"
+        config["DIR_MODEL_PPO"]="checkpoint_730"
 
-        config["DIR_RCPPO"]="BASELINE_halfcheetah_rr_rcppo_sum"
-        config["DIR_MODEL_RCPPO"]="best_142" # "checkpoint_243"
+        config["DIR_RCPPO"]="BASELINE_halfcheetah_rr_rcppo"
+        config["DIR_MODEL_RCPPO"]="checkpoint_730" # "checkpoint_243"
 
-        config["DIR_RESPO"]="BASELINE_halfcheetah_rr_respo_sum"
-        config["DIR_MODEL_RESPO"]="checkpoint_105"
+        config["DIR_RESPO"]="BASELINE_halfcheetah_rr_respo_sum_e150k_kp1"
+        config["DIR_MODEL_RESPO"]="checkpoint_730"
 
-        config["DIR_MORL"]="final_halfcheetah_rr_morl"#"BASELINE_halfcheetah_reachreach_morl"
-        config["DIR_MODEL_MORL"]="checkpoint_243"
+        config["DIR_MORL"]="BASELINE_halfcheetah_rr_morl"#"BASELINE_halfcheetah_reachreach_morl"
+        config["DIR_MODEL_MORL"]="checkpoint_730"
 
-        config["DIR_SPARSE"]="final_halfcheetah_rr_sparse"#"BASELINE_halfcheetah_reachreach_sparse"
-        config["DIR_MODEL_SPARSE"]="best_18" # "checkpoint_243"
+        config["DIR_SPARSE"]="BASELINE_halfcheetah_rr_sparse"#"BASELINE_halfcheetah_reachreach_sparse"
+        config["DIR_MODEL_SPARSE"]="checkpoint_730" # "checkpoint_243"
 
         config['TEST_DIR'] = "eval_all_rebuttal"
         config['NAME_TAG'] = "HalfCheetah_RR_072825"
@@ -978,7 +978,7 @@ if __name__ == "__main__":
     env_CPPO_v3 = get_env(config_CPPOv3)
 
     config_dSTL = copy.deepcopy(config)
-    config_dSTL["EXP_NAME"] = "halfcheetahReachReachDecomposed"
+    config_dSTL["EXP_NAME"] = "HalfCheetahReachReachDecomposed"
     env_dSTL, env_dSTL_1, env_dSTL_2 = get_env(config_dSTL)
 
     ## PPO LAG
