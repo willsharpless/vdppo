@@ -333,7 +333,7 @@ def train(env, env_params, config, rng):
 if __name__ == "__main__":
     config = vars(get_args(sys.argv[1:]))
 
-    debug = True
+    debug = False
     if debug:
         # config["EXP_NAME"]="HopperReachReach_sum_RESPO"
         # config["DIR"]="hopper_rr_respo_sum_debug"
@@ -412,6 +412,9 @@ if __name__ == "__main__":
     env = get_env(config)
     env_params = env.default_params
     env_params = env_params.replace(gamma=config["GAMMA_ENERGY"])
-    wandb.init(project='RESPO-{}'.format(config["EXP_NAME"]), name=config["NAME"], config=config)
+    config["USE_WANDB"] = True 
+    if config["USE_WANDB"]:     
+        wandb.init(project='RESPO-{}'.format(config["EXP_NAME"]), name=config["NAME"], config=config,
+                entity='braat_brrt')
     rng = jax.random.PRNGKey(20)
     out = train(env, env_params, config, rng)

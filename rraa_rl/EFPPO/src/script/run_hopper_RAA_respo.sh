@@ -1,4 +1,4 @@
-python ./rraa_rl/EFPPO/src/rl/EC-EFPPO_adapted.py \
+python ./rraa_rl/EFPPO/src/rl/RESPO_adapted.py \
 --EXP_NAME=HopperReachAlwaysAvoid_RESPO \
 --DIR=hopper_raa_respo \
 --LR=3e-4 \

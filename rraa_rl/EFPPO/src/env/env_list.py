@@ -333,6 +333,21 @@ def get_env(config):
         env_avoid.set_untransform_obs(untrans)
         return (env, env_avoid)
     
+    elif config["EXP_NAME"] == "HalfCheetahReachAvoid":
+        vec1 = jnp.zeros(20, dtype=jnp.float32)
+        vec1 = vec1.at[0].set(2.5)
+        vec2 = jnp.ones(20, dtype=jnp.float32)
+        vec2 = vec2.at[0].set(3.)
+        trans = partial(transform_observation, vec1, vec2)
+        untrans = partial(untransform_observation, vec1, vec2)
+
+        env = HalfCheetahReachAvoid()
+
+        env = TransformObservation(env, trans)
+        env.set_untransform_obs(untrans)
+
+        return (env)
+        
     elif config["EXP_NAME"] == "HalfCheetahReachAlwaysAvoid_CPPO" \
         or config["EXP_NAME"] == "HalfCheetahReachAlwaysAvoid_RCPPO" \
             or config["EXP_NAME"] == "HalfCheetahReachAlwaysAvoid_RESPO" \
