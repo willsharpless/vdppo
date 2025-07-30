@@ -71,7 +71,9 @@ def plot_scores(traj_batches, config):
     for tag, scores in raa_scores_all:
         
         reach_avoid_perc = scores[0][2]
-        print(f"{tag}: REACH {100. * scores[0][0]:2.1f}%, CRASH {100. * scores[0][1]:2.1f}%, R-AA {100. * scores[0][2]:2.1f}%")
+        # print(f"{tag}: REACH {100. * scores[0][0]:2.1f}%, CRASH {100. * scores[0][1]:2.1f}%, R-AA {100. * scores[0][2]:2.1f}%")
+        print(f"{tag:<10} - R & A: {100*reach_avoid_perc:.0f}%, R: {100*scores[0][0]:.0f}%, A: {100*(1. - scores[0][1]):.0f}%")
+        
         idxs = scores[1][2]
         # finite_mask = jnp.isfinite(idxs)
         # finite_idxs = idxs[finite_mask]

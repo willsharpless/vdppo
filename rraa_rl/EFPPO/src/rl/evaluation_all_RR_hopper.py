@@ -130,7 +130,9 @@ def plot_scores(traj_batches, config):
         std_idxs.append(std_idx)
 
         # Print Score with Fixed width label
-        print(f"{tag:<10} - Success: {reach_perc:.2f}%, reach_one_perc: {reach_one_perc:.2f}%, Mean Index: {mean_idx:.3f}, Max Value Mean: {-min_val_mean:.3f}")
+        # print(f"{tag:<10} - Success: {reach_perc:.2f}%, reach_one_perc: {reach_one_perc:.2f}%, Mean Index: {mean_idx:.3f}, Max Value Mean: {-min_val_mean:.3f}")
+        print(f"{tag:<10} - RR: {100*scores[0][2]:.0f}%, R1: {100*scores[0][0]:.0f}%, R2: {100*scores[0][1]:.0f}%")
+
 
     # Plotting
     fig, axes = plt.subplots(4, 1, figsize=(14, 4.5), sharex=False)

@@ -127,7 +127,8 @@ def plot_scores(traj_batches, config):
         mean_idxs.append(mean_idx)
         std_idxs.append(std_idx)
 
-        print(f"{tag:<10} - Success: {reach_avoid_perc:.2f}%, Mean Index: {mean_idx:.1f}, RorA: {reach_or_avoid_perc:.2f}%, Max Value Mean: {-min_val_mean:.3f}")
+        # print(f"{tag:<10} - Success: {reach_avoid_perc:.2f}%, Mean Index: {mean_idx:.1f}, RorA: {reach_or_avoid_perc:.2f}%, Max Value Mean: {-min_val_mean:.3f}")
+        print(f"{tag:<10} - R & A: {100*reach_avoid_perc:.0f}%, R: {100*scores[0][0]:.0f}%, A: {100*(1. - scores[0][1]):.0f}%")
 
     # Plotting
     fig, axes = plt.subplots(4, 1, figsize=(12, 4.5), sharex=False)
