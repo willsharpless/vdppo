@@ -46,11 +46,19 @@ def calculate_reach_avoid_stats(traj_batch):
     share_crash_after_reach = cnt_crash_after_reach / (traj_batch.avoid.shape[1] - cnt_never_reached) if (traj_batch.avoid.shape[1] - cnt_never_reached) > 0 else 0
     return cnt_never_reached, cnt_crash, share_crash_after_reach
 
-def calculate_reachavoid(traj_batch, th=0):
+def calculate_reachavoid(traj_batch, th=0, to_first_done=False):
+
+    # compute 
     reach_idx = (traj_batch.reach < (0 + th)).argmax(axis=0)
     crash_idx = (traj_batch.avoid > 0).argmax(axis=0)
     reach_idx = np.where(np.any((traj_batch.reach < (0 + th)) == 1, axis=0), reach_idx, np.inf)
     crash_idx = np.where(np.any((traj_batch.avoid > 0) == 1, axis=0), crash_idx, np.inf)
+
+    if to_first_done:
+        first_done = np.where(np.any(traj_batch.done, axis=0), traj_batch.done.argmax(axis=0), traj_batch.done.shape[0])
+        reach_idx = np.where(first_done >= reach_idx, reach_idx, np.inf)
+        crash_idx = np.where(first_done >= crash_idx, crash_idx, np.inf)
+
     # Find indices where reach < inf and avoid = inf
     reach_and_avoid_idx = np.where(crash_idx == np.inf, reach_idx, np.inf)
 
@@ -59,13 +67,19 @@ def calculate_reachavoid(traj_batch, th=0):
     reach_avoid_perc = ((reach_and_avoid_idx < np.inf).sum() / reach_and_avoid_idx.__len__()).item()
     return (reach_perc, crash_perc, reach_avoid_perc)
 
-def calculate_reachreach(traj_batch, reach_type="both", th=0):
-    
+def calculate_reachreach(traj_batch, reach_type="both", th=0, to_first_done=False):
+
     # Compute first reaching idx
     reach_idx_1 = (traj_batch.reach1 < (0 + th)).argmax(axis=0) if reach_type in ["both", "1"] else None
     reach_idx_2 = (traj_batch.reach2 < (0 + th)).argmax(axis=0) if reach_type in ["both", "2"] else None
     reach_idx_1 = np.where(np.any((traj_batch.reach1 < (0 + th)) == 1, axis=0), reach_idx_1, np.inf) if reach_type in ["both", "1"] else None
     reach_idx_2 = np.where(np.any((traj_batch.reach2 < (0 + th)) == 1, axis=0), reach_idx_2, np.inf) if reach_type in ["both", "2"] else None
+    
+    if to_first_done:
+        first_done = np.where(np.any(traj_batch.done, axis=0), traj_batch.done.argmax(axis=0), traj_batch.done.shape[0])
+        reach_idx_1 = np.where(first_done >= reach_idx_1, reach_idx_1, np.inf) if reach_type in ["both", "1"] else None
+        reach_idx_2 = np.where(first_done >= reach_idx_2, reach_idx_2, np.inf) if reach_type in ["both", "2"] else None
+
     reach_idx = np.maximum(reach_idx_1, reach_idx_2) if reach_type in ["both"] else None
 
     # Compute Percentage
