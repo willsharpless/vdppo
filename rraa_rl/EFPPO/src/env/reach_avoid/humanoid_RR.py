@@ -14,8 +14,8 @@ from jax.scipy.spatial.transform import Rotation as R
 
 HUMANOID_TARGET_RIGHT, HUMANOID_TARGET_LEFT = [0., -2., 1.], [2., 0., 1.]
 HUMANOID_TARGET_RADIUS = 0.1 
-HUMANOID_TORSO_MIN_Z = 0.9
-HUMANOID_TORSO_TARGET_Z = 1.1
+HUMANOID_TORSO_MIN_Z = 1.
+HUMANOID_TORSO_TARGET_Z = 1.15
 HUMANOID_TORSO_MAX_Z = 2.
 
 @struct.dataclass
@@ -41,8 +41,8 @@ class EnvParamsEmpty:
     pass
 
 class HumanoidReachReachTemplate:
-    def __init__(self, backend="positional"):
-        env = HumanoidRandom(backend=backend, terminate_when_unhealthy=False,
+    def __init__(self, backend="positional", custom_healthy=False):
+        env = HumanoidRandom(backend=backend, terminate_when_unhealthy=True,
                            exclude_current_positions_from_observation=False)
         env = EpisodeWrapper(env, episode_length=400, action_repeat=2) # FIXME: do we want 2 action repeats (like hopper)?
         env = AutoResetWrapper(env)
@@ -50,6 +50,7 @@ class HumanoidReachReachTemplate:
         self.action_size = env.action_size
         self.observation_size = (env.observation_size,)
         self.default_params = EnvParamsEmpty()
+        self.custom_healthy = custom_healthy
 
     @partial(jax.jit, static_argnums=(0,))
     def reset(self, key, params=None):
@@ -150,11 +151,14 @@ class HumanoidReachReach(HumanoidReachReachTemplate):
         next_state_raw = self._env.step(state.state, u)
 
         ## Freeze if (current) state unhealthy
-        unhealthy = jnp.logical_or(
-            state.state.pipeline_state.x.pos[0, 2] < HUMANOID_TORSO_MIN_Z,
-            state.state.pipeline_state.x.pos[0, 2] > HUMANOID_TORSO_MAX_Z
-        )
-        next_state = lax.cond(unhealthy, lambda _: state.state, lambda _: next_state_raw, operand=None,)        
+        if self.custom_healthy:
+            unhealthy = jnp.logical_or(
+                state.state.pipeline_state.x.pos[0, 2] < HUMANOID_TORSO_MIN_Z,
+                state.state.pipeline_state.x.pos[0, 2] > HUMANOID_TORSO_MAX_Z
+            )
+            next_state = lax.cond(unhealthy, lambda _: state.state, lambda _: next_state_raw, operand=None,)        
+        else:
+            next_state = next_state_raw
 
         poses = self.calculate_position(next_state)
         reach1_value = self.is_reach1(poses)
@@ -188,12 +192,15 @@ class HumanoidReach1(HumanoidReachReachTemplate):
         next_state_raw = self._env.step(state.state, u)
 
         ## Freeze if (current) state unhealthy
-        unhealthy = jnp.logical_or(
-            state.state.pipeline_state.x.pos[0, 2] < HUMANOID_TORSO_MIN_Z,
-            state.state.pipeline_state.x.pos[0, 2] > HUMANOID_TORSO_MAX_Z
-        )
-        next_state = lax.cond(unhealthy, lambda _: state.state, lambda _: next_state_raw, operand=None,)  
-        
+        if self.custom_healthy:
+            unhealthy = jnp.logical_or(
+                state.state.pipeline_state.x.pos[0, 2] < HUMANOID_TORSO_MIN_Z,
+                state.state.pipeline_state.x.pos[0, 2] > HUMANOID_TORSO_MAX_Z
+            )
+            next_state = lax.cond(unhealthy, lambda _: state.state, lambda _: next_state_raw, operand=None,)        
+        else:
+            next_state = next_state_raw
+
         poses = self.calculate_position(next_state)
         reach1_value = self.is_reach1(poses)
         reach2_value = self.is_reach2(poses)
@@ -275,11 +282,14 @@ class HumanoidReach2(HumanoidReachReachTemplate):
         next_state_raw = self._env.step(state.state, u)
 
         ## Freeze if (current) state unhealthy
-        unhealthy = jnp.logical_or(
-            state.state.pipeline_state.x.pos[0, 2] < HUMANOID_TORSO_MIN_Z,
-            state.state.pipeline_state.x.pos[0, 2] > HUMANOID_TORSO_MAX_Z
-        )
-        next_state = lax.cond(unhealthy, lambda _: state.state, lambda _: next_state_raw, operand=None,)  
+        if self.custom_healthy:
+            unhealthy = jnp.logical_or(
+                state.state.pipeline_state.x.pos[0, 2] < HUMANOID_TORSO_MIN_Z,
+                state.state.pipeline_state.x.pos[0, 2] > HUMANOID_TORSO_MAX_Z
+            )
+            next_state = lax.cond(unhealthy, lambda _: state.state, lambda _: next_state_raw, operand=None,)        
+        else:
+            next_state = next_state_raw
 
         poses = self.calculate_position(next_state)
         reach1_value = self.is_reach1(poses)

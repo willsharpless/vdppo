@@ -550,11 +550,11 @@ def train(envs, env_paramss, config, rng):
         traj_batch_2, targets_V_2, done_2 = result_traj_2
 
         ((reach_1_perc, reach_2_perc, reach_perc),
-            (reach_idx_1, reach_idx_2, reach_idx)) = calculate_reachreach(traj_batch)
+            (reach_idx_1, reach_idx_2, reach_idx)) = calculate_reachreach(traj_batch, to_first_done="Humanoid" in config["EXP_NAME"])
         ((reach_1_perc_1, _, _),
-            (reach_idx_1_1, _, _)) = calculate_reachreach(traj_batch_1, reach_type="1")
+            (reach_idx_1_1, _, _)) = calculate_reachreach(traj_batch_1, reach_type="1", to_first_done="Humanoid" in config["EXP_NAME"])
         ((_, reach_2_perc_2, _),
-            (_, reach_idx_2_2, _)) = calculate_reachreach(traj_batch_2, reach_type="2")
+            (_, reach_idx_2_2, _)) = calculate_reachreach(traj_batch_2, reach_type="2", to_first_done="Humanoid" in config["EXP_NAME"])
 
         idx = 0
 
@@ -692,31 +692,8 @@ if __name__ == "__main__":
         # config["ANNEAL_ENT"]=True
         # config["NAME"]="F16_rr_verttargs_cutsamp_To80m80s_tjreset_LR2e-3"
 
-        config["EXP_NAME"]="HalfCheetahReachReach"
-        config["DIR"]="halfcheetah_rr_resetgoal_reachv0.1_rerun"
-        config["LR"]=3e-4
-        config["NUM_ENVS"]=128
-        config["NUM_STEPS"]=400
-        config["TOTAL_TIMESTEPS"]=150_000_000
-        config["STEP_SCAN"]=4
-        config["UPDATE_EPOCHS"]=10
-        config["NUM_MINIBATCHES"]=32
-        config["GAMMA_ENERGY"]=1.0
-        config["GAMMA_REACH_INIT"]=0.995
-        config["GAMMA_REACH_FINAL"]=0.9995
-        config["GAE_LAMBDA"]=0.95
-        config["CLIP_EPS"]=0.2
-        config["ENT_COEF"]=0.005
-        config["VF_COEF"]=2.0
-        config["MAX_GRAD_NORM"]=0.5
-        config["ACTIVATION"]="tanh"
-        config["CUDA_USE"]="0"
-        config["ANNEAL_LR"]=True,
-        config["ANNEAL_ENT"]=True
-        config["NAME"]="halfcheetah_rr_resetgoal_reachv0.1_rerun"
-
-        # config["EXP_NAME"]="HumanoidReachReach"
-        # config["DIR"]="humanoid_rr_debug_customhealthy"
+        # config["EXP_NAME"]="HalfCheetahReachReach"
+        # config["DIR"]="halfcheetah_rr_resetgoal_reachv0.1_rerun"
         # config["LR"]=3e-4
         # config["NUM_ENVS"]=128
         # config["NUM_STEPS"]=400
@@ -734,9 +711,32 @@ if __name__ == "__main__":
         # config["MAX_GRAD_NORM"]=0.5
         # config["ACTIVATION"]="tanh"
         # config["CUDA_USE"]="0"
-        # config["ANNEAL_LR"]=True
+        # config["ANNEAL_LR"]=True,
         # config["ANNEAL_ENT"]=True
-        # config["NAME"]="humanoid_rr_debug_customhealthy"
+        # config["NAME"]="halfcheetah_rr_resetgoal_reachv0.1_rerun"
+
+        config["EXP_NAME"]="HumanoidReachReach"
+        config["DIR"]="humanoid_rr_debug_donefix"
+        config["LR"]=3e-4
+        config["NUM_ENVS"]=128
+        config["NUM_STEPS"]=400
+        config["TOTAL_TIMESTEPS"]=150_000_000
+        config["STEP_SCAN"]=4
+        config["UPDATE_EPOCHS"]=10
+        config["NUM_MINIBATCHES"]=32
+        config["GAMMA_ENERGY"]=1.0
+        config["GAMMA_REACH_INIT"]=0.995
+        config["GAMMA_REACH_FINAL"]=0.9995
+        config["GAE_LAMBDA"]=0.95
+        config["CLIP_EPS"]=0.2
+        config["ENT_COEF"]=0.005
+        config["VF_COEF"]=2.0
+        config["MAX_GRAD_NORM"]=0.5
+        config["ACTIVATION"]="tanh"
+        config["CUDA_USE"]="0"
+        config["ANNEAL_LR"]=True
+        config["ANNEAL_ENT"]=True
+        config["NAME"]="humanoid_rr_debug_donefix"
     #     # config["TEST_MODE"]=True # USES DETERMINISTIC MODELS
 
     config["NUM_UPDATES"] = int(
