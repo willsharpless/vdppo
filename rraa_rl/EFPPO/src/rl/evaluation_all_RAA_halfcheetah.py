@@ -138,7 +138,7 @@ def plot_scores(traj_batches, config):
     for i, label in enumerate(labels):
         axes[0].barh(label, reach_avoid_percs[i], color=colors[label])
     axes[0].set_xlim(0, 1.)
-    axes[0].set_title(r"F16-RAA: Success Percentage ($\uparrow$)", fontsize=12)
+    axes[0].set_title(r"HalfCheetah-RAA: Success Percentage ($\uparrow$)", fontsize=12)
     axes[0].set_xlabel(r"Percentage")
     axes[0].set_yticks(np.arange(len(labels)))
     axes[0].set_yticklabels(labels, ha='right', fontsize=10)
@@ -155,7 +155,7 @@ def plot_scores(traj_batches, config):
     # Mean reach index bar plot with error bars
     for i, label in enumerate(labels):
         axes[1].barh(label, mean_idxs[i], xerr=std_idxs[i]/2, color=colors[label], capsize=4)
-    axes[1].set_title(r"F16-RAA: Mean Steps to Success ($\downarrow$)", fontsize=12)
+    axes[1].set_title(r"HalfCheetah-RAA: Mean Steps to Success ($\downarrow$)", fontsize=12)
     axes[1].set_xlabel(r"Index")
     axes[1].set_yticks(np.arange(len(labels)))
     axes[1].set_yticklabels(labels, ha='right', fontsize=10)
@@ -171,7 +171,7 @@ def plot_scores(traj_batches, config):
     # Mean optimal value bar plot with error bars
     for i, label in enumerate(labels):
         axes[2].barh(label, -min_val_means[i], xerr=min_val_stds[i]/2, color=colors[label], capsize=4)
-    axes[2].set_title(r"F16-RAA: Maximum Value ($\uparrow$)", fontsize=12)
+    axes[2].set_title(r"HalfCheetah-RAA: Maximum Value ($\uparrow$)", fontsize=12)
     axes[2].set_xlabel(r"Value")
     axes[2].set_yticks(np.arange(len(labels)))
     axes[2].set_yticklabels(labels, ha='right', fontsize=10)
@@ -188,7 +188,7 @@ def plot_scores(traj_batches, config):
     for i, label in enumerate(labels):
         axes[3].barh(label, reach_or_avoid_percs[i], color=colors[label])
     # axes[0].set_xlim(0.7, 1.0)
-    axes[3].set_title(r"F16-RAA: Reached or Avoided Percentage ($\uparrow$)", fontsize=12)
+    axes[3].set_title(r"HalfCheeth-RAA: Reached or Avoided Percentage ($\uparrow$)", fontsize=12)
     axes[3].set_xlabel(r"Percentage")
     axes[3].set_yticks(np.arange(len(labels)))
     axes[3].set_yticklabels(labels, ha='right', fontsize=10)
@@ -729,44 +729,41 @@ if __name__ == "__main__":
 
     debug = True
     if debug:
-        config["EXP_NAME"]="F16ReachAlwaysAvoid"
+        config["EXP_NAME"]="HalfCheetahReachAlwaysAvoid"
         config["BASE_MODEL_DIR"] = "model_rebuttal_results"
 
-        config["DIR_HJPPO"]="BASELINE_f16_raa_PE500_halfsamp2_TO80m80s_tjreset_g999"
-        config["DIR_MODEL_HJPPO"]="checkpoint_16"#"best_126"
+        config["DIR_HJPPO"]="BASELINE_halfcheetah_raa_resetgoalsafe_avoidv9"
+        config["DIR_MODEL_HJPPO"]="best_125"#"best_126"
 
-        config["DIR_CPPO"]="BASELINE_f16_raa_cppo_0_val100"
-        config["DIR_MODEL_CPPO"]="best_182"
+        config["DIR_CPPO"]="BASELINE_halfcheetah_raa_cppo_kp100"
+        config["DIR_MODEL_CPPO"]="best_343"
 
-        config["DIR_RA"]="BASELINE_f16_ra_100M"
-        config["DIR_MODEL_RA"]="best_195"
+        config["DIR_RA"]="BASELINE_halfcheetah_ra"
+        config["DIR_MODEL_RA"]="best_488"
 
-        config["DIR_PPOLAG"]="BASELINE_f16_raa_ppolag_lam0p01"
-        config["DIR_MODEL_PPOLAG"]="best_32"
+        config["DIR_PPOLAG"]="BASELINE_halfcheetah_raa_ppolag_lam0p01"
+        config["DIR_MODEL_PPOLAG"]="best_422"
 
-        config["DIR_PPO"]="BASELINE_f16_raa_ppo"
-        config["DIR_MODEL_PPO"]="best_55" 
+        config["DIR_PPO"]="BASELINE_halfcheetah_raa_ppo"
+        config["DIR_MODEL_PPO"]="best_4" 
 
-        config["DIR_RCPPO"]="BASELINE_f16_raa_rcppo"
-        config["DIR_MODEL_RCPPO"]="best_184" 
+        config["DIR_RCPPO"]="BASELINE_halfcheetah_raa_rcppo"
+        config["DIR_MODEL_RCPPO"]="best_171" 
 
-        config["DIR_RESPO"]="BASELINE_f16_raa_respo"
-        config["DIR_MODEL_RESPO"]="best_194"
+        config["DIR_RESPO"]="BASELINE_halfcheetah_raa_respo_kp1"
+        config["DIR_MODEL_RESPO"]="best_6"
 
-        config["DIR_MORL"]="BASELINE_f16_raa_morl"
-        config["DIR_MODEL_MORL"]="best_4"
+        config["DIR_MORL"]="BASELINE_halfcheetah_raa_morl"
+        config["DIR_MODEL_MORL"]="best_459"
 
-        config["DIR_SPARSE"]="BASELINE_f16_raa_sparse"
-        config["DIR_MODEL_SPARSE"]="best_67" 
-
-        print(os.path.abspath('model/{}/{}'.format(config["DIR_RA"], config["DIR_MODEL_RA"])))
-        print(os.path.exists(os.path.abspath('model/{}/{}'.format(config["DIR_RA"], config["DIR_MODEL_RA"]))))
+        config["DIR_SPARSE"]="BASELINE_halfcheetah_raa_sparse"
+        config["DIR_MODEL_SPARSE"]="best_461" 
 
         config['TEST_DIR'] = "eval_all_rebuttal"
-        config['NAME_TAG'] = "F16_RAA_072925"
+        config['NAME_TAG'] = "HalfCheetah_RAA_072925"
 
     config["NUM_ENVS"]=1000
-    config["NUM_STEPS"]=200
+    config["NUM_STEPS"]=400
     config["ACTIVATION"]="tanh"
 
     envs_HJPPO = get_env(config)
@@ -774,7 +771,7 @@ if __name__ == "__main__":
 
     # "BASELINE_final_hopper_rr_cppomax_raccum_cfnmax_caccum_umin_V1--LR=3e-4"
     config_CPPO = copy.deepcopy(config)
-    config_CPPO["EXP_NAME"] = "F16ReachAlwaysAvoid_CPPO"
+    config_CPPO["EXP_NAME"] = "HalfCheetahReachAlwaysAvoid_CPPO"
     # config_CPPO["ENV_REWARD_TYPE"] = "accumulated" # reward
     # config_CPPO["ENV_COST_FN"] = "max" # cost_fn
     # config_CPPO["ENV_COST_TYPE"] = "accumulated" # cost
@@ -783,12 +780,12 @@ if __name__ == "__main__":
     env_CPPO = get_env(config_CPPO)
 
     config_RA = copy.deepcopy(config)
-    config_RA["EXP_NAME"] = "F16ReachAvoid"
+    config_RA["EXP_NAME"] = "HalfCheetahReachAvoid"
     env_RA = get_env(config_RA)
 
     ## PPO LAG
     config_PPOLAG = copy.deepcopy(config)
-    config_PPOLAG["EXP_NAME"] = "F16ReachAlwaysAvoid_CPPO"
+    config_PPOLAG["EXP_NAME"] = "HalfCheetahReachAlwaysAvoid_CPPO"
     config_PPOLAG["ENV_REWARD_TYPE"] = "accumulated" # reward
     config_PPOLAG["ENV_COST_FN"] = "sum" # cost_fn
     config_PPOLAG["ENV_COST_TYPE"] = "accumulated" # cost
@@ -798,7 +795,7 @@ if __name__ == "__main__":
 
     ## PPO
     config_PPO = copy.deepcopy(config)
-    config_PPO["EXP_NAME"] = "F16ReachAlwaysAvoid_CPPO"
+    config_PPO["EXP_NAME"] = "HalfCheetahReachAlwaysAvoid_CPPO"
     config_PPO["ENV_REWARD_TYPE"] = "accumulated" # reward
     config_PPO["ENV_COST_FN"] = "sum" # cost_fn
     config_PPO["ENV_COST_TYPE"] = "accumulated" # cost
@@ -808,7 +805,7 @@ if __name__ == "__main__":
 
     ## RCPPO
     config_RCPPO = copy.deepcopy(config)
-    config_RCPPO["EXP_NAME"] = "F16ReachAlwaysAvoid_CPPO"
+    config_RCPPO["EXP_NAME"] = "HalfCheetahReachAlwaysAvoid_CPPO"
     config_RCPPO["ENV_REWARD_TYPE"] = "accumulated" # reward
     config_RCPPO["ENV_COST_FN"] = "sum" # cost_fn
     config_RCPPO["ENV_COST_TYPE"] = "accumulated" # cost
@@ -818,7 +815,7 @@ if __name__ == "__main__":
 
     ## RESPO
     config_RESPO = copy.deepcopy(config)
-    config_RESPO["EXP_NAME"] = "F16ReachAlwaysAvoid_CPPO" #"HopperReachReach_sum_RESPO"
+    config_RESPO["EXP_NAME"] = "HalfCheetahReachAlwaysAvoid_CPPO" #"HopperReachReach_sum_RESPO"
     config_RESPO["ENV_REWARD_TYPE"] = "accumulated" # reward
     config_RESPO["ENV_COST_FN"] = "sum" # cost_fn
     config_RESPO["ENV_COST_TYPE"] = "accumulated" # cost
@@ -828,7 +825,7 @@ if __name__ == "__main__":
 
     ## MORL
     config_MORL = copy.deepcopy(config)
-    config_MORL["EXP_NAME"] = "F16ReachAlwaysAvoidBaseline_MORL"
+    config_MORL["EXP_NAME"] = "HalfCheetahReachAlwaysAvoidBaseline_MORL"
     config_MORL["ENV_REWARD_TYPE"] = "accumulated" # reward
     config_MORL["ENV_COST_FN"] = "sum" # cost_fn
     config_MORL["ENV_COST_TYPE"] = "accumulated" # cost
@@ -839,7 +836,7 @@ if __name__ == "__main__":
 
     ## SPARSE
     config_SPARSE = copy.deepcopy(config)
-    config_SPARSE["EXP_NAME"] = "F16ReachAlwaysAvoidBaseline_Sparse"
+    config_SPARSE["EXP_NAME"] = "HalfCheetahReachAlwaysAvoidBaseline_Sparse"
     config_SPARSE["ENV_REWARD_TYPE"] = "accumulated" # reward
     config_SPARSE["ENV_COST_FN"] = "sum" # cost_fn
     config_SPARSE["ENV_COST_TYPE"] = "accumulated" # cost
