@@ -388,7 +388,7 @@ def test(envs, env_paramss, config, rngs, saving_traj=False):
     )
 
     ## PPO
-    raw_restored_PPO = checkpoints.restore_checkpoint(ckpt_dir=os.path.abspath('model/{}/{}'.format(
+    raw_restored_PPO = checkpoints.restore_checkpoint(ckpt_dir=os.path.abspath('{}/{}/{}'.format(
         config["BASE_MODEL_DIR"], config["DIR_PPO"], config["DIR_MODEL_PPO"])), target=None)
 
     policy_network_PPO = Policy_Network(
@@ -421,7 +421,7 @@ def test(envs, env_paramss, config, rngs, saving_traj=False):
     ########################################## LOAD RCPPO & RESPO #################################################
 
     ## RCPPO
-    raw_restored_RCPPO = checkpoints.restore_checkpoint(ckpt_dir=os.path.abspath('model/{}/{}'.format(
+    raw_restored_RCPPO = checkpoints.restore_checkpoint(ckpt_dir=os.path.abspath('{}/{}/{}'.format(
         config["BASE_MODEL_DIR"], config["DIR_RCPPO"], config["DIR_MODEL_RCPPO"])), target=None)
 
     policy_network_RCPPO = Policy_Network(
@@ -452,7 +452,7 @@ def test(envs, env_paramss, config, rngs, saving_traj=False):
     )
 
     ## RESPO
-    raw_restored_RESPO = checkpoints.restore_checkpoint(ckpt_dir=os.path.abspath('model/{}/{}'.format(
+    raw_restored_RESPO = checkpoints.restore_checkpoint(ckpt_dir=os.path.abspath('{}/{}/{}'.format(
         config["BASE_MODEL_DIR"], config["DIR_RESPO"], config["DIR_MODEL_RESPO"])), target=None)
 
     policy_network_RESPO = Policy_Network(
@@ -493,7 +493,7 @@ def test(envs, env_paramss, config, rngs, saving_traj=False):
     ########################################## LOAD MORL & SPARSE #################################################
 
     ## MORL
-    raw_restored_MORL = checkpoints.restore_checkpoint(ckpt_dir=os.path.abspath('model/{}/{}'.format(
+    raw_restored_MORL = checkpoints.restore_checkpoint(ckpt_dir=os.path.abspath('{}/{}/{}'.format(
         config["BASE_MODEL_DIR"], config["DIR_MORL"], config["DIR_MODEL_MORL"])), target=None)
 
     policy_network_MORL = Policy_Network(
@@ -524,7 +524,7 @@ def test(envs, env_paramss, config, rngs, saving_traj=False):
     )
 
     ## SPARSE
-    raw_restored_SPARSE = checkpoints.restore_checkpoint(ckpt_dir=os.path.abspath('model/{}/{}'.format(
+    raw_restored_SPARSE = checkpoints.restore_checkpoint(ckpt_dir=os.path.abspath('{}/{}/{}'.format(
         config["BASE_MODEL_DIR"], config["DIR_SPARSE"], config["DIR_MODEL_SPARSE"])), target=None)
 
     policy_network_SPARSE = Policy_Network(
@@ -732,41 +732,38 @@ if __name__ == "__main__":
         config["EXP_NAME"]="HalfCheetahReachAlwaysAvoid"
         config["BASE_MODEL_DIR"] = "model_rebuttal_results"
 
-        config["DIR_HJPPO"]="BASELINE_f16_raa_PE500_halfsamp2_TO80m80s_tjreset_g999"
-        config["DIR_MODEL_HJPPO"]="checkpoint_16"#"best_126"
+        config["DIR_HJPPO"]="BASELINE_halfcheetah_raa_resetgoal_donefix_avoidv9"
+        config["DIR_MODEL_HJPPO"]="best_163"#"best_126"
 
-        config["DIR_CPPO"]="BASELINE_f16_raa_cppo_0_val100"
-        config["DIR_MODEL_CPPO"]="best_182"
+        config["DIR_CPPO"]="BASELINE_halfcheetah_raa_cppo_kp100"
+        config["DIR_MODEL_CPPO"]="best_343"
 
-        config["DIR_RA"]="BASELINE_f16_reachavoid_100M"
-        config["DIR_MODEL_RA"]="best_195"
+        config["DIR_RA"]="BASELINE_halfcheetah_ra"
+        config["DIR_MODEL_RA"]="best_488"
 
-        config["DIR_PPOLAG"]="BASELINE_f16_raa_ppolag_lam0p01"
-        config["DIR_MODEL_PPOLAG"]="best_32"
+        config["DIR_PPOLAG"]="BASELINE_halfcheetah_raa_ppolag_lam0p01"
+        config["DIR_MODEL_PPOLAG"]="best_422"
 
-        config["DIR_PPO"]="BASELINE_f16_raa_ppo"
-        config["DIR_MODEL_PPO"]="best_55" 
+        config["DIR_PPO"]="BASELINE_halfcheetah_raa_ppo"
+        config["DIR_MODEL_PPO"]="best_4" 
 
-        config["DIR_RCPPO"]="BASELINE_f16_raa_rcppo"
-        config["DIR_MODEL_RCPPO"]="best_184" 
+        config["DIR_RCPPO"]="BASELINE_halfcheetah_raa_rcppo"
+        config["DIR_MODEL_RCPPO"]="best_171" 
 
-        config["DIR_RESPO"]="BASELINE_f16_raa_respo"
-        config["DIR_MODEL_RESPO"]="best_50"
+        config["DIR_RESPO"]="BASELINE_halfcheetah_raa_respo_kp1"
+        config["DIR_MODEL_RESPO"]="best_6"
 
-        config["DIR_MORL"]="BASELINE_f16_raa_morl"
-        config["DIR_MODEL_MORL"]="best_24"
+        config["DIR_MORL"]="BASELINE_halfcheetah_raa_morl"
+        config["DIR_MODEL_MORL"]="best_459"
 
-        config["DIR_SPARSE"]="BASELINE_f16_raa_sparse"
-        config["DIR_MODEL_SPARSE"]="best_67" 
-
-        print(os.path.abspath('model/{}/{}'.format(config["DIR_RA"], config["DIR_MODEL_RA"])))
-        print(os.path.exists(os.path.abspath('model/{}/{}'.format(config["DIR_RA"], config["DIR_MODEL_RA"]))))
+        config["DIR_SPARSE"]="BASELINE_halfcheetah_raa_sparse"
+        config["DIR_MODEL_SPARSE"]="best_461" 
 
         config['TEST_DIR'] = "eval_all_rebuttal"
         config['NAME_TAG'] = "HalfCheetah_RAA_072925"
 
     config["NUM_ENVS"]=1000
-    config["NUM_STEPS"]=200
+    config["NUM_STEPS"]=400
     config["ACTIVATION"]="tanh"
 
     envs_HJPPO = get_env(config)

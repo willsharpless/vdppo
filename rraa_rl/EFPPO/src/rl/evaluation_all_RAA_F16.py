@@ -388,7 +388,7 @@ def test(envs, env_paramss, config, rngs, saving_traj=False):
     )
 
     ## PPO
-    raw_restored_PPO = checkpoints.restore_checkpoint(ckpt_dir=os.path.abspath('model/{}/{}'.format(
+    raw_restored_PPO = checkpoints.restore_checkpoint(ckpt_dir=os.path.abspath('{}/{}/{}'.format(
         config["BASE_MODEL_DIR"], config["DIR_PPO"], config["DIR_MODEL_PPO"])), target=None)
 
     policy_network_PPO = Policy_Network(
@@ -421,7 +421,7 @@ def test(envs, env_paramss, config, rngs, saving_traj=False):
     ########################################## LOAD RCPPO & RESPO #################################################
 
     ## RCPPO
-    raw_restored_RCPPO = checkpoints.restore_checkpoint(ckpt_dir=os.path.abspath('model/{}/{}'.format(
+    raw_restored_RCPPO = checkpoints.restore_checkpoint(ckpt_dir=os.path.abspath('{}/{}/{}'.format(
         config["BASE_MODEL_DIR"], config["DIR_RCPPO"], config["DIR_MODEL_RCPPO"])), target=None)
 
     policy_network_RCPPO = Policy_Network(
@@ -452,7 +452,7 @@ def test(envs, env_paramss, config, rngs, saving_traj=False):
     )
 
     ## RESPO
-    raw_restored_RESPO = checkpoints.restore_checkpoint(ckpt_dir=os.path.abspath('model/{}/{}'.format(
+    raw_restored_RESPO = checkpoints.restore_checkpoint(ckpt_dir=os.path.abspath('{}/{}/{}'.format(
         config["BASE_MODEL_DIR"], config["DIR_RESPO"], config["DIR_MODEL_RESPO"])), target=None)
 
     policy_network_RESPO = Policy_Network(
@@ -493,7 +493,7 @@ def test(envs, env_paramss, config, rngs, saving_traj=False):
     ########################################## LOAD MORL & SPARSE #################################################
 
     ## MORL
-    raw_restored_MORL = checkpoints.restore_checkpoint(ckpt_dir=os.path.abspath('model/{}/{}'.format(
+    raw_restored_MORL = checkpoints.restore_checkpoint(ckpt_dir=os.path.abspath('{}/{}/{}'.format(
         config["BASE_MODEL_DIR"], config["DIR_MORL"], config["DIR_MODEL_MORL"])), target=None)
 
     policy_network_MORL = Policy_Network(
@@ -524,7 +524,7 @@ def test(envs, env_paramss, config, rngs, saving_traj=False):
     )
 
     ## SPARSE
-    raw_restored_SPARSE = checkpoints.restore_checkpoint(ckpt_dir=os.path.abspath('model/{}/{}'.format(
+    raw_restored_SPARSE = checkpoints.restore_checkpoint(ckpt_dir=os.path.abspath('{}/{}/{}'.format(
         config["BASE_MODEL_DIR"], config["DIR_SPARSE"], config["DIR_MODEL_SPARSE"])), target=None)
 
     policy_network_SPARSE = Policy_Network(
@@ -738,7 +738,7 @@ if __name__ == "__main__":
         config["DIR_CPPO"]="BASELINE_f16_raa_cppo_0_val100"
         config["DIR_MODEL_CPPO"]="best_182"
 
-        config["DIR_RA"]="BASELINE_f16_reachavoid_100M"
+        config["DIR_RA"]="BASELINE_f16_ra_100M"
         config["DIR_MODEL_RA"]="best_195"
 
         config["DIR_PPOLAG"]="BASELINE_f16_raa_ppolag_lam0p01"
@@ -751,10 +751,10 @@ if __name__ == "__main__":
         config["DIR_MODEL_RCPPO"]="best_184" 
 
         config["DIR_RESPO"]="BASELINE_f16_raa_respo"
-        config["DIR_MODEL_RESPO"]="best_50"
+        config["DIR_MODEL_RESPO"]="best_194"
 
         config["DIR_MORL"]="BASELINE_f16_raa_morl"
-        config["DIR_MODEL_MORL"]="best_24"
+        config["DIR_MODEL_MORL"]="best_4"
 
         config["DIR_SPARSE"]="BASELINE_f16_raa_sparse"
         config["DIR_MODEL_SPARSE"]="best_67" 
