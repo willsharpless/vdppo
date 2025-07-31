@@ -85,7 +85,7 @@ def train(envs, env_paramss, config, rng):
             ## Select random step in composed rollout for initial decomposed reach1 state
             else:
                 random_index = jax.random.randint(_rng_reach1, shape=(config["NUM_ENVS"],), minval=0, maxval=config["NUM_STEPS"])
-            # random_index = jax.random.randint(_rng_reach1, shape=(untrans_traj_batch_observations_full.shape[0],), minval=0, maxval=untrans_traj_batch_observations_full.shape[1])
+            # FIXME FIXME when terminating unhealthy via brax internals, does not filtering by done lead to misassociated trajectories? FIXME FIXME
 
             # Multiple random indices
             if "Hopper" in config["EXP_NAME"] or "HalfCheetah" in config["EXP_NAME"]:
