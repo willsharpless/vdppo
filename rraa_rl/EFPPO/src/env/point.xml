@@ -4,8 +4,8 @@
     <default>
         <geom condim="3" density="1" rgba="1 0 0 1" />
         <joint damping=".001"/>
-        <motor ctrlrange="-1 1" ctrllimited="true" forcerange="-.05 .05" forcelimited="true"/>
-        <velocity ctrlrange="-1 1" ctrllimited="true" forcerange="-.05 .05" forcelimited="true"/>
+        <motor ctrlrange="-1 1" ctrllimited="true" forcerange="-.5 .5" forcelimited="true"/>
+        <velocity ctrlrange="-1 1" ctrllimited="true" forcerange="-.5 .5" forcelimited="true"/>
         <site size="0.032" type="sphere"/>
     </default>
     <worldbody>

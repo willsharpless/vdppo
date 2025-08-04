@@ -92,7 +92,7 @@ def train(envs, env_paramss, config, rng):
 
 
             # Multiple random indices
-            if "Hopper" in config["EXP_NAME"] or "HalfCheetah" in config["EXP_NAME"]:
+            if "Hopper" in config["EXP_NAME"] or "HalfCheetah" in config["EXP_NAME"] or "Point" in config["EXP_NAME"]:
                 traj_batch_observations_full = traj_batch.obs 
                 untrans_traj_batch_observations_full = env.untransform_obs(traj_batch_observations_full)
                 untrans_traj_batch_observations_full = jnp.transpose(untrans_traj_batch_observations_full, axes=(1, 0, 2))
@@ -172,7 +172,7 @@ def train(envs, env_paramss, config, rng):
             # random_index = jax.random.randint(_rng_reach1, shape=(untrans_traj_batch_observations_full.shape[0],), minval=0, maxval=untrans_traj_batch_observations_full.shape[1])
 
             # Multiple random indices
-            if "Hopper" in config["EXP_NAME"] or "HalfCheetah" in config["EXP_NAME"]:
+            if "Hopper" in config["EXP_NAME"] or "HalfCheetah" in config["EXP_NAME"] or "Point" in config["EXP_NAME"]:
                 traj_batch_observations_full = traj_batch.obs 
                 untrans_traj_batch_observations_full = env.untransform_obs(traj_batch_observations_full)
                 untrans_traj_batch_observations_full = jnp.transpose(untrans_traj_batch_observations_full, axes=(1, 0, 2))
@@ -720,28 +720,52 @@ if __name__ == "__main__":
         # config["ANNEAL_ENT"]=True
         # config["NAME"]="halfcheetah_rr_resetgoal_reachv0.1_rerun"
 
-        config["EXP_NAME"]="HumanoidReachReach"
-        config["DIR"]="humanoid_rr_debug_donefix"
+        # config["EXP_NAME"]="HumanoidReachReach"
+        # config["DIR"]="humanoid_rr_debug_donefix"
+        # config["LR"]=3e-4
+        # config["NUM_ENVS"]=128
+        # config["NUM_STEPS"]=400
+        # config["TOTAL_TIMESTEPS"]=150_000_000
+        # config["STEP_SCAN"]=4
+        # config["UPDATE_EPOCHS"]=10
+        # config["NUM_MINIBATCHES"]=32
+        # config["GAMMA_ENERGY"]=1.0
+        # config["GAMMA_REACH_INIT"]=0.995
+        # config["GAMMA_REACH_FINAL"]=0.9995
+        # config["GAE_LAMBDA"]=0.95
+        # config["CLIP_EPS"]=0.2
+        # config["ENT_COEF"]=0.005
+        # config["VF_COEF"]=2.0
+        # config["MAX_GRAD_NORM"]=0.5
+        # config["ACTIVATION"]="tanh"
+        # config["CUDA_USE"]="0"
+        # config["ANNEAL_LR"]=True
+        # config["ANNEAL_ENT"]=True
+        # config["NAME"]="humanoid_rr_debug_donefix"
+
+        config["EXP_NAME"]="PointReachReach"
+        config["DIR"]="point_rr_debug"
         config["LR"]=3e-4
-        config["NUM_ENVS"]=128
-        config["NUM_STEPS"]=400
-        config["TOTAL_TIMESTEPS"]=150_000_000
-        config["STEP_SCAN"]=4
+        config["NUM_ENVS"]=32
+        config["NUM_STEPS"]=200
+        config["TOTAL_TIMESTEPS"]=10_000_000
+        config["STEP_SCAN"]=1
         config["UPDATE_EPOCHS"]=10
-        config["NUM_MINIBATCHES"]=32
+        config["NUM_MINIBATCHES"]=8
         config["GAMMA_ENERGY"]=1.0
-        config["GAMMA_REACH_INIT"]=0.995
-        config["GAMMA_REACH_FINAL"]=0.9995
+        config["GAMMA_REACH_INIT"]=0.999
+        config["GAMMA_REACH_FINAL"]=0.9999
         config["GAE_LAMBDA"]=0.95
         config["CLIP_EPS"]=0.2
-        config["ENT_COEF"]=0.005
-        config["VF_COEF"]=2.0
+        config["ENT_COEF"]=0.01
+        config["VF_COEF"]=0.5
         config["MAX_GRAD_NORM"]=0.5
         config["ACTIVATION"]="tanh"
         config["CUDA_USE"]="0"
         config["ANNEAL_LR"]=True
         config["ANNEAL_ENT"]=True
-        config["NAME"]="humanoid_rr_debug_donefix"
+        config["NAME"]="point_rr_debug"
+    
     #     # config["TEST_MODE"]=True # USES DETERMINISTIC MODELS
 
     config["NUM_UPDATES"] = int(

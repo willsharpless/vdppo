@@ -10,6 +10,8 @@ import imageio
 import wandb 
 from time import time 
 
+from rraa_rl.EFPPO.src.env.reach_avoid.safety_gym_RR import PointReachReach, PointReach1, PointReach2
+# from rraa_rl.EFPPO.src.env.reach_avoid.safety_gym_RAA import PointReachAvoid, PointAvoidOnly
 from rraa_rl.EFPPO.src.env.reach_avoid.half_cheetah_RAA import HalfCheetahReachAvoid, HalfCheetahAvoidOnly
 from rraa_rl.EFPPO.src.env.reach_avoid.half_cheetah_RR import HalfCheetahReachReach, HalfCheetahReach1, HalfCheetahReach2
 from rraa_rl.EFPPO.src.env.reach_avoid.humanoid_RR import HumanoidReachReach, HUMANOID_TARGET_RIGHT, HUMANOID_TARGET_LEFT, HUMANOID_TARGET_RADIUS
@@ -1349,6 +1351,92 @@ def plot_contour_RRAA(multi_info, epoch, config, policy_decision_sample=None):
         plt.close("all")
         return None
     
+    elif 'Point' in config['EXP_NAME'] and 'ReachReach' in config['EXP_NAME']: 
+        
+        info, info_1, info_2 = multi_info
+        plt.figure(figsize=(12, 6*2))
+        fig, axes = plt.subplots(3, 1)
+        axes_upperx = 3.
+        axes_lowerx = -3.
+        axes_uppery = 3.
+        axes_lowery = -3.
+
+        def draw_point_rr(info, title, ax, mode="both"):
+            reach1_idx = info.get('reach1_index')
+            reach2_idx = info.get('reach2_index')
+            full_len = info['x'].shape[0]
+
+            # Plot Targets and Obstacles
+            x = np.linspace(axes_lowerx, axes_upperx, 400)
+            y = np.linspace(axes_lowery, axes_uppery, 400)
+            X, Y = np.meshgrid(x, y)
+            positions = np.stack([X, Y], axis=-1)  # shape (400, 400, 2)
+            model = PointReachReach()
+            is_reach1_np = jit(model.is_reach1)
+            is_reach2_np = jit(model.is_reach2)
+            reach1_values = np.array(is_reach1_np(positions))
+            reach2_values = np.array(is_reach2_np(positions))
+            if mode=="both":
+                ax.contourf(X, Y, np.maximum(reach1_values, reach2_values), alpha=0.3, levels=20)
+                ax.contourf(X, Y, reach1_values, levels=[reach1_values.min(), 0], colors=['green'], alpha=0.4)
+                ax.contourf(X, Y, reach2_values, levels=[reach2_values.min(), 0], colors=['blue'], alpha=0.4)
+            elif mode=="reach1":
+                ax.contourf(X, Y, reach1_values, alpha=0.3, levels=20)
+                ax.contourf(X, Y, reach1_values, levels=[reach1_values.min(), 0], colors=['green'], alpha=0.4)
+            else:
+                ax.contourf(X, Y, reach2_values, alpha=0.3, levels=20)
+                ax.contourf(X, Y, reach2_values, levels=[reach2_values.min(), 0], colors=['blue'], alpha=0.4)
+
+            def draw_body(ax, info, i, alpha, color_mode="normal"):
+                
+                if color_mode == "reach1":
+                    c = 'g'
+                    linewidth=3
+                elif color_mode == "reach2":
+                    c = 'b'
+                    linewidth=3
+                else:
+                    c = 'k'
+                    linewidth=1
+
+                # ax.scatter(np.array([info['x'][i], info['y'][i]]), c=c, alpha=alpha, linewidth=linewidth)
+                ax.scatter(info['x'][i], info['y'][i], color=c, alpha=alpha)
+
+            indices = np.linspace(0, full_len, 11, dtype=int)
+            for step_n, i in enumerate(indices):
+                alpha = (step_n + 1) / 11
+
+                reach1_val = is_reach1_np(np.array([info['x'][i].item(), info['y'][i].item()]))
+                reach2_val = is_reach2_np(np.array([info['x'][i].item(), info['y'][i].item()]))
+
+                if reach1_val < 0.:
+                    color_mode = "reach1"
+                elif reach2_val < 0.:
+                    color_mode = "reach2"
+                else:
+                    color_mode = "normal"
+                draw_body(ax, info, i, alpha, color_mode=color_mode)
+
+            if reach1_idx is not None and reach1_idx > -1:
+                draw_body(ax, info, reach1_idx, alpha, color_mode="reach1")
+            if reach2_idx is not None and reach2_idx > -1:
+                draw_body(ax, info, reach2_idx, alpha, color_mode="reach2")
+
+            ax.set_xlim((axes_lowerx, axes_upperx))
+            ax.set_ylim((axes_lowery, axes_uppery))
+            ax.set_aspect('equal')
+
+            ax.set_title(title)
+
+        # Draw Reach Avoid and Avoid Only 
+        draw_point_rr(info, "Reach Reach", axes[0])
+        if config['EXP_NAME'] == 'PointReachReach':
+            draw_point_rr(info_1, "Reach 1", axes[1], mode="reach1")
+            draw_point_rr(info_2, "Reach 2", axes[2], mode="reach2")
+
+        plt.savefig('model/{}/reach/trajectory_{:0>4d}'.format(config["DIR"], epoch), dpi=300)
+        return fig
+    
 def plot_video_contour_RRAA(multi_info, epoch, config, save_video=False, prefix="", log_wandb=True):
     start_time = time()
     frames = None
@@ -1761,7 +1849,7 @@ def plot_video_contour_RRAA(multi_info, epoch, config, save_video=False, prefix=
         frames = []
         num_frames = full_len//2
         indices = np.linspace(0, full_len, num_frames, dtype=int)
-        if config['EXP_NAME'] == 'HopperReachReach' or config['EXP_NAME'] == 'HalfCheetahReachReach':
+        if config['EXP_NAME'] == 'HalfCheetahReachReach':
             reach_idx_1_reach1 = info_1['reach_index_1'].item()
             reach_idx_2_reach2 = info_2['reach_index_2'].item()
             
@@ -1771,7 +1859,7 @@ def plot_video_contour_RRAA(multi_info, epoch, config, save_video=False, prefix=
 
             draw_cheetah_rr(step_n, info, reach_idx_1, reach_idx_2, "Reach Reach", axes[0], mode="both")
 
-            if config['EXP_NAME'] == 'HopperReachReach' or config['EXP_NAME'] == 'HalfCheetahReachReach':
+            if config['EXP_NAME'] == 'HalfCheetahReachReach':
                 # AFTER DECOMPOSED REACH, DRAW LAST POINT
                 if step_n >= reach_idx_1_reach1:
                     reach_idx_1_reach1 = step_n
@@ -2075,6 +2163,121 @@ def plot_video_contour_RRAA(multi_info, epoch, config, save_video=False, prefix=
             if config['EXP_NAME'] == 'HumanoidReachAlwaysAvoid':
                 draw_humanoid_raa(step_n, info_avoid, "Avoid Only", axes[1], mode="avoid")
             
+            # Render the figure to an image (smaller size)
+            fig.canvas.draw()
+            frame = np.frombuffer(fig.canvas.buffer_rgba(), dtype=np.uint8)
+            frame = frame.reshape(fig.canvas.get_width_height()[::-1] + (4,))  # RGBA (4 channels)
+            frames.append(frame)
+            
+            plt.close(fig)
+            plt.close("all")
+
+    elif 'Point' in config['EXP_NAME'] and 'ReachReach' in config['EXP_NAME']:
+        
+        info, info_1, info_2 = multi_info
+
+        axes_upperx = 3.
+        axes_lowerx = -3.
+        axes_uppery = 3.
+        axes_lowery = -3.
+
+        # Reward percomputation (targets & obstacles)
+        x = np.linspace(axes_lowerx, axes_upperx, 400)
+        y = np.linspace(axes_lowery, axes_uppery, 400)
+        X, Y = np.meshgrid(x, y)
+        positions = np.stack([X, Y], axis=-1)  # shape (400, 400, 2)
+        model = PointReachReach()
+        is_reach1_np = jit(model.is_reach1)
+        is_reach2_np = jit(model.is_reach2)
+        reach1_values = np.array(is_reach1_np(positions))
+        reach2_values = np.array(is_reach2_np(positions))
+        
+        def draw_point_rr(step, info, reach1_idx, reach2_idx, title, ax, mode="both"):
+
+            # Plot Reach  
+            if mode=="both":
+                ax.contourf(X, Y, np.maximum(reach1_values, reach2_values), alpha=0.3, levels=20)
+                ax.contourf(X, Y, reach1_values, levels=[reach1_values.min(), 0], colors=['green'], alpha=0.4)
+                ax.contourf(X, Y, reach2_values, levels=[reach2_values.min(), 0], colors=['blue'], alpha=0.4)
+            elif mode=="reach1":
+                ax.contourf(X, Y, reach1_values, alpha=0.3, levels=20)
+                ax.contourf(X, Y, reach1_values, levels=[reach1_values.min(), 0], colors=['green'], alpha=0.4)
+            else:
+                ax.contourf(X, Y, reach2_values, alpha=0.3, levels=20)
+                ax.contourf(X, Y, reach2_values, levels=[reach2_values.min(), 0], colors=['blue'], alpha=0.4)
+
+            def draw_body(ax, info, i, alpha, color_mode="normal"):
+                
+                if color_mode == "reach1":
+                    c = 'g'
+                    linewidth=3
+                elif color_mode == "reach2":
+                    c = 'b'
+                    linewidth=3
+                else:
+                    c = 'k'
+                    linewidth=1
+
+                # ax.plot(np.array([info['x'][i], info['y'][i]]), c=c, alpha=alpha, linewidth=linewidth)
+                ax.scatter(info['x'][i], info['y'][i], color=c, alpha=alpha)
+
+            reach1_val = is_reach1_np(np.array([info['x'][step].item(), info['y'][step].item()]))
+            reach2_val = is_reach2_np(np.array([info['x'][step].item(), info['y'][step].item()]))
+
+            if reach1_val < 0.:
+                color_mode = "reach1"
+            elif reach2_val < 0.:
+                color_mode = "reach2"
+            else:
+                color_mode = "normal"
+
+            draw_body(ax, info, step, 0.9, color_mode=color_mode)
+
+            if reach1_idx is not None and step >= reach1_idx and reach1_idx > -1:
+                draw_body(ax, info, reach1_idx, 0.5, color_mode="reach1")
+
+            if reach2_idx is not None and step >= reach2_idx and reach2_idx > -1:
+                draw_body(ax, info, reach2_idx, 0.5, color_mode="reach2")
+            
+            ax.set_xlim((axes_lowerx, axes_upperx))
+            ax.set_ylim((axes_lowery, axes_uppery))
+            ax.set_aspect('equal')
+
+            ax.set_title(title)
+
+        # DEFINE VIDEO LENGTH TO DUAL-REACHING OR FULL TRAJ
+        reach_idx_1 = info['reach_index_1']
+        reach_idx_2 = info['reach_index_2']
+
+        full_len = np.maximum(reach_idx_1, reach_idx_2)
+        full_len = info['x'].shape[0] if full_len.item() == np.inf else int(full_len.item())
+        # full_len = info['head_pos'].shape[0]
+        reach_idx_1 = int(reach_idx_1.item()) if reach_idx_1.item() != np.inf else -1
+        reach_idx_2 = int(reach_idx_2.item()) if reach_idx_2.item() != np.inf else -1
+        
+        frames = []
+        num_frames = full_len//2
+        indices = np.linspace(0, full_len, num_frames, dtype=int)
+        if config['EXP_NAME'] == 'PointReachReach':
+            reach_idx_1_reach1 = info_1['reach_index_1'].item()
+            reach_idx_2_reach2 = info_2['reach_index_2'].item()
+            
+        for step_n in indices: 
+
+            fig, axes = plt.subplots(3, 1, figsize=(6, 4), dpi=100)
+
+            draw_point_rr(step_n, info, reach_idx_1, reach_idx_2, "Reach Reach", axes[0], mode="both")
+
+            if config['EXP_NAME'] == 'PointReachReach':
+                # AFTER DECOMPOSED REACH, DRAW LAST POINT
+                if step_n >= reach_idx_1_reach1:
+                    reach_idx_1_reach1 = step_n
+                if step_n >= reach_idx_2_reach2:
+                    reach_idx_2_reach2 = step_n
+
+                draw_point_rr(step_n, info_1, reach_idx_1_reach1, -1, "Reach 1", axes[1], mode="reach1")
+                draw_point_rr(step_n, info_2, -1, reach_idx_2_reach2, "Reach 2", axes[2], mode="reach2")
+                
             # Render the figure to an image (smaller size)
             fig.canvas.draw()
             frame = np.frombuffer(fig.canvas.buffer_rgba(), dtype=np.uint8)
