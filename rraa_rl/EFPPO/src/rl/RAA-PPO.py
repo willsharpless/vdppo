@@ -92,9 +92,11 @@ def train(envs, env_paramss, config, rngs, env_test=None):
                 reach_idx_pre = (traj_batch.reach < 0).argmax(axis=0)
                 reach_idx = jnp.where(jnp.any((traj_batch.reach < 0) == 1, axis=0), reach_idx_pre, config["NUM_STEPS"])
 
-                random_index_precrash = jax.random.randint(_rng_avoid, shape=(config["NUM_ENVS"],), minval=0, maxval=avoid_idx) # sample before crashing
-                random_index = jnp.where(jnp.logical_and(jnp.any((traj_batch.reach < 0) == 1, axis=0), # reached
-                                                         jnp.minimum(reach_idx, avoid_idx) == reach_idx), # reached before crash
+                # random_index_precrash = jax.random.randint(_rng_avoid, shape=(config["NUM_ENVS"],), minval=0, maxval=avoid_idx) # sample before crashing
+                random_index_precrash = jax.random.randint(_rng_avoid, shape=(config["NUM_ENVS"],), minval=0, maxval=avoid_idx//2) # FIXME: sample well before crashing?
+                random_index = jnp.where(jnp.logical_and(jnp.any(traj_batch.reach < 0, axis=0), # reached
+                                                        #  reach_idx < avoid_idx), # reached before crash
+                                                         reach_idx + 10 < avoid_idx), # FIXME: reached well before crash?
                                                       reach_idx, random_index_precrash)
             # FIXME FIXME when terminating unhealthy via brax internals, does not filtering by done lead to misassociated trajectories? FIXME FIXME
 
