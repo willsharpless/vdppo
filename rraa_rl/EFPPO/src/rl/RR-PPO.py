@@ -81,11 +81,15 @@ def train(envs, env_paramss, config, rng):
                 reach2_idx_pre = (traj_batch.reach2 < 0).argmax(axis=0)
                 reach2_idx = jnp.where(jnp.any((traj_batch.reach2 < 0) == 1, axis=0), reach2_idx_pre, config["NUM_STEPS"])
                 random_index = jnp.where(jnp.any(traj_batch.reach2 < 0, axis=0), reach2_idx, random_index_pre)
-            
+                # random_index = jnp.where(jnp.any(traj_batch.reach2 < 0, axis=0), reach2_idx - 10, random_index_pre) # FIXME: before reaching?
             ## Select random step in composed rollout for initial decomposed reach1 state
             else:
                 random_index = jax.random.randint(_rng_reach1, shape=(config["NUM_ENVS"],), minval=0, maxval=config["NUM_STEPS"])
             # FIXME FIXME when terminating unhealthy via brax internals, does not filtering by done lead to misassociated trajectories? FIXME FIXME
+            # NOTE: I think to input random will do -- less efficient but wont be stuck in bad states at least
+            # NOTE: but it seems internal reset will restore whatever trajectory starting pos was, so all roll-outs in this batch will start there 
+            # so it would be better to initialize to random set?
+
 
             # Multiple random indices
             if "Hopper" in config["EXP_NAME"] or "HalfCheetah" in config["EXP_NAME"]:
@@ -160,6 +164,7 @@ def train(envs, env_paramss, config, rng):
                 reach1_idx_pre = (traj_batch.reach1 < 0).argmax(axis=0)
                 reach1_idx = jnp.where(jnp.any((traj_batch.reach1 < 0) == 1, axis=0), reach1_idx_pre, config["NUM_STEPS"])
                 random_index = jnp.where(jnp.any(traj_batch.reach1 < 0, axis=0), reach1_idx, random_index_pre)
+                # random_index = jnp.where(jnp.any(traj_batch.reach1 < 0, axis=0), reach1_idx - 10, random_index_pre) # FIXME: before reaching?
 
             ## Select random step in composed rollout for initial decomposed reach2 state 
             else:
