@@ -1,10 +1,10 @@
 python ./rraa_rl/EFPPO/src/rl/RAA-PPO.py \
 --EXP_NAME=PointReachAlwaysAvoid \
---DIR=point_raa_v0_faster_ts200k \
+--DIR=point_raa_resetgoalsafe_avoidv1_samplefix \
 --LR=3e-4 \
 --NUM_ENVS=128 \
 --NUM_STEPS=400 \
---TOTAL_TIMESTEPS=200_000_000 \
+--TOTAL_TIMESTEPS=100_000_000 \
 --STEP_SCAN=4 \
 --UPDATE_EPOCHS=10 \
 --NUM_MINIBATCHES=32 \
@@ -20,4 +20,4 @@ python ./rraa_rl/EFPPO/src/rl/RAA-PPO.py \
 --CUDA_USE=0 \
 --ANNEAL_LR \
 --ANNEAL_ENT \
---NAME=point_raa_v0_faster_ts200k
+--NAME=point_raa_resetgoalsafe_avoidv1_samplefix

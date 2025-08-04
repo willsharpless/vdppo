@@ -96,7 +96,7 @@ def train(envs, env_paramss, config, rngs, env_test=None):
                 random_index_precrash = jax.random.randint(_rng_avoid, shape=(config["NUM_ENVS"],), minval=0, maxval=avoid_idx//2) # FIXME: sample well before crashing?
                 random_index = jnp.where(jnp.logical_and(jnp.any(traj_batch.reach < 0, axis=0), # reached
                                                         #  reach_idx < avoid_idx), # reached before crash
-                                                         reach_idx + 10 < avoid_idx), # FIXME: reached well before crash?
+                                                         reach_idx + 50 < avoid_idx), # FIXME: reached well before crash?
                                                       reach_idx, random_index_precrash)
             # FIXME FIXME when terminating unhealthy via brax internals, does not filtering by done lead to misassociated trajectories? FIXME FIXME
 
@@ -105,7 +105,7 @@ def train(envs, env_paramss, config, rngs, env_test=None):
                 random_index = jax.random.randint(_rng_avoid, shape=(config["NUM_ENVS"],), minval=0, maxval=config["NUM_STEPS"])
 
             # Multiple random indices
-            if "Hopper" in config["EXP_NAME"] or "Cheetah" in config["EXP_NAME"]:
+            if "Hopper" in config["EXP_NAME"] or "Cheetah" in config["EXP_NAME"]  or "Point" in config["EXP_NAME"]:
                 traj_batch_observations_full = traj_batch.obs 
                 untrans_traj_batch_observations_full = env.untransform_obs(traj_batch_observations_full)
                 untrans_traj_batch_observations_full = jnp.transpose(untrans_traj_batch_observations_full, axes=(1, 0, 2))
@@ -604,7 +604,7 @@ def train(envs, env_paramss, config, rngs, env_test=None):
 if __name__ == "__main__":
     config = vars(get_args(sys.argv[1:]))
 
-    debug = True
+    debug = False
     if debug:
         # config["EXP_NAME"]="F16ReachAlwaysAvoid"
         # config["DIR"]="F16_raa_PE500_halfsamp2_TO80m80s_tjreset_g999"
@@ -677,7 +677,7 @@ if __name__ == "__main__":
         # config["TEST_MODE"]=True # USES DETERMINISTIC MODELS
 
         config["EXP_NAME"]="PointReachAlwaysAvoid"
-        config["DIR"]="point_raa_resetgoalsafe_avoidv0_debug"
+        config["DIR"]="point_raa_resetgoalsafe_avoidv0_debug2"
         config["LR"]=3e-4
         config["NUM_ENVS"]=128
         config["NUM_STEPS"]=400
@@ -697,7 +697,7 @@ if __name__ == "__main__":
         config["CUDA_USE"]="0"
         config["ANNEAL_LR"]=True,
         config["ANNEAL_ENT"]=True
-        config["NAME"]="point_raa_resetgoalsafe_avoidv0_debug"
+        config["NAME"]="point_raa_resetgoalsafe_avoidv0_debug2"
 
     config["NUM_UPDATES"] = int(
         config["TOTAL_TIMESTEPS"] // config["NUM_STEPS"] // config["NUM_ENVS"]
@@ -734,7 +734,7 @@ if __name__ == "__main__":
     config_test["TEST_MODE"] = True
     env_test = get_env(config_test)
 
-    config["USE_WANDB"] = False # False for debugging 
+    config["USE_WANDB"] = True # False for debugging 
     if config["USE_WANDB"]:
         wandb.init(project='EC-EFPPO-{}'.format(config["EXP_NAME"]), name=config["NAME"], config=config,
                    entity='braat_brrt')

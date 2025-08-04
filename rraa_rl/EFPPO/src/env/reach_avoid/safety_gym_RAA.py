@@ -6,12 +6,12 @@ from brax.envs.wrappers.training import EpisodeWrapper, AutoResetWrapper
 from flax import struct
 from brax.envs.base import State
 
-from .point_random import PointRandom
+from .point_random import PointRandom, PointRandomOuter
 
 SAFETYGYM_RAA_TARGET = [0., 0.]
 SAFETYGYM_RAA_TARGET_RADIUS = 0.3
 SAFETYGYM_RAA_OBSTACLE_RADIUS = 0.2
-SAFETYGYM_RAA_BOX_RADIUS = 2.5
+SAFETYGYM_RAA_BOX_RADIUS = 3.0
 
 @struct.dataclass
 class EnvStateRA:
@@ -32,7 +32,7 @@ class EnvParamsEmpty:
 
 class PointReachAvoidTemplate:
     def __init__(self, backend="mjx"):
-        env = PointRandom(backend=backend)
+        env = PointRandomOuter(backend=backend)
         env = EpisodeWrapper(env, episode_length=1000, action_repeat=1)
         env = AutoResetWrapper(env)
         self._env = env
@@ -66,10 +66,10 @@ class PointReachAvoidTemplate:
             avoid_obstacles = jnp.maximum(avoid_obstacles, avoid)
         
         ## AVOID WALLS
-        avoid_wall = jnp.maximum(target_pos[..., 0], target_pos[..., 1]) - SAFETYGYM_RAA_BOX_RADIUS
+        avoid_wall = jnp.maximum(jnp.fabs(target_pos[..., 0]), jnp.fabs(target_pos[..., 1])) - SAFETYGYM_RAA_BOX_RADIUS
 
-        avoid = jnp.maximum(0.1 * avoid_obstacles, 10 * avoid_wall)
-        value = jnp.where(avoid > 0., 3., value)
+        avoid = jnp.maximum(10. * avoid_obstacles, 0.1 * avoid_wall)
+        value = jnp.where(avoid > 0., 3., avoid)
         return value * 100.0
 
     @partial(jax.jit, static_argnums=(0,))
