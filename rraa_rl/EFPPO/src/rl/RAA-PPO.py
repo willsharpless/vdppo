@@ -96,6 +96,7 @@ def train(envs, env_paramss, config, rngs, env_test=None):
                 random_index = jnp.where(jnp.logical_and(jnp.any((traj_batch.reach < 0) == 1, axis=0), # reached
                                                          jnp.minimum(reach_idx, avoid_idx) == reach_idx), # reached before crash
                                                       reach_idx, random_index_precrash)
+            # FIXME FIXME when terminating unhealthy via brax internals, does not filtering by done lead to misassociated trajectories? FIXME FIXME
 
             # Init to random point along rollout
             else:
@@ -408,7 +409,7 @@ def train(envs, env_paramss, config, rngs, env_test=None):
         info_avoid = tree_index2(traj_batch_avoid.info, idx)
 
         cnt_never_reached, cnt_crashed, cnt_crash_after_reach = calculate_reach_avoid_stats(traj_batch)
-        (reach_perc, crash_perc, reach_avoid_perc) = calculate_reachavoid(traj_batch)
+        (reach_perc, crash_perc, reach_avoid_perc) = calculate_reachavoid(traj_batch, to_first_done="Humanoid" in config["EXP_NAME"])
 
         info['reach_index'] = reach_idx
         info['avoid_index'] = avoid_idx
@@ -533,7 +534,7 @@ def train(envs, env_paramss, config, rngs, env_test=None):
             info_avoid_eval['avoid_index'] = avoid_avoidonly_idx
             fig_eval = plot_contour_RRAA((info_eval, info_avoid_eval), timestep, config)
             cnt_never_reached, cnt_crashed, cnt_crash_after_reach = calculate_reach_avoid_stats(traj_batch_eval)
-            (reach_perc, crash_perc, reach_avoid_perc) = calculate_reachavoid(traj_batch_eval)
+            (reach_perc, crash_perc, reach_avoid_perc) = calculate_reachavoid(traj_batch_eval, to_first_done="Humanoid" in config["EXP_NAME"])
             if config["USE_WANDB"]:
                 wandb.log({
                 "eval/not reaching goal": cnt_never_reached,
@@ -601,7 +602,7 @@ def train(envs, env_paramss, config, rngs, env_test=None):
 if __name__ == "__main__":
     config = vars(get_args(sys.argv[1:]))
 
-    debug = True
+    debug = False
     if debug:
         # config["EXP_NAME"]="F16ReachAlwaysAvoid"
         # config["DIR"]="F16_raa_PE500_halfsamp2_TO80m80s_tjreset_g999"
