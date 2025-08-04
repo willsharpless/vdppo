@@ -604,7 +604,7 @@ def train(envs, env_paramss, config, rngs, env_test=None):
 if __name__ == "__main__":
     config = vars(get_args(sys.argv[1:]))
 
-    debug = False
+    debug = True
     if debug:
         # config["EXP_NAME"]="F16ReachAlwaysAvoid"
         # config["DIR"]="F16_raa_PE500_halfsamp2_TO80m80s_tjreset_g999"
@@ -629,28 +629,28 @@ if __name__ == "__main__":
         # config["ANNEAL_ENT"]=True
         # config["NAME"]="F16_raa_PE500_halfsamp2_TO80m80s_tjreset_g999"
 
-        config["EXP_NAME"]="HalfCheetahReachAlwaysAvoid"
-        config["DIR"]="halfcheetah_raa_resetgoalsafe_avoidv9"
-        config["LR"]=3e-4
-        config["NUM_ENVS"]=128
-        config["NUM_STEPS"]=400
-        config["TOTAL_TIMESTEPS"]=100_000_000
-        config["STEP_SCAN"]=4
-        config["UPDATE_EPOCHS"]=10
-        config["NUM_MINIBATCHES"]=32
-        config["GAMMA_ENERGY"]=1.0
-        config["GAMMA_REACH_INIT"]=0.995
-        config["GAMMA_REACH_FINAL"]=0.9995
-        config["GAE_LAMBDA"]=0.95
-        config["CLIP_EPS"]=0.2
-        config["ENT_COEF"]=0.005
-        config["VF_COEF"]=2.0
-        config["MAX_GRAD_NORM"]=0.5
-        config["ACTIVATION"]="tanh"
-        config["CUDA_USE"]="0"
-        config["ANNEAL_LR"]=True,
-        config["ANNEAL_ENT"]=True
-        config["NAME"]="halfcheetah_raa_resetgoalsafe_avoidv9"
+        # config["EXP_NAME"]="HalfCheetahReachAlwaysAvoid"
+        # config["DIR"]="halfcheetah_raa_resetgoalsafe_avoidv9"
+        # config["LR"]=3e-4
+        # config["NUM_ENVS"]=128
+        # config["NUM_STEPS"]=400
+        # config["TOTAL_TIMESTEPS"]=100_000_000
+        # config["STEP_SCAN"]=4
+        # config["UPDATE_EPOCHS"]=10
+        # config["NUM_MINIBATCHES"]=32
+        # config["GAMMA_ENERGY"]=1.0
+        # config["GAMMA_REACH_INIT"]=0.995
+        # config["GAMMA_REACH_FINAL"]=0.9995
+        # config["GAE_LAMBDA"]=0.95
+        # config["CLIP_EPS"]=0.2
+        # config["ENT_COEF"]=0.005
+        # config["VF_COEF"]=2.0
+        # config["MAX_GRAD_NORM"]=0.5
+        # config["ACTIVATION"]="tanh"
+        # config["CUDA_USE"]="0"
+        # config["ANNEAL_LR"]=True,
+        # config["ANNEAL_ENT"]=True
+        # config["NAME"]="halfcheetah_raa_resetgoalsafe_avoidv9"
 
         # config["EXP_NAME"]="HumanoidReachAlwaysAvoid"
         # config["DIR"]="humanoid_raa_debug"
@@ -675,6 +675,29 @@ if __name__ == "__main__":
         # config["ANNEAL_ENT"]=True
         # config["NAME"]="humanoid_raa_debug"
         # config["TEST_MODE"]=True # USES DETERMINISTIC MODELS
+
+        config["EXP_NAME"]="PointReachAlwaysAvoid"
+        config["DIR"]="point_raa_resetgoalsafe_avoidv0_debug"
+        config["LR"]=3e-4
+        config["NUM_ENVS"]=128
+        config["NUM_STEPS"]=400
+        config["TOTAL_TIMESTEPS"]=100_000_000
+        config["STEP_SCAN"]=4
+        config["UPDATE_EPOCHS"]=10
+        config["NUM_MINIBATCHES"]=32
+        config["GAMMA_ENERGY"]=1.0
+        config["GAMMA_REACH_INIT"]=0.995
+        config["GAMMA_REACH_FINAL"]=0.9995
+        config["GAE_LAMBDA"]=0.95
+        config["CLIP_EPS"]=0.2
+        config["ENT_COEF"]=0.005
+        config["VF_COEF"]=2.0
+        config["MAX_GRAD_NORM"]=0.5
+        config["ACTIVATION"]="tanh"
+        config["CUDA_USE"]="0"
+        config["ANNEAL_LR"]=True,
+        config["ANNEAL_ENT"]=True
+        config["NAME"]="point_raa_resetgoalsafe_avoidv0_debug"
 
     config["NUM_UPDATES"] = int(
         config["TOTAL_TIMESTEPS"] // config["NUM_STEPS"] // config["NUM_ENVS"]
@@ -711,7 +734,7 @@ if __name__ == "__main__":
     config_test["TEST_MODE"] = True
     env_test = get_env(config_test)
 
-    config["USE_WANDB"] = True # False for debugging 
+    config["USE_WANDB"] = False # False for debugging 
     if config["USE_WANDB"]:
         wandb.init(project='EC-EFPPO-{}'.format(config["EXP_NAME"]), name=config["NAME"], config=config,
                    entity='braat_brrt')
