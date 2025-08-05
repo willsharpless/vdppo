@@ -362,13 +362,13 @@ def train(env, env_params, config, rng):
                    "lambda": jnp.mean(loss_info['lambda'])}, 
                    step=timestep)
         
-        if "Hopper" in config["EXP_NAME"] or "Cheetah" in config["EXP_NAME"]:
+        if "F16" not in config["EXP_NAME"]:
                 wandb.log({
                     'trajectory_sample':wandb.Image(fig),
                 }, step=timestep)
         
         # Save video of trajectory 
-        video_freq = 5 #25 
+        video_freq = 25 
         save_video = True 
         if timestep % video_freq == 0 or timestep == total_timesteps - 1: 
             video_frames = plot_video_contour_RRAA((info, None), timestep + 1, config, save_video=save_video, log_wandb=config["USE_WANDB"])

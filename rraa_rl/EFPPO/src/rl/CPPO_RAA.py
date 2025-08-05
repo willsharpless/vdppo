@@ -211,7 +211,7 @@ def train(env, env_params, config, rng):
                     "cnt crash after reach ": cnt_crash_after_reach,
                    "lambda": jnp.mean(loss_info['lambda'])})
         
-        if "Hopper" in config["EXP_NAME"] or "HalfCheetah" in config["EXP_NAME"]:
+        if "F16" not in config["EXP_NAME"]:
             wandb.log({
                 'trajectory_sample':wandb.Image(fig),
             })
