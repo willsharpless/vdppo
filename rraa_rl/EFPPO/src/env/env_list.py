@@ -21,6 +21,8 @@ from .baseline.wind_field_baseline import WindFieldBaseline
 from .baseline.half_cheetah_avoid_baseline import HalfCheetahAvoidBaseline
 from .baseline.half_cheetah_RAA_baseline import HalfCheetahReachAlwaysAvoidBaseline_augmented
 from .baseline.half_cheetah_RR_baseline import HalfCheetahReachReachBaseline_augmented
+from .baseline.safety_gym_RAA_baseline import PointReachAlwaysAvoidBaseline_augmented
+from .baseline.safety_gym_RR_baseline import PointReachReachBaseline_augmented
 
 from .baseline.F16_RAA_baseline import F16ReachAvoidBaseline
 from .baseline.F16_RR_baseline import F16ReachReachBaseline
@@ -619,6 +621,27 @@ def get_env(config):
         # env_avoid.set_untransform_obs(untrans)
         return (env, env1, env2)
     
+    elif config["EXP_NAME"] == "PointReachReach_CPPO" \
+        or config["EXP_NAME"] == "PointReachReach_RCPPO" \
+            or config["EXP_NAME"] == "PointReachReach_RESPO" \
+                or config["EXP_NAME"] == "PointReachReachBaseline_MORL" \
+                    or config["EXP_NAME"] == "PointReachReachBaseline_Sparse":
+
+        obs_dim = 7 + 2
+        vec1 = jnp.zeros(obs_dim, dtype=jnp.float32)
+        vec2 = jnp.ones(obs_dim, dtype=jnp.float32)
+        vec2 = vec2.at[0].set(2.)
+        vec2 = vec2.at[1].set(2.)
+        
+        trans = partial(transform_observation, vec1, vec2)
+        untrans = partial(untransform_observation, vec1, vec2)
+
+        env = PointReachReachBaseline_augmented(use_stl=config["USE_STL"])
+        env = TransformObservation(env, trans)
+        env.set_untransform_obs(untrans)
+
+        return (env)
+    
     elif config["EXP_NAME"] == "PointReachAlwaysAvoid": 
         vec1 = jnp.zeros(9, dtype=jnp.float32)
         vec2 = jnp.ones(9, dtype=jnp.float32)
@@ -635,6 +658,27 @@ def get_env(config):
         env.set_untransform_obs(untrans)
         env_avoid.set_untransform_obs(untrans)
         return (env, env_avoid)
+    
+    elif config["EXP_NAME"] == "PointReachAlwaysAvoid_CPPO" \
+        or config["EXP_NAME"] == "PointReachAlwaysAvoid_RCPPO" \
+            or config["EXP_NAME"] == "PointReachAlwaysAvoid_RESPO" \
+                or config["EXP_NAME"] == "PointReachAlwaysAvoidBaseline_MORL" \
+                    or config["EXP_NAME"] == "PointReachAlwaysAvoidBaseline_Sparse":
+
+        obs_dim = 7 + 2
+        vec1 = jnp.zeros(obs_dim, dtype=jnp.float32)
+        vec2 = jnp.ones(obs_dim, dtype=jnp.float32)
+        vec2 = vec2.at[0].set(2.)
+        vec2 = vec2.at[1].set(2.)
+        
+        trans = partial(transform_observation, vec1, vec2)
+        untrans = partial(untransform_observation, vec1, vec2)
+
+        env = PointReachAlwaysAvoidBaseline_augmented()
+        env = TransformObservation(env, trans)
+        env.set_untransform_obs(untrans)
+
+        return (env)
 
     elif config["EXP_NAME"] == 'PendulumConstraintBaseline':
         env = PendulumConstraintBaseline()
