@@ -2,7 +2,7 @@
 # C-PPO
 python ./rraa_rl/EFPPO/src/rl/CPPO_RR.py \
 --EXP_NAME=PointReachReach_CPPO \
---DIR=point_rr_cppo_v0_faster_ts100m \
+--DIR=BASELINE_point_rr_cppo_v0_faster_ts100m \
 --LR=3e-4 \
 --NUM_ENVS=128 \
 --NUM_STEPS=400 \
@@ -25,12 +25,12 @@ python ./rraa_rl/EFPPO/src/rl/CPPO_RR.py \
 --CUDA_USE=0 \
 --ANNEAL_LR \
 --ANNEAL_ENT \
---NAME=point_rr_cppo_v0_faster_ts100m
+--NAME=BASELINE_point_rr_cppo_v0_faster_ts100m
 
 # PPO
 python ./rraa_rl/EFPPO/src/rl/CPPO_RR.py \
 --EXP_NAME=PointReachReach_CPPO \
---DIR=point_rr_ppo_v0_faster_ts100m \
+--DIR=BASELINE_point_rr_ppo_v0_faster_ts100m \
 --LR=3e-4 \
 --NUM_ENVS=128 \
 --NUM_STEPS=400 \
@@ -54,12 +54,12 @@ python ./rraa_rl/EFPPO/src/rl/CPPO_RR.py \
 --CUDA_USE=0 \
 --ANNEAL_LR \
 --ANNEAL_ENT \
---NAME=point_rr_ppo_v0_faster_ts100m
+--NAME=BASELINE_point_rr_ppo_v0_faster_ts100m
 
 # PPO-LAG with lambda 0.01
 python ./rraa_rl/EFPPO/src/rl/CPPO_RR.py \
 --EXP_NAME=PointReachReach_CPPO \
---DIR=point_rr_ppolag_lam0p01_v0_faster_ts100m \
+--DIR=BASELINE_point_rr_ppolag_lam0p01_v0_faster_ts100m \
 --LR=3e-4 \
 --NUM_ENVS=128 \
 --NUM_STEPS=400 \
@@ -83,4 +83,7 @@ python ./rraa_rl/EFPPO/src/rl/CPPO_RR.py \
 --CUDA_USE=0 \
 --ANNEAL_LR \
 --ANNEAL_ENT \
---NAME=point_rr_ppolag_lam0p01_v0_faster_ts100m
+--NAME=BASELINE_point_rr_ppolag_lam0p01_v0_faster_ts100m
+
+# ./rraa_rl/EFPPO/src/script/run_point_RR_cppo_ppo_ppolag.sh ; ./rraa_rl/EFPPO/src/script/run_point_RR_MORL_Sparse.sh ; ./rraa_rl/EFPPO/src/script/run_point_RR_rcppo_respo.sh ; ./rraa_rl/EFPPO/src/script/run_point_RAA_cppo_ppo_ppolag.sh ; ./rraa_rl/EFPPO/src/script/run_point_RAA_MORL_Sparse.sh ; ./rraa_rl/EFPPO/src/script/run_point_RAA_rcppo_respo.sh
+# ./rraa_rl/EFPPO/src/script/run_point_RR_MORL_Sparse.sh ; ./rraa_rl/EFPPO/src/script/run_point_RAA_cppo_ppo_ppolag.sh ; ./rraa_rl/EFPPO/src/script/run_point_RAA_MORL_Sparse.sh ; ./rraa_rl/EFPPO/src/script/run_point_RAA_rcppo_respo.sh

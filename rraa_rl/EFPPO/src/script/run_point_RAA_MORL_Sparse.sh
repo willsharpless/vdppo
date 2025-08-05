@@ -1,36 +1,8 @@
 
-# RC-PPO
+# MORL
 python ./rraa_rl/EFPPO/src/rl/MORL_PPO_RAA.py \
---EXP_NAME=PointReachReach_MORL \
---DIR=point_raa_MORL_v0_faster_ts50m \
---LR=3e-4 \
---NUM_ENVS=128 \
---NUM_STEPS=400 \
---TOTAL_TIMESTEPS=50_000_000 \
---STEP_SCAN=4 \
---UPDATE_EPOCHS=10 \
---NUM_MINIBATCHES=32 \
---GAMMA_ENERGY=1.0 \
---GAMMA_REACH_INIT=0.995 \
---GAMMA_REACH_FINAL=0.9995 \
---GAE_LAMBDA=0.95 \
---LAMBDA_REACH=0.1 \
---K_P=1.0 \
---THRESHOLD_CPPO=0. \
---CLIP_EPS=0.2 \
---ENT_COEF=0.005 \
---VF_COEF=2.0 \
---MAX_GRAD_NORM=0.5 \
---ACTIVATION=tanh \
---CUDA_USE=0 \
---ANNEAL_LR \
---ANNEAL_ENT \
---NAME=point_raa_MORL_v0_faster_ts50m
-
-# PPO
-python ./rraa_rl/EFPPO/src/rl/MORL_PPO_RAA.py \
---EXP_NAME=PointReachReach_Sparse \
---DIR=point_raa_Sparse_v0_faster_ts50m \
+--EXP_NAME=PointReachAlwaysAvoid_MORL \
+--DIR=BASELINE_point_raa_MORL_v0_faster_ts50m \
 --LR=3e-4 \
 --NUM_ENVS=128 \
 --NUM_STEPS=400 \
@@ -54,4 +26,33 @@ python ./rraa_rl/EFPPO/src/rl/MORL_PPO_RAA.py \
 --CUDA_USE=0 \
 --ANNEAL_LR \
 --ANNEAL_ENT \
---NAME=point_raa_Sparse_v0_faster_ts50m
+--NAME=BASELINE_point_raa_MORL_v0_faster_ts50m
+
+# Sparse
+python ./rraa_rl/EFPPO/src/rl/MORL_PPO_RAA.py \
+--EXP_NAME=PointReachAlwaysAvoid_Sparse \
+--DIR=BASELINE_point_raa_Sparse_v0_faster_ts50m \
+--LR=3e-4 \
+--NUM_ENVS=128 \
+--NUM_STEPS=400 \
+--TOTAL_TIMESTEPS=50_000_000 \
+--STEP_SCAN=4 \
+--UPDATE_EPOCHS=10 \
+--NUM_MINIBATCHES=32 \
+--GAMMA_ENERGY=1.0 \
+--GAMMA_REACH_INIT=0.995 \
+--GAMMA_REACH_FINAL=0.9995 \
+--GAE_LAMBDA=0.95 \
+--LAMBDA_REACH=0. \
+--FIX_LAMBDA \
+--K_P=1.0 \
+--THRESHOLD_CPPO=0. \
+--CLIP_EPS=0.2 \
+--ENT_COEF=0.005 \
+--VF_COEF=2.0 \
+--MAX_GRAD_NORM=0.5 \
+--ACTIVATION=tanh \
+--CUDA_USE=0 \
+--ANNEAL_LR \
+--ANNEAL_ENT \
+--NAME=BASELINE_point_raa_Sparse_v0_faster_ts50m

@@ -366,13 +366,13 @@ def train(env, env_params, config, rng):
                     "Reach-Reach Success %": reach_perc,
                    "lambda": jnp.mean(loss_info['lambda'])}, step=timestep)
         
-        if "Hopper" in config["EXP_NAME"] or "HalfCheetah" in config["EXP_NAME"]:
+        if "F16" not in config["EXP_NAME"]:
                 wandb.log({
                     'trajectory_sample':wandb.Image(fig)
                 }, step=timestep)
         
         # Save video of trajectory 
-        video_freq = 5 #25 
+        video_freq = 25 
         save_video = True 
         if timestep % video_freq == 0 or timestep == total_timesteps - 1: 
             video_frames = plot_video_contour_RRAA((info, None, None), timestep, config, save_video=save_video, log_wandb=config["USE_WANDB"])
@@ -434,7 +434,7 @@ if __name__ == "__main__":
         print('USE_STL: {}'.format(config["USE_STL"]))
         print('CPPO_UPDATE_TYPE: {}\n\n\n'.format(config["CPPO_UPDATE_TYPE"]))
 
-    config["USE_WANDB"] = True 
+    config["USE_WANDB"] = False 
     if config["USE_WANDB"]:
         wandb.init(project='EC-EFPPO-{}'.format(config["EXP_NAME"]), name=config["NAME"], config=config,
                    entity='braat_brrt')
@@ -470,7 +470,8 @@ if __name__ == "__main__":
     ########### MORL Changes ###########
     permissible_env_list = ["HopperReachReachBaseline_MORL", "HopperReachReachBaseline_Sparse", \
                             "F16ReachReachBaseline_MORL", "F16ReachReachBaseline_Sparse", \
-                            "HalfCheetahReachReachBaseline_MORL", "HalfCheetahReachReachBaseline_Sparse"]
+                            "HalfCheetahReachReachBaseline_MORL", "HalfCheetahReachReachBaseline_Sparse",
+                            "PointReachReach_MORL", "PointReachReach_Sparse"]
     assert(config["EXP_NAME"] in permissible_env_list)
 
     if "MORL" in config["EXP_NAME"]:

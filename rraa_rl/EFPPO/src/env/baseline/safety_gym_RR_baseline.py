@@ -15,6 +15,29 @@ SAFETYGYM_TARGET_RADIUS = 0.3 # v0
 # SAFETYGYM_TARGET_RADIUS = 0.4 # v1
 
 @struct.dataclass
+class EnvStateR1:
+    state: jax.Array = struct.field(default_factory=jax.Array)
+    reach1: float = 0.
+
+@struct.dataclass
+class EnvStateR2:
+    state: jax.Array = struct.field(default_factory=jax.Array)
+    reach2: float = 0.
+
+@struct.dataclass
+class EnvStateRRDecomposed:
+    state: jax.Array = struct.field(default_factory=jax.Array)
+    reach1: float = 0.
+    reach2: float = 0.
+    has_reached_1: float = 0.
+    has_reached_2: float = 0.
+
+@struct.dataclass
+class EnvStateR:
+    state: jax.Array = struct.field(default_factory=jax.Array)
+    reach: float = 0.
+
+@struct.dataclass
 class EnvStateRR:
     state: jax.Array = struct.field(default_factory=jax.Array)
     reach1: float = 0.
@@ -24,6 +47,128 @@ class EnvStateRR:
     min_reach1: float = 0.
     min_reach2: float = 0.
     cost : float = 0.
+
+
+class PointRRTemplate:
+    def __init__(self, backend="mjx"):
+        env = PointRandom(backend=backend)
+        env = EpisodeWrapper(env, episode_length=1000, action_repeat=1)
+        env = AutoResetWrapper(env)
+        self._env = env
+        self.action_size = env.action_size
+        self.observation_size = (env.observation_size,)
+        self.default_params = EnvParamsEmpty()
+    
+    @partial(jax.jit, static_argnums=(0,))
+    def reset(self, key, params=None):
+        raise NotImplementedError("reset() not implemented in base class")
+
+    @partial(jax.jit, static_argnums=(0,))
+    def step(self, key, state, action, params=None):
+        raise NotImplementedError("step() not implemented in base class")
+
+    @partial(jax.jit, static_argnums=(0,))
+    def is_reach1(self, state):
+        target_center, radius = SAFETYGYM_TARGET_RIGHT, SAFETYGYM_TARGET_RADIUS
+        target_pos = state
+        reach = jnp.sqrt((target_pos[..., 0] - target_center[0]) ** 2 + \
+                         (target_pos[..., 1] - target_center[1]) ** 2) - radius
+        value = jnp.where(reach < 0., -3., reach)
+        return value * 100.0
+    
+    @partial(jax.jit, static_argnums=(0,))
+    def is_reach2(self, state):
+        target_center, radius = SAFETYGYM_TARGET_LEFT, SAFETYGYM_TARGET_RADIUS
+        target_pos = state
+        reach = jnp.sqrt((target_pos[..., 0] - target_center[0]) ** 2 + \
+                         (target_pos[..., 1] - target_center[1]) ** 2) - radius
+        value = jnp.where(reach < 0., -3., reach)
+        return value * 100.0
+
+    def observation_space(self, params):
+        return spaces.Box(
+            low=-jnp.inf,
+            high=jnp.inf,
+            shape=(self._env.observation_size,),
+        )
+
+    def action_space(self, params):
+        return spaces.Box(
+            low=-1.0,
+            high=1.0,
+            shape=(self._env.action_size,),
+        )
+
+
+class PointRR(PointRRTemplate):
+    @partial(jax.jit, static_argnums=(0,))
+    def reset(self, key, params=None):
+        state = self._env.reset(key)
+        reach1_value = self.is_reach1(state.obs)
+        reach2_value = self.is_reach2(state.obs)
+        has_reached_1 = reach1_value < 0
+        has_reached_2 = reach2_value < 0
+        observation = state.obs
+        env_state = EnvStateRRDecomposed(state, reach1_value, reach2_value, has_reached_1, has_reached_2)
+        return observation, env_state
+    
+    @partial(jax.jit, static_argnums=(0,))
+    def step(self, key, state, action, params=None):
+        u = jnp.clip(action, -1., 1.)
+        next_state = self._env.step(state.state, u)
+        reach1_value = self.is_reach1(next_state.obs)
+        reach2_value = self.is_reach2(next_state.obs)
+        has_reached_1 = jnp.logical_or(reach1_value < 0, state.has_reached_1)
+        has_reached_2 = jnp.logical_or(reach2_value < 0, state.has_reached_2)
+        pos_dict = {"x": state.state.obs[0], "y": state.state.obs[1], "theta": jnp.arcsin(state.state.obs[2])}
+        observation = next_state.obs
+        next_state_new = EnvStateRRDecomposed(next_state, reach1_value, reach2_value, has_reached_1, has_reached_2)
+        reward = 0.
+        done = jnp.logical_or(has_reached_1, has_reached_2)
+        return observation, next_state_new, reward, done, pos_dict
+
+class PointR1(PointRRTemplate):
+    @partial(jax.jit, static_argnums=(0,))
+    def reset(self, key, params=None):
+        state = self._env.reset(key)
+        reach1_value = self.is_reach1(state.obs)
+        observation = state.obs
+        env_state = EnvStateR(state, reach1_value)
+        return observation, env_state
+    
+    @partial(jax.jit, static_argnums=(0,))
+    def step(self, key, state, action, params=None):
+        u = jnp.clip(action, -1., 1.)
+        next_state = self._env.step(state.state, u)
+        reach1_value = self.is_reach1(next_state.obs)
+        pos_dict = {"x": state.state.obs[0], "y": state.state.obs[1], "theta": jnp.arcsin(state.state.obs[2])}
+        observation = next_state.obs
+        next_state_new = EnvStateR(next_state, reach1_value)
+        reward = 0.
+        done = next_state.done > 0.5
+        return observation, next_state_new, reward, done, pos_dict
+
+class PointR2(PointRRTemplate):
+    @partial(jax.jit, static_argnums=(0,))
+    def reset(self, key, params=None):
+        state = self._env.reset(key)
+        reach2_value = self.is_reach2(state.obs)
+        observation = state.obs
+        env_state = EnvStateR(state, reach2_value)
+        return observation, env_state
+    
+    @partial(jax.jit, static_argnums=(0,))
+    def step(self, key, state, action, params=None):
+        u = jnp.clip(action, -1., 1.)
+        next_state = self._env.step(state.state, u)
+        reach2_value = self.is_reach2(next_state.obs)
+        pos_dict = {"x": state.state.obs[0], "y": state.state.obs[1], "theta": jnp.arcsin(state.state.obs[2])}
+        observation = next_state.obs
+        next_state_new = EnvStateR(next_state, reach2_value)
+        reward = 0.
+        done = next_state.done > 0.5
+        return observation, next_state_new, reward, done, pos_dict
+
 
 @struct.dataclass
 class EnvParamsEmpty:

@@ -625,8 +625,8 @@ def get_env(config):
     elif config["EXP_NAME"] == "PointReachReach_CPPO" \
         or config["EXP_NAME"] == "PointReachReach_RCPPO" \
             or config["EXP_NAME"] == "PointReachReach_RESPO" \
-                or config["EXP_NAME"] == "PointReachReachBaseline_MORL" \
-                    or config["EXP_NAME"] == "PointReachReachBaseline_Sparse":
+                or config["EXP_NAME"] == "PointReachReach_MORL" \
+                    or config["EXP_NAME"] == "PointReachReach_Sparse":
 
         obs_dim = 7 + 2
         vec1 = jnp.zeros(obs_dim, dtype=jnp.float32)
@@ -663,10 +663,10 @@ def get_env(config):
     elif config["EXP_NAME"] == "PointReachAlwaysAvoid_CPPO" \
         or config["EXP_NAME"] == "PointReachAlwaysAvoid_RCPPO" \
             or config["EXP_NAME"] == "PointReachAlwaysAvoid_RESPO" \
-                or config["EXP_NAME"] == "PointReachAlwaysAvoidBaseline_MORL" \
-                    or config["EXP_NAME"] == "PointReachAlwaysAvoidBaseline_Sparse":
+                or config["EXP_NAME"] == "PointReachAlwaysAvoid_MORL" \
+                    or config["EXP_NAME"] == "PointReachAlwaysAvoid_Sparse":
 
-        obs_dim = 7 + 2
+        obs_dim = 7 + 1
         vec1 = jnp.zeros(obs_dim, dtype=jnp.float32)
         vec2 = jnp.ones(obs_dim, dtype=jnp.float32)
         vec2 = vec2.at[0].set(2.)
@@ -681,6 +681,40 @@ def get_env(config):
 
         return (env)
 
+    elif config["EXP_NAME"] == "PointReachAvoid":
+        vec1 = jnp.zeros(9, dtype=jnp.float32)
+        vec2 = jnp.ones(9, dtype=jnp.float32)
+        vec2 = vec2.at[0].set(2.)
+        vec2 = vec2.at[1].set(2.)
+        trans = partial(transform_observation, vec1, vec2)
+        untrans = partial(untransform_observation, vec1, vec2)
+
+        env = PointReachAvoid()
+        env = TransformObservation(env, trans)
+        env.set_untransform_obs(untrans)
+        return (env)
+
+    elif config["EXP_NAME"] == "PointReachReachDecomposed":
+        vec1 = jnp.zeros(7, dtype=jnp.float32)
+        vec2 = jnp.ones(7, dtype=jnp.float32)
+        vec2 = vec2.at[0].set(2.)
+        vec2 = vec2.at[1].set(2.)
+        trans = partial(transform_observation, vec1, vec2)
+        untrans = partial(untransform_observation, vec1, vec2)
+
+        from .baseline.safety_gym_RR_baseline import PointRR, PointR1, PointR2
+        env = PointRR()
+        env1 = PointR1()
+        env2 = PointR2()
+
+        env = TransformObservation(env, trans)
+        env1 = TransformObservation(env1, trans)
+        env2 = TransformObservation(env2, trans)
+        env.set_untransform_obs(untrans)
+        env1.set_untransform_obs(untrans)
+        env2.set_untransform_obs(untrans)
+        return (env, env1, env2)
+    
     elif config["EXP_NAME"] == 'PendulumConstraintBaseline':
         env = PendulumConstraintBaseline()
     elif config["EXP_NAME"] == 'HopperAvoidCeilingBaseline':
