@@ -1,6 +1,6 @@
 python ./rraa_rl/EFPPO/src/rl/RR-PPO.py \
 --EXP_NAME=PointReachReach \
---DIR=point_rr_b2v0_faster_ts100m \
+--DIR=BASELINE_point_rr_b2v0_faster_ts100m \
 --LR=3e-4 \
 --NUM_ENVS=128 \
 --NUM_STEPS=400 \
@@ -20,4 +20,4 @@ python ./rraa_rl/EFPPO/src/rl/RR-PPO.py \
 --CUDA_USE=0 \
 --ANNEAL_LR \
 --ANNEAL_ENT \
---NAME=point_rr_b2v0_faster_ts100m
+--NAME=BASELINE_point_rr_b2v0_faster_ts100m

@@ -2,7 +2,7 @@
 # RC-PPO
 python ./rraa_rl/EFPPO/src/rl/EC-EFPPO_adapted.py \
 --EXP_NAME=PointReachAlwaysAvoid_RCPPO \
---DIR=point_raa_rcppo_v1_faster_ts50m \
+--DIR=BASELINE_point_raa_rcppo_v1_faster_ts50m \
 --LR=3e-4 \
 --NUM_ENVS=128 \
 --NUM_STEPS=400 \
@@ -25,12 +25,12 @@ python ./rraa_rl/EFPPO/src/rl/EC-EFPPO_adapted.py \
 --CUDA_USE=0 \
 --ANNEAL_LR \
 --ANNEAL_ENT \
---NAME=point_raa_rcppo_v1_faster_ts50m
+--NAME=BASELINE_point_raa_rcppo_v1_faster_ts50m
 
 # PPO
 python ./rraa_rl/EFPPO/src/rl/RESPO_adapted.py \
 --EXP_NAME=PointReachAlwaysAvoid_RESPO \
---DIR=point_raa_respo_v1_faster_ts50m \
+--DIR=BASELINE_point_raa_respo_v1_faster_ts50m \
 --LR=3e-4 \
 --NUM_ENVS=128 \
 --NUM_STEPS=400 \
@@ -54,4 +54,4 @@ python ./rraa_rl/EFPPO/src/rl/RESPO_adapted.py \
 --CUDA_USE=0 \
 --ANNEAL_LR \
 --ANNEAL_ENT \
---NAME=point_raa_respo_v1_faster_ts50m
+--NAME=BASELINE_point_raa_respo_v1_faster_ts50m

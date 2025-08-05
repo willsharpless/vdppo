@@ -1,6 +1,6 @@
 python ./rraa_rl/EFPPO/src/rl/RAA-PPO.py \
 --EXP_NAME=PointReachAlwaysAvoid \
---DIR=point_raa_resetgoalsafe_avoidv1_samplefix_ts50M \
+--DIR=BASELINE_point_raa_resetgoalsafe_avoidv1_samplefix_ts50M \
 --LR=3e-4 \
 --NUM_ENVS=128 \
 --NUM_STEPS=400 \
@@ -20,4 +20,4 @@ python ./rraa_rl/EFPPO/src/rl/RAA-PPO.py \
 --CUDA_USE=0 \
 --ANNEAL_LR \
 --ANNEAL_ENT \
---NAME=point_raa_resetgoalsafe_avoidv1_samplefix_ts50M
+--NAME=BASELINE_point_raa_resetgoalsafe_avoidv1_samplefix_ts50M
