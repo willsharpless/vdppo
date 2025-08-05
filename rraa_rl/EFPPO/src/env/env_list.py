@@ -240,7 +240,8 @@ def get_env(config):
         or config["EXP_NAME"] == "HopperReachReach_sum_RCPPO" \
             or config["EXP_NAME"] == "HopperReachReach_RESPO" \
                 or config["EXP_NAME"] == "HopperReachReachBaseline_MORL" \
-                    or config["EXP_NAME"] == "HopperReachReachBaseline_Sparse":
+                    or config["EXP_NAME"] == "HopperReachReachBaseline_Sparse" \
+                        or config["EXP_NAME"] == "HopperReachReachBaseline_P2BPO":
         
         obs_dim = 12 + 2
         vec1 = jnp.zeros(obs_dim, dtype=jnp.float32)
