@@ -28,7 +28,7 @@ python ./rraa_rl/EFPPO/src/rl/CPPO_RAA.py \
 --NAME=BASELINE_point_raa_cppo_v0_faster_ts50m
 
 # PPO
-python ./rraa_rl/EFPPO/src/rl/CPPO_RR.py \
+python ./rraa_rl/EFPPO/src/rl/CPPO_RAA.py \
 --EXP_NAME=PointReachAlwaysAvoid_CPPO \
 --DIR=BASELINE_point_raa_ppo_v0_faster_ts50m \
 --LR=3e-4 \
@@ -57,7 +57,7 @@ python ./rraa_rl/EFPPO/src/rl/CPPO_RR.py \
 --NAME=BASELINE_point_raa_ppo_v0_faster_ts50m
 
 # PPO-LAG with lambda 0.01
-python ./rraa_rl/EFPPO/src/rl/CPPO_RR.py \
+python ./rraa_rl/EFPPO/src/rl/CPPO_RAA.py \
 --EXP_NAME=PointReachAlwaysAvoid_CPPO \
 --DIR=BASELINE_point_raa_ppolag_lam0p01_v0_faster_ts50m \
 --LR=3e-4 \
