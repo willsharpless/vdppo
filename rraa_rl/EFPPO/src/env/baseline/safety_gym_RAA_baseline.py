@@ -122,8 +122,8 @@ class PointReachAlwaysAvoidBaseline_augmented:
         reward = self.compute_reward(state=state, action=action, avoid_value=avoid_value, reach_value=reach_value, params=params) #params.gamma * reach_value - state.reach
         cost = self.compute_cost(state=state, action=action, avoid_value=avoid_value, reach_value=reach_value, params=params) #avoid_value
 
-        observation = self.compute_observation(state=next_state_new, last_state=state)
         next_state_new = EnvStateRAA(next_state, reach_value, avoid_value, min_reach, cost)
+        observation = self.compute_observation(state=next_state_new, last_state=state)
         reward = 0.
         done = False
 

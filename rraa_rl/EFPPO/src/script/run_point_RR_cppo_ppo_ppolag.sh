@@ -86,3 +86,4 @@ python ./rraa_rl/EFPPO/src/rl/CPPO_RR.py \
 --NAME=BASELINE_point_rr_ppolag_lam0p01_v0_faster_ts100m
 
 # ./rraa_rl/EFPPO/src/script/run_point_RR_cppo_ppo_ppolag.sh ; ./rraa_rl/EFPPO/src/script/run_point_RR_MORL_Sparse.sh ; ./rraa_rl/EFPPO/src/script/run_point_RR_rcppo_respo.sh ; ./rraa_rl/EFPPO/src/script/run_point_RAA_cppo_ppo_ppolag.sh ; ./rraa_rl/EFPPO/src/script/run_point_RAA_MORL_Sparse.sh ; ./rraa_rl/EFPPO/src/script/run_point_RAA_rcppo_respo.sh
+# ./rraa_rl/EFPPO/src/script/run_point_RR_MORL_Sparse.sh ; ./rraa_rl/EFPPO/src/script/run_point_RAA_cppo_ppo_ppolag.sh ; ./rraa_rl/EFPPO/src/script/run_point_RAA_MORL_Sparse.sh ; ./rraa_rl/EFPPO/src/script/run_point_RAA_rcppo_respo.sh

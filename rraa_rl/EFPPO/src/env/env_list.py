@@ -624,8 +624,8 @@ def get_env(config):
     elif config["EXP_NAME"] == "PointReachReach_CPPO" \
         or config["EXP_NAME"] == "PointReachReach_RCPPO" \
             or config["EXP_NAME"] == "PointReachReach_RESPO" \
-                or config["EXP_NAME"] == "PointReachReachBaseline_MORL" \
-                    or config["EXP_NAME"] == "PointReachReachBaseline_Sparse":
+                or config["EXP_NAME"] == "PointReachReach_MORL" \
+                    or config["EXP_NAME"] == "PointReachReach_Sparse":
 
         obs_dim = 7 + 2
         vec1 = jnp.zeros(obs_dim, dtype=jnp.float32)
@@ -662,10 +662,10 @@ def get_env(config):
     elif config["EXP_NAME"] == "PointReachAlwaysAvoid_CPPO" \
         or config["EXP_NAME"] == "PointReachAlwaysAvoid_RCPPO" \
             or config["EXP_NAME"] == "PointReachAlwaysAvoid_RESPO" \
-                or config["EXP_NAME"] == "PointReachAlwaysAvoidBaseline_MORL" \
-                    or config["EXP_NAME"] == "PointReachAlwaysAvoidBaseline_Sparse":
+                or config["EXP_NAME"] == "PointReachAlwaysAvoid_MORL" \
+                    or config["EXP_NAME"] == "PointReachAlwaysAvoid_Sparse":
 
-        obs_dim = 7 + 2
+        obs_dim = 7 + 1
         vec1 = jnp.zeros(obs_dim, dtype=jnp.float32)
         vec2 = jnp.ones(obs_dim, dtype=jnp.float32)
         vec2 = vec2.at[0].set(2.)
