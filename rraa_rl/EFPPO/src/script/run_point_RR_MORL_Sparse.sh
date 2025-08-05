@@ -1,5 +1,5 @@
 
-# RC-PPO
+# MORL
 python ./rraa_rl/EFPPO/src/rl/MORL_PPO_RR.py \
 --EXP_NAME=PointReachReach_MORL \
 --DIR=BASELINE_point_rr_MORL_v0_faster_ts100m \
@@ -14,7 +14,8 @@ python ./rraa_rl/EFPPO/src/rl/MORL_PPO_RR.py \
 --GAMMA_REACH_INIT=0.995 \
 --GAMMA_REACH_FINAL=0.9995 \
 --GAE_LAMBDA=0.95 \
---LAMBDA_REACH=0.1 \
+--LAMBDA_REACH=0. \
+--FIX_LAMBDA \
 --K_P=1.0 \
 --THRESHOLD_CPPO=0. \
 --CLIP_EPS=0.2 \
@@ -27,7 +28,7 @@ python ./rraa_rl/EFPPO/src/rl/MORL_PPO_RR.py \
 --ANNEAL_ENT \
 --NAME=BASELINE_point_rr_MORL_v0_faster_ts100m
 
-# PPO
+# Sparse
 python ./rraa_rl/EFPPO/src/rl/MORL_PPO_RR.py \
 --EXP_NAME=PointReachReach_Sparse \
 --DIR=BASELINE_point_rr_Sparse_v0_faster_ts100m \

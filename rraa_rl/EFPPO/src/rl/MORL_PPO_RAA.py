@@ -418,7 +418,8 @@ if __name__ == "__main__":
     ########### MORL Changes ###########
     permissible_env_list = ["HopperReachAlwaysAvoidBaseline_MORL", "HopperReachAlwaysAvoidBaseline_Sparse", \
                             "F16ReachAlwaysAvoidBaseline_MORL", "F16ReachAlwaysAvoidBaseline_Sparse", \
-                            "HalfCheetahReachAlwaysAvoidBaseline_MORL", "HalfCheetahReachAlwaysAvoidBaseline_Sparse"]
+                            "HalfCheetahReachAlwaysAvoidBaseline_MORL", "HalfCheetahReachAlwaysAvoidBaseline_Sparse",
+                            "PointReachAlwaysAvoid_MORL", "PointReachAlwaysAvoid_Sparse"]
 
     assert(config["EXP_NAME"] in permissible_env_list)
 
