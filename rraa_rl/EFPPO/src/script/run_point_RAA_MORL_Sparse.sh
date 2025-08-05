@@ -1,12 +1,12 @@
 
 # RC-PPO
-python ./rraa_rl/EFPPO/src/rl/EC-EFPPO_adapted.py \
---EXP_NAME=PointReachReach_RCPPO \
---DIR=point_rr_rcppo_v0_faster_ts100m \
+python ./rraa_rl/EFPPO/src/rl/MORL_PPO_RAA.py \
+--EXP_NAME=PointReachReach_MORL \
+--DIR=point_raa_MORL_v0_faster_ts50m \
 --LR=3e-4 \
 --NUM_ENVS=128 \
 --NUM_STEPS=400 \
---TOTAL_TIMESTEPS=100_000_000 \
+--TOTAL_TIMESTEPS=50_000_000 \
 --STEP_SCAN=4 \
 --UPDATE_EPOCHS=10 \
 --NUM_MINIBATCHES=32 \
@@ -25,16 +25,16 @@ python ./rraa_rl/EFPPO/src/rl/EC-EFPPO_adapted.py \
 --CUDA_USE=0 \
 --ANNEAL_LR \
 --ANNEAL_ENT \
---NAME=point_rr_rcppo_v0_faster_ts100m
+--NAME=point_raa_MORL_v0_faster_ts50m
 
 # PPO
-python ./rraa_rl/EFPPO/src/rl/RESPO_adapted.py \
---EXP_NAME=PointReachReach_RESPO \
---DIR=point_rr_respo_v0_faster_ts100m \
+python ./rraa_rl/EFPPO/src/rl/MORL_PPO_RAA.py \
+--EXP_NAME=PointReachReach_Sparse \
+--DIR=point_raa_Sparse_v0_faster_ts50m \
 --LR=3e-4 \
 --NUM_ENVS=128 \
 --NUM_STEPS=400 \
---TOTAL_TIMESTEPS=100_000_000 \
+--TOTAL_TIMESTEPS=50_000_000 \
 --STEP_SCAN=4 \
 --UPDATE_EPOCHS=10 \
 --NUM_MINIBATCHES=32 \
@@ -54,4 +54,4 @@ python ./rraa_rl/EFPPO/src/rl/RESPO_adapted.py \
 --CUDA_USE=0 \
 --ANNEAL_LR \
 --ANNEAL_ENT \
---NAME=point_rr_respo_v0_faster_ts100m
+--NAME=point_raa_Sparse_v0_faster_ts50m

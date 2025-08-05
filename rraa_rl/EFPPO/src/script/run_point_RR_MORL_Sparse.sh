@@ -1,8 +1,8 @@
 
 # RC-PPO
-python ./rraa_rl/EFPPO/src/rl/EC-EFPPO_adapted.py \
---EXP_NAME=PointReachReach_RCPPO \
---DIR=point_rr_rcppo_v0_faster_ts100m \
+python ./rraa_rl/EFPPO/src/rl/MORL_PPO_RR.py \
+--EXP_NAME=PointReachReach_MORL \
+--DIR=point_rr_MORL_v0_faster_ts100m \
 --LR=3e-4 \
 --NUM_ENVS=128 \
 --NUM_STEPS=400 \
@@ -25,12 +25,12 @@ python ./rraa_rl/EFPPO/src/rl/EC-EFPPO_adapted.py \
 --CUDA_USE=0 \
 --ANNEAL_LR \
 --ANNEAL_ENT \
---NAME=point_rr_rcppo_v0_faster_ts100m
+--NAME=point_rr_MORL_v0_faster_ts100m
 
 # PPO
-python ./rraa_rl/EFPPO/src/rl/RESPO_adapted.py \
---EXP_NAME=PointReachReach_RESPO \
---DIR=point_rr_respo_v0_faster_ts100m \
+python ./rraa_rl/EFPPO/src/rl/MORL_PPO_RR.py \
+--EXP_NAME=PointReachReach_Sparse \
+--DIR=point_rr_Sparse_v0_faster_ts100m \
 --LR=3e-4 \
 --NUM_ENVS=128 \
 --NUM_STEPS=400 \
@@ -54,4 +54,4 @@ python ./rraa_rl/EFPPO/src/rl/RESPO_adapted.py \
 --CUDA_USE=0 \
 --ANNEAL_LR \
 --ANNEAL_ENT \
---NAME=point_rr_respo_v0_faster_ts100m
+--NAME=point_rr_Sparse_v0_faster_ts100m
