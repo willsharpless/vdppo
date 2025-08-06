@@ -1,7 +1,7 @@
 
 # MORL
 python ./rraa_rl/EFPPO/src/rl/MORL_PPO_RAA.py \
---EXP_NAME=PointReachReach_MORL \
+--EXP_NAME=PointReachAlwaysAvoid_MORL \
 --DIR=BASELINE_point_raa_MORL_v0_faster_ts50m \
 --LR=3e-4 \
 --NUM_ENVS=128 \
@@ -30,7 +30,7 @@ python ./rraa_rl/EFPPO/src/rl/MORL_PPO_RAA.py \
 
 # Sparse
 python ./rraa_rl/EFPPO/src/rl/MORL_PPO_RAA.py \
---EXP_NAME=PointReachReach_Sparse \
+--EXP_NAME=PointReachAlwaysAvoid_Sparse \
 --DIR=BASELINE_point_raa_Sparse_v0_faster_ts50m \
 --LR=3e-4 \
 --NUM_ENVS=128 \
