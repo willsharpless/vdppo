@@ -1,5 +1,5 @@
 """
-File for the P2BPO_RR algorithm: https://ojs.aaai.org/index.php/AAAI/article/view/30094 
+File for the P2BPO_RAA algorithm: https://ojs.aaai.org/index.php/AAAI/article/view/30094 
 code reference: https://github.com/sumantasunny/P2BPO/blob/main/P2BPO.zip 
 
 Additional config parameters: 
@@ -7,6 +7,7 @@ Additional config parameters:
 "PENALTY_PARAM_INIT": float, initial value for the penalty parameter (default: 0.001)
 "PENALTY_PARAM_LR": float, learning rate for the penalty parameter (default: 0.2)
 """
+
 import os
 import pdb
 import sys
@@ -29,47 +30,27 @@ from rraa_rl.EFPPO.src.env.env_list import get_env
 from rraa_rl.EFPPO.src.model.actorcritic import Policy_Network, Policy_Network_Discrete, Value_Network, ActorCritic_Discrete
 from rraa_rl.EFPPO.src.rl.utils import optimizer, get_BuRd, tree_index1, tree_index2
 from rraa_rl.EFPPO.src.rl.gae import calculate_gae
-from rraa_rl.EFPPO.src.rl.EFPPO_utils import _env_step_cppo_RR, _p2bpo_update_both #_p2bpo_update_RR #_cppo_update_RR
-from rraa_rl.EFPPO.src.rl.plot_utils import plot_contour_RRAA, plot_video_contour_RRAA, calculate_reachreach
+from rraa_rl.EFPPO.src.rl.EFPPO_utils import _env_step_cppo_RAA, _p2bpo_update_both #_p2bpo_update_RAA
+from rraa_rl.EFPPO.src.rl.plot_utils import plot_contour_RRAA, plot_video_contour_RRAA, calculate_reach_avoid_stats, calculate_reachavoid
 
 ####### P2BPO Change ######
-import flax.linen as nn 
-import optax 
-class PenaltyParamModule(nn.Module): 
-    """Module to hold the penalty parameters that are updated during P2BPO training"""
-    init_value: float = 0.001 
-
-    @nn.compact
-    def __call__(self): 
-        """Initialize the penalty parameter"""
-        penalty = self.param('penalty_param', lambda rng: jnp.array(self.init_value))
-        return penalty
+import optax
+from rraa_rl.EFPPO.src.rl.P2BPO_RR import PenaltyParamModule
 ####### P2BPO Change ######
 
-####### RRAA Change ######
 def calculate_reward_cost(traj_batch): 
-    reward = jnp.sum(traj_batch.reward, axis=0)
-    cost = jnp.sum(traj_batch.cost, axis=0)
+    reach_idx = ((traj_batch.reach) < 0 & (traj_batch.avoid < 0)).argmax(axis=0)
+    reward = []
+    cost = []
+    cnt = 0
+    for i in range(reach_idx.shape[0]):
+        if reach_idx[i] == 0 and (traj_batch.reach[0, i] >= 0 or traj_batch.avoid[0, i] > 0):
+            cnt += 1
+        else:
+            reward.append(jnp.sum(traj_batch.reward[0: reach_idx[i], i]))
+            cost.append(jnp.sum(traj_batch.cost[0: reach_idx[i], i]))
+    return jnp.array(reward), jnp.array(cost), cnt
 
-    cnt1 = 0 # reach 1 not reached
-    cnt2 = 0 # reach 2 not reached
-    cnt3 = 0 # reach 1 and 2 not reached
-    reach1_idx = ((traj_batch.reach1) < 0).argmax(axis=0)
-    reach2_idx = ((traj_batch.reach2) < 0).argmax(axis=0)
-    reach3_idx =  ((traj_batch.reach1 < 0) & (traj_batch.reach2 < 0)).argmax(axis=0)
-
-    for i in range(reach1_idx.shape[0]):
-        if reach1_idx[i] == 0 and (traj_batch.reach1[0, i] >= 0):
-            cnt1 += 1
-        
-        if reach2_idx[i] == 0 and (traj_batch.reach2[0, i] >= 0):
-            cnt2 += 1
-
-        if reach3_idx[i] == 0:
-            cnt3 += 1
-        
-    return jnp.array(reward), jnp.array(cost), cnt1, cnt2, cnt3
-####### RRAA Change ######
 
 
 class TrainState(train_state.TrainState):
@@ -77,6 +58,7 @@ class TrainState(train_state.TrainState):
 
 def train(env, env_params, config, rng):
     best_score = -float(jnp.inf)
+
     def _train(update_state, ent):
         ####### P2BPO Change ######
         train_state_policy, train_state_value, train_state_cost, train_state_penalty_params, rng = update_state
@@ -95,10 +77,9 @@ def train(env, env_params, config, rng):
         )
 
         ####### RRAA Change ######
-        # # # FIXME: Check if we want to use these last vlaue dones
-        # FIXME: Do we need to flip these done values ? 
-        # dones = jnp.zeros_like(traj_batch.done)
-        # dones = dones.at[-1, :].set(1.0) 
+        # NOTE: FOR RAA SET DONES TO ONLY THE LAST TIME STEP
+        dones = jnp.zeros_like(traj_batch.done)
+        dones = dones.at[-1, :].set(1.0)
         ####### RRAA Change ######
 
         # CALCULATE ADVANTAGE
@@ -107,19 +88,16 @@ def train(env, env_params, config, rng):
         last_cost = train_state_cost.apply_fn(train_state_cost.params, last_obs)
         advantages_value, targets_value = calculate_gae(config["GAMMA_ENERGY"], config["GAE_LAMBDA"], traj_batch.value,
                                                         traj_batch.reward, 
-                                                        # dones, 
-                                                        traj_batch.done, # TODO: CHECK THIS
+                                                        dones, #traj_batch.done, 
                                                         last_val)
         advantages_cost, targets_cost = calculate_gae(1.0, config["GAE_LAMBDA"], traj_batch.value_cost,
                                                         traj_batch.cost, 
-                                                        # dones, 
-                                                        traj_batch.done, # TODO: CHECK THIS
+                                                        dones, #traj_batch.done, 
                                                         last_cost)
 
         # UPDATE NETWORK
         ####### P2BPO Change ######
-        update_state = (train_state_policy, train_state_value, train_state_cost, train_state_penalty_params, 
-                        traj_batch,
+        update_state = (train_state_policy, train_state_value, train_state_cost, train_state_penalty_params, traj_batch,
                         advantages_value, targets_value, advantages_cost, targets_cost, rng)
         xs = jnp.ones(config["UPDATE_EPOCHS"]) * ent
         update_state, loss_info = jax.lax.scan(
@@ -132,8 +110,8 @@ def train(env, env_params, config, rng):
 
     ####### RRAA Change ######
     ####### P2BPO Change ######
-    update_epoch = partial(_p2bpo_update_both, config) #partial(_p2bpo_update_RR, config)
-    env_step = partial(_env_step_cppo_RR, env, env_params) # NOTE: conscious choice to continue using CPPO env step function (p2bpo changes are only in the update step?)
+    update_epoch = partial(_p2bpo_update_both, config) #partial(_p2bpo_update_RAA, config)
+    env_step = partial(_env_step_cppo_RAA, env, env_params)
     ####### RRAA Change ######
     training = jax.jit(_train)
 
@@ -210,7 +188,7 @@ def train(env, env_params, config, rng):
 
         ####### P2BPO Change ######
         update_state, result = jax.lax.scan(
-            training, (train_state_policy, train_state_value, train_state_cost, train_state_penalty_params, rng), xs, config["STEP_SCAN" ]
+            training, (train_state_policy, train_state_value, train_state_cost, train_state_penalty_params, rng), xs, config["STEP_SCAN"]
         )
 
         train_state_policy, train_state_value, train_state_cost, train_state_penalty_params, rng = update_state
@@ -223,7 +201,7 @@ def train(env, env_params, config, rng):
 
         checkpoints.save_checkpoint(ckpt_dir=os.path.abspath(os.path.join("model", config["DIR"])),
                                     target={"policy_network": train_state_policy, "value_network": train_state_value,
-                                            "cost_network": train_state_cost, "penalty_params": train_state_penalty_params},
+                                            "cost_network": train_state_cost},
                                     step=timestep,
                                     overwrite=True,
                                     keep=2)
@@ -232,16 +210,18 @@ def train(env, env_params, config, rng):
         # Perform Logging and Plotting
         idx = 0 # index to plot
         info = tree_index2(traj_batch.info, idx)
-        ((reach_1_perc, reach_2_perc, reach_perc),
-            (reach_idx_1, reach_idx_2, reach_idx)) = calculate_reachreach(traj_batch)
-        info["reach_index_1"] = reach_idx_1[idx]
-        info["reach_index_2"] = reach_idx_2[idx]
+        reach_idx = (traj_batch.reach < 0).argmax(axis=0)[idx]
+        avoid_idx = (traj_batch.avoid > 0).argmax(axis=0)[idx]
+        info["reach_index"] = reach_idx
+        info["avoid_index"] = avoid_idx
 
-        fig = plot_contour_RRAA((info, None, None), timestep, config, policy_decision_sample=None)
+        fig = plot_contour_RRAA((info, None), timestep, config)
+        cnt_never_reached, cnt_crashed, cnt_crash_after_reach = calculate_reach_avoid_stats(traj_batch)
+        (reach_perc, crash_perc, reach_avoid_perc) = calculate_reachavoid(traj_batch)
 
-        # Keep the best performing model
-        if reach_perc > best_score:
-            best_score = reach_perc
+        # Keep the best performaing model
+        if reach_avoid_perc > best_score:
+            best_score = reach_avoid_perc
             checkpoints.save_checkpoint(ckpt_dir=os.path.abspath(os.path.join("model", config["DIR"])),
                                         target={"policy_network": train_state_policy, "value_network": train_state_value,
                                             "cost_network": train_state_cost},
@@ -251,37 +231,38 @@ def train(env, env_params, config, rng):
 
         t1 = time.time()
 
-        reward, cost, cnt1, cnt2, cnt3 = calculate_reward_cost(traj_batch)
+        reward, cost, cnt = calculate_reward_cost(traj_batch)
 
-        wandb.log({"not reaching reach 1": cnt1,
-                   "not reaching reach 2": cnt2,
-                   "not reaching both": cnt3,
+        wandb.log({"not reaching goal": cnt,
                    "average total return": -jnp.mean(reward),
                    "average cost": jnp.mean(cost),
                    "actor_loss": jnp.mean(loss_info["actor_loss"]), "entropy_loss": jnp.mean(loss_info["entropy_loss"]),
                    "value_loss": jnp.mean(loss_info["value_loss"]), "cost_loss": jnp.mean(loss_info["cost_loss"]),
+                   "crashed [%]": crash_perc,
                 #    'trajectory_sample':wandb.Image(fig),
-                    "Reach 1 Success %": reach_1_perc,
-                    "Reach 2 Success %": reach_2_perc,
-                    "Reach-Reach Success %": reach_perc,
+                    "reached [%]": reach_perc,
+                    "reached_avoid [%]": reach_avoid_perc,
+                    "cnt crashed ": cnt_crashed,
+                    "cnt not reaching goal ": cnt_never_reached,
+                    "cnt crash after reach ": cnt_crash_after_reach,
                    "lambda": jnp.mean(loss_info['lambda']), 
                    "penalty_param": train_state_penalty_params.apply_fn(train_state_penalty_params.params)},
                    step=timestep)
         
         if "Hopper" in config["EXP_NAME"] or "HalfCheetah" in config["EXP_NAME"]:
             wandb.log({
-                'trajectory_sample':wandb.Image(fig)
-            }, step=timestep)
+                'trajectory_sample':wandb.Image(fig),
+            })
         
             # Save video of trajectory 
-            video_freq = 5 #25 
+            video_freq = 25 
             save_video = True 
             if timestep % video_freq == 0 or timestep == total_timesteps - 1: 
-                video_frames = plot_video_contour_RRAA((info, None, None), timestep, config, save_video=save_video, log_wandb=config["USE_WANDB"])
-
+                video_frames = plot_video_contour_RRAA((info, None), timestep + 1, config, save_video=save_video, log_wandb=config["USE_WANDB"])
         ####### RRAA Change ######
-        print("Iteration {}: not reach 1 {} not reach 2 {} not reach both {} reward {} cost {}".format(timestep, cnt1, cnt2, cnt3, -jnp.mean(reward), jnp.mean(cost)))
-        print("Train state penalty params: {}".format(train_state_penalty_params.params))
+
+        print("Iteration {}: not reach {} reward {} cost {}".format(timestep, cnt, -jnp.mean(reward), jnp.mean(cost)))
+        print("Train state penalty params: RAA: {}".format(train_state_penalty_params.params))
         print("Time {}".format(t1-t0))
 
     return
@@ -301,51 +282,6 @@ if __name__ == "__main__":
 
     # config["FIX_PENALTY"] = True # TODO: REMOVE DEBUGGING
     ####### P2BPO Change ######
-
-    # # variant 1
-    # config["ENV_REWARD_TYPE"] = "accumulated" # reward
-    # config["ENV_COST_FN"] = "max" # cost_fn
-    # config["ENV_COST_TYPE"] = "accumulated" # cost
-    # config["CPPO_UPDATE_TYPE"] = "min" # update
-    # config["USE_STL"] = False # stl 
-
-    # variant 2 - NOTE: BEST - when used with sum rewards: gamma * (r1 + r2) - (prev r1 + prev r2)
-    config["ENV_REWARD_TYPE"] = "accumulated" # reward
-    config["ENV_COST_FN"] = "sum" # cost_fn
-    config["ENV_COST_TYPE"] = "accumulated" # cost
-    config["CPPO_UPDATE_TYPE"] = "mean" # update
-    config["USE_STL"] = False # stl 
-
-    # # variant 3
-    # config["ENV_REWARD_TYPE"] = "instant" # reward
-    # config["ENV_COST_FN"] = "sum" # cost_fn
-    # config["ENV_COST_TYPE"] = "instant" # cost
-    # config["CPPO_UPDATE_TYPE"] = "mean" # update
-    # config["USE_STL"] = False # stl 
-
-    if config["EXP_NAME"] == "HopperReachReach_separated_CPPO":
-        # Use min target cost accumulation
-        config["ENV_REWARD_TYPE"] = "instant" # reward
-        config["ENV_COST_FN"] = "sum" # cost_fn
-        config["ENV_COST_TYPE"] = "instant" # cost
-        config["USE_STL"] = False # stl
-
-        config["CPPO_UPDATE_TYPE"] = "min"
-
-    # HopperReachReach environment specific assertions
-    print(config.keys())
-    if "HopperReachReach" in config["EXP_NAME"]:
-        assert("USE_STL" in config.keys())
-        assert("CPPO_UPDATE_TYPE" in config.keys())
-        assert("ENV_COST_TYPE" in config.keys())
-        assert("ENV_COST_FN" in config.keys())
-        assert("ENV_REWARD_TYPE" in config.keys())
-
-        print('\n\n\ENV_COST_TYPE: {}'.format(config["ENV_COST_TYPE"]))
-        print('ENV_COST_FN: {}'.format(config["ENV_COST_FN"]))
-        print('ENV_REWARD_TYPE: {}'.format(config["ENV_REWARD_TYPE"]))
-        print('USE_STL: {}'.format(config["USE_STL"]))
-        print('CPPO_UPDATE_TYPE: {}\n\n\n'.format(config["CPPO_UPDATE_TYPE"]))
 
     config["USE_WANDB"] = True 
     if config["USE_WANDB"]:
@@ -368,6 +304,7 @@ if __name__ == "__main__":
     os.environ["CUDA_VISIBLE_DEVICES"] = config['CUDA_USE']
     env = get_env(config)
     env_params = env.default_params
+    print(env_params)
     env_params = env_params.replace(gamma=config["GAMMA_ENERGY"])
     wandb.init(project='CPPO-{}'.format(config["EXP_NAME"]), name=config["NAME"], config=config)
     rng = jax.random.PRNGKey(20)

@@ -203,7 +203,8 @@ def get_env(config):
         or config["EXP_NAME"] == "HopperReachAlwaysAvoid_RCPPO" \
             or config["EXP_NAME"] == "HopperReachAlwaysAvoid_RESPO" \
                 or config["EXP_NAME"] == "HopperReachAlwaysAvoidBaseline_MORL" \
-                    or config["EXP_NAME"] == "HopperReachAlwaysAvoidBaseline_Sparse":
+                    or config["EXP_NAME"] == "HopperReachAlwaysAvoidBaseline_Sparse" \
+                        or config["EXP_NAME"] == "HopperReachAlwaysAvoidBaseline_P2BPO":
         
         obs_dim = 12 + 1
         vec1 = jnp.zeros(obs_dim, dtype=jnp.float32)

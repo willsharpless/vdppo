@@ -2259,7 +2259,7 @@ def _cppo_update_RR(config, update_state, ent):
     return update_state, total_loss
 
 
-########## P2BPO ############
+########## P2BPO ############ - NOTE: You can consolidate the bottom 2
 from functools import partial
 from typing import Tuple
 @partial(jax.jit)
@@ -2288,7 +2288,7 @@ def calculate_cost_sum_traj(
     )
     return cost_sums
 
-def _p2bpo_update_RR(config, update_state, ent):
+def _p2bpo_update_both(config, update_state, ent):
     ########## P2BPO Change ##########
     (train_state_policy, train_state_value, train_state_cost, train_state_penalty_params, traj_batch,
      advantages_value, targets_value, advantages_cost, targets_cost, rng) = update_state
@@ -2312,21 +2312,8 @@ def _p2bpo_update_RR(config, update_state, ent):
             value_loss_cost = (
                     0.5 * jnp.maximum(value_losses_cost, value_losses_clipped_cost).mean()
             )
-            ########## RRAA Change ##########
-            # each cost: max(min r1 until now, min r2 until now)
-            # so min of all costs < 0 indicates that both goals have been reached
-            # lambda_new = jnp.clip(targets_cost.min() - config['THRESHOLD_CPPO'], 0) * config['K_P']
-            
-            # if config["CPPO_UPDATE_TYPE"] == "max": # NOTE: INCORRECT I THINK - DON'T USE THIS ?
-            #     lambda_new = jnp.clip(targets_cost.max() - config['THRESHOLD_CPPO'], 0) * config['K_P']
-            
-            if config["CPPO_UPDATE_TYPE"] == "mean":
-                lambda_new = jnp.clip(targets_cost.mean() - config['THRESHOLD_CPPO'], 0) * config['K_P']
-            elif config["CPPO_UPDATE_TYPE"] == "min":
-                lambda_new = jnp.clip(targets_cost.min() - config['THRESHOLD_CPPO'], 0) * config['K_P']
-            else: 
-                raise ValueError("CPPO_UPDATE_TYPE must be either 'min' or 'mean'")
-            ########## RRAA Change ##########
+
+            lambda_new = config["LAMBDA_REACH"] # NOTE: NOT USED IN P2BPO
 
             total_loss = config["VF_COEF"] * value_loss_cost
             return total_loss, (value_loss_cost, lambda_new)
@@ -2411,14 +2398,16 @@ def _p2bpo_update_RR(config, update_state, ent):
         ep_costs = calculate_cost_sum_traj(config["GAMMA_ENERGY"], traj_batch.cost, traj_batch.done, last_cost)
         cost_limit = config["COST_LIMIT"] # TODO: NOTE: hardcoded might need to change back
 
-        penalty_params_grad_fn = jax.value_and_grad(_loss_fn_penalty, has_aux=True)
-        penalty_loss, grads = penalty_params_grad_fn(
-            train_state_penalty_params.params, traj_batch, ep_costs.mean(), cost_limit
-        )
-        # Clip penalty parameter to be >= 0
-        train_state_penalty_params = train_state_penalty_params.apply_gradients(grads=grads)
-        new_params = jax.tree_util.tree_map(lambda x: jnp.clip(x, 0.0), train_state_penalty_params.params)
-        train_state_penalty_params = train_state_penalty_params.replace(params=new_params)
+        # can fix the penalty if desired 
+        if "FIX_PENALTY" not in config or ("FIX_PENALTY" in config and not config["FIX_PENALTY"]):
+            penalty_params_grad_fn = jax.value_and_grad(_loss_fn_penalty, has_aux=True)
+            penalty_loss, grads = penalty_params_grad_fn(
+                train_state_penalty_params.params, traj_batch, ep_costs.mean(), cost_limit
+            )
+            # Clip penalty parameter to be >= 0
+            train_state_penalty_params = train_state_penalty_params.apply_gradients(grads=grads)
+            new_params = jax.tree_util.tree_map(lambda x: jnp.clip(x, 0.0), train_state_penalty_params.params)
+            train_state_penalty_params = train_state_penalty_params.replace(params=new_params)
         
         grad_fn = jax.value_and_grad(_loss_fn_policy, has_aux=True)
         total_loss_policy, grads = grad_fn(
@@ -2443,6 +2432,7 @@ def _p2bpo_update_RR(config, update_state, ent):
         lambda_change = jnp.where(config['FIX_LAMBDA'], config['LAMBDA_REACH'], total_loss_cost[1][1])
         train_state_policy = train_state_policy.replace(lambda_coef=lambda_change)
 
+        ########## P2BPO Change ##########
         return (train_state_policy, train_state_value, train_state_cost, train_state_penalty_params), \
                                                                         {"actor_loss": total_loss_policy[1][0],
                                                                          "entropy_loss": total_loss_policy[1][1],
@@ -2478,3 +2468,183 @@ def _p2bpo_update_RR(config, update_state, ent):
                     advantages_value, targets_value, advantages_cost, targets_cost, rng)
     ########## P2BPO Change ##########
     return update_state, total_loss
+
+# def _p2bpo_update_RAA(config, update_state, ent):
+#     ########## P2BPO Change ##########
+#     (train_state_policy, train_state_value, train_state_cost, train_state_penalty_params, traj_batch,
+#      advantages_value, targets_value, advantages_cost, targets_cost, rng) = update_state
+#     rng, _rng = jax.random.split(rng)
+
+#     def _update_minbatch(train_state, batch_info):
+#         train_state_policy, train_state_value, train_state_cost, train_state_penalty_params = train_state
+#         traj_batch, advantages_value, targets_value, advantages_cost, targets_cost = batch_info
+
+#         def _loss_fn_cost(params, traj_batch, targets_cost):
+#             # RERUN NETWORK
+#             value_cost = train_state_cost.apply_fn(params, traj_batch.obs)
+
+#             # CALCULATE VALUE LOSS FOR REACH FUNCTION
+#             value_pred_clipped_cost = traj_batch.value_cost + (
+#                     value_cost - traj_batch.value_cost
+#             ).clip(-config["CLIP_EPS"], config["CLIP_EPS"])
+#             value_losses_cost = jnp.square(value_cost - targets_cost)
+#             value_losses_clipped_cost = jnp.square(value_pred_clipped_cost - targets_cost)
+#             value_loss_cost = (
+#                     0.5 * jnp.maximum(value_losses_cost, value_losses_clipped_cost).mean()
+#             )
+#             # lambda_new = jnp.clip(targets_cost.mean() - config['THRESHOLD_CPPO'], 0) * config['K_P']
+#             ########## RRAA Change ##########
+#             lambda_new = jnp.clip(targets_cost.max() - config['THRESHOLD_CPPO'], 0) * config['K_P']
+#             ########## RRAA Change ##########
+
+#             total_loss = config["VF_COEF"] * value_loss_cost
+#             return total_loss, (value_loss_cost, lambda_new)
+
+#         def _loss_fn_value(params, traj_batch, targets_value):
+#             # RERUN NETWORK
+#             value = train_state_value.apply_fn(params, traj_batch.obs)
+
+#             # CALCULATE VALUE LOSS FOR NORMAL VALUE FUNCTION
+#             value_pred_clipped = traj_batch.value + (
+#                     value - traj_batch.value
+#             ).clip(-config["CLIP_EPS"], config["CLIP_EPS"])
+#             value_losses = jnp.square(value - targets_value)
+#             value_losses_clipped = jnp.square(value_pred_clipped - targets_value)
+#             value_loss_value = (
+#                     0.5 * jnp.maximum(value_losses, value_losses_clipped).mean()
+#             )
+
+#             total_loss = config["VF_COEF"] * value_loss_value
+#             return total_loss, value_loss_value
+
+#         ########## P2BPO Change ##########
+#         def _loss_fn_policy(params, penalty_params, traj_batch, gae_value, gae_cost, ep_costs, cost_limit, gamma):
+#             # RERUN NETWORK
+#             pi = train_state_policy.apply_fn(params, traj_batch.obs)
+#             log_prob = pi.log_prob(traj_batch.action)
+
+#             # CALCULATE ACTOR LOSS
+#             ratio = jnp.exp(log_prob - traj_batch.log_prob)
+#             gae_value = (gae_value - gae_value.mean()) / (gae_value.std() + 1e-8)
+#             loss_actor1 = ratio * gae_value
+#             loss_actor2 = (
+#                     jnp.clip(
+#                         ratio,
+#                         1.0 - config["CLIP_EPS"],
+#                         1.0 + config["CLIP_EPS"],
+#                     )
+#                     * gae_value
+#             )
+#             loss_actor = jnp.maximum(loss_actor1, loss_actor2)
+#             loss_actor = loss_actor.mean()
+#             entropy = pi.entropy().mean()
+
+#             total_loss = (
+#                     loss_actor
+#                     - ent * entropy
+#             )
+
+#             # P2BPO Change: Incorporate penalty parameter and softplus
+#             penalty_param_value = jax.nn.relu(train_state_penalty_params.apply_fn(penalty_params))  # apply() returns the current scalar
+#             cadv_ratio = (ratio * gae_cost).mean() # cost advantage ratio
+#             cost_dev = ep_costs - cost_limit
+#             penalty = penalty_param_value  * (cadv_ratio + (1 - gamma) * cost_dev)
+
+#             # Custom jax softplus implementation to mimic: https://docs.pytorch.org/docs/stable/generated/torch.nn.Softplus.html 
+#             softplus_beta = 10.0 
+#             softplus_threshold = 0.8
+#             scaled_softplus_input = softplus_beta * penalty 
+#             softplus_penalty = jnp.where(
+#                 scaled_softplus_input > softplus_threshold,
+#                 scaled_softplus_input, 
+#                 (1.0 / softplus_beta) * jax.nn.softplus(scaled_softplus_input)
+#             )
+
+#             loss_actor = loss_actor + softplus_penalty
+#             loss_actor = jnp.where(
+#                 softplus_penalty > 0, 
+#                 loss_actor / (1 + penalty_param_value),
+#                 loss_actor
+#             )
+
+#             return total_loss, (loss_actor, entropy)
+        
+#         def _loss_fn_penalty(params, traj_batch, ep_costs, cost_limit):
+#             penalty = train_state_penalty_params.apply_fn(params)  # apply() returns the current scalar
+#             # loss = -penalty * (mean_ep_cost - cost_limit)
+#             loss = -penalty * (ep_costs - cost_limit)
+#             return loss, penalty
+
+#         # Update penalty parameter
+#         last_cost = traj_batch.cost[-1] # NOTE: NS - unsure about this 
+#         ep_costs = calculate_cost_sum_traj(config["GAMMA_ENERGY"], traj_batch.cost, traj_batch.done, last_cost)
+#         cost_limit = config["COST_LIMIT"] # TODO: NOTE: hardcoded might need to change back
+
+#         penalty_params_grad_fn = jax.value_and_grad(_loss_fn_penalty, has_aux=True)
+#         penalty_loss, grads = penalty_params_grad_fn(
+#             train_state_penalty_params.params, traj_batch, ep_costs.mean(), cost_limit
+#         )
+#         # Clip penalty parameter to be >= 0
+#         train_state_penalty_params = train_state_penalty_params.apply_gradients(grads=grads)
+#         new_params = jax.tree_util.tree_map(lambda x: jnp.clip(x, a_min=0.0), train_state_penalty_params.params)
+#         train_state_penalty_params = train_state_penalty_params.replace(params=new_params)
+
+#         grad_fn = jax.value_and_grad(_loss_fn_policy, has_aux=True)
+#         total_loss_policy, grads = grad_fn(
+#             train_state_policy.params, train_state_penalty_params.params, traj_batch, advantages_value, advantages_cost, 
+#             ep_costs, cost_limit, config["GAMMA_ENERGY"]
+#             # (advantages_value + train_state_policy.lambda_coef * advantages_cost)/ (1 + train_state_policy.lambda_coef)
+#         )
+#         train_state_policy = train_state_policy.apply_gradients(grads=grads)
+#         ########## P2BPO Change ##########
+
+#         grad_fn = jax.value_and_grad(_loss_fn_value, has_aux=True)
+#         total_loss_value, grads = grad_fn(
+#             train_state_value.params, traj_batch, targets_value
+#         )
+#         train_state_value = train_state_value.apply_gradients(grads=grads)
+
+#         grad_fn = jax.value_and_grad(_loss_fn_cost, has_aux=True)
+#         total_loss_cost, grads = grad_fn(
+#             train_state_cost.params, traj_batch, targets_cost
+#         )
+#         train_state_cost = train_state_cost.apply_gradients(grads=grads)
+#         lambda_change = jnp.where(config['FIX_LAMBDA'], config['LAMBDA_REACH'], total_loss_cost[1][1])
+#         train_state_policy = train_state_policy.replace(lambda_coef=lambda_change)
+
+#         ########## P2BPO Change ##########
+#         return (train_state_policy, train_state_value, train_state_cost, train_state_penalty_params), \
+#                                                                         {"actor_loss": total_loss_policy[1][0],
+#                                                                          "entropy_loss": total_loss_policy[1][1],
+#                                                                          "value_loss": total_loss_value[1],
+#                                                                          "cost_loss": total_loss_cost[1][0],
+#                                                                         "lambda": lambda_change}
+
+
+#     rng, _rng = jax.random.split(rng)
+#     batch_size = config["MINIBATCH_SIZE"] * config["NUM_MINIBATCHES"]
+#     assert (
+#             batch_size == config["NUM_STEPS"] * config["NUM_ENVS"]
+#     ), "batch size must be equal to number of steps * number of envs"
+#     permutation = jax.random.permutation(_rng, batch_size)
+#     batch = (traj_batch, advantages_value, targets_value, advantages_cost, targets_cost)
+#     batch = jax.tree_util.tree_map(
+#         lambda x: x.reshape((batch_size,) + x.shape[2:]), batch
+#     )
+#     shuffled_batch = jax.tree_util.tree_map(
+#         lambda x: jnp.take(x, permutation, axis=0), batch
+#     )
+#     minibatches = jax.tree_util.tree_map(
+#         lambda x: jnp.reshape(
+#             x, [config["NUM_MINIBATCHES"], -1] + list(x.shape[1:])
+#         ),
+#         shuffled_batch,
+#     )
+#     ########## P2BPO Change ##########
+#     (train_state_policy, train_state_value, train_state_cost, train_state_penalty_params), total_loss = jax.lax.scan(
+#         _update_minbatch, (train_state_policy, train_state_value, train_state_cost, train_state_penalty_params), minibatches
+#     )
+#     update_state = (train_state_policy, train_state_value, train_state_cost, train_state_penalty_params, traj_batch,
+#                     advantages_value, targets_value, advantages_cost, targets_cost, rng)
+#     ########## P2BPO Change ##########
+#     return update_state, total_loss
