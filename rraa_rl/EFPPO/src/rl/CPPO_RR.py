@@ -92,6 +92,15 @@ def train(env, env_params, config, rng):
                                                         # dones, 
                                                         traj_batch.done, # TODO: CHECK THIS
                                                         last_cost)
+        
+        if config["LOG_BARRIER"]:
+            sign = -1 if "Avoid" in config["EXP_NAME"] else 1
+            logbar_cost = -jnp.log(
+                sign * (jnp.maximum(traj_batch.cost - config["THRESHOLD_CPPO"], 0.0) - 1.)
+            ) / config["LOG_BARRIER_MU"]  # log barrier
+            advantages_cost, targets_cost = calculate_gae(1.0, config["GAE_LAMBDA"], traj_batch.value_cost,
+                                                        logbar_cost, traj_batch.done, last_cost)
+            # in this case, value_cost is trained on the log barrier cost
 
         # UPDATE NETWORK
         update_state = (train_state_policy, train_state_value, train_state_cost, traj_batch,
@@ -241,6 +250,8 @@ def train(env, env_params, config, rng):
 if __name__ == "__main__":
     
     config = vars(get_args(sys.argv[1:]))
+
+    print("LOG_BARRIER,", config["LOG_BARRIER"])
 
     # FIXME: Manual for now
 

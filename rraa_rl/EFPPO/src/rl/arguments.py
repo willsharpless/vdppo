@@ -96,6 +96,12 @@ def get_args(args):
         "--FIX_LAMBDA", action='store_true', default=False, help="whether the environment use "
                                                                  "a fixed lagrangian multiplier"
     )
+    parser.add_argument(
+        "--LOG_BARRIER", action='store_true', default=False, help="whether to wrap aug-lag with log barrier"
+    )
+    parser.add_argument(
+        "--LOG_BARRIER_MU", default=5., type=float, help="log barrier mu, \psi = -log(-(relu(x)-1)/mu"
+    )
     args = parser.parse_args(args) if args is not None else parser.parse_args()
 
     return args
