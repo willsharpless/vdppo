@@ -274,11 +274,11 @@ class PointReachReachBaseline_augmented:
         reach1_cost_input = deepcopy(reach1_value)
         reach2_cost_input = deepcopy(reach2_value)
 
-        if self.use_stl: 
-            reach1_cost_input = jnp.where(has_reached_1, 0, reach2_cost_input)
-            reach2_cost_input = jnp.where(has_reached_2, 0, reach1_cost_input)
-            min_reach1_cost_input = jnp.where(has_reached_1, 0, min_reach1_cost_input)
-            min_reach2_cost_input = jnp.where(has_reached_2, 0, min_reach2_cost_input)
+        # if self.use_stl: 
+        #     reach1_cost_input = jnp.where(has_reached_1, 0, reach2_cost_input)
+        #     reach2_cost_input = jnp.where(has_reached_2, 0, reach1_cost_input)
+        #     min_reach1_cost_input = jnp.where(has_reached_1, 0, min_reach1_cost_input)
+        #     min_reach2_cost_input = jnp.where(has_reached_2, 0, min_reach2_cost_input)
         
         cost = self.compute_cost_accumulated(min_reach1_cost_input, min_reach2_cost_input, state.min_reach1, state.min_reach2, 
                                 reach1_value=reach1_cost_input, reach2_value=reach2_cost_input)

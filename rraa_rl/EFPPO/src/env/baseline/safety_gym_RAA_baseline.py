@@ -124,7 +124,6 @@ class PointReachAlwaysAvoidBaseline_augmented:
 
         next_state_new = EnvStateRAA(next_state, reach_value, avoid_value, min_reach, cost)
         observation = self.compute_observation(state=next_state_new, last_state=state)
-        reward = 0.
         done = False
 
         return observation, next_state_new, reward, done, {"x": state.state.obs[0], "y": state.state.obs[1], "theta": jnp.arcsin(state.state.obs[2])}
