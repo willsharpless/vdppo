@@ -734,19 +734,19 @@ if __name__ == "__main__":
         config["BASE_MODEL_DIR"] = "model_rebuttal_results"
 
         config["DIR_HJPPO"]="BASELINE_point_raa"
-        config["DIR_MODEL_HJPPO"]="best_231"#"best_126"
+        config["DIR_MODEL_HJPPO"]="best_231"
 
         config["DIR_CPPO"]="BASELINE_point_raa_cppo"
         config["DIR_MODEL_CPPO"]="best_43"
 
         config["DIR_RA"]="BASELINE_point_ra"
-        config["DIR_MODEL_RA"]="best_488"
+        config["DIR_MODEL_RA"]="best_244"
 
         config["DIR_PPOLAG"]="BASELINE_point_raa_ppolag_lam0p01"
-        config["DIR_MODEL_PPOLAG"]="best_422"
+        config["DIR_MODEL_PPOLAG"]="best_183"
 
         config["DIR_PPO"]="BASELINE_point_raa_ppo"
-        config["DIR_MODEL_PPO"]="best_4" 
+        config["DIR_MODEL_PPO"]="best_233" 
 
         config["DIR_RCPPO"]="BASELINE_point_raa_rcppo"
         config["DIR_MODEL_RCPPO"]="best_123" 
@@ -755,10 +755,10 @@ if __name__ == "__main__":
         config["DIR_MODEL_RESPO"]="best_28"
 
         config["DIR_MORL"]="BASELINE_point_raa_morl"
-        config["DIR_MODEL_MORL"]="best_23"
+        config["DIR_MODEL_MORL"]="best_187"
 
         config["DIR_SPARSE"]="BASELINE_point_raa_sparse"
-        config["DIR_MODEL_SPARSE"]="best_23"
+        config["DIR_MODEL_SPARSE"]="best_93"
 
         config['TEST_DIR'] = "eval_all_rebuttal"
         config['NAME_TAG'] = "Point_RAA_072925"
