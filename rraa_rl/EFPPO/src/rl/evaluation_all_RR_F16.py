@@ -65,7 +65,9 @@ def plot_scores(traj_batches, config):
         traj_batch_RCPPO,
         traj_batch_RESPO,
         traj_batch_MORL,
-        traj_batch_SPARSE
+        traj_batch_SPARSE,
+        traj_batch_P2BPO,
+        traj_batch_LOGBAR,
     ) = traj_batches
     
     # offset = 0.5
@@ -82,8 +84,12 @@ def plot_scores(traj_batches, config):
     rr_scores_RESPO = calculate_reachreach(traj_batch_RESPO, offset=offset)
     rr_scores_MORL = calculate_reachreach(traj_batch_MORL, offset=offset)
     rr_scores_SPARSE = calculate_reachreach(traj_batch_SPARSE, offset=offset)
+    rr_scores_P2BPO = calculate_reachreach(traj_batch_P2BPO, offset=offset)
+    rr_scores_LOGBAR = calculate_reachreach(traj_batch_LOGBAR, offset=offset)
 
     rr_scores_all = [
+        ("LOGBAR", rr_scores_LOGBAR),
+        ("P2BPO", rr_scores_P2BPO),
         ("SPARSE", rr_scores_SPARSE),
         ("MORL", rr_scores_MORL),
         ("RESPPO", rr_scores_RESPO),
@@ -221,7 +227,7 @@ def plot_scores(traj_batches, config):
     plt.savefig(f"model/{config['TEST_DIR']}/{config['NAME_TAG']}/score_plot", dpi=300, bbox_inches="tight", pad_inches=0.1)
     return fig
 
-def save_traj(traj_batch, config, tag, sample_size=5):
+def save_traj(traj_batch, config, tag, sample_size=10):
     traj_data = {
         attr: getattr(traj_batch, attr)[:, :sample_size]
         for attr in dir(traj_batch)
@@ -240,20 +246,22 @@ def load_traj(file_path):
     return traj_batch
 
 def test(envs, env_paramss, config, rngs, saving_traj=False):
-    rng_1, rng_2, rng_3, rng_4, rng_5, rng_6, rng_7, rng_8, rng_9, rng_10, rng_11, rng_12 = rngs
+    rng_1, rng_2, rng_3, rng_4, rng_5, rng_6, rng_7, rng_8, rng_9, rng_10, rng_11, rng_12, rng_13, rng_14 = rngs
 
     (env_HJPPO, env_HJPPO_reach_1, env_HJPPO_reach_2, 
         env_CPPO_v1, env_CPPO_v2, env_CPPO_v3, 
         env_dSTL, env_dSTL_1, env_dSTL_2,
         env_PPOLAG, env_PPO, env_RCPPO, env_RESPO,
-        env_MORL, env_SPARSE
+        env_MORL, env_SPARSE,
+        env_P2BPO, env_LOGBAR,
     ) = envs # COMPOSED (RR) + 2 DECOMPOSED (R1 + R2)
 
     (env_params_HJPPO, env_params_HJPPO_reach_1, env_params_HJPPO_reach_2, 
         env_params_CPPO_v1, env_params_CPPO_v2, env_params_CPPO_v3, 
         env_params_dSTL, env_params_dSTL_1, env_params_dSTL_2,
         env_params_PPOLAG, env_params_PPO, env_params_RCPPO, env_params_RESPO,
-        env_params_MORL, env_params_SPARSE
+        env_params_MORL, env_params_SPARSE,
+        env_params_P2BPO, env_params_LOGBAR
     ) = env_paramss
 
     # DEFINE ENV STEP WRAPPERS
@@ -269,6 +277,8 @@ def test(envs, env_paramss, config, rngs, saving_traj=False):
     env_step_RESPO = partial(_env_step_rr_respo, env_RESPO, env_params_RESPO)
     env_step_MORL = partial(_env_step_cppo_RR, env_MORL, env_params_MORL)
     env_step_SPARSE = partial(_env_step_cppo_RR, env_SPARSE, env_params_SPARSE)
+    env_step_P2BPO = partial(_env_step_cppo_RR, env_P2BPO, env_params_P2BPO)
+    env_step_LOGBAR = partial(_env_step_cppo_RR, env_LOGBAR, env_params_LOGBAR)
     tx = optimizer(config)
 
     ########################################## LOAD HJ-PPO #################################################
@@ -662,6 +672,70 @@ def test(envs, env_paramss, config, rngs, saving_traj=False):
         # lambda_coef=0.,
     )
 
+    ########################################## LOAD P2BPO & LOGBAR #################################################
+
+    ## P2BPO
+    raw_restored_P2BPO = checkpoints.restore_checkpoint(ckpt_dir=os.path.abspath('{}/{}/{}'.format(
+        config["BASE_MODEL_DIR"], config["DIR_P2BPO"], config["DIR_MODEL_P2BPO"])), target=None)
+
+    policy_network_P2BPO = Policy_Network(
+        env_P2BPO.action_space(env_params_P2BPO).shape[0], activation=config["ACTIVATION"]
+    )
+
+    train_state_policy_P2BPO = TrainState.create(
+        apply_fn=policy_network_P2BPO.apply,
+        params=raw_restored_P2BPO['policy_network']['params'],
+        tx=tx,
+        # lambda_coef=0.,
+    )
+
+    value_network_P2BPO = Value_Network(activation=config["ACTIVATION"])
+    train_state_value_P2BPO = TrainState.create(
+        apply_fn=value_network_P2BPO.apply,
+        params=raw_restored_P2BPO['value_network']['params'],
+        tx=tx,
+        # lambda_coef=0.,
+    )
+
+    value_network_cost_P2BPO = Value_Network(activation=config["ACTIVATION"])
+    train_state_cost_P2BPO = TrainState.create(
+        apply_fn=value_network_cost_P2BPO.apply,
+        params=raw_restored_P2BPO['cost_network']['params'],
+        tx=tx,
+        # lambda_coef=0.,
+    )
+
+    ## LOGBAR
+    raw_restored_LOGBAR = checkpoints.restore_checkpoint(ckpt_dir=os.path.abspath('{}/{}/{}'.format(
+        config["BASE_MODEL_DIR"], config["DIR_LOGBAR"], config["DIR_MODEL_LOGBAR"])), target=None)
+
+    policy_network_LOGBAR = Policy_Network(
+        env_LOGBAR.action_space(env_params_LOGBAR).shape[0], activation=config["ACTIVATION"]
+    )
+
+    train_state_policy_LOGBAR = TrainState.create(
+        apply_fn=policy_network_LOGBAR.apply,
+        params=raw_restored_LOGBAR['policy_network']['params'],
+        tx=tx,
+        # lambda_coef=0.,
+    )
+
+    value_network_LOGBAR = Value_Network(activation=config["ACTIVATION"])
+    train_state_value_LOGBAR = TrainState.create(
+        apply_fn=value_network_LOGBAR.apply,
+        params=raw_restored_LOGBAR['value_network']['params'],
+        tx=tx,
+        # lambda_coef=0.,
+    )
+
+    value_network_cost_LOGBAR = Value_Network(activation=config["ACTIVATION"])
+    train_state_cost_LOGBAR = TrainState.create(
+        apply_fn=value_network_cost_LOGBAR.apply,
+        params=raw_restored_LOGBAR['cost_network']['params'],
+        tx=tx,
+        # lambda_coef=0.,
+    )
+
     ########################################## ROLL OUT MODELS #################################################
 
     ## MODEL 1 : HJ-PPO : STOCHASTIC
@@ -682,6 +756,8 @@ def test(envs, env_paramss, config, rngs, saving_traj=False):
         env_step_HJPPO, runner_state, None, config["NUM_STEPS"]
     )
 
+    if saving_traj: save_traj(traj_batch_HJPPO, config, 'DOHJPPO_s', sample_size=10)
+
     ## MODEL 2 : HJ-PPO : DETERMINISTIC
 
     print("Rolling Out HJ-PPO (Deterministic)")
@@ -700,7 +776,7 @@ def test(envs, env_paramss, config, rngs, saving_traj=False):
         env_step_HJPPO_d, runner_state, None, config["NUM_STEPS"]
     )
 
-    if saving_traj: save_traj(traj_batch_HJPPO_d, config, 'DOHJPPO', sample_size=5)
+    if saving_traj: save_traj(traj_batch_HJPPO_d, config, 'DOHJPPO', sample_size=10)
 
     ## MODEL 3 : CPPO : Variant 1
 
@@ -716,7 +792,7 @@ def test(envs, env_paramss, config, rngs, saving_traj=False):
         env_step_CPPOv1, runner_state, None, config["NUM_STEPS"]
     )
 
-    if saving_traj: save_traj(traj_batch_CPPOv1, config, 'CPPOv1', sample_size=5)
+    if saving_traj: save_traj(traj_batch_CPPOv1, config, 'CPPOv1', sample_size=10)
 
     ## MODEL 4 : CPPO : Variant 2
 
@@ -732,7 +808,7 @@ def test(envs, env_paramss, config, rngs, saving_traj=False):
         env_step_CPPOv2, runner_state, None, config["NUM_STEPS"]
     )
 
-    if saving_traj: save_traj(traj_batch_CPPOv2, config, 'CPPOv2', sample_size=5)
+    if saving_traj: save_traj(traj_batch_CPPOv2, config, 'CPPOv2', sample_size=10)
 
     ## MODEL 5 : CPPO : Variant 3
 
@@ -748,7 +824,7 @@ def test(envs, env_paramss, config, rngs, saving_traj=False):
         env_step_CPPOv3, runner_state, None, config["NUM_STEPS"]
     )
 
-    if saving_traj: save_traj(traj_batch_CPPOv3, config, 'CPPOv3', sample_size=5)
+    if saving_traj: save_traj(traj_batch_CPPOv3, config, 'CPPOv3', sample_size=10)
 
     ## MODEL 6 : DSTL
 
@@ -764,7 +840,7 @@ def test(envs, env_paramss, config, rngs, saving_traj=False):
         env_step_dSTL, runner_state, None, config["NUM_STEPS"]
     )
 
-    if saving_traj: save_traj(traj_batch_dSTL, config, 'DSTL', sample_size=5)
+    if saving_traj: save_traj(traj_batch_dSTL, config, 'DSTL', sample_size=10)
 
     ## MODEL 7 : PPOLAG
 
@@ -780,7 +856,7 @@ def test(envs, env_paramss, config, rngs, saving_traj=False):
         env_step_PPOLAG, runner_state, None, config["NUM_STEPS"]
     )
 
-    if saving_traj: save_traj(traj_batch_PPOLAG, config, 'PPOLAG', sample_size=5)
+    if saving_traj: save_traj(traj_batch_PPOLAG, config, 'PPOLAG', sample_size=10)
 
     ## MODEL 8 : PPO
 
@@ -796,7 +872,7 @@ def test(envs, env_paramss, config, rngs, saving_traj=False):
         env_step_PPO, runner_state, None, config["NUM_STEPS"]
     )
 
-    if saving_traj: save_traj(traj_batch_PPO, config, 'PPO', sample_size=5)
+    if saving_traj: save_traj(traj_batch_PPO, config, 'PPO', sample_size=10)
 
     ## MODEL 8 : RCPPO
 
@@ -812,7 +888,7 @@ def test(envs, env_paramss, config, rngs, saving_traj=False):
         env_step_RCPPO, runner_state, None, config["NUM_STEPS"]
     )
 
-    if saving_traj: save_traj(traj_batch_RCPPO, config, 'RCPPO', sample_size=5)
+    if saving_traj: save_traj(traj_batch_RCPPO, config, 'RCPPO', sample_size=10)
 
     ## MODEL 8 : RESPO
 
@@ -828,7 +904,7 @@ def test(envs, env_paramss, config, rngs, saving_traj=False):
         env_step_RESPO, runner_state, None, config["NUM_STEPS"]
     )
 
-    if saving_traj: save_traj(traj_batch_RESPO, config, 'RESPO', sample_size=5)
+    if saving_traj: save_traj(traj_batch_RESPO, config, 'RESPO', sample_size=10)
 
     ## MODEL 9 : MORL
 
@@ -844,7 +920,7 @@ def test(envs, env_paramss, config, rngs, saving_traj=False):
         env_step_MORL, runner_state, None, config["NUM_STEPS"]
     )
 
-    if saving_traj: save_traj(traj_batch_MORL, config, 'MORL', sample_size=5)
+    if saving_traj: save_traj(traj_batch_MORL, config, 'MORL', sample_size=10)
 
     ## MODEL 10 : SPARSE
 
@@ -860,9 +936,46 @@ def test(envs, env_paramss, config, rngs, saving_traj=False):
         env_step_SPARSE, runner_state, None, config["NUM_STEPS"]
     )
 
-    if saving_traj: save_traj(traj_batch_SPARSE, config, 'SPARSE', sample_size=5)
+    if saving_traj: save_traj(traj_batch_SPARSE, config, 'SPARSE', sample_size=10)
 
-    return traj_batch_HJPPO, traj_batch_HJPPO_d, traj_batch_CPPOv1, traj_batch_CPPOv2, traj_batch_CPPOv3, traj_batch_dSTL, traj_batch_PPOLAG, traj_batch_PPO, traj_batch_RCPPO, traj_batch_RESPO, traj_batch_MORL, traj_batch_SPARSE
+    ## MODEL 11 : P2BPO
+
+    print("Rolling Out P2BPO")
+    rng_13, _rng_13 = jax.random.split(rng_13)
+    reset_rng_13 = jax.random.split(_rng_13, config["NUM_ENVS"])
+    obsv_13, env_state_13 = jax.vmap(env_P2BPO.reset, in_axes=(0, None))(reset_rng_13, env_params_P2BPO)
+
+    rng_13, _rng_13 = jax.random.split(rng_13)
+    runner_state = (train_state_policy_P2BPO, train_state_value_P2BPO, train_state_cost_P2BPO, env_state_13, obsv_13, _rng_13)
+
+    runner_state, traj_batch_P2BPO = jax.lax.scan(
+        env_step_P2BPO, runner_state, None, config["NUM_STEPS"]
+    )
+
+    if saving_traj: save_traj(traj_batch_P2BPO, config, 'P2BPO', sample_size=10)
+
+    ## MODEL 12 : LOGBAR
+
+    print("Rolling Out LOGBAR")
+    rng_14, _rng_14 = jax.random.split(rng_14)
+    reset_rng_14 = jax.random.split(_rng_14, config["NUM_ENVS"])
+    obsv_14, env_state_14 = jax.vmap(env_LOGBAR.reset, in_axes=(0, None))(reset_rng_14, env_params_LOGBAR)
+
+    rng_14, _rng_14 = jax.random.split(rng_14)
+    runner_state = (train_state_policy_LOGBAR, train_state_value_LOGBAR, train_state_cost_LOGBAR, env_state_14, obsv_14, _rng_14)
+
+    runner_state, traj_batch_LOGBAR = jax.lax.scan(
+        env_step_LOGBAR, runner_state, None, config["NUM_STEPS"]
+    )
+
+    if saving_traj: save_traj(traj_batch_LOGBAR, config, 'LOGBAR', sample_size=10)
+
+    return (traj_batch_HJPPO, traj_batch_HJPPO_d, 
+            traj_batch_CPPOv1, traj_batch_CPPOv2, traj_batch_CPPOv3, 
+            traj_batch_dSTL, traj_batch_PPOLAG, traj_batch_PPO, 
+            traj_batch_RCPPO, traj_batch_RESPO, 
+            traj_batch_MORL, traj_batch_SPARSE,
+            traj_batch_P2BPO, traj_batch_LOGBAR)
 
 if __name__ == "__main__":
     config = vars(get_args(sys.argv[1:]))
@@ -905,8 +1018,14 @@ if __name__ == "__main__":
         config["DIR_SPARSE"]="BASELINE_f16_rr_sparse"
         config["DIR_MODEL_SPARSE"]="best_84"
 
+        config["DIR_P2BPO"]="BASELINE_f16_rr_p2bpo"
+        config["DIR_MODEL_P2BPO"]="best_126"
+
+        config["DIR_LOGBAR"]="BASELINE_f16_rr_logbar"
+        config["DIR_MODEL_LOGBAR"]="best_166"
+
         config['TEST_DIR'] = "eval_all_rebuttal"
-        config['NAME_TAG'] = "F16_RR_072825"
+        config['NAME_TAG'] = "F16_RR_080625"
 
     config["NUM_ENVS"]=1000
     config["NUM_STEPS"]=200
@@ -1011,15 +1130,39 @@ if __name__ == "__main__":
     env_SPARSE = get_env(config_SPARSE)
     env_SPARSE = sparse_replace_rr(env_SPARSE)
 
+    ## P2BPO
+    config_P2BPO = copy.deepcopy(config)
+    config_P2BPO["EXP_NAME"] = "F16ReachReachBaseline_P2BPO"
+    config_P2BPO["ENV_REWARD_TYPE"] = "accumulated" # reward
+    config_P2BPO["ENV_COST_FN"] = "sum" # cost_fn
+    config_P2BPO["ENV_COST_TYPE"] = "accumulated" # cost
+    config_P2BPO["CPPO_UPDATE_TYPE"] = "mean" # update
+    config_P2BPO["USE_STL"] = False # stl 
+    env_P2BPO = get_env(config_P2BPO)
+
+    ## LOGBAR
+    config_LOGBAR = copy.deepcopy(config)
+    config_LOGBAR["EXP_NAME"] = "F16ReachReach_CPPO"
+    config_LOGBAR["ENV_REWARD_TYPE"] = "accumulated" # reward
+    config_LOGBAR["ENV_COST_FN"] = "sum" # cost_fn
+    config_LOGBAR["ENV_COST_TYPE"] = "accumulated" # cost
+    config_LOGBAR["CPPO_UPDATE_TYPE"] = "mean" # update
+    config_LOGBAR["USE_STL"] = False # stl 
+    env_LOGBAR = get_env(config_LOGBAR)
+
     envs = (
         env_HJPPO, env_HJPPO_1, env_HJPPO_2, 
         env_CPPO_v1, env_CPPO_v2, env_CPPO_v3, env_dSTL, env_dSTL_1, env_dSTL_2,
-        env_PPOLAG, env_PPO, env_RCPPO, env_RESPO, env_MORL, env_SPARSE
+        env_PPOLAG, env_PPO, 
+        env_RCPPO, env_RESPO, 
+        env_MORL, env_SPARSE,
+        env_P2BPO, env_LOGBAR
     )
     env_paramss = (
         env_HJPPO.default_params, env_HJPPO_1.default_params, env_HJPPO_2.default_params,
         env_CPPO_v1.default_params, env_CPPO_v2.default_params, env_CPPO_v3.default_params, env_dSTL.default_params, env_dSTL_1.default_params, env_dSTL_2.default_params, 
-        env_PPOLAG.default_params, env_PPO.default_params, env_RCPPO.default_params, env_RESPO.default_params, env_MORL.default_params, env_SPARSE.default_params
+        env_PPOLAG.default_params, env_PPO.default_params, env_RCPPO.default_params, env_RESPO.default_params, env_MORL.default_params, env_SPARSE.default_params,
+        env_P2BPO.default_params, env_LOGBAR.default_params
     )
 
     rng_1 = jax.random.PRNGKey(20)
@@ -1034,8 +1177,9 @@ if __name__ == "__main__":
     rng_10 = jax.random.PRNGKey(20)
     rng_11 = jax.random.PRNGKey(20)
     rng_12 = jax.random.PRNGKey(20)
-    rngs = (rng_1, rng_2, rng_3, rng_4, rng_5, rng_6, rng_7, rng_8, rng_9, rng_10, rng_11, rng_12)
-    # folder = os.path.exists("model/{}/traj".format(config['DIR']))
+    rng_13 = jax.random.PRNGKey(20)
+    rng_14 = jax.random.PRNGKey(20)
+    rngs = (rng_1, rng_2, rng_3, rng_4, rng_5, rng_6, rng_7, rng_8, rng_9, rng_10, rng_11, rng_12, rng_13, rng_14)    # folder = os.path.exists("model/{}/traj".format(config['DIR']))
 
     os.environ["XLA_PYTHON_CLIENT_PREALLOCATE"] = "false"
     
@@ -1044,6 +1188,6 @@ if __name__ == "__main__":
 
     os.makedirs(f"model/{config['TEST_DIR']}/{config['NAME_TAG']}", exist_ok=True)
     # val_fig = plot_RR_value(result_traj_batch, result_traj_batch_deterministic, config)
-    # traj_fig = plot_traj_sample(result_traj_batch, result_traj_batch_deterministic, config, sample_size=5, make_video=False)
+    # traj_fig = plot_traj_sample(result_traj_batch, result_traj_batch_deterministic, config, sample_size=10, make_video=False)
 
     score_plot = plot_scores(traj_batches, config)
