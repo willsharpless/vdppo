@@ -137,7 +137,7 @@ def plot_scores(traj_batches, config):
    
     plt.subplots_adjust(hspace=0.8)
 
-    plt.savefig(f"model/{config['TEST_DIR']}/{config['NAME_TAG']}/score_plot", dpi=300, bbox_inches="tight", pad_inches=0.1)
+    plt.savefig(f"eval/{config['EVAL_DIR']}/{config['NAME_TAG']}/score_plot", dpi=300, bbox_inches="tight", pad_inches=0.1)
     return fig
 
 def save_traj(traj_batch, config, tag, sample_size=5):
@@ -148,7 +148,7 @@ def save_traj(traj_batch, config, tag, sample_size=5):
     }
     traj_data['state'] = traj_batch.info["state"][:, :sample_size]
 
-    save_path = f"model/{config['TEST_DIR']}/{config['NAME_TAG']}/traj_sample/traj_{tag}" + ".npz"
+    save_path = f"eval/{config['EVAL_DIR']}/{config['NAME_TAG']}/traj_sample/traj_{tag}" + ".npz"
     os.makedirs(os.path.dirname(save_path), exist_ok=True)
     with open(save_path, 'wb') as f:
         jnp.savez(f, **traj_data)
@@ -364,7 +364,7 @@ if __name__ == "__main__":
         print(os.path.abspath('model/{}/{}'.format(config["DIR_RA"], config["DIR_MODEL_RA"])))
         print(os.path.exists(os.path.abspath('model/{}/{}'.format(config["DIR_RA"], config["DIR_MODEL_RA"]))))
 
-        config['TEST_DIR'] = "eval_all_figs"
+        config['EVAL_DIR'] = "eval_all_figs"
         config['NAME_TAG'] = "F16_RAA_052825"
 
     config["NUM_ENVS"]=1000
@@ -408,7 +408,7 @@ if __name__ == "__main__":
     print("\n\nCollecting Trajectories")
     traj_batches = test(envs, env_paramss, config, rngs, saving_traj=True)
 
-    os.makedirs(f"model/{config['TEST_DIR']}/{config['NAME_TAG']}", exist_ok=True)
+    os.makedirs(f"eval/{config['EVAL_DIR']}/{config['NAME_TAG']}", exist_ok=True)
     # val_fig = plot_RR_value(result_traj_batch, result_traj_batch_deterministic, config)
     # traj_fig = plot_traj_sample(result_traj_batch, result_traj_batch_deterministic, config, sample_size=5, make_video=False)
 

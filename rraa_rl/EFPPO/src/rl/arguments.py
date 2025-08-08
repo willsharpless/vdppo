@@ -12,6 +12,9 @@ def get_args(args):
         '--DIR_MODEL', default='checkpoint_625', type=str, help='experiment model name'
     )
     parser.add_argument(
+        '--EVAL_DIR', default='eval_all', type=str, help='evaluation output directory'
+    )
+    parser.add_argument(
         '--NAME', default='experiment', type=str, help='experiment name'
     )
     parser.add_argument(

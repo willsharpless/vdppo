@@ -1,4 +1,3 @@
-
 import os
 import optax
 import jax
@@ -20,45 +19,38 @@ import imageio
 from rraa_rl.EFPPO.src.rl.arguments import get_args
 from rraa_rl.EFPPO.src.env.env_list import get_env
 from rraa_rl.EFPPO.src.model.actorcritic import Policy_Network, Value_Network, ActorCritic_Continuous, Policy_Network_Discrete, MoGPolicy_Network
-from rraa_rl.EFPPO.src.rl.EFPPO_utils import _env_step_rr_vanilla, _env_step_rr_deterministic, \
-                                                _env_step_cppo_RR, _env_step_rr_decomposed, \
-                                                _env_step_adapted_rr, _env_step_rr_respo
+from rraa_rl.EFPPO.src.rl.EFPPO_utils import _env_step_raa_vanilla, _env_step_raa_vanilla_deterministic, _env_step_cppo_RAA, _env_step_ra_vanilla, _env_step_adapted_raa, _env_step_raa_respo
 # from rraa_rl.EFPPO.src.rl.plot_utils import calculate_reachreach
 from rraa_rl.EFPPO.src.rl.root_finding import Bisection
 from rraa_rl.EFPPO.src.rl.utils import tree_index1, tree_index2, optimizer
 
-def calculate_reachreach(traj_batch, reach_type="both", offset=0.0):
-    
-    # Compute first reaching idx
-    reach_idx_1 = (traj_batch.reach1 < 0 + offset).argmax(axis=0) if reach_type in ["both", "1"] else None
-    reach_idx_2 = (traj_batch.reach2 < 0 + offset).argmax(axis=0) if reach_type in ["both", "2"] else None
-    reach_idx_1 = jnp.where(jnp.any((traj_batch.reach1 < 0 + offset) == 1, axis=0), reach_idx_1, jnp.inf) if reach_type in ["both", "1"] else None
-    reach_idx_2 = jnp.where(jnp.any((traj_batch.reach2 < 0 + offset) == 1, axis=0), reach_idx_2, jnp.inf) if reach_type in ["both", "2"] else None
-    reach_idx = jnp.maximum(reach_idx_1, reach_idx_2) if reach_type in ["both"] else None
+from rraa_rl.EFPPO.src.rl.MORL_PPO_RAA import sparse_replace_raa, morl_replace_raa
 
-    # Compute
-    reach_1_perc = (reach_idx_1 < jnp.inf).sum() / reach_idx_1.__len__() if reach_type in ["both", "1"] else None
-    reach_2_perc = (reach_idx_2 < jnp.inf).sum() / reach_idx_2.__len__() if reach_type in ["both", "2"] else None
-    reach_perc = (reach_idx < jnp.inf).sum() / reach_idx.__len__() if reach_type in ["both"] else None
+def calculate_reachavoid(traj_batch):
+    reach_idx = (traj_batch.reach < 0).argmax(axis=0)
+    crash_idx = (traj_batch.avoid > 0).argmax(axis=0)
+    reach_idx = np.where(np.any((traj_batch.reach < 0) == 1, axis=0), reach_idx, np.inf)
+    crash_idx = np.where(np.any((traj_batch.avoid > 0) == 1, axis=0), crash_idx, np.inf)
+    # Find indices where reach < inf and avoid = inf
+    reach_and_avoid_idx = np.where(crash_idx == np.inf, reach_idx, np.inf)
 
-    reach_one = jnp.logical_or(reach_idx_1 < jnp.inf, reach_idx_2 < jnp.inf) if reach_type in ["both"] else None
-    reach_one_perc = reach_one.sum() / reach_one.__len__() if reach_type in ["both"] else None
+    reach_perc = ((reach_idx < np.inf).sum() / reach_idx.__len__()).item()
+    crash_perc = ((crash_idx < np.inf).sum() / crash_idx.__len__()).item()
+    reach_avoid_perc = ((reach_and_avoid_idx < np.inf).sum() / reach_and_avoid_idx.__len__()).item()
 
-    reach_percs = (reach_1_perc.item(), reach_2_perc.item(), reach_perc.item())
-    reach_idxs = (reach_idx_1, reach_idx_2, reach_idx)
+    reach_or_avoid_one = np.logical_or(reach_idx < np.inf, crash_idx == np.inf)
+    reach_or_avoid_one_perc = reach_or_avoid_one.sum() / reach_or_avoid_one.__len__()
 
-    min_values = jnp.maximum(jnp.min(traj_batch.reach1, axis=0), jnp.min(traj_batch.reach2, axis=0))
+    min_values = np.maximum(np.min(traj_batch.reach, axis=0), np.max(traj_batch.avoid, axis=0))
 
-    return reach_percs, reach_idxs, reach_one_perc, min_values.mean().item(), min_values.std().item()
+    return (reach_perc, crash_perc, reach_avoid_perc), (reach_idx, crash_idx, reach_and_avoid_idx), reach_or_avoid_one_perc, min_values.mean().item(), min_values.std().item()
 
-def plot_scores_RR(traj_batches, config, title="HOPPER-RR", sub_plots_adjust=True, wspace=0.3, hspace=0.6, tight_layout=True, pad=0.1, w_pad=0.1, h_pad=0.1, use_stochastic=False):
+def plot_scores_RAA(traj_batches, config, title="HOPPER-RAA", sub_plots_adjust=True, wspace=0.3, hspace=0.6, tight_layout=True, pad=0.1, w_pad=0.1, h_pad=0.1, use_stochastic=False):
 
     (traj_batch_HJPPO, 
         traj_batch_HJPPO_d, 
-        traj_batch_CPPOv1, 
-        traj_batch_CPPOv2, 
-        traj_batch_CPPOv3, 
-        traj_batch_dSTL,
+        traj_batch_CPPO, 
+        traj_batch_RA,
         traj_batch_PPOLAG,
         traj_batch_PPO,
         traj_batch_RCPPO,
@@ -69,54 +61,63 @@ def plot_scores_RR(traj_batches, config, title="HOPPER-RR", sub_plots_adjust=Tru
         traj_batch_LOGBAR,
     ) = traj_batches
     
-    offset = 0.5
-    rr_scores_HJPPO = calculate_reachreach(traj_batch_HJPPO, offset=offset)
-    rr_scores_HJPPO_d = calculate_reachreach(traj_batch_HJPPO_d, offset=offset)
-    rr_scores_CPPOv1 = calculate_reachreach(traj_batch_CPPOv1, offset=offset)
-    rr_scores_CPPOv2 = calculate_reachreach(traj_batch_CPPOv2, offset=offset)
-    rr_scores_CPPOv3 = calculate_reachreach(traj_batch_CPPOv3, offset=offset)
-    rr_scores_dSTL = calculate_reachreach(traj_batch_dSTL, offset=offset)
-    rr_scores_PPOLAG = calculate_reachreach(traj_batch_PPOLAG, offset=offset)
-    rr_scores_PPO = calculate_reachreach(traj_batch_PPO, offset=offset)
-    rr_scores_RCPPO = calculate_reachreach(traj_batch_RCPPO, offset=offset)
-    rr_scores_RESPO = calculate_reachreach(traj_batch_RESPO, offset=offset)
-    rr_scores_MORL = calculate_reachreach(traj_batch_MORL, offset=offset)
-    rr_scores_SPARSE = calculate_reachreach(traj_batch_SPARSE, offset=offset)
-    rr_scores_P2BPO = calculate_reachreach(traj_batch_P2BPO, offset=offset)
-    rr_scores_LOGBAR = calculate_reachreach(traj_batch_LOGBAR, offset=offset)
+    raa_scores_HJPPO = calculate_reachavoid(traj_batch_HJPPO)
+    raa_scores_HJPPO_d = calculate_reachavoid(traj_batch_HJPPO_d)
+    raa_scores_CPPO = calculate_reachavoid(traj_batch_CPPO)
+    raa_scores_RA = calculate_reachavoid(traj_batch_RA)
+    raa_scores_PPOLAG = calculate_reachavoid(traj_batch_PPOLAG)
+    raa_scores_PPO = calculate_reachavoid(traj_batch_PPO)
+    raa_scores_RCPPO = calculate_reachavoid(traj_batch_RCPPO)
+    raa_scores_RESPO = calculate_reachavoid(traj_batch_RESPO)
+    raa_scores_MORL = calculate_reachavoid(traj_batch_MORL)
+    raa_scores_SPARSE = calculate_reachavoid(traj_batch_SPARSE)
+    raa_scores_P2BPO = calculate_reachavoid(traj_batch_P2BPO)
+    raa_scores_LOGBAR = calculate_reachavoid(traj_batch_LOGBAR)
 
-    rr_scores_HJPPO_final = rr_scores_HJPPO_d if not use_stochastic else rr_scores_HJPPO
-    rr_scores_all = [
-        ("LOGBAR", rr_scores_LOGBAR),
-        ("P2BPO", rr_scores_P2BPO),
-        ("SPARSE", rr_scores_SPARSE),
-        ("MORL", rr_scores_MORL),
-        ("RESPPO", rr_scores_RESPO),
-        ("RCPPO", rr_scores_RCPPO),
-        ("PPO", rr_scores_PPO),
-        ("PPO-LAG", rr_scores_PPOLAG),
-        ("C-PPO", rr_scores_CPPOv3),
-        ("D-STL", rr_scores_dSTL),
-        ("DOHJPPO", rr_scores_HJPPO_final),
+    # (avoid perc, reach avoid idx)
+    # raa_scores_HJPPO = (raa_scores_HJPPO[0][-1], raa_scores_HJPPO[1][-1])
+    # raa_scores_HJPPO_d = (raa_scores_HJPPO_d[0][-1], raa_scores_HJPPO_d[1][-1])
+    # raa_scores_CPPO = (raa_scores_CPPO[0][-1], raa_scores_CPPO[1][-1])
+    # raa_scores_RA = (raa_scores_RA[0][-1], raa_scores_RA[1][-1])
+
+    raa_scores_all = [
+        ("LOGBAR", raa_scores_LOGBAR),
+        ("P2BPO", raa_scores_P2BPO),
+        ("SPARSE", raa_scores_SPARSE),
+        ("MORL", raa_scores_MORL),
+        ("RESPPO", raa_scores_RESPO),
+        ("RCPPO", raa_scores_RCPPO),
+        ("PPO", raa_scores_PPO),
+        ("PPO-LAG", raa_scores_PPOLAG),
+        ("C-PPO", raa_scores_CPPO),
+        ("RA", raa_scores_RA),
+        ("DOHJPPO", raa_scores_HJPPO_d),
+        # ("DOHJPPO", raa_scores_HJPPO),
     ]
 
     # Extract data
     labels = []
-    reach_percs = []
-    reach_one_percs = []
+    reach_avoid_percs = []
+    reach_or_avoid_percs = []
     mean_idxs = []
     std_idxs = []
     min_val_means = []
     min_val_stds = []
 
-    for tag, scores in rr_scores_all:
+    for tag, scores in raa_scores_all:
         
-        reach_perc = scores[0][2]
-        reach_one_perc = scores[2]
+        reach_avoid_perc = scores[0][2]
+        idxs = scores[1][2]
+
+        reach_or_avoid_perc = scores[2]
         min_val_mean = scores[3]
         min_val_std = scores[4]
 
-        idxs = scores[1][2]
+        # finite_mask = jnp.isfinite(idxs)
+        # finite_idxs = idxs[finite_mask]
+        # mean_idx = jnp.mean(finite_idxs) if finite_idxs.size > 0 else jnp.nan
+        # std_idx = jnp.std(finite_idxs) if finite_idxs.size > 0 else jnp.nan
+
         replace_val = config["NUM_STEPS"]
         cleaned_idxs = jnp.where(jnp.isfinite(idxs), idxs, replace_val)
 
@@ -124,24 +125,23 @@ def plot_scores_RR(traj_batches, config, title="HOPPER-RR", sub_plots_adjust=Tru
         std_idx = jnp.std(cleaned_idxs)
 
         labels.append(tag)
-        reach_percs.append(reach_perc)
-        reach_one_percs.append(reach_one_perc)
+        reach_avoid_percs.append(reach_avoid_perc)
+        reach_or_avoid_percs.append(reach_or_avoid_perc)
         min_val_means.append(min_val_mean)
         min_val_stds.append(min_val_std)
 
         mean_idxs.append(mean_idx)
         std_idxs.append(std_idx)
 
-        # Print Score with Fixed width label
-        # print(f"{tag:<10} - Success: {reach_perc:.2f}%, reach_one_perc: {reach_one_perc:.2f}%, Mean Index: {mean_idx:.3f}, Max Value Mean: {-min_val_mean:.3f}")
-        print(f"{tag:<10} - RR: {100*scores[0][2]:.0f}%, R1: {100*scores[0][0]:.0f}%, R2: {100*scores[0][1]:.0f}%")
+        # print(f"{tag:<10} - Success: {reach_avoid_perc:.2f}%, Mean Index: {mean_idx:.1f}, RorA: {reach_or_avoid_perc:.2f}%, Max Value Mean: {-min_val_mean:.3f}")
+        print(f"{tag:<10} - R & A: {100*reach_avoid_perc:.0f}%, R: {100*scores[0][0]:.0f}%, A: {100*(1. - scores[0][1]):.0f}%")
 
     ## Individual Plots
 
     data_names = ["only_success", "only_speed", "only_success_partial", "only_value"]
     for data_name in data_names:
         fig, axes = plt.subplots(1, 1, figsize=(5, 3), sharex=False)
-        palette = sns.color_palette("deep", n_colors=len(rr_scores_all))[::-1]
+        palette = sns.color_palette("deep", n_colors=len(raa_scores_all))[::-1]
         palette[-1] = (0, 0, 0)
         colors = {label: color for label, color in zip(labels, palette)}
             
@@ -149,24 +149,24 @@ def plot_scores_RR(traj_batches, config, title="HOPPER-RR", sub_plots_adjust=Tru
         order = 0
         for i, label in enumerate(labels):
             if data_name == "only_success":
-                axes.barh(label, reach_percs[i], color=colors[label])
+                axes.barh(label, reach_avoid_percs[i], color=colors[label])
             elif data_name == "only_speed":
                 axes.barh(label, mean_idxs[i], xerr=std_idxs[i]/2, color=colors[label], capsize=4, zorder=1)
                 axes.barh(label, mean_idxs[i], color=colors[label], capsize=4, zorder=2)
             elif data_name == "only_success_partial":
-                axes.barh(label, reach_one_percs[i], color=colors[label])
+                axes.barh(label, reach_or_avoid_percs[i], color=colors[label])
             elif data_name == "only_value":
                 axes.barh(label, -min_val_means[i], xerr=min_val_stds[i]/2, color=colors[label], capsize=4, zorder=1)
                 axes.barh(label, -min_val_means[i], color=colors[label], capsize=4, zorder=2)
         
         if data_name == "only_success":
-            axes.set_title(r"{}: Success, $R_1$ and $R_2$ ($\rightarrow$)".format(title), fontsize=12)
+            axes.set_title(r"{}: Success, $R$ and $AA$ ($\rightarrow$)".format(title), fontsize=12)
             axes.set_xlabel(r"Percentage")
         elif data_name == "only_speed":
             axes.set_title(r"{}: Mean Steps to Success ($\leftarrow$)".format(title), fontsize=12)
             axes.set_xlabel(r"Steps")
         elif data_name == "only_success_partial":
-            axes.set_title(r"{}: Partial Success, $R_1$ or $R_2$ ($\rightarrow$)".format(title), fontsize=12)
+            axes.set_title(r"{}: Partial Success, $R$ or $AA$ ($\rightarrow$)".format(title), fontsize=12)
             axes.set_xlabel(r"Percentage")
         elif data_name == "only_value":
             axes.set_title(r"{}: Maximum Value ($\leftarrow$)".format(title), fontsize=12)
@@ -201,15 +201,15 @@ def plot_scores_RR(traj_batches, config, title="HOPPER-RR", sub_plots_adjust=Tru
     ## Combined Plots
 
     fig, axes = plt.subplots(1, 3, figsize=(15, 3), sharex=False)
-    palette = sns.color_palette("deep", n_colors=len(rr_scores_all))[::-1]
+    palette = sns.color_palette("deep", n_colors=len(raa_scores_all))[::-1]
     palette[-1] = (0, 0, 0)
     colors = {label: color for label, color in zip(labels, palette)}
         
     # Reach percentage bar plot
     order = 0
     for i, label in enumerate(labels):
-        axes[order].barh(label, reach_percs[i], color=colors[label])
-    axes[order].set_title(r"{}: Success, $R_1$ and $R_2$ ($\rightarrow$)".format(title), fontsize=12)
+        axes[order].barh(label, reach_avoid_percs[i], color=colors[label])
+    axes[order].set_title(r"{}: Success, $R$ and $AA$ ($\rightarrow$)".format(title), fontsize=12)
     axes[order].set_xlabel(r"Percentage")
     axes[order].set_yticks(np.arange(len(labels)))
     axes[order].set_yticklabels(labels, ha='right', fontsize=10)
@@ -222,9 +222,9 @@ def plot_scores_RR(traj_batches, config, title="HOPPER-RR", sub_plots_adjust=Tru
     # Reach At least onepercentage bar plot
     order = 1
     for i, label in enumerate(labels):
-        axes[order].barh(label, reach_one_percs[i], color=colors[label])
+        axes[order].barh(label, reach_or_avoid_percs[i], color=colors[label])
     # axes[0].set_xlim(0.7, 1.0)
-    axes[order].set_title(r"{}: Partial Success, $R_1$ or $R_2$ ($\rightarrow$)".format(title), fontsize=12)
+    axes[order].set_title(r"{}: Partial Success, $R$ or $AA$ ($\rightarrow$)".format(title), fontsize=12)
     axes[order].set_xlabel(r"Percentage")
     axes[order].set_yticks(np.arange(len(labels)))
     axes[order].set_yticklabels(labels, ha='right', fontsize=10)
@@ -269,15 +269,15 @@ def plot_scores_RR(traj_batches, config, title="HOPPER-RR", sub_plots_adjust=Tru
     ## Score Plot
 
     fig, axes = plt.subplots(1, 2, figsize=(10, 3), sharex=False)
-    palette = sns.color_palette("deep", n_colors=len(rr_scores_all))[::-1]
+    palette = sns.color_palette("deep", n_colors=len(raa_scores_all))[::-1]
     palette[-1] = (0, 0, 0)
     colors = {label: color for label, color in zip(labels, palette)}
         
     # Reach percentage bar plot
     order = 0
     for i, label in enumerate(labels):
-        axes[order].barh(label, reach_percs[i], color=colors[label])
-    axes[order].set_title(r"{}: Success, $R_1$ and $R_2$ ($\rightarrow$)".format(title), fontsize=12)
+        axes[order].barh(label, reach_avoid_percs[i], color=colors[label])
+    axes[order].set_title(r"{}: Success, $R$ and $AA$ ($\rightarrow$)".format(title), fontsize=12)
     axes[order].set_xlabel(r"Percentage")
     axes[order].set_yticks(np.arange(len(labels)))
     axes[order].set_yticklabels(labels, ha='right', fontsize=10)
@@ -290,9 +290,9 @@ def plot_scores_RR(traj_batches, config, title="HOPPER-RR", sub_plots_adjust=Tru
     # Reach At least onepercentage bar plot
     order = 1
     for i, label in enumerate(labels):
-        axes[order].barh(label, reach_one_percs[i], color=colors[label])
+        axes[order].barh(label, reach_or_avoid_percs[i], color=colors[label])
     # axes[0].set_xlim(0.7, 1.0)
-    axes[order].set_title(r"{}: Partial Success, $R_1$ or $R_2$ ($\rightarrow$)".format(title), fontsize=12)
+    axes[order].set_title(r"{}: Partial Success, $R$ or $AA$ ($\rightarrow$)".format(title), fontsize=12)
     axes[order].set_xlabel(r"Percentage")
     axes[order].set_yticks(np.arange(len(labels)))
     axes[order].set_yticklabels(labels, ha='right', fontsize=10)
@@ -323,15 +323,15 @@ def plot_scores_RR(traj_batches, config, title="HOPPER-RR", sub_plots_adjust=Tru
     ## Success & Speed Plot
 
     fig, axes = plt.subplots(1, 2, figsize=(10, 3), sharex=False)
-    palette = sns.color_palette("deep", n_colors=len(rr_scores_all))[::-1]
+    palette = sns.color_palette("deep", n_colors=len(raa_scores_all))[::-1]
     palette[-1] = (0, 0, 0)
     colors = {label: color for label, color in zip(labels, palette)}
         
     # Reach percentage bar plot
     order = 0
     for i, label in enumerate(labels):
-        axes[order].barh(label, reach_percs[i], color=colors[label])
-    axes[order].set_title(r"{}: Success, $R_1$ and $R_2$ ($\rightarrow$)".format(title), fontsize=12)
+        axes[order].barh(label, reach_avoid_percs[i], color=colors[label])
+    axes[order].set_title(r"{}: Success, $R$ and $AA$ ($\rightarrow$)".format(title), fontsize=12)
     axes[order].set_xlabel(r"Percentage")
     axes[order].set_yticks(np.arange(len(labels)))
     axes[order].set_yticklabels(labels, ha='right', fontsize=10)
@@ -373,7 +373,7 @@ def plot_scores_RR(traj_batches, config, title="HOPPER-RR", sub_plots_adjust=Tru
 
     plt.savefig(f"eval/{config['EVAL_DIR']}/{config['NAME_TAG']}/{title}_success_speed_plot", dpi=300, bbox_inches="tight", pad_inches=0.1)
 
-    return rr_scores_all
+    return raa_scores_all
 
 def save_traj(traj_batch, config, tag, sample_size=10):
     traj_data = {
@@ -393,40 +393,36 @@ def load_traj(file_path):
         traj_batch = {key: traj_data[key] for key in traj_data.files}
     return traj_batch
 
-def test_RR(envs, env_paramss, config, rngs, saving_traj=False):
+def test_RAA(envs, env_paramss, config, rngs, saving_traj=False):
     rng_1, rng_2, rng_3, rng_4, rng_5, rng_6, rng_7, rng_8, rng_9, rng_10, rng_11, rng_12, rng_13, rng_14 = rngs
 
-    (env_HJPPO, env_HJPPO_reach_1, env_HJPPO_reach_2, 
-        env_CPPO_v1, env_CPPO_v2, env_CPPO_v3, 
-        env_dSTL, env_dSTL_1, env_dSTL_2,
+    (env_HJPPO, env_HJPPO_avoid,
+        env_CPPO, env_RA,
         env_PPOLAG, env_PPO, env_RCPPO, env_RESPO,
         env_MORL, env_SPARSE,
         env_P2BPO, env_LOGBAR,
-    ) = envs # COMPOSED (RR) + 2 DECOMPOSED (R1 + R2)
+    ) = envs # COMPOSED (RAA) + 2 DECOMPOSED (R1 + R2)
 
-    (env_params_HJPPO, env_params_HJPPO_reach_1, env_params_HJPPO_reach_2, 
-        env_params_CPPO_v1, env_params_CPPO_v2, env_params_CPPO_v3, 
-        env_params_dSTL, env_params_dSTL_1, env_params_dSTL_2,
+    (env_params_HJPPO, env_params_HJPPO_avoid, env_params_CPPO,
+        env_params_RA,
         env_params_PPOLAG, env_params_PPO, env_params_RCPPO, env_params_RESPO,
         env_params_MORL, env_params_SPARSE,
         env_params_P2BPO, env_params_LOGBAR
     ) = env_paramss
 
     # DEFINE ENV STEP WRAPPERS
-    env_step_HJPPO = partial(_env_step_rr_vanilla, env_HJPPO, env_params_HJPPO)
-    env_step_HJPPO_d = partial(_env_step_rr_deterministic, env_HJPPO, env_params_HJPPO)
-    env_step_CPPOv1= partial(_env_step_cppo_RR, env_CPPO_v1, env_params_CPPO_v1)
-    env_step_CPPOv2 = partial(_env_step_cppo_RR, env_CPPO_v2, env_params_CPPO_v2)
-    env_step_CPPOv3 = partial(_env_step_cppo_RR, env_CPPO_v3, env_params_CPPO_v3)
-    env_step_dSTL = partial(_env_step_rr_decomposed, env_dSTL, env_params_dSTL)
-    env_step_PPOLAG = partial(_env_step_cppo_RR, env_PPOLAG, env_params_PPOLAG)
-    env_step_PPO = partial(_env_step_cppo_RR, env_PPO, env_params_PPO)
-    env_step_RCPPO = partial(_env_step_adapted_rr, env_RCPPO, env_params_RCPPO)
-    env_step_RESPO = partial(_env_step_rr_respo, env_RESPO, env_params_RESPO)
-    env_step_MORL = partial(_env_step_cppo_RR, env_MORL, env_params_MORL)
-    env_step_SPARSE = partial(_env_step_cppo_RR, env_SPARSE, env_params_SPARSE)
-    env_step_P2BPO = partial(_env_step_cppo_RR, env_P2BPO, env_params_P2BPO)
-    env_step_LOGBAR = partial(_env_step_cppo_RR, env_LOGBAR, env_params_LOGBAR)
+    env_step_HJPPO = partial(_env_step_raa_vanilla, env_HJPPO, env_params_HJPPO)
+    env_step_HJPPO_d = partial(_env_step_raa_vanilla_deterministic, env_HJPPO, env_params_HJPPO)
+    env_step_CPPO= partial(_env_step_cppo_RAA, env_CPPO, env_params_CPPO)
+    env_step_RA = partial(_env_step_ra_vanilla, env_RA, env_params_RA)
+    env_step_PPOLAG = partial(_env_step_cppo_RAA, env_PPOLAG, env_params_PPOLAG)
+    env_step_PPO = partial(_env_step_cppo_RAA, env_PPO, env_params_PPO)
+    env_step_RCPPO = partial(_env_step_adapted_raa, env_RCPPO, env_params_RCPPO)
+    env_step_RESPO = partial(_env_step_raa_respo, env_RESPO, env_params_RESPO)
+    env_step_MORL = partial(_env_step_cppo_RAA, env_MORL, env_params_MORL)
+    env_step_SPARSE = partial(_env_step_cppo_RAA, env_SPARSE, env_params_SPARSE)
+    env_step_P2BPO = partial(_env_step_cppo_RAA, env_P2BPO, env_params_P2BPO)
+    env_step_LOGBAR = partial(_env_step_cppo_RAA, env_LOGBAR, env_params_LOGBAR)
     tx = optimizer(config)
 
     ########################################## LOAD HJ-PPO #################################################
@@ -435,14 +431,11 @@ def test_RR(envs, env_paramss, config, rngs, saving_traj=False):
         config["BASE_MODEL_DIR"], config["DIR_HJPPO"], config["DIR_MODEL_HJPPO"])), target=None)
 
     ## LOAD POLICY NETWORKS
-    policy_network_HJPPO = MoGPolicy_Network(
+    policy_network_HJPPO = Policy_Network(
         env_HJPPO.action_space(env_params_HJPPO).shape[0], activation=config["ACTIVATION"]
     )
-    policy_network_HJPPO_reach1 = Policy_Network(
-        env_HJPPO_reach_1.action_space(env_params_HJPPO_reach_1).shape[0], activation=config["ACTIVATION"]
-    )
-    policy_network_HJPPO_reach2 = Policy_Network(
-        env_HJPPO_reach_2.action_space(env_params_HJPPO_reach_2).shape[0], activation=config["ACTIVATION"]
+    policy_network_HJPPO_avoid = Policy_Network(
+        env_HJPPO_avoid.action_space(env_params_HJPPO_avoid).shape[0], activation=config["ACTIVATION"]
     )
 
     train_state_policy_HJPPO = TrainState.create(
@@ -450,14 +443,9 @@ def test_RR(envs, env_paramss, config, rngs, saving_traj=False):
         params=raw_restored['policy_network']['params'],
         tx=tx,
     )    
-    train_state_policy_HJPPO_reach1 = TrainState.create(
-        apply_fn=policy_network_HJPPO_reach1.apply,
-        params=raw_restored['policy_reach1_network']['params'],
-        tx=tx,
-    )
-    train_state_policy_HJPPO_reach2 = TrainState.create(
-        apply_fn=policy_network_HJPPO_reach2.apply,
-        params=raw_restored['policy_reach2_network']['params'],
+    train_state_policy_HJPPO_avoid = TrainState.create(
+        apply_fn=policy_network_HJPPO_avoid.apply,
+        params=raw_restored['policy_avoid_network']['params'],
         tx=tx,
     )
 
@@ -468,154 +456,67 @@ def test_RR(envs, env_paramss, config, rngs, saving_traj=False):
         params=raw_restored['value_network']['params'],
         tx=tx,
     )
-    value_network_HJPPO_reach1 = Value_Network(activation=config["ACTIVATION"])
-    train_state_value_HJPPO_reach1 = TrainState.create(
-        apply_fn=value_network_HJPPO_reach1.apply,
-        params=raw_restored['value_reach1_network']['params'],
+    value_network_HJPPO_avoid = Value_Network(activation=config["ACTIVATION"])
+    train_state_value_HJPPO_avoid = TrainState.create(
+        apply_fn=value_network_HJPPO_avoid.apply,
+        params=raw_restored['value_avoid_network']['params'],
         tx=tx,
     )
-    value_network_HJPPO_reach2 = Value_Network(activation=config["ACTIVATION"])
-    train_state_value_HJPPO_reach2 = TrainState.create(
-        apply_fn=value_network_HJPPO_reach2.apply,
-        params=raw_restored['value_reach2_network']['params'],
-        tx=tx,
-    )
-
     ########################################## LOAD CPPO #################################################
 
-    ## CPO v1
-    raw_restored_CPPOv1 = checkpoints.restore_checkpoint(ckpt_dir=os.path.abspath('{}/{}/{}'.format(
-        config["BASE_MODEL_DIR"], config["DIR_CPPOv1"], config["DIR_MODEL_CPPOv1"])), target=None)
+    ## CPPO
+    raw_restored_CPPO = checkpoints.restore_checkpoint(ckpt_dir=os.path.abspath('{}/{}/{}'.format(
+        config["BASE_MODEL_DIR"], config["DIR_CPPO"], config["DIR_MODEL_CPPO"])), target=None)
 
-    policy_network_CPPOv1 = Policy_Network(
-        env_CPPO_v1.action_space(env_params_CPPO_v1).shape[0], activation=config["ACTIVATION"]
+    policy_network_CPPO = Policy_Network(
+        env_CPPO.action_space(env_params_CPPO).shape[0], activation=config["ACTIVATION"]
     )
 
-    train_state_policy_CPPOv1 = TrainState.create(
-        apply_fn=policy_network_CPPOv1.apply,
-        params=raw_restored_CPPOv1['policy_network']['params'],
+    train_state_policy_CPPO = TrainState.create(
+        apply_fn=policy_network_CPPO.apply,
+        params=raw_restored_CPPO['policy_network']['params'],
         tx=tx,
         # lambda_coef=0.,
     )
 
-    value_network_CPPOv1 = Value_Network(activation=config["ACTIVATION"])
-    train_state_value_CPPOv1 = TrainState.create(
-        apply_fn=value_network_CPPOv1.apply,
-        params=raw_restored_CPPOv1['value_network']['params'],
+    value_network_CPPO = Value_Network(activation=config["ACTIVATION"])
+    train_state_value_CPPO = TrainState.create(
+        apply_fn=value_network_CPPO.apply,
+        params=raw_restored_CPPO['value_network']['params'],
         tx=tx,
         # lambda_coef=0.,
     )
 
-    value_network_cost_CPPOv1 = Value_Network(activation=config["ACTIVATION"])
-    train_state_cost_CPPOv1 = TrainState.create(
-        apply_fn=value_network_cost_CPPOv1.apply,
-        params=raw_restored_CPPOv1['cost_network']['params'],
+    value_network_cost_CPPO = Value_Network(activation=config["ACTIVATION"])
+    train_state_cost_CPPO = TrainState.create(
+        apply_fn=value_network_cost_CPPO.apply,
+        params=raw_restored_CPPO['cost_network']['params'],
         tx=tx,
         # lambda_coef=0.,
     )
 
-    ## CPO v2
-    raw_restored_CPPOv2 = checkpoints.restore_checkpoint(ckpt_dir=os.path.abspath('{}/{}/{}'.format(
-        config["BASE_MODEL_DIR"], config["DIR_CPPOv2"], config["DIR_MODEL_CPPOv2"])), target=None)
+    ########################################## LOAD DECOMPOSED RA #################################################
 
-    policy_network_CPPOv2 = Policy_Network(
-        env_CPPO_v2.action_space(env_params_CPPO_v2).shape[0], activation=config["ACTIVATION"]
+    raw_restored_RA = checkpoints.restore_checkpoint(ckpt_dir=os.path.abspath('{}/{}/{}'.format(
+        config["BASE_MODEL_DIR"], config["DIR_RA"], config["DIR_MODEL_RA"])), target=None)
+    
+    ## LOAD POLICY NETWORKS
+    policy_network_RA = MoGPolicy_Network(
+        env_RA.action_space(env_params_RA).shape[0], activation=config["ACTIVATION"]
     )
 
-    train_state_policy_CPPOv2 = TrainState.create(
-        apply_fn=policy_network_CPPOv2.apply,
-        params=raw_restored_CPPOv2['policy_network']['params'],
+    train_state_policy_RA = TrainState.create(
+        apply_fn=policy_network_RA.apply,
+        params=raw_restored_RA['policy_network']['params'],
         tx=tx,
-        # lambda_coef=0.,
-    )
+    )    
 
-    value_network_CPPOv2 = Value_Network(activation=config["ACTIVATION"])
-    train_state_value_CPPOv2 = TrainState.create(
-        apply_fn=value_network_CPPOv2.apply,
-        params=raw_restored_CPPOv2['value_network']['params'],
+    ## LOAD VALUE NETWORKS
+    value_network_RA = Value_Network(activation=config["ACTIVATION"])
+    train_state_value_RA = TrainState.create(
+        apply_fn=value_network_RA.apply,
+        params=raw_restored_RA['value_network']['params'],
         tx=tx,
-        # lambda_coef=0.,
-    )
-
-    value_network_cost_CPPOv2 = Value_Network(activation=config["ACTIVATION"])
-    train_state_cost_CPPOv2 = TrainState.create(
-        apply_fn=value_network_cost_CPPOv2.apply,
-        params=raw_restored_CPPOv2['cost_network']['params'],
-        tx=tx,
-        # lambda_coef=0.,
-    )
-
-    ## CPO v3
-    raw_restored_CPPOv3 = checkpoints.restore_checkpoint(ckpt_dir=os.path.abspath('{}/{}/{}'.format(
-        config["BASE_MODEL_DIR"], config["DIR_CPPOv3"], config["DIR_MODEL_CPPOv3"])), target=None)
-
-    policy_network_CPPOv3 = Policy_Network(
-        env_CPPO_v3.action_space(env_params_CPPO_v3).shape[0], activation=config["ACTIVATION"]
-    )
-
-    train_state_policy_CPPOv3 = TrainState.create(
-        apply_fn=policy_network_CPPOv3.apply,
-        params=raw_restored_CPPOv3['policy_network']['params'],
-        tx=tx,
-        # lambda_coef=0.,
-    )
-
-    value_network_CPPOv3 = Value_Network(activation=config["ACTIVATION"])
-    train_state_value_CPPOv3 = TrainState.create(
-        apply_fn=value_network_CPPOv3.apply,
-        params=raw_restored_CPPOv3['value_network']['params'],
-        tx=tx,
-        # lambda_coef=0.,
-    )
-
-    value_network_cost_CPPOv3 = Value_Network(activation=config["ACTIVATION"])
-    train_state_cost_CPPOv3 = TrainState.create(
-        apply_fn=value_network_cost_CPPOv3.apply,
-        params=raw_restored_CPPOv3['cost_network']['params'],
-        tx=tx,
-        # lambda_coef=0.,
-    )
-
-    ########################################## LOAD DECOMPOSED STL #################################################
-
-    raw_restored_dSTL = checkpoints.restore_checkpoint(ckpt_dir=os.path.abspath('{}/{}/{}'.format(
-        config["BASE_MODEL_DIR"], config["DIR_DSTL"], config["DIR_MODEL_DSTL"])), target=None)
-
-    policy_network_dSTL_1 = Policy_Network(
-        env_dSTL_1.action_space(env_params_dSTL_1).shape[0], activation=config["ACTIVATION"]
-    )
-    policy_network_dSTL_2 = Policy_Network(
-        env_dSTL_2.action_space(env_params_dSTL_2).shape[0], activation=config["ACTIVATION"]
-    )
-
-    train_state_policy_dSTL_1 = TrainState.create(
-        apply_fn=policy_network_dSTL_1.apply,
-        params=raw_restored_dSTL['policy_reach1_network']['params'],
-        tx=tx,
-        # count=1e-4,
-    )
-
-    train_state_policy_dSTL_2 = TrainState.create(
-        apply_fn=policy_network_dSTL_2.apply,
-        params=raw_restored_dSTL['policy_reach2_network']['params'],
-        tx=tx,
-        # count=1e-4,
-    )
-
-    value_network_reach1 = Value_Network(activation=config["ACTIVATION"])
-    train_state_value_dSTL_1 = TrainState.create(
-        apply_fn=value_network_reach1.apply,
-        params=raw_restored_dSTL['value_reach1_network']['params'],
-        tx=tx,
-        # count=1e-4,
-    )
-
-    value_network_reach2 = Value_Network(activation=config["ACTIVATION"])
-    train_state_value_dSTL_2 = TrainState.create(
-        apply_fn=value_network_reach2.apply,
-        params=raw_restored_dSTL['value_reach2_network']['params'],
-        tx=tx,
-        # count=1e-4,
     )
 
     ########################################## LOAD PPOLAG & PPO #################################################
@@ -624,8 +525,6 @@ def test_RR(envs, env_paramss, config, rngs, saving_traj=False):
     raw_restored_PPOLAG = checkpoints.restore_checkpoint(ckpt_dir=os.path.abspath('{}/{}/{}'.format(
         config["BASE_MODEL_DIR"], config["DIR_PPOLAG"], config["DIR_MODEL_PPOLAG"])), target=None)
     
-    path = os.path.abspath('{}/{}/{}'.format(config["BASE_MODEL_DIR"], config["DIR_PPOLAG"], config["DIR_MODEL_PPOLAG"]))
-
     policy_network_PPOLAG = Policy_Network(
         env_PPOLAG.action_space(env_params_PPOLAG).shape[0], activation=config["ACTIVATION"]
     )
@@ -654,7 +553,7 @@ def test_RR(envs, env_paramss, config, rngs, saving_traj=False):
     )
 
     ## PPO
-    raw_restored_PPO = checkpoints.restore_checkpoint(ckpt_dir=os.path.abspath('{}/{}/{}'.format(
+    raw_restored_PPO = checkpoints.restore_checkpoint(ckpt_dir=os.path.abspath('model/{}/{}'.format(
         config["BASE_MODEL_DIR"], config["DIR_PPO"], config["DIR_MODEL_PPO"])), target=None)
 
     policy_network_PPO = Policy_Network(
@@ -687,7 +586,7 @@ def test_RR(envs, env_paramss, config, rngs, saving_traj=False):
     ########################################## LOAD RCPPO & RESPO #################################################
 
     ## RCPPO
-    raw_restored_RCPPO = checkpoints.restore_checkpoint(ckpt_dir=os.path.abspath('{}/{}/{}'.format(
+    raw_restored_RCPPO = checkpoints.restore_checkpoint(ckpt_dir=os.path.abspath('model/{}/{}'.format(
         config["BASE_MODEL_DIR"], config["DIR_RCPPO"], config["DIR_MODEL_RCPPO"])), target=None)
 
     policy_network_RCPPO = Policy_Network(
@@ -718,7 +617,7 @@ def test_RR(envs, env_paramss, config, rngs, saving_traj=False):
     )
 
     ## RESPO
-    raw_restored_RESPO = checkpoints.restore_checkpoint(ckpt_dir=os.path.abspath('{}/{}/{}'.format(
+    raw_restored_RESPO = checkpoints.restore_checkpoint(ckpt_dir=os.path.abspath('model/{}/{}'.format(
         config["BASE_MODEL_DIR"], config["DIR_RESPO"], config["DIR_MODEL_RESPO"])), target=None)
 
     policy_network_RESPO = Policy_Network(
@@ -759,7 +658,7 @@ def test_RR(envs, env_paramss, config, rngs, saving_traj=False):
     ########################################## LOAD MORL & SPARSE #################################################
 
     ## MORL
-    raw_restored_MORL = checkpoints.restore_checkpoint(ckpt_dir=os.path.abspath('{}/{}/{}'.format(
+    raw_restored_MORL = checkpoints.restore_checkpoint(ckpt_dir=os.path.abspath('model/{}/{}'.format(
         config["BASE_MODEL_DIR"], config["DIR_MORL"], config["DIR_MODEL_MORL"])), target=None)
 
     policy_network_MORL = Policy_Network(
@@ -790,7 +689,7 @@ def test_RR(envs, env_paramss, config, rngs, saving_traj=False):
     )
 
     ## SPARSE
-    raw_restored_SPARSE = checkpoints.restore_checkpoint(ckpt_dir=os.path.abspath('{}/{}/{}'.format(
+    raw_restored_SPARSE = checkpoints.restore_checkpoint(ckpt_dir=os.path.abspath('model/{}/{}'.format(
         config["BASE_MODEL_DIR"], config["DIR_SPARSE"], config["DIR_MODEL_SPARSE"])), target=None)
 
     policy_network_SPARSE = Policy_Network(
@@ -884,6 +783,7 @@ def test_RR(envs, env_paramss, config, rngs, saving_traj=False):
         # lambda_coef=0.,
     )
 
+
     ########################################## ROLL OUT MODELS #################################################
 
     ## MODEL 1 : HJ-PPO : STOCHASTIC
@@ -896,8 +796,8 @@ def test_RR(envs, env_paramss, config, rngs, saving_traj=False):
     rng_1, _rng_1 = jax.random.split(rng_1)
     runner_state_standard = (train_state_policy_HJPPO, train_state_value_HJPPO, env_state_1, obsv_1, _rng_1)
     
-    decomposed_state = (train_state_policy_HJPPO_reach1, train_state_value_HJPPO_reach1, train_state_policy_HJPPO_reach2, train_state_value_HJPPO_reach2)
-    policy_controls = (False, False, False)
+    decomposed_state = (train_state_policy_HJPPO_avoid, train_state_value_HJPPO_avoid)
+    policy_controls = (False, False)
     runner_state = (*runner_state_standard, decomposed_state, policy_controls)
 
     runner_state, traj_batch_HJPPO = jax.lax.scan(
@@ -916,8 +816,8 @@ def test_RR(envs, env_paramss, config, rngs, saving_traj=False):
     rng_2, _rng_2 = jax.random.split(rng_2)
     runner_state_standard = (train_state_policy_HJPPO, train_state_value_HJPPO, env_state_2, obsv_2, _rng_2)
     
-    decomposed_state = (train_state_policy_HJPPO_reach1, train_state_value_HJPPO_reach1, train_state_policy_HJPPO_reach2, train_state_value_HJPPO_reach2)
-    policy_controls = (False, False, False)
+    decomposed_state = (train_state_policy_HJPPO_avoid, train_state_value_HJPPO_avoid)
+    policy_controls = (False, False,)
     runner_state = (*runner_state_standard, decomposed_state, policy_controls)
 
     runner_state, traj_batch_HJPPO_d = jax.lax.scan(
@@ -931,66 +831,33 @@ def test_RR(envs, env_paramss, config, rngs, saving_traj=False):
     print("Rolling Out C-PPO (Variant 1)")
     rng_3, _rng_3 = jax.random.split(rng_3)
     reset_rng_3 = jax.random.split(_rng_3, config["NUM_ENVS"])
-    obsv_3, env_state_3 = jax.vmap(env_CPPO_v1.reset, in_axes=(0, None))(reset_rng_3, env_params_CPPO_v1)
+    obsv_3, env_state_3 = jax.vmap(env_CPPO.reset, in_axes=(0, None))(reset_rng_3, env_params_CPPO)
 
     rng_3, _rng_3 = jax.random.split(rng_3)
-    runner_state = (train_state_policy_CPPOv1, train_state_value_CPPOv1, train_state_cost_CPPOv1, env_state_3, obsv_3, _rng_3)
+    runner_state = (train_state_policy_CPPO, train_state_value_CPPO, train_state_cost_CPPO, env_state_3, obsv_3, _rng_3)
     
-    runner_state, traj_batch_CPPOv1 = jax.lax.scan(
-        env_step_CPPOv1, runner_state, None, config["NUM_STEPS"]
+    runner_state, traj_batch_CPPO = jax.lax.scan(
+        env_step_CPPO, runner_state, None, config["NUM_STEPS"]
     )
 
-    if saving_traj: save_traj(traj_batch_CPPOv1, config, 'CPPOv1', sample_size=10)
+    if saving_traj: save_traj(traj_batch_CPPO, config, 'CPPO', sample_size=10)
 
-    ## MODEL 4 : CPPO : Variant 2
-
-    print("Rolling Out C-PPO (Variant 2)")
+    ## MODEL 6 : RA
+    print("Rolling Out RA (Variant 1)")
     rng_4, _rng_4 = jax.random.split(rng_4)
     reset_rng_4 = jax.random.split(_rng_4, config["NUM_ENVS"])
-    obsv_4, env_state_4 = jax.vmap(env_CPPO_v2.reset, in_axes=(0, None))(reset_rng_3, env_params_CPPO_v2)
-
+    obsv_4, env_state_4 = jax.vmap(env_RA.reset, in_axes=(0, None))(reset_rng_4, env_params_RA)
     rng_4, _rng_4 = jax.random.split(rng_4)
-    runner_state = (train_state_policy_CPPOv2, train_state_value_CPPOv2, train_state_cost_CPPOv2, env_state_4, obsv_4, _rng_4)
-    
-    runner_state, traj_batch_CPPOv2 = jax.lax.scan(
-        env_step_CPPOv2, runner_state, None, config["NUM_STEPS"]
+    runner_state = (train_state_policy_RA, train_state_value_RA, 
+                    env_state_4, obsv_4, _rng_4)
+
+    runner_state, traj_batch_RA = jax.lax.scan(
+        env_step_RA, runner_state, None, config["NUM_STEPS"]
     )
 
-    if saving_traj: save_traj(traj_batch_CPPOv2, config, 'CPPOv2', sample_size=10)
+    if saving_traj: save_traj(traj_batch_RA, config, 'RA', sample_size=10)
 
-    ## MODEL 5 : CPPO : Variant 3
-
-    print("Rolling Out C-PPO (Variant 3)")
-    rng_5, _rng_5 = jax.random.split(rng_5)
-    reset_rng_5 = jax.random.split(_rng_5, config["NUM_ENVS"])
-    obsv_5, env_state_5 = jax.vmap(env_CPPO_v3.reset, in_axes=(0, None))(reset_rng_5, env_params_CPPO_v3)
-
-    rng_5, _rng_5 = jax.random.split(rng_5)
-    runner_state = (train_state_policy_CPPOv3, train_state_value_CPPOv3, train_state_cost_CPPOv3, env_state_5, obsv_5, _rng_5)
-    
-    runner_state, traj_batch_CPPOv3 = jax.lax.scan(
-        env_step_CPPOv3, runner_state, None, config["NUM_STEPS"]
-    )
-
-    if saving_traj: save_traj(traj_batch_CPPOv3, config, 'CPPOv3', sample_size=10)
-
-    ## MODEL 6 : DSTL
-
-    rng_6, _rng_6 = jax.random.split(rng_6)
-    reset_rng_6 = jax.random.split(_rng_6, config["NUM_ENVS"])
-    obsv_6, env_state_6 = jax.vmap(env_dSTL.reset, in_axes=(0, None))(reset_rng_6, env_params_dSTL)
-    rng_6, _rng_6 = jax.random.split(rng_6)
-    runner_state = (train_state_policy_dSTL_1, train_state_value_dSTL_1,
-                    train_state_policy_dSTL_2, train_state_value_dSTL_2,
-                    env_state_6, obsv_6, _rng_6)
-
-    runner_state, traj_batch_dSTL = jax.lax.scan(
-        env_step_dSTL, runner_state, None, config["NUM_STEPS"]
-    )
-
-    if saving_traj: save_traj(traj_batch_dSTL, config, 'DSTL', sample_size=10)
-
-    ## MODEL 7 : PPOLAG
+        ## MODEL 7 : PPOLAG
 
     print("Rolling Out PPO-LAG")
     rng_7, _rng_7 = jax.random.split(rng_7)
@@ -1119,8 +986,8 @@ def test_RR(envs, env_paramss, config, rngs, saving_traj=False):
     if saving_traj: save_traj(traj_batch_LOGBAR, config, 'LOGBAR', sample_size=10)
 
     return (traj_batch_HJPPO, traj_batch_HJPPO_d, 
-            traj_batch_CPPOv1, traj_batch_CPPOv2, traj_batch_CPPOv3, 
-            traj_batch_dSTL, traj_batch_PPOLAG, traj_batch_PPO, 
+            traj_batch_CPPO, traj_batch_RA,
+            traj_batch_PPOLAG, traj_batch_PPO, 
             traj_batch_RCPPO, traj_batch_RESPO, 
             traj_batch_MORL, traj_batch_SPARSE,
             traj_batch_P2BPO, traj_batch_LOGBAR)

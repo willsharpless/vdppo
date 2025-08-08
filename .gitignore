@@ -29,3 +29,6 @@
 /render/gifs/wonky_traj_frames/*
 
 *.tar.gz
+
+#eval
+/eval/*

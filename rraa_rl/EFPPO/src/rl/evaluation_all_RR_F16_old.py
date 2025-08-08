@@ -140,7 +140,7 @@ def plot_scores(traj_batches, config):
    
     plt.subplots_adjust(hspace=0.8)
 
-    plt.savefig(f"model/{config['TEST_DIR']}/{config['NAME_TAG']}/score_plot", dpi=300, bbox_inches="tight", pad_inches=0.1)
+    plt.savefig(f"eval/{config['EVAL_DIR']}/{config['NAME_TAG']}/score_plot", dpi=300, bbox_inches="tight", pad_inches=0.1)
     return fig
 
 def save_traj(traj_batch, config, tag, sample_size=10):
@@ -151,7 +151,7 @@ def save_traj(traj_batch, config, tag, sample_size=10):
     }
     traj_data['state'] = traj_batch.info["state"][:, :sample_size]
 
-    save_path = f"model/{config['TEST_DIR']}/{config['NAME_TAG']}/traj_sample/traj_{tag}" + ".npz"
+    save_path = f"eval/{config['EVAL_DIR']}/{config['NAME_TAG']}/traj_sample/traj_{tag}" + ".npz"
     os.makedirs(os.path.dirname(save_path), exist_ok=True)
     with open(save_path, 'wb') as f:
         jnp.savez(f, **traj_data)
@@ -499,7 +499,7 @@ if __name__ == "__main__":
         config["DIR_DSTL"]="BASELINE_F16_reachreachdecomposed_100M"
         config["DIR_MODEL_DSTL"]="best_143"
 
-        config['TEST_DIR'] = "eval_all_figs"
+        config['EVAL_DIR'] = "eval_all_figs"
         config['NAME_TAG'] = "F16_RR_052825_2"
 
     config["NUM_ENVS"]=1000
@@ -567,6 +567,6 @@ if __name__ == "__main__":
     print("\n\nCollecting Trajectories")
     traj_batches = test(envs, env_paramss, config, rngs, saving_traj=True)
 
-    os.makedirs(f"model/{config['TEST_DIR']}/{config['NAME_TAG']}", exist_ok=True)
+    os.makedirs(f"eval/{config['EVAL_DIR']}/{config['NAME_TAG']}", exist_ok=True)
 
     score_plot = plot_scores(traj_batches, config)

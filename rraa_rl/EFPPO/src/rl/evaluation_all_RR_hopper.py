@@ -57,8 +57,8 @@ if __name__ == "__main__":
         config["DIR_LOGBAR"]="BASELINE_hopper_rr_logbar"
         config["DIR_MODEL_LOGBAR"]="best_49"
 
-        config['TEST_DIR'] = "eval_all_rebuttal"
-        config['NAME_TAG'] = "Hopper_RR_080625"
+        
+        config['NAME_TAG'] = "Hopper_RR"
 
     config["NUM_ENVS"]=1000
     config["NUM_STEPS"]=500
@@ -166,8 +166,8 @@ if __name__ == "__main__":
     print("\n\nCollecting Trajectories")
     traj_batches = test_RR(envs, env_paramss, config, rngs, saving_traj=True)
 
-    os.makedirs(f"model/{config['TEST_DIR']}/{config['NAME_TAG']}", exist_ok=True)
+    os.makedirs(f"eval/{config['EVAL_DIR']}/{config['NAME_TAG']}", exist_ok=True)
 
-    score_plot = plot_scores_RR(traj_batches, config, title="HOPPER-RR")
+    score_plot = plot_scores_RR(traj_batches, config, title="Hopper-RR")
 
 
