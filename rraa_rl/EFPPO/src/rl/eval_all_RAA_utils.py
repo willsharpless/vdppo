@@ -553,7 +553,7 @@ def test_RAA(envs, env_paramss, config, rngs, saving_traj=False):
     )
 
     ## PPO
-    raw_restored_PPO = checkpoints.restore_checkpoint(ckpt_dir=os.path.abspath('model/{}/{}'.format(
+    raw_restored_PPO = checkpoints.restore_checkpoint(ckpt_dir=os.path.abspath('{}/{}/{}'.format(
         config["BASE_MODEL_DIR"], config["DIR_PPO"], config["DIR_MODEL_PPO"])), target=None)
 
     policy_network_PPO = Policy_Network(
@@ -586,7 +586,7 @@ def test_RAA(envs, env_paramss, config, rngs, saving_traj=False):
     ########################################## LOAD RCPPO & RESPO #################################################
 
     ## RCPPO
-    raw_restored_RCPPO = checkpoints.restore_checkpoint(ckpt_dir=os.path.abspath('model/{}/{}'.format(
+    raw_restored_RCPPO = checkpoints.restore_checkpoint(ckpt_dir=os.path.abspath('{}/{}/{}'.format(
         config["BASE_MODEL_DIR"], config["DIR_RCPPO"], config["DIR_MODEL_RCPPO"])), target=None)
 
     policy_network_RCPPO = Policy_Network(
@@ -617,7 +617,7 @@ def test_RAA(envs, env_paramss, config, rngs, saving_traj=False):
     )
 
     ## RESPO
-    raw_restored_RESPO = checkpoints.restore_checkpoint(ckpt_dir=os.path.abspath('model/{}/{}'.format(
+    raw_restored_RESPO = checkpoints.restore_checkpoint(ckpt_dir=os.path.abspath('{}/{}/{}'.format(
         config["BASE_MODEL_DIR"], config["DIR_RESPO"], config["DIR_MODEL_RESPO"])), target=None)
 
     policy_network_RESPO = Policy_Network(
@@ -658,7 +658,7 @@ def test_RAA(envs, env_paramss, config, rngs, saving_traj=False):
     ########################################## LOAD MORL & SPARSE #################################################
 
     ## MORL
-    raw_restored_MORL = checkpoints.restore_checkpoint(ckpt_dir=os.path.abspath('model/{}/{}'.format(
+    raw_restored_MORL = checkpoints.restore_checkpoint(ckpt_dir=os.path.abspath('{}/{}/{}'.format(
         config["BASE_MODEL_DIR"], config["DIR_MORL"], config["DIR_MODEL_MORL"])), target=None)
 
     policy_network_MORL = Policy_Network(
@@ -689,7 +689,7 @@ def test_RAA(envs, env_paramss, config, rngs, saving_traj=False):
     )
 
     ## SPARSE
-    raw_restored_SPARSE = checkpoints.restore_checkpoint(ckpt_dir=os.path.abspath('model/{}/{}'.format(
+    raw_restored_SPARSE = checkpoints.restore_checkpoint(ckpt_dir=os.path.abspath('{}/{}/{}'.format(
         config["BASE_MODEL_DIR"], config["DIR_SPARSE"], config["DIR_MODEL_SPARSE"])), target=None)
 
     policy_network_SPARSE = Policy_Network(

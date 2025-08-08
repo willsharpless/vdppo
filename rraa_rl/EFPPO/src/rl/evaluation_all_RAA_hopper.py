@@ -53,8 +53,7 @@ if __name__ == "__main__":
         config["DIR_LOGBAR"]="BASELINE_hopper_raa_logbar"
         config["DIR_MODEL_LOGBAR"]="best_223"
 
-        
-        config['NAME_TAG'] = "Hopper_RAA_080625"
+        config['NAME_TAG'] = "Hopper_RAA"
 
     config["NUM_ENVS"]=1000
     config["NUM_STEPS"]=500

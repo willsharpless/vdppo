@@ -56,8 +56,7 @@ if __name__ == "__main__":
         config["DIR_LOGBAR"]="BASELINE_f16_rr_logbar"
         config["DIR_MODEL_LOGBAR"]="best_166"
 
-        
-        config['NAME_TAG'] = "F16_RR_080625"
+        config['NAME_TAG'] = "F16_RR"
 
     config["NUM_ENVS"]=1000
     config["NUM_STEPS"]=200
@@ -124,10 +123,12 @@ if __name__ == "__main__":
 
     ## P2BPO
     config_P2BPO = copy.deepcopy(config)
+    config_P2BPO["EXP_NAME"] = "F16ReachReachBaseline_P2BPO"
     env_P2BPO = get_env(config_P2BPO)
 
     ## LOGBAR
     config_LOGBAR = copy.deepcopy(config)
+    config_LOGBAR["EXP_NAME"] = "F16ReachReach_CPPO"
     env_LOGBAR = get_env(config_LOGBAR)
 
     envs = (

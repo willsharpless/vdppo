@@ -58,8 +58,7 @@ if __name__ == "__main__":
         config["DIR_LOGBAR"]="BASELINE_point_rr_logbar"
         config["DIR_MODEL_LOGBAR"]="best_18"
 
-        
-        config['NAME_TAG'] = "Point_RR_080625"
+        config['NAME_TAG'] = "Point_RR"
 
     config["NUM_ENVS"]=1000
     config["NUM_STEPS"]=400

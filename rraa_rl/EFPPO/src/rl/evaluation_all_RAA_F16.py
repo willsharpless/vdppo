@@ -49,12 +49,8 @@ if __name__ == "__main__":
 
         config["DIR_LOGBAR"]="BASELINE_f16_raa_logbar"
         config["DIR_MODEL_LOGBAR"]="best_180"
-
-        print(os.path.abspath('model/{}/{}'.format(config["DIR_RA"], config["DIR_MODEL_RA"])))
-        print(os.path.exists(os.path.abspath('model/{}/{}'.format(config["DIR_RA"], config["DIR_MODEL_RA"]))))
-
         
-        config['NAME_TAG'] = "F16_RAA_080625"
+        config['NAME_TAG'] = "F16_RAA"
 
     config["NUM_ENVS"]=1000
     config["NUM_STEPS"]=200
@@ -111,7 +107,6 @@ if __name__ == "__main__":
     ## P2BPO
     config_P2BPO = copy.deepcopy(config)
     config_P2BPO["EXP_NAME"] = "F16ReachAlwaysAvoidBaseline_P2BPO"
-    config_P2BPO["USE_STL"] = False # stl 
     env_P2BPO = get_env(config_P2BPO)
 
     ## LOGBAR

@@ -57,7 +57,6 @@ if __name__ == "__main__":
         config["DIR_LOGBAR"]="BASELINE_hopper_rr_logbar"
         config["DIR_MODEL_LOGBAR"]="best_49"
 
-        
         config['NAME_TAG'] = "Hopper_RR"
 
     config["NUM_ENVS"]=1000
