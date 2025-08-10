@@ -17,8 +17,10 @@ if __name__ == "__main__":
         config["EXP_NAME"]="HalfCheetahReachAlwaysAvoid"
         config["BASE_MODEL_DIR"] = "model_rebuttal_results"
 
-        config["DIR_HJPPO"]="BASELINE_halfcheetah_raa_resetgoalsafe_avoidv9"
-        config["DIR_MODEL_HJPPO"]="best_125"#"best_126"
+        # config["DIR_HJPPO"]="BASELINE_halfcheetah_raa_resetgoalsafe_avoidv9"
+        # config["DIR_MODEL_HJPPO"]="best_125"#"best_126"
+        config["DIR_HJPPO"]="BASELINE_halfcheetah_raa_resetgoal_donefix_avoidv9"
+        config["DIR_MODEL_HJPPO"]="best_163"#"best_126"
 
         config["DIR_CPPO"]="BASELINE_halfcheetah_raa_cppo_kp100"
         config["DIR_MODEL_CPPO"]="best_343"
