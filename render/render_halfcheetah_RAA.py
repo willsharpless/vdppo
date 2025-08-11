@@ -40,7 +40,7 @@ HTML_ANIMATION_SCRIPT = """
       if (!viewer || !viewer.camera || !viewer.controls) return;
 
       // Custom position and focus point
-      viewer.camera.position.set(3.5, 6.5, 0.8);
+      viewer.camera.position.set(3.5, 7, 0.8);
       viewer.controls.target.set(3.5, 0, 0.8);
       viewer.controls.update();
 
@@ -141,25 +141,9 @@ HTML_ANIMATION_SCRIPT = """
             });
         }
 
-        // Target
-        const greenTarget = new THREE.Mesh(
-        new THREE.BoxGeometry(0.5, 1, 8),  // size = 2 × radius = 0.2
-        new THREE.MeshStandardMaterial({
-            color: 0x00ff00,
-            transparent: true,
-            opacity: 0.4,
-            metalness: 0.0,
-            roughness: 0.5,
-          })
-        );
-        greenTarget.position.set(5.5, 0.0, 0.0);
-        greenTarget.castShadow = true;
-        greenTarget.receiveShadow = true;
-        viewer.scene.add(greenTarget);
-
         // Obstacles
         const redBox = new THREE.Mesh(
-        new THREE.BoxGeometry(0.1, 1, 1),  // size = 2 × radius = 0.2
+        new THREE.BoxGeometry(0.1, 3, 1),  // size = 2 × radius = 0.2
         new THREE.MeshStandardMaterial({
             color: 0xff0000,
             transparent: true,
@@ -174,7 +158,7 @@ HTML_ANIMATION_SCRIPT = """
         viewer.scene.add(redBox);
 
         const redFloor1 = new THREE.Mesh(
-        new THREE.BoxGeometry(0.5, 1, 0.05),  // size = 2 × radius = 0.2
+        new THREE.BoxGeometry(0.5, 3, 0.05),  // size = 2 × radius = 0.2
         new THREE.MeshStandardMaterial({
             color: 0xff0000,
             transparent: true,
@@ -189,7 +173,7 @@ HTML_ANIMATION_SCRIPT = """
         viewer.scene.add(redFloor1);
 
         const redFloor2 = new THREE.Mesh(
-        new THREE.BoxGeometry(0.5, 1, 0.05),  // size = 2 × radius = 0.2
+        new THREE.BoxGeometry(0.5, 3, 0.05),  // size = 2 × radius = 0.2
         new THREE.MeshStandardMaterial({
             color: 0xff0000,
             transparent: true,
@@ -202,6 +186,22 @@ HTML_ANIMATION_SCRIPT = """
         redFloor2.castShadow = true;
         redFloor2.receiveShadow = true;
         viewer.scene.add(redFloor2);
+
+        // Target
+        const greenTarget = new THREE.Mesh(
+        new THREE.BoxGeometry(0.5, 3, 8),  // size = 2 × radius = 0.2
+        new THREE.MeshStandardMaterial({
+            color: 0x00ff00,
+            transparent: true,
+            opacity: 0.4,
+            metalness: 0.0,
+            roughness: 0.5,
+          })
+        );
+        greenTarget.position.set(5.5, 0.0, 0.0);
+        greenTarget.castShadow = true;
+        greenTarget.receiveShadow = true;
+        viewer.scene.add(greenTarget);
 
         clearInterval(interval);
         }
@@ -224,12 +224,13 @@ if __name__ == "__main__":
     config["EXP_NAME"]="HalfCheetahReachReach"
     config["PROBLEM_TYPE"]="RAA"
     config["ALG"]="DOHJPPO" # DOHJPPO, CPPO, DSTL
-    traj_batch = load_traj(f"eval/eval_all_080725/HalfCheetah_RAA/traj_sample/traj_{config['ALG']}.npz")
+    traj_batch = load_traj(f"eval/eval_halfcheetah_resetgoal_model/HalfCheetah_RAA/traj_sample/traj_{config['ALG']}.npz")
+    config["RENDER_DIR"] = f"render/html/halfcheetah_{config['PROBLEM_TYPE']}_{config['ALG']}"
 
     envs = get_env(config)
     env = envs[0]
 
-    sample_range = [2,3,4,5,6,7,8,9]
+    sample_range = [0,3,4,9]
     # sample_range = np.arange(traj_batch['obs'].shape[1])
     # samples = 10
     # sample_range = np.arange(samples)
@@ -237,7 +238,7 @@ if __name__ == "__main__":
     for sample_index in sample_range:
       
       print(f"Rendering sample {sample_index} of {sample_range}...")
-      fig_file_name = f"render/gifs/halfcheetah_RAA_trajectory_render_{config['ALG']}_seed{sample_index}_{np.random.randint(100000):2d}" #FIXME randint for touch bug
+      # fig_file_name = f"render/gifs/halfcheetah_RAA_trajectory_render_{config['ALG']}_seed{sample_index}_{np.random.randint(100000):2d}" #FIXME randint for touch bug
 
       ## Compute important points
 
@@ -307,7 +308,7 @@ if __name__ == "__main__":
             if step_i == final_index:
                 break
 
-        os.makedirs(f"render/halfcheetah_{config['PROBLEM_TYPE']}_snapshots_{config['ALG']}_seed{sample_index}", exist_ok=True)
+        os.makedirs(f"{config['RENDER_DIR']}_snapshots_{config['ALG']}_seed{sample_index}", exist_ok=True)
         for i, state_i in enumerate(pipeline_states):
             html_str = html.render(
                 sys=env._env._env.env.env.sys,
@@ -315,7 +316,7 @@ if __name__ == "__main__":
                 height=720,  # optional
             )
             html_str = inject_custom_script(html_str, HTML_ANIMATION_SCRIPT)
-            with open(f"render/halfcheetah_{config['PROBLEM_TYPE']}_snapshots_{config['ALG']}_seed{sample_index}/snap_{i}.html", "w") as f:
+            with open(f"{config['RENDER_DIR']}_snapshots_{config['ALG']}_seed{sample_index}/snap_{i}.html", "w") as f:
                 f.write(html_str)
 
       if draw_gif:
@@ -339,5 +340,5 @@ if __name__ == "__main__":
               height=900,  # optional
           )
           html_str = inject_custom_script(html_str, HTML_ANIMATION_SCRIPT)
-          with open(f"render/halfcheetah_render_anim_RAA_seed{sample_index}.html", "w") as f:
+          with open(f"{config['RENDER_DIR']}_anim_seed{sample_index}.html", "w") as f:
               f.write(html_str)
