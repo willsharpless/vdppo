@@ -1,10 +1,10 @@
 python ./rraa_rl/EFPPO/src/rl/RAA-PPO.py \
 --EXP_NAME=HalfCheetahReachAlwaysAvoid \
---DIR=halfcheetah_raa_resetsafegoal_higherpit_v2 \
+--DIR=halfcheetah_raa_resetsafegoal \
 --LR=3e-4 \
 --NUM_ENVS=128 \
 --NUM_STEPS=400 \
---TOTAL_TIMESTEPS=500_000_000 \
+--TOTAL_TIMESTEPS=100_000_000 \
 --STEP_SCAN=4 \
 --UPDATE_EPOCHS=10 \
 --NUM_MINIBATCHES=32 \
@@ -20,4 +20,4 @@ python ./rraa_rl/EFPPO/src/rl/RAA-PPO.py \
 --CUDA_USE=0 \
 --ANNEAL_LR \
 --ANNEAL_ENT \
---NAME=halfcheetah_raa_resetsafegoal_higherpit_v2
+--NAME=halfcheetah_raa_resetsafegoal

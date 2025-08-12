@@ -109,7 +109,7 @@ def get_args(args):
         "--LOG_BARRIER_MU", default=5., type=float, help="log barrier mu, \psi = -log(-(relu(x)-1)/mu"
     )
     parser.add_argument(
-        '--DEC_INIT_TYPE', default='eval_all', type=str, help='initialization type for the decomposed rollouts (determines coupling)'
+        '--DEC_INIT_TYPE', default='toinput_goal', type=str, help='initialization type for the decomposed rollouts (determines coupling)'
     )
     parser.add_argument(
         '--SAVE_MILESTONE', action='store_true', default=False, help='whether to save subset of model checkpoints for comparison'
