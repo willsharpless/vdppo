@@ -69,7 +69,8 @@ def train(envs, env_paramss, config, rngs, env_test=None):
 
         ##################  Env step: Avoid Env ##################
 
-        init_type = "toinput_safegoal" # "fullrandom" # "toinput" # "toinput_goal" # "toinput_safegoal" # "standard"
+        # init_type = "toinput_safegoal" # "fullrandom" # "toinput" # "toinput_goal" # "toinput_safegoal" # "standard"
+        init_type = config["DEC_INIT_TYPE"]
 
         # RESET ENV
         rng_avoid, _rng_avoid = jax.random.split(rng_avoid)
@@ -85,7 +86,7 @@ def train(envs, env_paramss, config, rngs, env_test=None):
                 random_index = jnp.where(jnp.any((traj_batch.reach < 0), axis=0), reach_idx, random_index_pre)
 
             # Init to first reached state if avoided, if none then random before crash
-            elif init_type == "toinput_safegoal":
+            elif "safegoal" in init_type:
                 avoid_idx_pre = (traj_batch.avoid > 0).argmax(axis=0)
                 avoid_idx = jnp.where(jnp.any((traj_batch.avoid > 0) == 1, axis=0), avoid_idx_pre, config["NUM_STEPS"])
 
@@ -93,19 +94,25 @@ def train(envs, env_paramss, config, rngs, env_test=None):
                 reach_idx = jnp.where(jnp.any((traj_batch.reach < 0) == 1, axis=0), reach_idx_pre, config["NUM_STEPS"])
 
                 safe_buffer = 50
-                # random_index_precrash = jax.random.randint(_rng_avoid, shape=(config["NUM_ENVS"],), minval=0, maxval=avoid_idx) # sample before crashing
-                # random_index_precrash = jax.random.randint(_rng_avoid, shape=(config["NUM_ENVS"],), minval=0, maxval=avoid_idx//2)
-                # random_index_precrash = jax.random.randint(_rng_avoid, shape=(config["NUM_ENVS"],), minval=0, maxval=avoid_idx - buffer_avoid) # FIXME: sample well before crashing?
-                random_index_precrash = jax.random.randint(_rng_avoid, shape=(config["NUM_ENVS"],), minval=avoid_idx//2, maxval=(3 * avoid_idx)//4) # FIXME: sample otw to crashing?
+                if init_type == "toinput_safegoal_nearcrash":
+                    random_index_precrash = jax.random.randint(_rng_avoid, shape=(config["NUM_ENVS"],), minval=avoid_idx//2, maxval=(3 * avoid_idx)//4) # sample otw to crashing
+                elif init_type == "toinput_safegoal":
+                    random_index_precrash = jax.random.randint(_rng_avoid, shape=(config["NUM_ENVS"],), minval=0, maxval=avoid_idx) # sample before crashing
+                    # random_index_precrash = jax.random.randint(_rng_avoid, shape=(config["NUM_ENVS"],), minval=0, maxval=avoid_idx//2) # sample well before crashing
+                else:
+                    raise ValueError(f"Unknown init type: {init_type}")
+
                 random_index = jnp.where(jnp.logical_and(jnp.any(traj_batch.reach < 0, axis=0), # reached
                                                         #  reach_idx < avoid_idx), # reached before crash
-                                                         reach_idx - safe_buffer < avoid_idx), # FIXME: reached well before crash?
+                                                         reach_idx - safe_buffer < avoid_idx), # reached swell before crash
                                         reach_idx, random_index_precrash)
             # FIXME FIXME when terminating unhealthy via brax internals, does not filtering by done lead to misassociated trajectories? FIXME FIXME
 
             # Init to random point along rollout
-            else:
+            elif init_type == "toinput":
                 random_index = jax.random.randint(_rng_avoid, shape=(config["NUM_ENVS"],), minval=0, maxval=config["NUM_STEPS"])
+            else:
+                raise ValueError(f"Unknown init type: {init_type}")
 
             # Multiple random indices
             if "Hopper" in config["EXP_NAME"] or "Cheetah" in config["EXP_NAME"]  or "Point" in config["EXP_NAME"]:
@@ -133,8 +140,11 @@ def train(envs, env_paramss, config, rngs, env_test=None):
         elif init_type == "standard":
             obsv_avoid, env_state_avoid = jax.vmap(env_avoid.reset, in_axes=(0, None))(reset_rng_avoid, env_params_avoid) # NOTE: old standard reset
 
-        elif init_type == "fullrandom":
+        elif init_type == "fullrandom": # FIXME NIKHIL'S OLD METHOD, not used anymore / not the random we usually mean
             obsv_avoid, env_state_avoid = jax.vmap(env_avoid.reset_fullrandom, in_axes=(0, None))(reset_rng_avoid, env_params_avoid) # NOTE: old standard reset
+        
+        else:
+            raise ValueError(f"Unknown init type: {init_type}")
         
         rng_avoid, _rng_avoid = jax.random.split(rng_avoid)
         runner_state_standard_avoid = (train_state_policy, train_state_value, env_state_avoid, obsv_avoid, _rng_avoid)
@@ -429,7 +439,19 @@ def train(envs, env_paramss, config, rngs, env_test=None):
             info['u_air'] = env_params.u_air
             info['v_air'] = env_params.v_air
             info['obs'] = env_params.obstacle
-        if timestep % 5 == 0:
+
+        ## SAVE MODEL CHECKPOINTS
+        checkpoints.save_checkpoint(ckpt_dir=os.path.abspath(os.path.join("model", config["DIR"])),
+                                    target={"policy_network":train_state_policy, 
+                                            "value_network":train_state_value,
+                                            "policy_avoid_network":train_state_policy_avoid, 
+                                            "value_avoid_network":train_state_value_avoid,
+                                            },
+                                    step=timestep,
+                                    overwrite=True,
+                                    keep=2)
+
+        if config["SAVE_MILESTONE"] and timestep in config["MILESTONES"]:
             checkpoints.save_checkpoint(ckpt_dir=os.path.abspath(os.path.join("model", config["DIR"])),
                                         target={"policy_network":train_state_policy, 
                                                 "value_network":train_state_value,
@@ -437,8 +459,10 @@ def train(envs, env_paramss, config, rngs, env_test=None):
                                                 "value_avoid_network":train_state_value_avoid,
                                                 },
                                         step=timestep,
-                                        overwrite=True,
-                                        keep=2)
+                                        overwrite=False,
+                                        keep= 1 + len(config["MILESTONES"]),
+                                        prefix="milestone_",)
+        
         if reach_avoid_perc > best_score:
             best_score = reach_avoid_perc
             checkpoints.save_checkpoint(ckpt_dir=os.path.abspath(os.path.join("model", config["DIR"])),
@@ -632,28 +656,30 @@ if __name__ == "__main__":
         # config["ANNEAL_ENT"]=True
         # config["NAME"]="F16_raa_PE500_halfsamp2_TO80m80s_tjreset_g999"
 
-        # config["EXP_NAME"]="HalfCheetahReachAlwaysAvoid"
-        # config["DIR"]="halfcheetah_raa_resetgoalsafe_avoidv9"
-        # config["LR"]=3e-4
-        # config["NUM_ENVS"]=128
-        # config["NUM_STEPS"]=400
-        # config["TOTAL_TIMESTEPS"]=100_000_000
-        # config["STEP_SCAN"]=4
-        # config["UPDATE_EPOCHS"]=10
-        # config["NUM_MINIBATCHES"]=32
-        # config["GAMMA_ENERGY"]=1.0
-        # config["GAMMA_REACH_INIT"]=0.995
-        # config["GAMMA_REACH_FINAL"]=0.9995
-        # config["GAE_LAMBDA"]=0.95
-        # config["CLIP_EPS"]=0.2
-        # config["ENT_COEF"]=0.005
-        # config["VF_COEF"]=2.0
-        # config["MAX_GRAD_NORM"]=0.5
-        # config["ACTIVATION"]="tanh"
-        # config["CUDA_USE"]="0"
-        # config["ANNEAL_LR"]=True,
-        # config["ANNEAL_ENT"]=True
-        # config["NAME"]="halfcheetah_raa_resetgoalsafe_avoidv9"
+        config["EXP_NAME"]="HalfCheetahReachAlwaysAvoid"
+        config["DIR"]="halfcheetah_raa_debug2"
+        config["DEC_INIT_TYPE"]="standard"
+        config["SAVE_MILESTONE"]=True
+        config["LR"]=3e-4
+        config["NUM_ENVS"]=128
+        config["NUM_STEPS"]=400
+        config["TOTAL_TIMESTEPS"]=100_000_000
+        config["STEP_SCAN"]=4
+        config["UPDATE_EPOCHS"]=10
+        config["NUM_MINIBATCHES"]=32
+        config["GAMMA_ENERGY"]=1.0
+        config["GAMMA_REACH_INIT"]=0.995
+        config["GAMMA_REACH_FINAL"]=0.9995
+        config["GAE_LAMBDA"]=0.95
+        config["CLIP_EPS"]=0.2
+        config["ENT_COEF"]=0.005
+        config["VF_COEF"]=2.0
+        config["MAX_GRAD_NORM"]=0.5
+        config["ACTIVATION"]="tanh"
+        config["CUDA_USE"]="0"
+        config["ANNEAL_LR"]=True
+        config["ANNEAL_ENT"]=True
+        config["NAME"]="halfcheetah_raa_debug2"
 
         # config["EXP_NAME"]="HumanoidReachAlwaysAvoid"
         # config["DIR"]="humanoid_raa_debug"
@@ -679,28 +705,28 @@ if __name__ == "__main__":
         # config["NAME"]="humanoid_raa_debug"
         # config["TEST_MODE"]=True # USES DETERMINISTIC MODELS
 
-        config["EXP_NAME"]="PointReachAlwaysAvoid"
-        config["DIR"]="point_raa_resetgoalsafe_avoidv0_debug2"
-        config["LR"]=3e-4
-        config["NUM_ENVS"]=128
-        config["NUM_STEPS"]=400
-        config["TOTAL_TIMESTEPS"]=100_000_000
-        config["STEP_SCAN"]=4
-        config["UPDATE_EPOCHS"]=10
-        config["NUM_MINIBATCHES"]=32
-        config["GAMMA_ENERGY"]=1.0
-        config["GAMMA_REACH_INIT"]=0.995
-        config["GAMMA_REACH_FINAL"]=0.9995
-        config["GAE_LAMBDA"]=0.95
-        config["CLIP_EPS"]=0.2
-        config["ENT_COEF"]=0.005
-        config["VF_COEF"]=2.0
-        config["MAX_GRAD_NORM"]=0.5
-        config["ACTIVATION"]="tanh"
-        config["CUDA_USE"]="0"
-        config["ANNEAL_LR"]=True,
-        config["ANNEAL_ENT"]=True
-        config["NAME"]="point_raa_resetgoalsafe_avoidv0_debug2"
+        # config["EXP_NAME"]="PointReachAlwaysAvoid"
+        # config["DIR"]="point_raa_resetgoalsafe_avoidv0_debug2"
+        # config["LR"]=3e-4
+        # config["NUM_ENVS"]=128
+        # config["NUM_STEPS"]=400
+        # config["TOTAL_TIMESTEPS"]=100_000_000
+        # config["STEP_SCAN"]=4
+        # config["UPDATE_EPOCHS"]=10
+        # config["NUM_MINIBATCHES"]=32
+        # config["GAMMA_ENERGY"]=1.0
+        # config["GAMMA_REACH_INIT"]=0.995
+        # config["GAMMA_REACH_FINAL"]=0.9995
+        # config["GAE_LAMBDA"]=0.95
+        # config["CLIP_EPS"]=0.2
+        # config["ENT_COEF"]=0.005
+        # config["VF_COEF"]=2.0
+        # config["MAX_GRAD_NORM"]=0.5
+        # config["ACTIVATION"]="tanh"
+        # config["CUDA_USE"]="0"
+        # config["ANNEAL_LR"]=True,
+        # config["ANNEAL_ENT"]=True
+        # config["NAME"]="point_raa_resetgoalsafe_avoidv0_debug2"
 
     config["NUM_UPDATES"] = int(
         config["TOTAL_TIMESTEPS"] // config["NUM_STEPS"] // config["NUM_ENVS"]
@@ -739,7 +765,7 @@ if __name__ == "__main__":
 
     config["USE_WANDB"] = True # False for debugging 
     if config["USE_WANDB"]:
-        wandb.init(project='EC-EFPPO-{}'.format(config["EXP_NAME"]), name=config["NAME"], config=config,
+        wandb.init(project='DOHJ-{}-{}'.format(config["EXP_NAME"], config["WANDB_GROUP"]), name=config["NAME"], config=config,
                    entity='braat_brrt')
 
     config["LOAD_DECOMPOSED"] = False # TODO make args
@@ -753,8 +779,8 @@ if __name__ == "__main__":
         else:
             config['VIDEO_FREQ'] = 50
 
-    rng_composed = jax.random.PRNGKey(20)
-    rng_avoid = jax.random.PRNGKey(20)  # FIXME: Maybe?
+    rng_composed = jax.random.PRNGKey(config["SEED"])
+    rng_avoid = jax.random.PRNGKey(config["SEED"])
     out = train(envs, env_paramss, config, (rng_composed, rng_avoid), env_test=env_test) # TODO assumes same env params (should be tuple if diff)
     # NOTE passing multiple envs (composed + decomposed)
     # TODO more elegant use one env w/ diff env_params, but this is safe for now

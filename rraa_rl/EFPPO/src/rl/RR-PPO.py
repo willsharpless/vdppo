@@ -64,7 +64,9 @@ def train(envs, env_paramss, config, rng):
             env_step, runner_state, None, config["NUM_STEPS"]
         )
 
-        init_type = "toinput_goal" # "standard", "toinput", "toinput_goal"
+        # init_type = "toinput_goal" # "standard", "toinput", "toinput_goal"
+        init_type = config["DEC_INIT_TYPE"]
+
         # RESET ENV - 1
         rng, _rng = jax.random.split(rng_og)
         reset_rng = jax.random.split(_rng, config["NUM_ENVS"])
@@ -85,7 +87,7 @@ def train(envs, env_paramss, config, rng):
             ## Select random step in composed rollout for initial decomposed reach1 state
             else:
                 random_index = jax.random.randint(_rng_reach1, shape=(config["NUM_ENVS"],), minval=0, maxval=config["NUM_STEPS"])
-            # FIXME FIXME when terminating unhealthy via brax internals, does not filtering by done lead to misassociated trajectories? FIXME FIXME
+            # FIXME FIXME HUMANOID: when terminating unhealthy via brax internals, does not filtering by done lead to misassociated trajectories? FIXME FIXME
             # NOTE: I think to input random will do -- less efficient but wont be stuck in bad states at least
             # NOTE: but it seems internal reset will restore whatever trajectory starting pos was, so all roll-outs in this batch will start there 
             # so it would be better to initialize to random set?
@@ -124,6 +126,9 @@ def train(envs, env_paramss, config, rng):
             
             else:
                 raise NotImplementedError("Unknown environment type for toinput reset")
+            
+        else:
+            raise ValueError(f"Unknown init type: {init_type}")
         
         rng, _rng = jax.random.split(rng)
         runner_state_standard_reach_1 = (train_state_policy, train_state_value, env_state_reach_1, obsv_reach_1, _rng)
@@ -207,6 +212,8 @@ def train(envs, env_paramss, config, rng):
         
             else:
                 raise NotImplementedError("Unknown environment type for toinput reset")
+        else:
+            raise ValueError(f"Unknown init type: {init_type}")
 
         rng, _rng = jax.random.split(rng)
         runner_state_standard_reach_2 = (train_state_policy, train_state_value, env_state_reach_2, obsv_reach_2, _rng)
@@ -577,6 +584,7 @@ def train(envs, env_paramss, config, rng):
             info['v_air'] = env_params.v_air
             info['obs'] = env_params.obstacle
 
+        ## SAVE MODEL CHECKPOINTS
         checkpoints.save_checkpoint(ckpt_dir=os.path.abspath(os.path.join("model", config["DIR"])),
                                     target={"policy_network":train_state_policy, 
                                             "value_network":train_state_value,
@@ -586,7 +594,21 @@ def train(envs, env_paramss, config, rng):
                                             "value_reach2_network":train_state_value_reach2,
                                             },
                                     step=timestep,
-                                    overwrite=True)
+                                    overwrite=True, 
+                                    keep=2)
+        
+        if config["SAVE_MILESTONE"] and timestep in config["MILESTONES"]:
+            checkpoints.save_checkpoint(ckpt_dir=os.path.abspath(os.path.join("model", config["DIR"])),
+                                        target={"policy_network":train_state_policy, 
+                                                "value_network":train_state_value,
+                                                "policy_reach1_network":train_state_policy_reach1, 
+                                                "value_reach1_network":train_state_value_reach1,
+                                                "policy_reach2_network":train_state_policy_reach2, 
+                                                "value_reach2_network":train_state_value_reach2,
+                                                },
+                                        step=timestep,
+                                        overwrite=False,
+                                        prefix="milestone_",)
         
         if reach_perc > best_score:
             best_score = reach_perc
@@ -801,7 +823,7 @@ if __name__ == "__main__":
 
     config["USE_WANDB"] = True #not debug # False for debugging
     if config["USE_WANDB"]:
-        wandb.init(project='EC-EFPPO-{}'.format(config["EXP_NAME"]), name=config["NAME"], config=config,
+        wandb.init(project='DOHJ-{}-{}'.format(config["EXP_NAME"], config["WANDB_GROUP"]), name=config["NAME"], config=config,
                    entity='braat_brrt')
 
     config["LOAD_DECOMPOSED"] = False # TODO make arg
@@ -815,7 +837,7 @@ if __name__ == "__main__":
         else:
             config['VIDEO_FREQ'] = 25
 
-    rng = jax.random.PRNGKey(20)
+    rng = jax.random.PRNGKey(config["SEED"])
     out = train(envs, env_paramss, config, rng) # TODO assumes same env params (should be tuple if diff)
     # NOTE passing multiple envs (composed + decomposed)
     # TODO more elegant use one env w/ diff env_params, but this is safe for now

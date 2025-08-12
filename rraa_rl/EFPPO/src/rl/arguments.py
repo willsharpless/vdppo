@@ -21,6 +21,9 @@ def get_args(args):
         '--LR', default=3e-4, type=float, help='learning rate'
     )
     parser.add_argument(
+        "--SEED", default=20,  type=int, help="rng seed for reproducibility"
+    )
+    parser.add_argument(
         "--NUM_ENVS", default=16, type=int, help="number of environments in training"
     )
     parser.add_argument(
@@ -105,6 +108,22 @@ def get_args(args):
     parser.add_argument(
         "--LOG_BARRIER_MU", default=5., type=float, help="log barrier mu, \psi = -log(-(relu(x)-1)/mu"
     )
+    parser.add_argument(
+        '--DEC_INIT_TYPE', default='eval_all', type=str, help='initialization type for the decomposed rollouts (determines coupling)'
+    )
+    parser.add_argument(
+        '--SAVE_MILESTONE', action='store_true', default=False, help='whether to save subset of model checkpoints for comparison'
+    )
+    parser.add_argument(
+        '--MILESTONES', default=[0, 1, 2, 3, 5, 10, 20, 50, 100, 150, 300], type=list, help='timesteps to save subset of model checkpoints'
+    )
+    parser.add_argument(
+        '--USE_WANDB', action='store_true', default=True, help='whether to use wandb for logging'
+    )
+    parser.add_argument(
+        '--WANDB_GROUP', default='default', type=str, help='WandB group name'
+    )
+    
     args = parser.parse_args(args) if args is not None else parser.parse_args()
 
     return args
