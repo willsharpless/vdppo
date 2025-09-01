@@ -150,16 +150,7 @@ def train(envs, env_paramss, config, rng):
 
         if init_type == "standard":
             obsv_reach_2, env_state_reach_2 = jax.vmap(env_reach_2.reset, in_axes=(0, None))(reset_rng, env_params_reach_2)
-        # elif init_type == "toinput": 
-        #     # Select random observations from standard rollout to use for initial avoid state 
-        #     rng_reach2, _rng_reach2 = jax.random.split(rng)
-
-        #     # Multiple random indices
-        #     random_index = jax.random.randint(_rng_reach2, shape=(untrans_traj_batch_observations_full.shape[0],), minval=0, maxval=untrans_traj_batch_observations_full.shape[1])
-        #     untrans_traj_batch_observations = jax.vmap(lambda obs, idx: obs[idx])(untrans_traj_batch_observations_full, random_index)
-
-        #     obsv_reach_2, env_state_reach_2 = jax.vmap(env_reach_2.reset_toinput, in_axes=(0, 0, None))(reset_rng, untrans_traj_batch_observations, env_params_reach_2) 
-
+ 
         elif "toinput" in init_type: 
             rng_reach2, _rng_reach2 = jax.random.split(rng)
             

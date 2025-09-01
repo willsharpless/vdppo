@@ -152,7 +152,7 @@ HTML_ANIMATION_SCRIPT = """
             roughness: 0.5,
           })
         );
-        blueSphere.position.set(-1.25, 0.0, 1.7);
+        blueSphere.position.set(-5.1, 0.0, 1.7);
         blueSphere.castShadow = true;
         blueSphere.receiveShadow = true;
         viewer.scene.add(blueSphere);
@@ -168,7 +168,7 @@ HTML_ANIMATION_SCRIPT = """
             roughness: 0.5,
           })
         );
-        greenSphere.position.set(1.25, 0.0, 1.7);
+        greenSphere.position.set(5.1, 0.0, 1.7);
         greenSphere.castShadow = true;
         greenSphere.receiveShadow = true;
         viewer.scene.add(greenSphere);
@@ -195,14 +195,31 @@ if __name__ == "__main__":
     config = vars(get_args(sys.argv[1:]))
     config["EXP_NAME"]="HalfCheetahReachReach"
     config["PROBLEM_TYPE"]="RR"
-    config["ALG"]="DOHJPPO_s" # DOHJPPO, CPPOvI, DSTL
+    config["ALG"]="DOHJPPO_s" # DOHJPPO, CPPOvI, DSTL (non HJ -> PROBLEM_TYPE = RR)
+
+    if config["PROBLEM_TYPE"] == "RR":
+      # traj_batch = load_traj(f"eval/eval_all_080725/HalfCheetah_RR/traj_sample/traj_{config['ALG']}.npz")
+      traj_batch = load_traj(f"eval/eval_all/HalfCheetah_RR/traj_sample/traj_{config['ALG']}.npz")
+    elif config["PROBLEM_TYPE"] == "R1":
+      traj_batch = load_traj(f"eval/eval_all/HalfCheetah_RR/traj_sample/traj_{config['ALG']}_reach1.npz")
+    elif config["PROBLEM_TYPE"] == "R2":
+      traj_batch = load_traj(f"eval/eval_all/HalfCheetah_RR/traj_sample/traj_{config['ALG']}_reach2.npz")
+    else:
+      raise ValueError(f"Unknown problem type: {config['PROBLEM_TYPE']}")
+
+    config["RENDER_DIR"] = f"render/html/halfcheetah_{config['PROBLEM_TYPE']}_{config['ALG']}"
 
     envs = get_env(config)
-    env = envs[0]
+    if config["PROBLEM_TYPE"] == "RR":
+      env = envs[0]
+    elif config["PROBLEM_TYPE"] == "R1":
+      env = envs[1]
+    elif config["PROBLEM_TYPE"] == "R2":
+      env = envs[2]
+    else:
+      raise ValueError(f"Unknown problem type: {config['PROBLEM_TYPE']}")
 
-    traj_batch = load_traj(f"eval/eval_all_080725/HalfCheetah_RR/traj_sample/traj_{config['ALG']}.npz")
-
-    sample_range = [1]
+    sample_range = [0,1,2]
     # sample_range = np.arange(traj_batch['obs'].shape[1])
     # sample_range = np.arange(samples)
 
@@ -213,8 +230,18 @@ if __name__ == "__main__":
 
       ## Compute important points
 
-      reached_1 = traj_batch['reach1'][:, sample_index] < 0.
-      reached_2 = traj_batch['reach2'][:, sample_index] < 0.
+      if config["PROBLEM_TYPE"] == "RR":
+        reached_1 = traj_batch['reach1'][:, sample_index] < 0.
+        reached_2 = traj_batch['reach2'][:, sample_index] < 0.
+      elif config["PROBLEM_TYPE"] == "R1":
+        reached_1 = traj_batch['reach1'][:, sample_index] < 0.
+        reached_2 = jnp.zeros_like(reached_1, dtype=jnp.bool_)
+      elif config["PROBLEM_TYPE"] == "R2":
+        reached_2 = traj_batch['reach2'][:, sample_index] < 0.
+        reached_1 = jnp.zeros_like(reached_2, dtype=jnp.bool_)
+      else:
+        raise ValueError(f"Unknown problem type: {config['PROBLEM_TYPE']}")
+
       first_reached_1 = np.where(reached_1)[0][0] if np.any(reached_1) else traj_batch['obs'].shape[0] - 1
       first_reached_2 = np.where(reached_2)[0][0] if np.any(reached_2) else traj_batch['obs'].shape[0] - 1
       first_reached_both = np.max([first_reached_1, first_reached_2])
@@ -239,6 +266,7 @@ if __name__ == "__main__":
             steps_saved.append(step_i)
 
             test_obs = traj_batch['obs'][step_i, sample_index, :]
+            test_obs = env.untransform_obs(test_obs)
             # test_obs[1] = test_obs[1] - 1.25
             qpos = test_obs[:9]
             qvel = test_obs[9:18]
@@ -269,7 +297,7 @@ if __name__ == "__main__":
             if step_i == first_reached_both:
                 break
 
-        os.makedirs(f"render/halfcheetah_{config['PROBLEM_TYPE']}_snapshots_{config['ALG']}_seed{sample_index}", exist_ok=True)
+        os.makedirs(f"{config['RENDER_DIR']}_snapshots_{config['ALG']}_seed{sample_index}", exist_ok=True)
         for i, state_i in enumerate(pipeline_states):
             html_str = html.render(
                 sys=env._env._env.env.env.sys,
@@ -277,7 +305,7 @@ if __name__ == "__main__":
                 height=720,  # optional
             )
             html_str = inject_custom_script(html_str, HTML_ANIMATION_SCRIPT)
-            with open(f"render/halfcheetah_{config['PROBLEM_TYPE']}_snapshots_{config['ALG']}_seed{sample_index}/snap_{i}.html", "w") as f:
+            with open(f"{config['RENDER_DIR']}_snapshots_{config['ALG']}_seed{sample_index}/snap_{i}.html", "w") as f:
                 f.write(html_str)
 
       if draw_gif:
@@ -301,5 +329,5 @@ if __name__ == "__main__":
               height=900,  # optional
           )
           html_str = inject_custom_script(html_str, HTML_ANIMATION_SCRIPT)
-          with open(f"render/halfcheetah_render_anim_RR_seed{sample_index}.html", "w") as f:
+          with open(f"{config['RENDER_DIR']}_anim_seed{sample_index}.html", "w") as f:
               f.write(html_str)

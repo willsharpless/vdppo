@@ -22,10 +22,12 @@ from rraa_rl.EFPPO.src.env.env_list import get_env
 from rraa_rl.EFPPO.src.model.actorcritic import Policy_Network, Value_Network, ActorCritic_Continuous, Policy_Network_Discrete, MoGPolicy_Network
 from rraa_rl.EFPPO.src.rl.EFPPO_utils import _env_step_rr_vanilla, _env_step_rr_deterministic, \
                                                 _env_step_cppo_RR, _env_step_rr_decomposed, \
-                                                _env_step_adapted_rr, _env_step_rr_respo
+                                                _env_step_adapted_rr, _env_step_rr_respo, \
+                                                _env_step_r1_vanilla, _env_step_r2_vanilla
 # from rraa_rl.EFPPO.src.rl.plot_utils import calculate_reachreach
 from rraa_rl.EFPPO.src.rl.root_finding import Bisection
 from rraa_rl.EFPPO.src.rl.utils import tree_index1, tree_index2, optimizer
+from rraa_rl.EFPPO.src.env.reach_avoid.humanoid_RR import HUMANOID_TORSO_MIN_Z, HUMANOID_TORSO_MAX_Z
 
 def calculate_reachreach(traj_batch, reach_type="both", offset=0.0):
     
@@ -393,7 +395,7 @@ def load_traj(file_path):
         traj_batch = {key: traj_data[key] for key in traj_data.files}
     return traj_batch
 
-def test_RR(envs, env_paramss, config, rngs, saving_traj=False):
+def test_RR(envs, env_paramss, config, rngs, saving_traj=False, roll_out_decomposed=False):
     rng_1, rng_2, rng_3, rng_4, rng_5, rng_6, rng_7, rng_8, rng_9, rng_10, rng_11, rng_12, rng_13, rng_14 = rngs
 
     (env_HJPPO, env_HJPPO_reach_1, env_HJPPO_reach_2, 
@@ -414,6 +416,8 @@ def test_RR(envs, env_paramss, config, rngs, saving_traj=False):
 
     # DEFINE ENV STEP WRAPPERS
     env_step_HJPPO = partial(_env_step_rr_vanilla, env_HJPPO, env_params_HJPPO)
+    env_step_HJPPO_reach_1 = partial(_env_step_r1_vanilla, env_HJPPO_reach_1, env_params_HJPPO_reach_1)
+    env_step_HJPPO_reach_2 = partial(_env_step_r2_vanilla, env_HJPPO_reach_2, env_params_HJPPO_reach_2)
     env_step_HJPPO_d = partial(_env_step_rr_deterministic, env_HJPPO, env_params_HJPPO)
     env_step_CPPOv1= partial(_env_step_cppo_RR, env_CPPO_v1, env_params_CPPO_v1)
     env_step_CPPOv2 = partial(_env_step_cppo_RR, env_CPPO_v2, env_params_CPPO_v2)
@@ -905,6 +909,161 @@ def test_RR(envs, env_paramss, config, rngs, saving_traj=False):
     )
 
     if saving_traj: save_traj(traj_batch_HJPPO, config, 'DOHJPPO_s', sample_size=10)
+
+    if roll_out_decomposed: 
+        print("Rolling Out HJ-PPO (Stochastic) Decomposed Models")
+        init_type = config["DEC_INIT_TYPE"]
+        rng_1, _rng_1 = jax.random.split(rng_1)
+        reset_rng = jax.random.split(_rng_1, config["NUM_ENVS"])
+
+        if init_type == "standard": 
+            obsv_reach_1, env_state_reach_1 = jax.vmap(env_HJPPO_reach_1.reset, in_axes=(0, None))(reset_rng, env_params_HJPPO_reach_1)
+        
+        elif "toinput" in init_type: 
+            rng_reach1, _rng_reach1 = jax.random.split(rng_1)
+            
+            ## Select first reach2 step in composed rollout for initial decomposed reach1 state 
+            if init_type == "toinput_goal":
+                random_index_pre = jax.random.randint(_rng_reach1, shape=(config["NUM_ENVS"],), minval=0, maxval=config["NUM_STEPS"])
+                reach2_idx_pre = (traj_batch_HJPPO.reach2 < 0).argmax(axis=0)
+                reach2_idx = jnp.where(jnp.any((traj_batch_HJPPO.reach2 < 0) == 1, axis=0), reach2_idx_pre, config["NUM_STEPS"])
+                random_index = jnp.where(jnp.any(traj_batch_HJPPO.reach2 < 0, axis=0), reach2_idx, random_index_pre)
+                # random_index = jnp.where(jnp.any(traj_batch.reach2 < 0, axis=0), reach2_idx - 10, random_index_pre) # FIXME: before reaching?
+            ## Select random step in composed rollout for initial decomposed reach1 state
+            else:
+                random_index = jax.random.randint(_rng_reach1, shape=(config["NUM_ENVS"],), minval=0, maxval=config["NUM_STEPS"])
+            # FIXME FIXME HUMANOID: when terminating unhealthy via brax internals, does not filtering by done lead to misassociated trajectories? FIXME FIXME
+            # NOTE: I think to input random will do -- less efficient but wont be stuck in bad states at least
+            # NOTE: but it seems internal reset will restore whatever trajectory starting pos was, so all roll-outs in this batch will start there 
+            # so it would be better to initialize to random set?
+
+
+            # Multiple random indices
+            if "Hopper" in config["EXP_NAME"] or "HalfCheetah" in config["EXP_NAME"] or "Point" in config["EXP_NAME"]:
+                traj_batch_observations_full = traj_batch_HJPPO.obs 
+                untrans_traj_batch_observations_full = env_HJPPO.untransform_obs(traj_batch_observations_full)
+                untrans_traj_batch_observations_full = jnp.transpose(untrans_traj_batch_observations_full, axes=(1, 0, 2))
+                untrans_traj_batch_observations = jax.vmap(lambda obs, idx: obs[idx])(untrans_traj_batch_observations_full, random_index)
+                obsv_reach_1, env_state_reach_1 = jax.vmap(env_HJPPO_reach_1.reset_toinput, in_axes=(0, 0, None))(reset_rng, untrans_traj_batch_observations, env_params_HJPPO_reach_1) 
+
+            elif "Humanoid" in config["EXP_NAME"]:
+
+                ## Filter Unhealthy Humanoid Trajectories from reset
+                unhealthy_traj = jnp.any(jnp.logical_or(
+                    traj_batch_HJPPO.info['torso'][..., 2] < HUMANOID_TORSO_MIN_Z,
+                    traj_batch_HJPPO.info['torso'][..., 2] > HUMANOID_TORSO_MAX_Z
+                ), axis=0)
+                random_index_healthy = jnp.where(unhealthy_traj, reach2_idx_pre, random_index) 
+                # when unhealthy -> set first reach2 index and if no reach2, then init (argmax defaults to 0)
+
+                # FIXME: humanoid._get_obs() needs an action, meaning we should pass reset action too, for now just zeros
+                traj_batch_observations_full = traj_batch_HJPPO.obs 
+                untrans_traj_batch_observations_full = env_HJPPO.untransform_obs(traj_batch_observations_full)
+                untrans_traj_batch_observations_full = jnp.transpose(untrans_traj_batch_observations_full, axes=(1, 0, 2))
+                untrans_traj_batch_observations = jax.vmap(lambda obs, idx: obs[idx])(untrans_traj_batch_observations_full, random_index_healthy)
+                obsv_reach_1, env_state_reach_1 = jax.vmap(env_HJPPO_reach_1.reset_toinput, in_axes=(0, 0, None))(reset_rng, untrans_traj_batch_observations, env_params_HJPPO_reach_1) 
+
+            elif "F16" in config["EXP_NAME"]:
+                traj_batch_states = traj_batch_HJPPO.info['state']
+                traj_batch_states = jnp.transpose(traj_batch_states, axes=(1, 0, 2))
+                reset_states = jax.vmap(lambda obs, idx: obs[idx])(traj_batch_states, random_index)
+                obsv_reach_1, env_state_reach_1 = jax.vmap(env_HJPPO_reach_1.reset_env_toinput, in_axes=(0, None))(reset_states, env_params_HJPPO_reach_1) 
+            
+            else:
+                raise NotImplementedError("Unknown environment type for toinput reset")
+            
+        else:
+            raise ValueError(f"Unknown init type: {init_type}")
+        
+        rng_1, _rng_1 = jax.random.split(rng_1)
+        runner_state_standard_reach_1 = (train_state_policy_HJPPO, train_state_value_HJPPO, env_state_reach_1, obsv_reach_1, _rng_1)
+        
+        # SPECIAL DECOMPOSED STATES - 1
+        decomposed_state = (train_state_policy_HJPPO_reach1, train_state_value_HJPPO_reach1, train_state_policy_HJPPO_reach2, train_state_value_HJPPO_reach2)
+        runner_state_reach1 = (*runner_state_standard_reach_1, decomposed_state, policy_controls)
+
+        # COLLECT TRAJECTORY DECOMPOSED - 1
+        runner_state_reach1, traj_batch_reach1 = jax.lax.scan(
+            env_step_HJPPO_reach_1, runner_state_reach1, None, config["NUM_STEPS"]
+        )
+
+        # RESET ENV - 2
+        rng_1, _rng_1 = jax.random.split(rng_1)
+        reset_rng = jax.random.split(_rng_1, config["NUM_ENVS"])
+
+        if init_type == "standard":
+            obsv_reach_2, env_state_reach_2 = jax.vmap(env_HJPPO_reach_2.reset, in_axes=(0, None))(reset_rng, env_params_HJPPO_reach_2)
+ 
+        elif "toinput" in init_type: 
+            rng_reach1, _rng_reach2 = jax.random.split(rng_1)
+            
+            ## Select first reach1 step in composed rollout for initial decomposed reach2 state 
+            if init_type == "toinput_goal":
+                random_index_pre = jax.random.randint(rng_reach1, shape=(config["NUM_ENVS"],), minval=0, maxval=config["NUM_STEPS"])
+                reach1_idx_pre = (traj_batch_HJPPO.reach1 < 0).argmax(axis=0)
+                reach1_idx = jnp.where(jnp.any((traj_batch_HJPPO.reach1 < 0) == 1, axis=0), reach1_idx_pre, config["NUM_STEPS"])
+                random_index = jnp.where(jnp.any(traj_batch_HJPPO.reach1 < 0, axis=0), reach1_idx, random_index_pre)
+                # random_index = jnp.where(jnp.any(traj_batch.reach1 < 0, axis=0), reach1_idx - 10, random_index_pre) # FIXME: before reaching?
+
+            ## Select random step in composed rollout for initial decomposed reach2 state 
+            else:
+                random_index = jax.random.randint(rng_reach1, shape=(config["NUM_ENVS"],), minval=0, maxval=config["NUM_STEPS"])
+            # random_index = jax.random.randint(_rng_reach1, shape=(untrans_traj_batch_observations_full.shape[0],), minval=0, maxval=untrans_traj_batch_observations_full.shape[1])
+
+            # Multiple random indices
+            if "Hopper" in config["EXP_NAME"] or "HalfCheetah" in config["EXP_NAME"] or "Point" in config["EXP_NAME"]:
+                traj_batch_observations_full = traj_batch_HJPPO.obs 
+                untrans_traj_batch_observations_full = env_HJPPO.untransform_obs(traj_batch_observations_full)
+                untrans_traj_batch_observations_full = jnp.transpose(untrans_traj_batch_observations_full, axes=(1, 0, 2))
+                untrans_traj_batch_observations = jax.vmap(lambda obs, idx: obs[idx])(untrans_traj_batch_observations_full, random_index)
+                # obsv_reach_1, env_state_reach_1 = jax.vmap(env_reach_1.reset_toinput, in_axes=(0, 0, None))(reset_rng, untrans_traj_batch_observations, env_params_reach_1) 
+                obsv_reach_2, env_state_reach_2 = jax.vmap(env_HJPPO_reach_2.reset_toinput, in_axes=(0, 0, None))(reset_rng, untrans_traj_batch_observations, env_params_HJPPO_reach_2) 
+
+            elif "Humanoid" in config["EXP_NAME"]:
+
+                ## Filter Unhealthy Humanoid Trajectories from reset
+                unhealthy_traj = jnp.any(jnp.logical_or(
+                    traj_batch_HJPPO.info['torso'][..., 2] < HUMANOID_TORSO_MIN_Z,
+                    traj_batch_HJPPO.info['torso'][..., 2] > HUMANOID_TORSO_MAX_Z
+                ), axis=0)
+                random_index_healthy = jnp.where(unhealthy_traj, reach1_idx_pre, random_index) # set to init when unhealthy
+                # when unhealthy -> set first reach1 index and if no reach1, then init (argmax defaults to 0)
+
+                # FIXME: humanoid._get_obs() needs an action, meaning we should pass reset action too, for now just zeros
+                traj_batch_observations_full = traj_batch_HJPPO.obs 
+                untrans_traj_batch_observations_full = env_HJPPO.untransform_obs(traj_batch_observations_full)
+                untrans_traj_batch_observations_full = jnp.transpose(untrans_traj_batch_observations_full, axes=(1, 0, 2))
+                untrans_traj_batch_observations = jax.vmap(lambda obs, idx: obs[idx])(untrans_traj_batch_observations_full, random_index_healthy)
+                # obsv_reach_1, env_state_reach_1 = jax.vmap(env_reach_1.reset_toinput, in_axes=(0, 0, None))(reset_rng, untrans_traj_batch_observations, env_params_reach_1) 
+                obsv_reach_2, env_state_reach_2 = jax.vmap(env_HJPPO_reach_2.reset_toinput, in_axes=(0, 0, None))(reset_rng, untrans_traj_batch_observations, env_params_HJPPO_reach_2) 
+
+            elif "F16" in config["EXP_NAME"]:
+                traj_batch_states = traj_batch_HJPPO.info['state']
+                traj_batch_states = jnp.transpose(traj_batch_states, axes=(1, 0, 2))
+                reset_states = jax.vmap(lambda obs, idx: obs[idx])(traj_batch_states, random_index)
+                # obsv_reach_1, env_state_reach_1 = jax.vmap(env_reach_1.reset_env_toinput, in_axes=(0, None))(reset_states, env_params_reach_1) 
+                obsv_reach_2, env_state_reach_2 = jax.vmap(env_HJPPO_reach_2.reset_env_toinput, in_axes=(0, None))(reset_states, env_params_HJPPO_reach_2) 
+        
+            else:
+                raise NotImplementedError("Unknown environment type for toinput reset")
+        else:
+            raise ValueError(f"Unknown init type: {init_type}")
+
+        rng_1, _rng_1 = jax.random.split(rng_1)
+        runner_state_standard_reach_2 = (train_state_policy_HJPPO, train_state_value_HJPPO, env_state_reach_2, obsv_reach_2, _rng_1)
+
+        # SPECIAL DECOMPOSED STATES - 2
+        decomposed_state = (train_state_policy_HJPPO_reach1, train_state_value_HJPPO_reach1, train_state_policy_HJPPO_reach2, train_state_value_HJPPO_reach2)
+        runner_state_reach2 = (*runner_state_standard_reach_2, decomposed_state, policy_controls)
+
+        # COLLECT TRAJECTORY DECOMPOSED - 2
+        runner_state_reach2, traj_batch_reach2 = jax.lax.scan(
+            env_step_HJPPO_reach_2, runner_state_reach2, None, config["NUM_STEPS"]
+        )
+
+        if saving_traj: 
+            save_traj(traj_batch_reach1, config, 'DOHJPPO_s_reach1', sample_size=10)
+            save_traj(traj_batch_reach2, config, 'DOHJPPO_s_reach2', sample_size=10)
 
     ## MODEL 2 : HJ-PPO : DETERMINISTIC
 

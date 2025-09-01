@@ -20,6 +20,7 @@ if __name__ == "__main__":
 
         config["DIR_HJPPO"]="BASELINE_halfcheetah_rr_resetgoal_reachv0.1_rerun"
         config["DIR_MODEL_HJPPO"]="best_699"
+        config["DEC_INIT_TYPE"] = "toinput_goal"
 
         config["DIR_CPPOv1"]="BASELINE_halfcheetah_rr_cppo_sum_e150k_kp1"
         config["DIR_MODEL_CPPOv1"]="checkpoint_731"
@@ -163,7 +164,7 @@ if __name__ == "__main__":
     os.environ["XLA_PYTHON_CLIENT_PREALLOCATE"] = "false"
     
     print("\n\nCollecting Trajectories")
-    traj_batches = test_RR(envs, env_paramss, config, rngs, saving_traj=True)
+    traj_batches = test_RR(envs, env_paramss, config, rngs, saving_traj=True, roll_out_decomposed=True)
 
     os.makedirs(f"eval/{config['EVAL_DIR']}/{config['NAME_TAG']}", exist_ok=True)
 
