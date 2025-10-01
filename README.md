@@ -9,8 +9,8 @@ ucsd phdawgs
 
 ### to run, eg.
 ```
-./rraa_rl/EFPPO/src/script/run_hopper_reachreach.sh
-./rraa_rl/EFPPO/src/script/run_hopper_reachalwaysavoid.sh
+./rraa_rl/src/script/run_hopper_reachreach.sh
+./rraa_rl/src/script/run_hopper_reachalwaysavoid.sh
 ```
 this learns the `Hopper` RR and RAA problems with the `RR-PPO.py` and `RAA-PPO.py` algos respectively.
 

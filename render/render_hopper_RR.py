@@ -13,8 +13,8 @@ import matplotlib.gridspec as gridspec
 from mpl_toolkits.mplot3d import Axes3D 
 plt.rcParams["text.usetex"] = False
 import jax.numpy as jnp
-from rraa_rl.EFPPO.src.rl.arguments import get_args
-from rraa_rl.EFPPO.src.env.env_list import get_env
+from rraa_rl.src.rl.utils.arguments import get_args
+from rraa_rl.src.env.env_list import get_env
 import imageio
 
 from brax.io import html
