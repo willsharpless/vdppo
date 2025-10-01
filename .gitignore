@@ -6,7 +6,7 @@
 
 # Ignore all EFPPO experiments
 /rraa_rl/EFPPO/model/hopper_avoid_ceiling/**
-/model/*
+# /model/*
 /model_rebuttal_results/*
 /model_rebuttal_results_NIKHIL/*
 /BASELINE_Hopper_rebuttal/*
@@ -31,4 +31,7 @@
 *.tar.gz
 
 #eval
-/eval/*
+# /eval/*
+
+/.vscode/*
+*launch.json
