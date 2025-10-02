@@ -22,7 +22,7 @@
 # --ANNEAL_ENT \
 # --NAME=BASELINE_point_rr_decomposed
 
-python ./rraa_rl/src/rl/RA-PPO.py \
+python ./rraa_rl/src/rl/baselines/RA-PPO.py \
 --EXP_NAME=PointReachAvoid \
 --DIR=BASELINE_point_reachavoid \
 --LR=3e-4 \

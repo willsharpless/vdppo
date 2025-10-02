@@ -1,4 +1,4 @@
-python ./rraa_rl/src/rl/RA-PPO.py \
+python ./rraa_rl/src/rl/baselines/RA-PPO.py \
 --EXP_NAME=F16ReachAvoid \
 --DIR=F16_reachavoid\
 --LR=3e-4 \

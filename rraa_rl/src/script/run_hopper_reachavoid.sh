@@ -1,4 +1,4 @@
-python ./rraa_rl/src/rl/RA-PPO.py \
+python ./rraa_rl/src/rl/baselines/RA-PPO.py \
 --EXP_NAME=HopperReachAvoid \
 --DIR=hopper_reachavoid_final \
 --LR=3e-4 \
