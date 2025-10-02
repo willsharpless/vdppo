@@ -31,7 +31,11 @@
 *.tar.gz
 
 #eval
-# /eval/*
+# /eval/eval_all/*
+# /eval/eval_all_80725/*
+# /eval/eval_halfcheetah_resetgoal_model/*
+/eval/**
+/model/**
 
 /.vscode/*
 *launch.json
