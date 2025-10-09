@@ -203,7 +203,7 @@ def _env_step_rr_vanilla(env, env_params, runner_state, _):
     (train_state_policy, train_state_value, last_env_state, last_obs, 
         rng, decomposed_state, policy_contols) = runner_state
     (train_state_policy_reach1, train_state_value_reach1,
-     train_state_policy_reach2, train_state_value_reach2) = decomposed_state
+        train_state_policy_reach2, train_state_value_reach2) = decomposed_state
     (force_combined, force_reach1, force_reach2) = policy_contols
     
     """
@@ -362,11 +362,12 @@ def _env_step_r2_vanilla(env, env_params, runner_state, _):
     runner_state = (train_state_policy, train_state_value, env_state, obsv, rng, decomposed_state, policy_contols)
     return runner_state, transition
 
-def _env_step_rraa_vanilla(env, env_params, runner_state, decomposed_state, _):
-    (train_state_policy, train_state_value, last_env_state, last_obs, rng) = runner_state
-    (train_state_avoid_policy, train_state_avoid_value,
-     train_state_policy_reach1, train_state_value_reach1,
-     train_state_policy_reach2, train_state_value_reach2) = decomposed_state
+def _env_step_rraa(env, env_params, runner_state, decomposed_state, _):
+    (train_state_policy_rraa, train_state_value_rraa, last_env_state, last_obs, rng) = runner_state
+    (train_state_policy_raa1, train_state_value_raa1, 
+    train_state_policy_raa2, train_state_value_raa2, 
+    train_state_policy_a1, train_state_value_a1,
+    train_state_policy_a2, train_state_value_a2) = decomposed_state
 
     """
     This env_step always takes the next second policy after reaching first, and ultimately avoids.
@@ -377,17 +378,18 @@ def _env_step_rraa_vanilla(env, env_params, runner_state, decomposed_state, _):
 
     # SELECT ACTION
     rng, _rng = jax.random.split(rng)
-    pi = train_state_policy.apply_fn(train_state_policy.params, last_obs)
-    value = train_state_value.apply_fn(train_state_value.params, last_obs)
+    
+    pi_rraa = train_state_policy_rraa.apply_fn(train_state_policy_rraa.params, last_obs)
+    pi_raa1 = train_state_policy_raa1.apply_fn(train_state_policy_raa1.params, last_obs)
+    pi_raa2 = train_state_policy_raa2.apply_fn(train_state_policy_raa2.params, last_obs)
+    pi_a1 = train_state_policy_a1.apply_fn(train_state_policy_a1.params, last_obs)
+    pi_a2 = train_state_policy_a2.apply_fn(train_state_policy_a2.params, last_obs)
 
-    pi_avoid = train_state_policy.apply_fn(train_state_avoid_policy.params, last_obs)
-    value_avoid = train_state_avoid_value.apply_fn(train_state_avoid_value.params, last_obs)
-
-    pi_reach1 = train_state_policy.apply_fn(train_state_policy_reach1.params, last_obs)
-    value_reach1 = train_state_value_reach1.apply_fn(train_state_value_reach1.params, last_obs)
-
-    pi_reach2 = train_state_policy.apply_fn(train_state_policy_reach2.params, last_obs)
-    value_reach2 = train_state_value_reach2.apply_fn(train_state_value_reach2.params, last_obs)
+    value_rraa = train_state_value_rraa.apply_fn(train_state_value_rraa.params, last_obs)
+    value_raa1 = train_state_value_raa1.apply_fn(train_state_value_raa1.params, last_obs)
+    value_raa2 = train_state_value_raa2.apply_fn(train_state_value_raa2.params, last_obs)
+    value_a1 = train_state_value_a1.apply_fn(train_state_value_a1.params, last_obs)
+    value_a2 = train_state_value_a2.apply_fn(train_state_value_a2.params, last_obs)
 
     ## TAKE SECOND REACH ACTION IF FIRST REACHED, UNLESS REACHED BOTH (WAS)
     if last_env_state.reach1 > 0 and last_env_state.reach2 > 0: # havent reached either
