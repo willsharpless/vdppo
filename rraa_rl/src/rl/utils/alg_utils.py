@@ -362,12 +362,18 @@ def _env_step_r2_vanilla(env, env_params, runner_state, _):
     runner_state = (train_state_policy, train_state_value, env_state, obsv, rng, decomposed_state, policy_contols)
     return runner_state, transition
 
-def _env_step_rraa(env, env_params, runner_state, decomposed_state, _):
-    (train_state_policy_rraa, train_state_value_rraa, last_env_state, last_obs, rng) = runner_state
+def _env_step_rraa(env, env_params, runner_state, _):
+    (train_state_policy_rraa, train_state_value_rraa, 
+        last_env_state, last_obs, 
+        rng, decomposed_state, 
+        policy_controls) = runner_state
     (train_state_policy_raa1, train_state_value_raa1, 
-    train_state_policy_raa2, train_state_value_raa2, 
-    train_state_policy_a1, train_state_value_a1,
-    train_state_policy_a2, train_state_value_a2) = decomposed_state
+        train_state_policy_raa2, train_state_value_raa2, 
+        train_state_policy_a, train_state_value_a,
+        # train_state_policy_a1, train_state_value_a1,
+        # train_state_policy_a2, train_state_value_a2
+        ) = decomposed_state
+    (force_combined, force_reach1, force_reach2) = policy_controls
 
     """
     This env_step always takes the next second policy after reaching first, and ultimately avoids.
@@ -382,31 +388,100 @@ def _env_step_rraa(env, env_params, runner_state, decomposed_state, _):
     pi_rraa = train_state_policy_rraa.apply_fn(train_state_policy_rraa.params, last_obs)
     pi_raa1 = train_state_policy_raa1.apply_fn(train_state_policy_raa1.params, last_obs)
     pi_raa2 = train_state_policy_raa2.apply_fn(train_state_policy_raa2.params, last_obs)
-    pi_a1 = train_state_policy_a1.apply_fn(train_state_policy_a1.params, last_obs)
-    pi_a2 = train_state_policy_a2.apply_fn(train_state_policy_a2.params, last_obs)
+    pi_a = train_state_policy_a.apply_fn(train_state_policy_a.params, last_obs)
+    # pi_a1 = train_state_policy_a1.apply_fn(train_state_policy_a1.params, last_obs)
+    # pi_a2 = train_state_policy_a2.apply_fn(train_state_policy_a2.params, last_obs)
 
     value_rraa = train_state_value_rraa.apply_fn(train_state_value_rraa.params, last_obs)
     value_raa1 = train_state_value_raa1.apply_fn(train_state_value_raa1.params, last_obs)
     value_raa2 = train_state_value_raa2.apply_fn(train_state_value_raa2.params, last_obs)
-    value_a1 = train_state_value_a1.apply_fn(train_state_value_a1.params, last_obs)
-    value_a2 = train_state_value_a2.apply_fn(train_state_value_a2.params, last_obs)
+    value_a = train_state_value_a.apply_fn(train_state_value_a.params, last_obs)
+    # value_a1 = train_state_value_a1.apply_fn(train_state_value_a1.params, last_obs)
+    # value_a2 = train_state_value_a2.apply_fn(train_state_value_a2.params, last_obs)
 
-    ## TAKE SECOND REACH ACTION IF FIRST REACHED, UNLESS REACHED BOTH (WAS)
-    if last_env_state.reach1 > 0 and last_env_state.reach2 > 0: # havent reached either
-        action = pi.sample(seed=_rng)
-        log_prob = pi.log_prob(action)
-    elif last_env_state.reach1 < 0 and last_env_state.reach2 < 0:
-        action = pi_avoid.sample(seed=_rng)
-        log_prob = pi_avoid.log_prob(action)
-        value = value_avoid
-    elif last_env_state.reach2 > 0: # reached 1 but not 2
-        action = pi_reach2.sample(seed=_rng)
-        log_prob = pi_reach2.log_prob(action)
-        value = value_reach2
-    else: # reached 1 but not 2
-        action = pi_reach1.sample(seed=_rng)
-        log_prob = pi_reach1.log_prob(action)
-        value = value_reach1
+    # SAMPLE ACTIONS
+    action_rraa = pi_rraa.sample(seed=_rng)
+    action_raa1 = pi_raa1.sample(seed=_rng)
+    action_raa2 = pi_raa2.sample(seed=_rng)
+    action_a = pi_a.sample(seed=_rng)
+    # action_a1 = pi_a1.sample(seed=_rng)
+    # action_a2 = pi_a2.sample(seed=_rng)
+
+    log_rraa = pi_rraa.log_prob(action_rraa)
+    log_raa1 = pi_raa1.log_prob(action_raa1)
+    log_raa2 = pi_raa2.log_prob(action_raa2)
+    log_a = pi_a.log_prob(action_a)
+    # log_a1 = pi_a1.log_prob(action_a1)
+    # log_a2 = pi_a2.log_prob(action_a2)
+
+    # TAKE SECOND REACH ACTION IF FIRST REACHED (WAS)
+    reached1 = last_env_state.has_reached_1
+    reached2 = last_env_state.has_reached_2
+    reached_both = jnp.logical_and(reached1, reached2)
+
+    # Combined if neither has been reached
+    rraa_mask = jnp.logical_or(jnp.logical_not(jnp.logical_or(reached1, reached2)), force_combined)
+
+    # Reached 1 (but not 2)
+    only_reach1_mask = jnp.logical_and(reached1, jnp.logical_not(reached2))
+
+    # All others fall back to action_r1 (ie. both reached)
+    action = jnp.where(
+        rraa_mask[:, None], 
+        action_rraa,
+        jnp.where(
+            reached_both[:, None],
+            action_a,
+            jnp.where(
+                only_reach1_mask[:, None], 
+                action_raa2, 
+                action_raa1
+            )
+        )
+    )
+
+    log_prob = jnp.where(
+        rraa_mask, 
+        log_rraa,
+        jnp.where(
+            reached_both,
+            log_a,
+            jnp.where(
+                only_reach1_mask, 
+                log_raa2, 
+                log_raa1
+            )
+        )
+    )
+
+    value = jnp.where(
+        rraa_mask, 
+        value_rraa,
+        jnp.where(
+            reached_both,
+            value_a,
+            jnp.where(
+                only_reach1_mask, 
+                value_raa2, 
+                value_raa1
+            )
+        )
+    )
+    
+    policy_taken = jnp.where(
+        rraa_mask, 
+        0*value,
+        jnp.where(
+            reached_both,
+            3 + 0*value,
+            jnp.where(
+                only_reach1_mask, 
+                2 + 0*value, 
+                1 + 0*value
+            )
+        )
+    )
+    
     # NOTE this is the reach-based switch, 
     # technically should switch when min V1 next > min V2 next etc.
 
@@ -418,12 +493,17 @@ def _env_step_rraa(env, env_params, runner_state, decomposed_state, _):
         env.step, in_axes=(0, 0, 0, None)
     )(rng_step, last_env_state, action, env_params)
 
-    transition = Transition_rr(
-        done, action, value, reward, log_prob, last_obs, info,
-        last_env_state.reach1, last_env_state.reach2
+    transition = Transition_rraa(
+        done, action, value, value_raa1, value_raa2, value_a, reward, log_prob, last_obs, info,
+        last_env_state.reach1, last_env_state.reach2, 
+        last_env_state.has_reached_1, last_env_state.has_reached_2, 
+        last_env_state.avoid,
+        policy_taken
     )
-    runner_state = (train_state_policy, train_state_value, env_state, obsv, rng)
+
+    runner_state = (train_state_policy_rraa, train_state_value_rraa, env_state, obsv, rng, decomposed_state, policy_controls)
     return runner_state, transition
+# TODO write the proper Transition_rraa to match this, and the correct _env_step_raa
 
 def _env_step_raa_vanilla(env, env_params, runner_state, _, take_mean=False):
     (train_state_policy, train_state_value, last_env_state, last_obs, 
