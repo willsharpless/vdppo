@@ -39,16 +39,25 @@ class TrainState(train_state.TrainState):
     count: Any
 
 def train(envs, env_paramss, config, rng):
-    env_rraa, env_raa1, env_raa2, env_a1, env_a2 = envs # COMPOSED (RR) + 2 DECOMPOSED (R1 + R2)
-    env_params_rraa, env_params_raa1, env_params_raa2, env_params_a1, env_params_a2 = env_paramss
+    (env_rraa, 
+        env_raa1, env_raa2, 
+        env_a, # SINGLE AVOID POLICY
+        # env_a1, env_a2 # TWO AVOID POLICIES
+    ) = envs
+    (env_params_rraa, 
+        env_params_raa1, env_params_raa2, 
+        env_params_a,
+        # env_params_a1, env_params_a2
+    ) = env_paramss
 
     def _train(train_state_total, ent_gamma):
         
         (train_state_policy_rraa, train_state_value_rraa,
             train_state_policy_raa1, train_state_value_raa1,
             train_state_policy_raa2, train_state_value_raa2, 
-            train_state_policy_a1, train_state_value_a1,
-            train_state_policy_a2, train_state_value_a2, 
+            train_state_policy_a, train_state_value_a,
+            # train_state_policy_a1, train_state_value_a1,
+            # train_state_policy_a2, train_state_value_a2, 
             rng_og, timestep) = train_state_total
         
         ####################################################################################################################
@@ -64,8 +73,10 @@ def train(envs, env_paramss, config, rng):
         # SPECIAL DECOMPOSED STATES
         decomposed_state_rraa = (train_state_policy_raa1, train_state_value_raa1, 
                             train_state_policy_raa2, train_state_value_raa2, 
-                            train_state_policy_a1, train_state_value_a1,
-                            train_state_policy_a2, train_state_value_a2)
+                            train_state_policy_a, train_state_value_a,
+                            # train_state_policy_a1, train_state_value_a1,
+                            # train_state_policy_a2, train_state_value_a2
+        )
         force_combined = False # if timestep < 20 else False # inhibits switching until > 20 epochs
         force_reach1, force_reach2 = False, False
         policy_controls = (force_combined, force_reach1, force_reach2)
@@ -149,7 +160,8 @@ def train(envs, env_paramss, config, rng):
         decomposed_state_raa1 = (
             train_state_policy_raa1, train_state_value_raa1, 
             # train_state_policy_raa2, train_state_value_raa2, 
-            train_state_policy_a1, train_state_value_a1,
+            train_state_policy_a, train_state_value_a,
+            # train_state_policy_a1, train_state_value_a1,
             # train_state_policy_a2, train_state_value_a2
         )
         force_reach1, force_reach2 = True, False
@@ -233,7 +245,7 @@ def train(envs, env_paramss, config, rng):
         # SPECIAL DECOMPOSED STATES - RAA 2
         decomposed_state_raa2 = ( 
             train_state_policy_raa2, train_state_value_raa2, 
-            train_state_policy_a2, train_state_value_a2
+            train_state_policy_a, train_state_value_a
         )
         force_reach1, force_reach2 = False, True
         policy_controls_reach2 = (force_combined, force_reach1, force_reach2)
@@ -243,9 +255,11 @@ def train(envs, env_paramss, config, rng):
         runner_state_raa2, traj_batch_raa2 = jax.lax.scan(
             env_step_raa2, runner_state_raa2, None, config["NUM_STEPS"]
         )
-        
+
         ####################################################################################################################
-        # ROLLOUT A1
+        # ROLLOUT A
+        # NOTE, assuming same avoid value/policy -> for A, sample from (couple to) both raa1 & raa2 batches
+        # (50% from each TODO could be smarter, eg. prioritize split by reaching qty)
 
         # RESET ENV - (COUPLED OR STANDARD INIT)
         rng_avoid, _rng_avoid = jax.random.split(rng_og)
@@ -256,175 +270,280 @@ def train(envs, env_paramss, config, rng):
 
             # Init to first reached state, if none then random
             if config["DEC_INIT_TYPE"] == "toinput_goal":
-                random_index_pre = jax.random.randint(_rng_avoid, shape=(config["NUM_ENVS"],), minval=0, maxval=config["NUM_STEPS"])
-                reach_idx = (traj_batch_raa1.reach < 0).argmax(axis=0)
-                random_index = jnp.where(jnp.any((traj_batch_raa1.reach < 0), axis=0), reach_idx, random_index_pre)
+                random_index_pre_raa1 = jax.random.randint(_rng_avoid, shape=(config["NUM_ENVS"],), minval=0, maxval=config["NUM_STEPS"])
+                reach_idx_raa1 = (traj_batch_raa1.reach < 0).argmax(axis=0)
+                random_index_raa1 = jnp.where(jnp.any((traj_batch_raa1.reach < 0), axis=0), reach_idx_raa1, random_index_pre_raa1)
+                
+                random_index_pre_raa2 = jax.random.randint(_rng_avoid, shape=(config["NUM_ENVS"],), minval=0, maxval=config["NUM_STEPS"])
+                reach_idx_raa2 = (traj_batch_raa2.reach < 0).argmax(axis=0)
+                random_index_raa2 = jnp.where(jnp.any((traj_batch_raa2.reach < 0), axis=0), reach_idx_raa2, random_index_pre_raa2)
 
             # Init to first reached state if avoided, if none then random before crash
             elif "safegoal" in config["DEC_INIT_TYPE"]:
-                avoid_idx_pre = (traj_batch_raa1.avoid > 0).argmax(axis=0)
-                avoid_idx = jnp.where(jnp.any((traj_batch_raa1.avoid > 0) == 1, axis=0), avoid_idx_pre, config["NUM_STEPS"])
+                avoid_idx_pre_raa1 = (traj_batch_raa1.avoid > 0).argmax(axis=0)
+                avoid_idx_raa1 = jnp.where(jnp.any((traj_batch_raa1.avoid > 0) == 1, axis=0), avoid_idx_pre_raa1, config["NUM_STEPS"])
+                avoid_idx_pre_raa2 = (traj_batch_raa2.avoid > 0).argmax(axis=0)
+                avoid_idx_raa2 = jnp.where(jnp.any((traj_batch_raa2.avoid > 0) == 1, axis=0), avoid_idx_pre_raa2, config["NUM_STEPS"])
 
-                reach_idx_pre = (traj_batch_raa1.reach < 0).argmax(axis=0)
-                reach_idx = jnp.where(jnp.any((traj_batch_raa1.reach < 0) == 1, axis=0), reach_idx_pre, config["NUM_STEPS"])
+                reach_idx_pre_raa1 = (traj_batch_raa1.reach < 0).argmax(axis=0)
+                reach_idx_raa1 = jnp.where(jnp.any((traj_batch_raa1.reach < 0) == 1, axis=0), reach_idx_pre_raa1, config["NUM_STEPS"])
+                reach_idx_pre_raa2 = (traj_batch_raa2.reach < 0).argmax(axis=0)
+                reach_idx_raa2 = jnp.where(jnp.any((traj_batch_raa2.reach < 0) == 1, axis=0), reach_idx_pre_raa2, config["NUM_STEPS"])
 
                 safe_buffer = 50
                 if config["DEC_INIT_TYPE"] == "toinput_safegoal_nearcrash":
-                    random_index_precrash = jax.random.randint(_rng_avoid, shape=(config["NUM_ENVS"],), minval=avoid_idx//2, maxval=(3 * avoid_idx)//4) # sample otw to crashing
+                    random_index_precrash_raa1 = jax.random.randint(_rng_avoid, shape=(config["NUM_ENVS"],), minval=avoid_idx_raa1//2, maxval=(3 * avoid_idx_raa1)//4) # sample otw to crashing
+                    random_index_precrash_raa2 = jax.random.randint(_rng_avoid, shape=(config["NUM_ENVS"],), minval=avoid_idx_raa2//2, maxval=(3 * avoid_idx_raa2)//4) # sample otw to crashing
                 elif config["DEC_INIT_TYPE"] == "toinput_safegoal":
-                    random_index_precrash = jax.random.randint(_rng_avoid, shape=(config["NUM_ENVS"],), minval=0, maxval=avoid_idx) # sample before crashing
+                    random_index_precrash_raa1 = jax.random.randint(_rng_avoid, shape=(config["NUM_ENVS"],), minval=0, maxval=avoid_idx_raa1) # sample before crashing
                     # random_index_precrash = jax.random.randint(_rng_avoid, shape=(config["NUM_ENVS"],), minval=0, maxval=avoid_idx//2) # sample well before crashing
+                    random_index_precrash_raa2 = jax.random.randint(_rng_avoid, shape=(config["NUM_ENVS"],), minval=0, maxval=avoid_idx_raa2) # sample before crashing
                 else:
                     raise ValueError(f"Unknown init type: {config["DEC_INIT_TYPE"]}")
 
-                random_index = jnp.where(jnp.logical_and(jnp.any(traj_batch_raa1.reach < 0, axis=0), # reached
+                random_index_raa1 = jnp.where(jnp.logical_and(jnp.any(traj_batch_raa1.reach < 0, axis=0), # reached
                                                         #  reach_idx < avoid_idx), # reached before crash
-                                                         reach_idx - safe_buffer < avoid_idx), # reached swell before crash
-                                        reach_idx, random_index_precrash)
+                                                         reach_idx_raa1 - safe_buffer < avoid_idx_raa1), # reached swell before crash
+                                        reach_idx_raa1, random_index_precrash_raa1)
+                
+                random_index_raa2 = jnp.where(jnp.logical_and(jnp.any(traj_batch_raa2.reach < 0, axis=0), # reached
+                                                        #  reach_idx < avoid_idx), # reached before crash
+                                                         reach_idx_raa2 - safe_buffer < avoid_idx_raa2), # reached swell before crash
+                                        reach_idx_raa2, random_index_precrash_raa2)
+                
             # FIXME FIXME when terminating unhealthy via brax internals, does not filtering by done lead to misassociated trajectories? FIXME FIXME
 
             # Init to random point along rollout
             elif config["DEC_INIT_TYPE"] == "toinput":
-                random_index = jax.random.randint(_rng_avoid, shape=(config["NUM_ENVS"],), minval=0, maxval=config["NUM_STEPS"])
+                random_index_raa1 = jax.random.randint(_rng_avoid, shape=(config["NUM_ENVS"],), minval=0, maxval=config["NUM_STEPS"])
+                random_index_raa2 = jax.random.randint(_rng_avoid, shape=(config["NUM_ENVS"],), minval=0, maxval=config["NUM_STEPS"])
             else:
                 raise ValueError(f"Unknown init type: {config["DEC_INIT_TYPE"]}")
 
             # Multiple random indices
-            if "Hopper" in config["EXP_NAME"] or "Cheetah" in config["EXP_NAME"]  or "Point" in config["EXP_NAME"]:
-                traj_batch_observations_full = traj_batch_raa1.obs 
-                untrans_traj_batch_observations_full = env_raa1.untransform_obs(traj_batch_observations_full)
-                untrans_traj_batch_observations_full = jnp.transpose(untrans_traj_batch_observations_full, axes=(1, 0, 2))
-                untrans_traj_batch_observations = jax.vmap(lambda obs, idx: obs[idx])(untrans_traj_batch_observations_full, random_index)
-                obsv_a1, env_state_a1 = jax.vmap(env_a1.reset_toinput, in_axes=(0, 0, None))(reset_rng_avoid, untrans_traj_batch_observations, env_params_a1) 
+            if not "F16" in config["EXP_NAME"]:
+                untrans_traj_batch_observations_full_raa1 = jnp.transpose(env_raa1.untransform_obs(traj_batch_raa1.obs), axes=(1, 0, 2))
+                untrans_traj_batch_observations_raa1 = jax.vmap(lambda obs, idx: obs[idx])(untrans_traj_batch_observations_full_raa1, random_index_raa1)
+                untrans_traj_batch_observations_full_raa2 = jnp.transpose(env_raa2.untransform_obs(traj_batch_raa2.obs), axes=(1, 0, 2))
+                untrans_traj_batch_observations_raa2 = jax.vmap(lambda obs, idx: obs[idx])(untrans_traj_batch_observations_full_raa2, random_index_raa2)
 
-            elif "Humanoid" in config["EXP_NAME"]:
+                # randomly combine half of each untrans_traj_batch_observations
+                untrans_traj_batch_observations = jnp.where(jax.random.bernoulli(_rng_avoid, p=0.5, shape=(config["NUM_ENVS"],))[:, None], untrans_traj_batch_observations_raa1, untrans_traj_batch_observations_raa2)
+
+                obsv_a, env_state_a = jax.vmap(env_a.reset_toinput, in_axes=(0, 0, None))(reset_rng_avoid, untrans_traj_batch_observations, env_params_a) 
+
+            # elif "Humanoid" in config["EXP_NAME"]:
                 # FIXME: humanoid._get_obs() needs an action, meaning should pass reset action too, for now just zeros
-                traj_batch_observations_full = traj_batch_raa1.obs 
-                untrans_traj_batch_observations_full = env_raa1.untransform_obs(traj_batch_observations_full)
-                untrans_traj_batch_observations_full = jnp.transpose(untrans_traj_batch_observations_full, axes=(1, 0, 2))
-                untrans_traj_batch_observations = jax.vmap(lambda obs, idx: obs[idx])(untrans_traj_batch_observations_full, random_index)
-                obsv_a1, env_state_a1 = jax.vmap(env_a1.reset_toinput, in_axes=(0, 0, None))(reset_rng_avoid, untrans_traj_batch_observations, env_params_a1) 
 
-            elif "F16" in config["EXP_NAME"]:
-                traj_batch_states = traj_batch_raa1.info['state']
-                traj_batch_states = jnp.transpose(traj_batch_states, axes=(1, 0, 2))
+            else:
+                traj_batch_states = jnp.transpose(traj_batch_raa1.info['state'], axes=(1, 0, 2))
                 reset_states = jax.vmap(lambda obs, idx: obs[idx])(traj_batch_states, random_index)
-                # obsv_reach_1, env_state_reach_1 = jax.vmap(env_reach_1.reset_env_toinput, in_axes=(0, None))(reset_states, env_params_reach_1) 
-                obsv_a1, env_state_a1 = jax.vmap(env_a1.reset_env_toinput, in_axes=(0, None))(reset_states, env_params_a1) 
+                obsv_a, env_state_a = jax.vmap(env_a.reset_env_toinput, in_axes=(0, None))(reset_states, env_params_a) 
                 
         elif config["DEC_INIT_TYPE"] == "standard":
-            obsv_a1, env_state_a1 = jax.vmap(env_a1.reset, in_axes=(0, None))(reset_rng_avoid, env_params_a1) # NOTE: old standard reset
+            obsv_a, env_state_a = jax.vmap(env_a.reset, in_axes=(0, None))(reset_rng_avoid, env_params_a) # NOTE: old standard reset
 
         elif config["DEC_INIT_TYPE"] == "fullrandom": # FIXME NIKHIL'S OLD METHOD, not used anymore / not the random we usually mean
-            obsv_a1, env_state_a1 = jax.vmap(env_a1.reset_fullrandom, in_axes=(0, None))(reset_rng_avoid, env_params_a1) # NOTE: old standard reset
+            obsv_a, env_state_a = jax.vmap(env_a.reset_fullrandom, in_axes=(0, None))(reset_rng_avoid, env_params_a) # NOTE: old standard reset
         
         else:
             raise ValueError(f"Unknown init type: {config["DEC_INIT_TYPE"]}")
         
         rng, _rng = jax.random.split(rng_avoid)
-        runner_state_standard_a1 = (train_state_policy_rraa, train_state_value_rraa, env_state_a1, obsv_a1, _rng)
+        runner_state_standard_a = (train_state_policy_rraa, train_state_value_rraa, env_state_a, obsv_a, _rng)
 
-        # SPECIAL DECOMPOSED STATES - A1
-        decomposed_state_a1 = (train_state_policy_a1, train_state_value_a1)
+        # SPECIAL DECOMPOSED STATES - A
+        decomposed_state_a = (train_state_policy_a, train_state_value_a)
         force_avoid = True 
         policy_controls_avoid = (force_combined, force_avoid)
-        runner_state_a1 = (*runner_state_standard_a1, decomposed_state_a1, policy_controls_avoid)
+        runner_state_a = (*runner_state_standard_a, decomposed_state_a, policy_controls_avoid)
 
-        # COLLECT TRAJECTORY DECOMPOSED - A1
-        runner_state_a1, traj_batch_a1 = jax.lax.scan(
-            env_step_a1, runner_state_a1, None, config["NUM_STEPS"]
+        # COLLECT TRAJECTORY DECOMPOSED - A
+        runner_state_a, traj_batch_a = jax.lax.scan(
+            env_step_a, runner_state_a, None, config["NUM_STEPS"]
         )
-
-        ####################################################################################################################
-        # ROLLOUT A2
-
-        # RESET ENV - (COUPLED OR STANDARD INIT)
-        rng_avoid, _rng_avoid = jax.random.split(rng_og)
-        reset_rng_avoid = jax.random.split(_rng_avoid, config["NUM_ENVS"])
         
-        if "toinput" in config["DEC_INIT_TYPE"]: 
-            # Select observations from standard rollout to use for initial avoid state 
+        # ####################################################################################################################
+        # # ROLLOUT A1
 
-            # Init to first reached state, if none then random
-            if config["DEC_INIT_TYPE"] == "toinput_goal":
-                random_index_pre = jax.random.randint(_rng_avoid, shape=(config["NUM_ENVS"],), minval=0, maxval=config["NUM_STEPS"])
-                reach_idx = (traj_batch_raa2.reach < 0).argmax(axis=0)
-                random_index = jnp.where(jnp.any((traj_batch_raa2.reach < 0), axis=0), reach_idx, random_index_pre)
+        # # RESET ENV - (COUPLED OR STANDARD INIT)
+        # rng_avoid, _rng_avoid = jax.random.split(rng_og)
+        # reset_rng_avoid = jax.random.split(_rng_avoid, config["NUM_ENVS"])
+        
+        # if "toinput" in config["DEC_INIT_TYPE"]: 
+        #     # Select observations from standard rollout to use for initial avoid state 
 
-            # Init to first reached state if avoided, if none then random before crash
-            elif "safegoal" in config["DEC_INIT_TYPE"]:
-                avoid_idx_pre = (traj_batch_raa2.avoid > 0).argmax(axis=0)
-                avoid_idx = jnp.where(jnp.any((traj_batch_raa2.avoid > 0) == 1, axis=0), avoid_idx_pre, config["NUM_STEPS"])
+        #     # Init to first reached state, if none then random
+        #     if config["DEC_INIT_TYPE"] == "toinput_goal":
+        #         random_index_pre = jax.random.randint(_rng_avoid, shape=(config["NUM_ENVS"],), minval=0, maxval=config["NUM_STEPS"])
+        #         reach_idx = (traj_batch_raa1.reach < 0).argmax(axis=0)
+        #         random_index = jnp.where(jnp.any((traj_batch_raa1.reach < 0), axis=0), reach_idx, random_index_pre)
 
-                reach_idx_pre = (traj_batch_raa2.reach < 0).argmax(axis=0)
-                reach_idx = jnp.where(jnp.any((traj_batch_raa2.reach < 0) == 1, axis=0), reach_idx_pre, config["NUM_STEPS"])
+        #     # Init to first reached state if avoided, if none then random before crash
+        #     elif "safegoal" in config["DEC_INIT_TYPE"]:
+        #         avoid_idx_pre = (traj_batch_raa1.avoid > 0).argmax(axis=0)
+        #         avoid_idx = jnp.where(jnp.any((traj_batch_raa1.avoid > 0) == 1, axis=0), avoid_idx_pre, config["NUM_STEPS"])
 
-                safe_buffer = 50
-                if config["DEC_INIT_TYPE"] == "toinput_safegoal_nearcrash":
-                    random_index_precrash = jax.random.randint(_rng_avoid, shape=(config["NUM_ENVS"],), minval=avoid_idx//2, maxval=(3 * avoid_idx)//4) # sample otw to crashing
-                elif config["DEC_INIT_TYPE"] == "toinput_safegoal":
-                    random_index_precrash = jax.random.randint(_rng_avoid, shape=(config["NUM_ENVS"],), minval=0, maxval=avoid_idx) # sample before crashing
-                    # random_index_precrash = jax.random.randint(_rng_avoid, shape=(config["NUM_ENVS"],), minval=0, maxval=avoid_idx//2) # sample well before crashing
-                else:
-                    raise ValueError(f"Unknown init type: {config["DEC_INIT_TYPE"]}")
+        #         reach_idx_pre = (traj_batch_raa1.reach < 0).argmax(axis=0)
+        #         reach_idx = jnp.where(jnp.any((traj_batch_raa1.reach < 0) == 1, axis=0), reach_idx_pre, config["NUM_STEPS"])
 
-                random_index = jnp.where(jnp.logical_and(jnp.any(traj_batch_raa2.reach2 < 0, axis=0), # reached
-                                                        #  reach_idx < avoid_idx), # reached before crash
-                                                         reach_idx - safe_buffer < avoid_idx), # reached swell before crash
-                                        reach_idx, random_index_precrash)
-            # FIXME FIXME when terminating unhealthy via brax internals, does not filtering by done lead to misassociated trajectories? FIXME FIXME
+        #         safe_buffer = 50
+        #         if config["DEC_INIT_TYPE"] == "toinput_safegoal_nearcrash":
+        #             random_index_precrash = jax.random.randint(_rng_avoid, shape=(config["NUM_ENVS"],), minval=avoid_idx//2, maxval=(3 * avoid_idx)//4) # sample otw to crashing
+        #         elif config["DEC_INIT_TYPE"] == "toinput_safegoal":
+        #             random_index_precrash = jax.random.randint(_rng_avoid, shape=(config["NUM_ENVS"],), minval=0, maxval=avoid_idx) # sample before crashing
+        #             # random_index_precrash = jax.random.randint(_rng_avoid, shape=(config["NUM_ENVS"],), minval=0, maxval=avoid_idx//2) # sample well before crashing
+        #         else:
+        #             raise ValueError(f"Unknown init type: {config["DEC_INIT_TYPE"]}")
 
-            # Init to random point along rollout
-            elif config["DEC_INIT_TYPE"] == "toinput":
-                random_index = jax.random.randint(_rng_avoid, shape=(config["NUM_ENVS"],), minval=0, maxval=config["NUM_STEPS"])
-            else:
-                raise ValueError(f"Unknown init type: {config["DEC_INIT_TYPE"]}")
+        #         random_index = jnp.where(jnp.logical_and(jnp.any(traj_batch_raa1.reach < 0, axis=0), # reached
+        #                                                 #  reach_idx < avoid_idx), # reached before crash
+        #                                                  reach_idx - safe_buffer < avoid_idx), # reached swell before crash
+        #                                 reach_idx, random_index_precrash)
+        #     # FIXME FIXME when terminating unhealthy via brax internals, does not filtering by done lead to misassociated trajectories? FIXME FIXME
 
-            # Multiple random indices
-            if "Hopper" in config["EXP_NAME"] or "Cheetah" in config["EXP_NAME"]  or "Point" in config["EXP_NAME"]:
-                traj_batch_observations_full = traj_batch_raa2.obs 
-                untrans_traj_batch_observations_full = env_raa2.untransform_obs(traj_batch_observations_full)
-                untrans_traj_batch_observations_full = jnp.transpose(untrans_traj_batch_observations_full, axes=(1, 0, 2))
-                untrans_traj_batch_observations = jax.vmap(lambda obs, idx: obs[idx])(untrans_traj_batch_observations_full, random_index)
-                obsv_a2, env_state_a2 = jax.vmap(env_a2.reset_toinput, in_axes=(0, 0, None))(reset_rng_avoid, untrans_traj_batch_observations, env_params_a2) 
+        #     # Init to random point along rollout
+        #     elif config["DEC_INIT_TYPE"] == "toinput":
+        #         random_index = jax.random.randint(_rng_avoid, shape=(config["NUM_ENVS"],), minval=0, maxval=config["NUM_STEPS"])
+        #     else:
+        #         raise ValueError(f"Unknown init type: {config["DEC_INIT_TYPE"]}")
 
-            elif "Humanoid" in config["EXP_NAME"]:
-                # FIXME: humanoid._get_obs() needs an action, meaning should pass reset action too, for now just zeros
-                traj_batch_observations_full = traj_batch_raa2.obs 
-                untrans_traj_batch_observations_full = env_raa2.untransform_obs(traj_batch_observations_full)
-                untrans_traj_batch_observations_full = jnp.transpose(untrans_traj_batch_observations_full, axes=(1, 0, 2))
-                untrans_traj_batch_observations = jax.vmap(lambda obs, idx: obs[idx])(untrans_traj_batch_observations_full, random_index)
-                obsv_a2, env_state_a2 = jax.vmap(env_a2.reset_toinput, in_axes=(0, 0, None))(reset_rng_avoid, untrans_traj_batch_observations, env_params_a2) 
+        #     # Multiple random indices
+        #     if "Hopper" in config["EXP_NAME"] or "Cheetah" in config["EXP_NAME"]  or "Point" in config["EXP_NAME"]:
+        #         traj_batch_observations_full = traj_batch_raa1.obs 
+        #         untrans_traj_batch_observations_full = env_raa1.untransform_obs(traj_batch_observations_full)
+        #         untrans_traj_batch_observations_full = jnp.transpose(untrans_traj_batch_observations_full, axes=(1, 0, 2))
+        #         untrans_traj_batch_observations = jax.vmap(lambda obs, idx: obs[idx])(untrans_traj_batch_observations_full, random_index)
+        #         obsv_a1, env_state_a1 = jax.vmap(env_a1.reset_toinput, in_axes=(0, 0, None))(reset_rng_avoid, untrans_traj_batch_observations, env_params_a1) 
 
-            elif "F16" in config["EXP_NAME"]:
-                traj_batch_states = traj_batch_raa2.info['state']
-                traj_batch_states = jnp.transpose(traj_batch_states, axes=(1, 0, 2))
-                reset_states = jax.vmap(lambda obs, idx: obs[idx])(traj_batch_states, random_index)
-                # obsv_reach_1, env_state_reach_1 = jax.vmap(env_reach_1.reset_env_toinput, in_axes=(0, None))(reset_states, env_params_reach_1) 
-                obsv_a2, env_state_a2 = jax.vmap(env_a2.reset_env_toinput, in_axes=(0, None))(reset_states, env_params_a2) 
+        #     elif "Humanoid" in config["EXP_NAME"]:
+        #         # FIXME: humanoid._get_obs() needs an action, meaning should pass reset action too, for now just zeros
+        #         traj_batch_observations_full = traj_batch_raa1.obs 
+        #         untrans_traj_batch_observations_full = env_raa1.untransform_obs(traj_batch_observations_full)
+        #         untrans_traj_batch_observations_full = jnp.transpose(untrans_traj_batch_observations_full, axes=(1, 0, 2))
+        #         untrans_traj_batch_observations = jax.vmap(lambda obs, idx: obs[idx])(untrans_traj_batch_observations_full, random_index)
+        #         obsv_a1, env_state_a1 = jax.vmap(env_a1.reset_toinput, in_axes=(0, 0, None))(reset_rng_avoid, untrans_traj_batch_observations, env_params_a1) 
+
+        #     elif "F16" in config["EXP_NAME"]:
+        #         traj_batch_states = traj_batch_raa1.info['state']
+        #         traj_batch_states = jnp.transpose(traj_batch_states, axes=(1, 0, 2))
+        #         reset_states = jax.vmap(lambda obs, idx: obs[idx])(traj_batch_states, random_index)
+        #         # obsv_reach_1, env_state_reach_1 = jax.vmap(env_reach_1.reset_env_toinput, in_axes=(0, None))(reset_states, env_params_reach_1) 
+        #         obsv_a1, env_state_a1 = jax.vmap(env_a1.reset_env_toinput, in_axes=(0, None))(reset_states, env_params_a1) 
                 
-        elif config["DEC_INIT_TYPE"] == "standard":
-            obsv_a2, env_state_a2 = jax.vmap(env_a2.reset, in_axes=(0, None))(reset_rng_avoid, env_params_a2) # NOTE: old standard reset
+        # elif config["DEC_INIT_TYPE"] == "standard":
+        #     obsv_a1, env_state_a1 = jax.vmap(env_a1.reset, in_axes=(0, None))(reset_rng_avoid, env_params_a1) # NOTE: old standard reset
 
-        elif config["DEC_INIT_TYPE"] == "fullrandom": # FIXME NIKHIL'S OLD METHOD, not used anymore / not the random we usually mean
-            obsv_a2, env_state_a2 = jax.vmap(env_a2.reset_fullrandom, in_axes=(0, None))(reset_rng_avoid, env_params_a2) # NOTE: old standard reset
+        # elif config["DEC_INIT_TYPE"] == "fullrandom": # FIXME NIKHIL'S OLD METHOD, not used anymore / not the random we usually mean
+        #     obsv_a1, env_state_a1 = jax.vmap(env_a1.reset_fullrandom, in_axes=(0, None))(reset_rng_avoid, env_params_a1) # NOTE: old standard reset
         
-        else:
-            raise ValueError(f"Unknown init type: {config["DEC_INIT_TYPE"]}")
+        # else:
+        #     raise ValueError(f"Unknown init type: {config["DEC_INIT_TYPE"]}")
         
-        rng, _rng = jax.random.split(rng_avoid)
-        runner_state_standard_a2 = (train_state_policy_rraa, train_state_value_rraa, env_state_a2, obsv_a2, _rng)
+        # rng, _rng = jax.random.split(rng_avoid)
+        # runner_state_standard_a1 = (train_state_policy_rraa, train_state_value_rraa, env_state_a1, obsv_a1, _rng)
 
-        # SPECIAL DECOMPOSED STATES - A2
-        decomposed_state_a2 = (train_state_policy_a2, train_state_value_a2)
-        force_avoid = True 
-        policy_controls_avoid = (force_combined, force_avoid)
-        runner_state_a2 = (*runner_state_standard_a2, decomposed_state_a2, policy_controls_avoid)
+        # # SPECIAL DECOMPOSED STATES - A1
+        # decomposed_state_a1 = (train_state_policy_a1, train_state_value_a1)
+        # force_avoid = True 
+        # policy_controls_avoid = (force_combined, force_avoid)
+        # runner_state_a1 = (*runner_state_standard_a1, decomposed_state_a1, policy_controls_avoid)
 
-        # COLLECT TRAJECTORY DECOMPOSED - A2
-        runner_state_a2, traj_batch_a2 = jax.lax.scan(
-            env_step_a2, runner_state_a2, None, config["NUM_STEPS"]
-        )
+        # # COLLECT TRAJECTORY DECOMPOSED - A1
+        # runner_state_a1, traj_batch_a1 = jax.lax.scan(
+        #     env_step_a1, runner_state_a1, None, config["NUM_STEPS"]
+        # )
+
+        # ####################################################################################################################
+        # # ROLLOUT A2
+
+        # # RESET ENV - (COUPLED OR STANDARD INIT)
+        # rng_avoid, _rng_avoid = jax.random.split(rng_og)
+        # reset_rng_avoid = jax.random.split(_rng_avoid, config["NUM_ENVS"])
+        
+        # if "toinput" in config["DEC_INIT_TYPE"]: 
+        #     # Select observations from standard rollout to use for initial avoid state 
+
+        #     # Init to first reached state, if none then random
+        #     if config["DEC_INIT_TYPE"] == "toinput_goal":
+        #         random_index_pre = jax.random.randint(_rng_avoid, shape=(config["NUM_ENVS"],), minval=0, maxval=config["NUM_STEPS"])
+        #         reach_idx = (traj_batch_raa2.reach < 0).argmax(axis=0)
+        #         random_index = jnp.where(jnp.any((traj_batch_raa2.reach < 0), axis=0), reach_idx, random_index_pre)
+
+        #     # Init to first reached state if avoided, if none then random before crash
+        #     elif "safegoal" in config["DEC_INIT_TYPE"]:
+        #         avoid_idx_pre = (traj_batch_raa2.avoid > 0).argmax(axis=0)
+        #         avoid_idx = jnp.where(jnp.any((traj_batch_raa2.avoid > 0) == 1, axis=0), avoid_idx_pre, config["NUM_STEPS"])
+
+        #         reach_idx_pre = (traj_batch_raa2.reach < 0).argmax(axis=0)
+        #         reach_idx = jnp.where(jnp.any((traj_batch_raa2.reach < 0) == 1, axis=0), reach_idx_pre, config["NUM_STEPS"])
+
+        #         safe_buffer = 50
+        #         if config["DEC_INIT_TYPE"] == "toinput_safegoal_nearcrash":
+        #             random_index_precrash = jax.random.randint(_rng_avoid, shape=(config["NUM_ENVS"],), minval=avoid_idx//2, maxval=(3 * avoid_idx)//4) # sample otw to crashing
+        #         elif config["DEC_INIT_TYPE"] == "toinput_safegoal":
+        #             random_index_precrash = jax.random.randint(_rng_avoid, shape=(config["NUM_ENVS"],), minval=0, maxval=avoid_idx) # sample before crashing
+        #             # random_index_precrash = jax.random.randint(_rng_avoid, shape=(config["NUM_ENVS"],), minval=0, maxval=avoid_idx//2) # sample well before crashing
+        #         else:
+        #             raise ValueError(f"Unknown init type: {config["DEC_INIT_TYPE"]}")
+
+        #         random_index = jnp.where(jnp.logical_and(jnp.any(traj_batch_raa2.reach2 < 0, axis=0), # reached
+        #                                                 #  reach_idx < avoid_idx), # reached before crash
+        #                                                  reach_idx - safe_buffer < avoid_idx), # reached swell before crash
+        #                                 reach_idx, random_index_precrash)
+        #     # FIXME FIXME when terminating unhealthy via brax internals, does not filtering by done lead to misassociated trajectories? FIXME FIXME
+
+        #     # Init to random point along rollout
+        #     elif config["DEC_INIT_TYPE"] == "toinput":
+        #         random_index = jax.random.randint(_rng_avoid, shape=(config["NUM_ENVS"],), minval=0, maxval=config["NUM_STEPS"])
+        #     else:
+        #         raise ValueError(f"Unknown init type: {config["DEC_INIT_TYPE"]}")
+
+        #     # Multiple random indices
+        #     if "Hopper" in config["EXP_NAME"] or "Cheetah" in config["EXP_NAME"]  or "Point" in config["EXP_NAME"]:
+        #         traj_batch_observations_full = traj_batch_raa2.obs 
+        #         untrans_traj_batch_observations_full = env_raa2.untransform_obs(traj_batch_observations_full)
+        #         untrans_traj_batch_observations_full = jnp.transpose(untrans_traj_batch_observations_full, axes=(1, 0, 2))
+        #         untrans_traj_batch_observations = jax.vmap(lambda obs, idx: obs[idx])(untrans_traj_batch_observations_full, random_index)
+        #         obsv_a2, env_state_a2 = jax.vmap(env_a2.reset_toinput, in_axes=(0, 0, None))(reset_rng_avoid, untrans_traj_batch_observations, env_params_a2) 
+
+        #     elif "Humanoid" in config["EXP_NAME"]:
+        #         # FIXME: humanoid._get_obs() needs an action, meaning should pass reset action too, for now just zeros
+        #         traj_batch_observations_full = traj_batch_raa2.obs 
+        #         untrans_traj_batch_observations_full = env_raa2.untransform_obs(traj_batch_observations_full)
+        #         untrans_traj_batch_observations_full = jnp.transpose(untrans_traj_batch_observations_full, axes=(1, 0, 2))
+        #         untrans_traj_batch_observations = jax.vmap(lambda obs, idx: obs[idx])(untrans_traj_batch_observations_full, random_index)
+        #         obsv_a2, env_state_a2 = jax.vmap(env_a2.reset_toinput, in_axes=(0, 0, None))(reset_rng_avoid, untrans_traj_batch_observations, env_params_a2) 
+
+        #     elif "F16" in config["EXP_NAME"]:
+        #         traj_batch_states = traj_batch_raa2.info['state']
+        #         traj_batch_states = jnp.transpose(traj_batch_states, axes=(1, 0, 2))
+        #         reset_states = jax.vmap(lambda obs, idx: obs[idx])(traj_batch_states, random_index)
+        #         # obsv_reach_1, env_state_reach_1 = jax.vmap(env_reach_1.reset_env_toinput, in_axes=(0, None))(reset_states, env_params_reach_1) 
+        #         obsv_a2, env_state_a2 = jax.vmap(env_a2.reset_env_toinput, in_axes=(0, None))(reset_states, env_params_a2) 
+                
+        # elif config["DEC_INIT_TYPE"] == "standard":
+        #     obsv_a2, env_state_a2 = jax.vmap(env_a2.reset, in_axes=(0, None))(reset_rng_avoid, env_params_a2) # NOTE: old standard reset
+
+        # elif config["DEC_INIT_TYPE"] == "fullrandom": # FIXME NIKHIL'S OLD METHOD, not used anymore / not the random we usually mean
+        #     obsv_a2, env_state_a2 = jax.vmap(env_a2.reset_fullrandom, in_axes=(0, None))(reset_rng_avoid, env_params_a2) # NOTE: old standard reset
+        
+        # else:
+        #     raise ValueError(f"Unknown init type: {config["DEC_INIT_TYPE"]}")
+        
+        # rng, _rng = jax.random.split(rng_avoid)
+        # runner_state_standard_a2 = (train_state_policy_rraa, train_state_value_rraa, env_state_a2, obsv_a2, _rng)
+
+        # # SPECIAL DECOMPOSED STATES - A2
+        # decomposed_state_a2 = (train_state_policy_a2, train_state_value_a2)
+        # force_avoid = True 
+        # policy_controls_avoid = (force_combined, force_avoid)
+        # runner_state_a2 = (*runner_state_standard_a2, decomposed_state_a2, policy_controls_avoid)
+
+        # # COLLECT TRAJECTORY DECOMPOSED - A2
+        # runner_state_a2, traj_batch_a2 = jax.lax.scan(
+        #     env_step_a2, runner_state_a2, None, config["NUM_STEPS"]
+        # )
 
         ####################################################################################################################
         # UPDATE RRAA
@@ -449,11 +568,11 @@ def train(envs, env_paramss, config, rng):
         V_raa1_append = jnp.concatenate((traj_batch_rraa.value_raa1, jnp.expand_dims(last_val_raa1, axis=1).T))
         r2_append = jnp.concatenate((traj_batch_rraa.reach2, jnp.expand_dims(env_state_rraa.reach2, axis=1).T))
         V_raa2_append = jnp.concatenate((traj_batch_rraa.value_raa2, jnp.expand_dims(last_val_raa2, axis=1).T))
-        a1_append = jnp.concatenate((traj_batch_rraa.avoid1, jnp.expand_dims(env_state_rraa.avoid1, axis=1).T))
-        # V_a1_append = jnp.concatenate((traj_batch_rraa.value_a1, jnp.expand_dims(last_val_a1, axis=1).T))
-        a2_append = jnp.concatenate((traj_batch_rraa.avoid2, jnp.expand_dims(env_state_rraa.avoid2, axis=1).T))
-        # V_a2_append = jnp.concatenate((traj_batch_rraa.value_a2, jnp.expand_dims(last_val_a2, axis=1).T))
-        a12_append = jnp.maximum(a1_append, a2_append)
+
+        a_append = jnp.concatenate((traj_batch_rraa.avoid, jnp.expand_dims(env_state_rraa.avoid, axis=1).T))
+        # a1_append = jnp.concatenate((traj_batch_rraa.avoid1, jnp.expand_dims(env_state_rraa.avoid1, axis=1).T))
+        # a2_append = jnp.concatenate((traj_batch_rraa.avoid2, jnp.expand_dims(env_state_rraa.avoid2, axis=1).T))
+        # a12_append = jnp.maximum(a1_append, a2_append)
 
         # SPECIAL BRT TARGET FOR BRRT PROBLEM
         # l_tile_append = jnp.minimum(jnp.maximum(reach1_append, V_reach2_append), jnp.maximum(reach2_append, V_reach1_append))
@@ -469,7 +588,7 @@ def train(envs, env_paramss, config, rng):
         advantages_V_rraa, targets_V_rraa = calculate_gae_reachavoid4(ent_gamma[1], 
                                                             config["GAE_LAMBDA"], 
                                                             T_ls=l_tilde_rraa, 
-                                                            T_gs=a12_append,
+                                                            T_gs=a_append,
                                                             T_Vs=V_rraa_append, 
                                                             done=done_rraa)
 
@@ -480,13 +599,12 @@ def train(envs, env_paramss, config, rng):
                         traj_batch_rraa, advantages_V_rraa, targets_V_rraa, advantages_V_rraa, composed_policy_mask, rng)
 
         xs = jnp.ones(config["UPDATE_EPOCHS"]) * ent_gamma[0]
-        update_state, loss_info = jax.lax.scan(
-            update_epoch, update_state, xs, config["UPDATE_EPOCHS"]
+        update_state_rraa, loss_info_rraa = jax.lax.scan(
+            update_epoch_rraa, update_state_rraa, xs, config["UPDATE_EPOCHS"]
         )
-        train_state_policy_rraa = update_state[0]
-        train_state_value_rraa = update_state[1]
-        rng = update_state[-1]
-
+        train_state_policy_rraa = update_state_rraa[0]
+        train_state_value_rraa = update_state_rraa[1]
+        rng = update_state_rraa[-1]
         ####################################################################################################################
         # UPDATE RAA1
 
@@ -494,12 +612,13 @@ def train(envs, env_paramss, config, rng):
         (_, _, env_state_raa1, last_obs_raa1, rng, _, _) = runner_state_raa1
 
         last_val_raa1 = train_state_value_raa1.apply_fn(train_state_value_raa1.params, last_obs_raa1)
-        last_val_a1 = train_state_value_a1.apply_fn(train_state_value_a1.params, last_obs_raa1)
+        last_val_a1 = train_state_value_a.apply_fn(train_state_value_a.params, last_obs_raa1)
+        # last_val_a1 = train_state_value_a1.apply_fn(train_state_value_a1.params, last_obs_raa1)
 
         r1_append = jnp.concatenate((traj_batch_raa1.reach1, jnp.expand_dims(env_state_raa1.reach1, axis=1).T))
         V_raa1_append = jnp.concatenate((traj_batch_raa1.value_raa1, jnp.expand_dims(last_val_raa1, axis=1).T))
-        a1_append = jnp.concatenate((traj_batch_raa1.avoid1, jnp.expand_dims(env_state_raa1.avoid1, axis=1).T))
-        V_a1_append = jnp.concatenate((traj_batch_raa1.value_a1, jnp.expand_dims(last_val_a1, axis=1).T))
+        a1_append = jnp.concatenate((traj_batch_raa1.avoid, jnp.expand_dims(env_state_raa1.avoid, axis=1).T))
+        V_a1_append = jnp.concatenate((traj_batch_raa1.value_a, jnp.expand_dims(last_val_a1, axis=1).T))
 
         l_tilde_raa1 = jnp.maximum(r1_append, V_a1_append)
 
@@ -542,12 +661,13 @@ def train(envs, env_paramss, config, rng):
         (_, _, env_state_raa2, last_obs_raa2, rng, _, _) = runner_state_raa2
 
         last_val_raa2 = train_state_value_raa2.apply_fn(train_state_value_raa2.params, last_obs_raa2)
-        last_val_a2 = train_state_value_a2.apply_fn(train_state_value_a2.params, last_obs_raa2)
+        last_val_a2 = train_state_value_a.apply_fn(train_state_value_a.params, last_obs_raa2)
+        # last_val_a2 = train_state_value_a2.apply_fn(train_state_value_a2.params, last_obs_raa2)
 
-        r2_append = jnp.concatenate((traj_batch_raa2.reach2, jnp.expand_dims(env_state_raa2.reach22, axis=1).T))
+        r2_append = jnp.concatenate((traj_batch_raa2.reach2, jnp.expand_dims(env_state_raa2.reach2, axis=1).T))
         V_raa2_append = jnp.concatenate((traj_batch_raa2.value_raa2, jnp.expand_dims(last_val_raa2, axis=1).T))
-        a2_append = jnp.concatenate((traj_batch_raa2.avoid2, jnp.expand_dims(env_state_raa2.avoid22, axis=1).T))
-        V_a2_append = jnp.concatenate((traj_batch_raa2.value_a2, jnp.expand_dims(last_val_a2, axis=1).T))
+        a2_append = jnp.concatenate((traj_batch_raa2.avoid, jnp.expand_dims(env_state_raa2.avoid, axis=1).T))
+        V_a2_append = jnp.concatenate((traj_batch_raa2.value_a, jnp.expand_dims(last_val_a2, axis=1).T))
 
         l_tilde_raa2 = jnp.maximum(r2_append, V_a2_append)
 
@@ -579,78 +699,114 @@ def train(envs, env_paramss, config, rng):
         rng = update_state_raa2[-1]
 
         ####################################################################################################################
-        # UPDATE A1
+        # UPDATE A
 
         # CALCULATE COMPOSED ADVANTAGE - A1
-        (_, _, env_state_a1, last_obs_a1, rng, _, _) = runner_state_a1
+        (_, _, env_state_a, last_obs_a, rng, _, _) = runner_state_a
 
-        last_val_a1 = train_state_value_a1.apply_fn(train_state_value_a1.params, last_obs_a1)
+        last_val_a = train_state_value_a.apply_fn(train_state_value_a.params, last_obs_a)
 
-        a1_append = jnp.concatenate((traj_batch_a1.avoid, jnp.expand_dims(env_state_a1.avoid, axis=1).T)) # avoid function
-        V_a1_append = jnp.concatenate((traj_batch_a1.value, jnp.expand_dims(last_val_a1, axis=1).T)) # avoid value function
+        a_append = jnp.concatenate((traj_batch_a.avoid, jnp.expand_dims(env_state_a.avoid, axis=1).T)) # avoid function
+        V_a_append = jnp.concatenate((traj_batch_a.value, jnp.expand_dims(last_val_a, axis=1).T)) # avoid value function
 
-        indexs, done_a1 = calculate_indexs3_rr(ent_gamma[1], traj_batch_a1.reward, a1_append,
-                                               jnp.expand_dims(last_val_a1, axis=1).T) # NOTE are we totally sure this works, I dont really get og usage,
-        done_a1 = done_a1[:-1, :]
-
+        indexs, done_a = calculate_indexs3_rr(ent_gamma[1], traj_batch_a.reward, a_append,
+                                               jnp.expand_dims(last_val_a, axis=1).T) # NOTE are we totally sure this works, I dont really get og usage,
+        done_a = done_a[:-1, :]
         # # Temp override: done is only the last step
-        # new_done_a1 = jnp.zeros_like(done_a1)
-        # new_done_a1 = new_done_a1.at[-1, :].set(1.0) # TODO: check where this last point actually is
-        # done_a1 = new_done_a1
+        # new_done_a = jnp.zeros_like(done_a)
+        # new_done_a = new_done_a.at[-1, :].set(1.0) # TODO: check where this last point actually is
+        # done_a = new_done_a
 
-        advantages_V_a1, targets_V_a1 = calculate_gae_avoid4(ent_gamma[1], config["GAE_LAMBDA"],
-                                                            T_hs=a1_append,
-                                                            T_Vhs=V_a1_append,
-                                                            done=done_a1)
+        advantages_V_a, targets_V_a = calculate_gae_avoid4(ent_gamma[1], config["GAE_LAMBDA"],
+                                                            T_hs=a_append,
+                                                            T_Vhs=V_a_append,
+                                                            done=done_a)
         
         # UPDATE DECOMPOSED NETWORK - AVOID
-        dummy_mask = jnp.ones(traj_batch_a1.avoid.shape)
-        update_state_a1 = (train_state_policy_a1, train_state_value_a1, 
-                           traj_batch_a1, advantages_V_a1, targets_V_a1, advantages_V_a1, dummy_mask, rng)
+        dummy_mask = jnp.ones(traj_batch_a.avoid.shape)
+        update_state_a = (train_state_policy_a, train_state_value_a, 
+                           traj_batch_a, advantages_V_a, targets_V_a, advantages_V_a, dummy_mask, rng)
         xs = jnp.ones(config["UPDATE_EPOCHS"]) * ent_gamma[0]
-        update_state_a1, loss_info_a1 = jax.lax.scan(
-            update_epoch_a1, update_state_a1, xs, config["UPDATE_EPOCHS"]
+        update_state_a, loss_info_a = jax.lax.scan(
+            update_epoch_a, update_state_a, xs, config["UPDATE_EPOCHS"]
         )
-        train_state_policy_a1 = update_state_a1[0]
-        train_state_value_a1 = update_state_a1[1]
-        rng = update_state_a1[-1]
+        train_state_policy_a = update_state_a[0]
+        train_state_value_a = update_state_a[1]
+        rng = update_state_a[-1]
 
-        ####################################################################################################################
-        # UPDATE A2
+        # ####################################################################################################################
+        # # UPDATE A1
 
-        # CALCULATE COMPOSED ADVANTAGE - A2
-        (_, _, env_state_a2, last_obs_a2, rng, _, _) = runner_state_a2
+        # # CALCULATE COMPOSED ADVANTAGE - A1
+        # (_, _, env_state_a1, last_obs_a1, rng, _, _) = runner_state_a1
 
-        last_val_a2 = train_state_value_a2.apply_fn(train_state_value_a2.params, last_obs_a2)
+        # last_val_a1 = train_state_value_a1.apply_fn(train_state_value_a1.params, last_obs_a1)
 
-        a2_append = jnp.concatenate((traj_batch_a2.avoid, jnp.expand_dims(env_state_a2.avoid, axis=1).T)) # avoid function
-        V_a2_append = jnp.concatenate((traj_batch_a2.value, jnp.expand_dims(last_val_a2, axis=1).T)) # avoid value function
+        # a1_append = jnp.concatenate((traj_batch_a1.avoid, jnp.expand_dims(env_state_a1.avoid, axis=1).T)) # avoid function
+        # V_a1_append = jnp.concatenate((traj_batch_a1.value, jnp.expand_dims(last_val_a1, axis=1).T)) # avoid value function
 
-        indexs, done_a2 = calculate_indexs3_rr(ent_gamma[1], traj_batch_a2.reward, a2_append,
-                                               jnp.expand_dims(last_val_a2, axis=1).T) # NOTE are we totally sure this works, I dont really get og usage,
-        done_a2 = done_a2[:-1, :]
+        # indexs, done_a1 = calculate_indexs3_rr(ent_gamma[1], traj_batch_a1.reward, a1_append,
+        #                                        jnp.expand_dims(last_val_a1, axis=1).T) # NOTE are we totally sure this works, I dont really get og usage,
+        # done_a1 = done_a1[:-1, :]
 
-        # # Temp override: done is only the last step
-        # new_done_a2 = jnp.zeros_like(done_a2)
-        # new_done_a2 = new_done_a2.at[-1, :].set(1.0) # TODO: check where this last point actually is
-        # done_a2 = new_done_a2
+        # # # Temp override: done is only the last step
+        # # new_done_a1 = jnp.zeros_like(done_a1)
+        # # new_done_a1 = new_done_a1.at[-1, :].set(1.0) # TODO: check where this last point actually is
+        # # done_a1 = new_done_a1
 
-        advantages_V_a2, targets_V_a2 = calculate_gae_avoid4(ent_gamma[1], config["GAE_LAMBDA"],
-                                                            T_hs=a2_append,
-                                                            T_Vhs=V_a2_append,
-                                                            done=done_a2)
+        # advantages_V_a1, targets_V_a1 = calculate_gae_avoid4(ent_gamma[1], config["GAE_LAMBDA"],
+        #                                                     T_hs=a1_append,
+        #                                                     T_Vhs=V_a1_append,
+        #                                                     done=done_a1)
+        
+        # # UPDATE DECOMPOSED NETWORK - AVOID
+        # dummy_mask = jnp.ones(traj_batch_a1.avoid.shape)
+        # update_state_a1 = (train_state_policy_a1, train_state_value_a1, 
+        #                    traj_batch_a1, advantages_V_a1, targets_V_a1, advantages_V_a1, dummy_mask, rng)
+        # xs = jnp.ones(config["UPDATE_EPOCHS"]) * ent_gamma[0]
+        # update_state_a1, loss_info_a1 = jax.lax.scan(
+        #     update_epoch_a1, update_state_a1, xs, config["UPDATE_EPOCHS"]
+        # )
+        # train_state_policy_a1 = update_state_a1[0]
+        # train_state_value_a1 = update_state_a1[1]
+        # rng = update_state_a1[-1]
 
-        # UPDATE DECOMPOSED NETWORK - AVOID
-        dummy_mask = jnp.ones(traj_batch_a2.avoid.shape)
-        update_state_a2 = (train_state_policy_a2, train_state_value_a2,
-                           traj_batch_a2, advantages_V_a2, targets_V_a2, advantages_V_a2, dummy_mask, rng)
-        xs = jnp.ones(config["UPDATE_EPOCHS"]) * ent_gamma[0]
-        update_state_a2, loss_info_a2 = jax.lax.scan(
-            update_epoch_a2, update_state_a2, xs, config["UPDATE_EPOCHS"]
-        )
-        train_state_policy_a2 = update_state_a2[0]
-        train_state_value_a2 = update_state_a2[1]
-        rng = update_state_a2[-1]
+        # ####################################################################################################################
+        # # UPDATE A2
+
+        # # CALCULATE COMPOSED ADVANTAGE - A2
+        # (_, _, env_state_a2, last_obs_a2, rng, _, _) = runner_state_a2
+
+        # last_val_a2 = train_state_value_a2.apply_fn(train_state_value_a2.params, last_obs_a2)
+
+        # a2_append = jnp.concatenate((traj_batch_a2.avoid, jnp.expand_dims(env_state_a2.avoid, axis=1).T)) # avoid function
+        # V_a2_append = jnp.concatenate((traj_batch_a2.value, jnp.expand_dims(last_val_a2, axis=1).T)) # avoid value function
+
+        # indexs, done_a2 = calculate_indexs3_rr(ent_gamma[1], traj_batch_a2.reward, a2_append,
+        #                                        jnp.expand_dims(last_val_a2, axis=1).T) # NOTE are we totally sure this works, I dont really get og usage,
+        # done_a2 = done_a2[:-1, :]
+
+        # # # Temp override: done is only the last step
+        # # new_done_a2 = jnp.zeros_like(done_a2)
+        # # new_done_a2 = new_done_a2.at[-1, :].set(1.0) # TODO: check where this last point actually is
+        # # done_a2 = new_done_a2
+
+        # advantages_V_a2, targets_V_a2 = calculate_gae_avoid4(ent_gamma[1], config["GAE_LAMBDA"],
+        #                                                     T_hs=a2_append,
+        #                                                     T_Vhs=V_a2_append,
+        #                                                     done=done_a2)
+
+        # # UPDATE DECOMPOSED NETWORK - AVOID
+        # dummy_mask = jnp.ones(traj_batch_a2.avoid.shape)
+        # update_state_a2 = (train_state_policy_a2, train_state_value_a2,
+        #                    traj_batch_a2, advantages_V_a2, targets_V_a2, advantages_V_a2, dummy_mask, rng)
+        # xs = jnp.ones(config["UPDATE_EPOCHS"]) * ent_gamma[0]
+        # update_state_a2, loss_info_a2 = jax.lax.scan(
+        #     update_epoch_a2, update_state_a2, xs, config["UPDATE_EPOCHS"]
+        # )
+        # train_state_policy_a2 = update_state_a2[0]
+        # train_state_value_a2 = update_state_a2[1]
+        # rng = update_state_a2[-1]
 
         ####################################################################################################################
         # Output
@@ -658,25 +814,28 @@ def train(envs, env_paramss, config, rng):
         train_state_total_out = (train_state_policy_rraa, train_state_value_rraa,
             train_state_policy_raa1, train_state_value_raa1,
             train_state_policy_raa2, train_state_value_raa2, 
-            train_state_policy_a1, train_state_value_a1,
-            train_state_policy_a2, train_state_value_a2, 
+            train_state_policy_a, train_state_value_a,
+            # train_state_policy_a1, train_state_value_a1,
+            # train_state_policy_a2, train_state_value_a2, 
             rng, timestep)
         
         return (train_state_total_out,
                 {"batch_info_rraa": (traj_batch_rraa, targets_V_rraa, done_rraa), "loss_info_rraa": loss_info_rraa,
                  "batch_info_raa1": (traj_batch_raa1, targets_V_raa1, done_raa1), "loss_info_raa1": loss_info_raa1,
                  "batch_info_raa2": (traj_batch_raa2, targets_V_raa2, done_raa2), "loss_info_raa2": loss_info_raa2,
-                 "batch_info_a1": (traj_batch_a1, targets_V_a1, done_a1), "loss_info_a1": loss_info_a1,
-                 "batch_info_a2": (traj_batch_a2, targets_V_a2, done_a2), "loss_info_a2": loss_info_a2,
+                 "batch_info_a": (traj_batch_a, targets_V_a, done_a), "loss_info_a": loss_info_a,
+                #  "batch_info_a1": (traj_batch_a1, targets_V_a1, done_a1), "loss_info_a1": loss_info_a1,
+                #  "batch_info_a2": (traj_batch_a2, targets_V_a2, done_a2), "loss_info_a2": loss_info_a2,
                  "reach_gamma": ent_gamma[1], "entropy_weight": ent_gamma[0]})
     
     # INIT JAX WRAPPERS
-    update_epoch = partial(_ppo_vanilla_update, config)
+    update_epoch_rraa = partial(_ppo_vanilla_update, config)
     env_step_rraa = partial(_env_step_rraa, env_rraa, env_params_rraa)
     env_step_raa1 = partial(_env_step_raa, env_raa1, env_params_raa1)
     env_step_raa2 = partial(_env_step_raa, env_raa2, env_params_raa2)
-    env_step_a1 = partial(_env_step_a, env_a1, env_params_a1)
-    env_step_a2 = partial(_env_step_a, env_a2, env_params_a2)
+    env_step_a = partial(_env_step_a, env_a, env_params_a)
+    # env_step_a1 = partial(_env_step_a, env_a1, env_params_a1)
+    # env_step_a2 = partial(_env_step_a, env_a2, env_params_a2)
     training = jax.jit(_train)
 
     tx = optimizer(config)
@@ -693,12 +852,15 @@ def train(envs, env_paramss, config, rng):
         policy_network_raa2 = MoGPolicy_Network(
             env_raa2.action_space(env_params_raa2).shape[0], activation=config["ACTIVATION"]
         )
-        policy_network_a1 = Policy_Network( # should these also be MoG?
-            env_a1.action_space(env_params_a1).shape[0], activation=config["ACTIVATION"]
+        policy_network_a = Policy_Network( # should these also be MoG?
+            env_a.action_space(env_params_a).shape[0], activation=config["ACTIVATION"]
         )
-        policy_network_a2 = Policy_Network(
-            env_a2.action_space(env_params_a2).shape[0], activation=config["ACTIVATION"]
-        )
+        # policy_network_a1 = Policy_Network( # should these also be MoG?
+        #     env_a1.action_space(env_params_a1).shape[0], activation=config["ACTIVATION"]
+        # )
+        # policy_network_a2 = Policy_Network(
+        #     env_a2.action_space(env_params_a2).shape[0], activation=config["ACTIVATION"]
+        # )
     else:
         policy_network_rraa = Policy_Network_Discrete(
             env_rraa.action_space(env_params_rraa).n, activation=config["ACTIVATION"]
@@ -709,12 +871,15 @@ def train(envs, env_paramss, config, rng):
         policy_network_raa2 = Policy_Network(
             env_raa2.action_space(env_params_raa2).n, activation=config["ACTIVATION"]
         )
-        policy_network_a1 = Policy_Network(
-            env_a1.action_space(env_params_a1).n, activation=config["ACTIVATION"]
+        policy_network_a = Policy_Network(
+            env_a.action_space(env_params_a).n, activation=config["ACTIVATION"]
         )
-        policy_network_a2 = Policy_Network(
-            env_a2.action_space(env_params_a2).n, activation=config["ACTIVATION"]
-        )
+        # policy_network_a1 = Policy_Network(
+        #     env_a1.action_space(env_params_a1).n, activation=config["ACTIVATION"]
+        # )
+        # policy_network_a2 = Policy_Network(
+        #     env_a2.action_space(env_params_a2).n, activation=config["ACTIVATION"]
+        # )
 
     # INIT RRAA Actor and Critic
     rng, _rng = jax.random.split(rng)
@@ -797,54 +962,78 @@ def train(envs, env_paramss, config, rng):
     # if not config["LOAD_DECOMPOSED"]:
     
     # DECOMPOSED POLICIES
-    init_x = jnp.zeros(env_a1.observation_space(env_params_a1).shape)
-    network_params_policy_a1 = policy_network_a1.init(_rng, init_x)
-    train_state_policy_a1 = TrainState.create(
-        apply_fn=policy_network_a1.apply,
-        params=network_params_policy_a1,
+    init_x = jnp.zeros(env_a.observation_space(env_params_a).shape)
+    network_params_policy_a = policy_network_a.init(_rng, init_x)
+    train_state_policy_a = TrainState.create(
+        apply_fn=policy_network_a.apply,
+        params=network_params_policy_a,
         tx=tx,
-        mean=jnp.zeros(env_a1.observation_space(env_params_a1).shape),
-        variance=jnp.zeros(env_a1.observation_space(env_params_a1).shape),
+        mean=jnp.zeros(env_a.observation_space(env_params_a).shape),
+        variance=jnp.zeros(env_a.observation_space(env_params_a).shape),
         count=1e-4,
     )
 
-    init_x = jnp.zeros(env_a2.observation_space(env_params_a2).shape)
-    network_params_policy_a2 = policy_network_a2.init(_rng, init_x)
-    train_state_policy_a2 = TrainState.create(
-        apply_fn=policy_network_a2.apply,
-        params=network_params_policy_a2,
-        tx=tx,
-        mean=jnp.zeros(env_a2.observation_space(env_params_a2).shape),
-        variance=jnp.zeros(env_a2.observation_space(env_params_a2).shape),
-        count=1e-4,
-    )
+    # init_x = jnp.zeros(env_a1.observation_space(env_params_a1).shape)
+    # network_params_policy_a1 = policy_network_a1.init(_rng, init_x)
+    # train_state_policy_a1 = TrainState.create(
+    #     apply_fn=policy_network_a1.apply,
+    #     params=network_params_policy_a1,
+    #     tx=tx,
+    #     mean=jnp.zeros(env_a1.observation_space(env_params_a1).shape),
+    #     variance=jnp.zeros(env_a1.observation_space(env_params_a1).shape),
+    #     count=1e-4,
+    # )
+
+    # init_x = jnp.zeros(env_a2.observation_space(env_params_a2).shape)
+    # network_params_policy_a2 = policy_network_a2.init(_rng, init_x)
+    # train_state_policy_a2 = TrainState.create(
+    #     apply_fn=policy_network_a2.apply,
+    #     params=network_params_policy_a2,
+    #     tx=tx,
+    #     mean=jnp.zeros(env_a2.observation_space(env_params_a2).shape),
+    #     variance=jnp.zeros(env_a2.observation_space(env_params_a2).shape),
+    #     count=1e-4,
+    # )
 
     # DECOMPOSED VALUE CRITICS
-    value_network_a1 = Value_Network(activation=config["ACTIVATION"])
+    value_network_a = Value_Network(activation=config["ACTIVATION"])
     rng, _rng = jax.random.split(rng)
-    init_x = jnp.zeros(env_a1.observation_space(env_params_a1).shape)
-    network_params_a1 = value_network_a1.init(_rng, init_x)
-    train_state_value_a1 = TrainState.create(
-        apply_fn=value_network_a1.apply,
-        params=network_params_a1,
+    init_x = jnp.zeros(env_a.observation_space(env_params_a).shape)
+    network_params_a = value_network_a.init(_rng, init_x)
+    train_state_value_a = TrainState.create(
+        apply_fn=value_network_a.apply,
+        params=network_params_a,
         tx=tx,
-        mean=jnp.zeros(env_a1.observation_space(env_params_a1).shape),
-        variance=jnp.zeros(env_a1.observation_space(env_params_a1).shape),
+        mean=jnp.zeros(env_a.observation_space(env_params_a).shape),
+        variance=jnp.zeros(env_a.observation_space(env_params_a).shape),
         count=1e-4,
     )
 
-    value_network_a2 = Value_Network(activation=config["ACTIVATION"])
-    rng, _rng = jax.random.split(rng)
-    init_x = jnp.zeros(env_a2.observation_space(env_params_a2).shape)
-    network_params_a2 = value_network_a2.init(_rng, init_x)
-    train_state_value_a2 = TrainState.create(
-        apply_fn=value_network_a2.apply,
-        params=network_params_a2,
-        tx=tx,
-        mean=jnp.zeros(env_a2.observation_space(env_params_a2).shape),
-        variance=jnp.zeros(env_a2.observation_space(env_params_a2).shape),
-        count=1e-4,
-    )
+    # value_network_a1 = Value_Network(activation=config["ACTIVATION"])
+    # rng, _rng = jax.random.split(rng)
+    # init_x = jnp.zeros(env_a1.observation_space(env_params_a1).shape)
+    # network_params_a1 = value_network_a1.init(_rng, init_x)
+    # train_state_value_a1 = TrainState.create(
+    #     apply_fn=value_network_a1.apply,
+    #     params=network_params_a1,
+    #     tx=tx,
+    #     mean=jnp.zeros(env_a1.observation_space(env_params_a1).shape),
+    #     variance=jnp.zeros(env_a1.observation_space(env_params_a1).shape),
+    #     count=1e-4,
+    # )
+
+    # value_network_a2 = Value_Network(activation=config["ACTIVATION"])
+    # rng, _rng = jax.random.split(rng)
+    # init_x = jnp.zeros(env_a2.observation_space(env_params_a2).shape)
+    # network_params_a2 = value_network_a2.init(_rng, init_x)
+    # train_state_value_a2 = TrainState.create(
+    #     apply_fn=value_network_a2.apply,
+    #     params=network_params_a2,
+    #     tx=tx,
+    #     mean=jnp.zeros(env_a2.observation_space(env_params_a2).shape),
+    #     variance=jnp.zeros(env_a2.observation_space(env_params_a2).shape),
+    #     count=1e-4,
+    # )
 
     # # LOAD DECOMPOSED ACTOR AND CRITICS
     # else:
@@ -891,8 +1080,9 @@ def train(envs, env_paramss, config, rng):
     if not config["LOAD_DECOMPOSED"]:
         update_epoch_raa1 = partial(_ppo_vanilla_update, config)
         update_epoch_raa2 = partial(_ppo_vanilla_update, config)
-        update_epoch_a1 = partial(_ppo_vanilla_update, config)
-        update_epoch_a2 = partial(_ppo_vanilla_update, config)
+        update_epoch_a = partial(_ppo_vanilla_update, config)
+        # update_epoch_a1 = partial(_ppo_vanilla_update, config)
+        # update_epoch_a2 = partial(_ppo_vanilla_update, config)
 
     # IF LOADING PRESOLVED DECOMPOSED, NO TRAINING
     else:
@@ -905,8 +1095,9 @@ def train(envs, env_paramss, config, rng):
             return update_state, dummy_loss
         update_epoch_raa1 = partial(_no_update, config)
         update_epoch_raa2 = partial(_no_update, config)
-        update_epoch_a1 = partial(_no_update, config)
-        update_epoch_a2 = partial(_no_update, config)
+        update_epoch_a = partial(_no_update, config)
+        # update_epoch_a1 = partial(_no_update, config)
+        # update_epoch_a2 = partial(_no_update, config)
 
     total_timesteps = config["NUM_UPDATES"] // config["STEP_SCAN"]
 
@@ -933,8 +1124,9 @@ def train(envs, env_paramss, config, rng):
             training, (train_state_policy_rraa, train_state_value_rraa,
                        train_state_policy_raa1, train_state_value_raa1,
                        train_state_policy_raa2, train_state_value_raa2, 
-                       train_state_policy_a1, train_state_value_a1,
-                       train_state_policy_a2, train_state_value_a2, 
+                       train_state_policy_a, train_state_value_a,
+                    #    train_state_policy_a1, train_state_value_a1,
+                    #    train_state_policy_a2, train_state_value_a2, 
                        rng, timestep),
             xs, config["STEP_SCAN"]
         )
@@ -942,36 +1134,41 @@ def train(envs, env_paramss, config, rng):
         (train_state_policy_rraa, train_state_value_rraa, 
             train_state_policy_raa1, train_state_value_raa1, 
             train_state_policy_raa2, train_state_value_raa2, 
-            train_state_policy_a1, train_state_value_a1,
-            train_state_policy_a2, train_state_value_a2, 
+            train_state_policy_a, train_state_value_a,
+            # train_state_policy_a1, train_state_value_a1,
+            # train_state_policy_a2, train_state_value_a2, 
             rng, timestep
         ) = update_state
 
         loss_info_rraa = result['loss_info_rraa']
         loss_info_raa1 = result['loss_info_raa1']
         loss_info_raa2 = result['loss_info_raa2']
-        loss_info_a1 = result['loss_info_a1']
-        loss_info_a2 = result['loss_info_a2']
+        loss_info_a = result['loss_info_a']
+        # loss_info_a1 = result['loss_info_a1']
+        # loss_info_a2 = result['loss_info_a2']
 
         result_traj_rraa = tree_index1(result['batch_info_rraa'], 0)
         result_traj_raa1 = tree_index1(result['batch_info_raa1'], 0)
         result_traj_raa2 = tree_index1(result['batch_info_raa2'], 0)
-        result_traj_a1 = tree_index1(result['batch_info_a1'], 0)
-        result_traj_a2 = tree_index1(result['batch_info_a2'], 0)
+        result_traj_a = tree_index1(result['batch_info_a1'], 0)
+        # result_traj_a1 = tree_index1(result['batch_info_a1'], 0)
+        # result_traj_a2 = tree_index1(result['batch_info_a2'], 0)
         
         traj_batch_rraa, targets_V_rraa, done_rraa = result_traj_rraa
         traj_batch_raa1, targets_V_raa1, done_raa1 = result_traj_raa1
         traj_batch_raa2, targets_V_raa2, done_raa2 = result_traj_raa2
-        traj_batch_a1, targets_V_a1, done_a1 = result_traj_a1
-        traj_batch_a2, targets_V_a2, done_a2 = result_traj_a2
+        traj_batch_a, targets_V_a, done_a = result_traj_a
+        # traj_batch_a1, targets_V_a1, done_a1 = result_traj_a1
+        # traj_batch_a2, targets_V_a2, done_a2 = result_traj_a2
 
         # FIXME for RRAA
         ((reach_1_perc, reach_2_perc, reach_perc),
             (reach_idx_1, reach_idx_2, reach_idx)) = calculate_rraa(traj_batch_rraa)
         raa1_reach_idx, raa1_avoid_idx = calculate_reachalwaysavoid(traj_batch_raa1, idx, type="both")
         raa2_reach_idx, raa2_avoid_idx = calculate_reachalwaysavoid(traj_batch_raa2, idx, type="both")
-        a1_reach_idx, a1_avoid_idx = calculate_reachalwaysavoid(traj_batch_a1, idx, type="avoid")
-        a2_reach_idx, a2_avoid_idx = calculate_reachalwaysavoid(traj_batch_a2, idx, type="avoid")
+        a_reach_idx, a_avoid_idx = calculate_reachalwaysavoid(traj_batch_a, idx, type="avoid")
+        # a1_reach_idx, a1_avoid_idx = calculate_reachalwaysavoid(traj_batch_a1, idx, type="avoid")
+        # a2_reach_idx, a2_avoid_idx = calculate_reachalwaysavoid(traj_batch_a2, idx, type="avoid")
 
         idx = 0
 
@@ -980,8 +1177,9 @@ def train(envs, env_paramss, config, rng):
         info_rraa = tree_index2(traj_batch_rraa.info, idx)
         info_raa1 = tree_index2(traj_batch_raa1.info, idx)
         info_raa2 = tree_index2(traj_batch_raa2.info, idx)
-        info_a1 = tree_index2(traj_batch_a1.info, idx)
-        info_a2 = tree_index2(traj_batch_a2.info, idx)
+        info_a = tree_index2(traj_batch_a.info, idx)
+        # info_a1 = tree_index2(traj_batch_a1.info, idx)
+        # info_a2 = tree_index2(traj_batch_a2.info, idx)
         info['reach_index_1'], info['reach_index_2'] = reach_idx_1[idx], reach_idx_2[idx]
         info_1['reach_index_1'], info_1['reach_index_2'] = reach_idx_1_1[idx], np.array(-1)
         info_2['reach_index_1'], info_2['reach_index_2'] = np.array(-1), reach_idx_2_2[idx]
@@ -999,10 +1197,12 @@ def train(envs, env_paramss, config, rng):
                                             "value_network_raa1":train_state_value_raa1,
                                             "policy_network_raa2":train_state_policy_raa2, 
                                             "value_network_raa2":train_state_value_raa2,
-                                            "policy_network_a1":train_state_policy_a1, 
-                                            "value_network_a1":train_state_value_a1,
-                                            "policy_network_a2":train_state_policy_a2, 
-                                            "value_network_a2":train_state_value_a2,
+                                            "policy_network_a":train_state_policy_a, 
+                                            "value_network_a":train_state_value_a,
+                                            # "policy_network_a1":train_state_policy_a1, 
+                                            # "value_network_a1":train_state_value_a1,
+                                            # "policy_network_a2":train_state_policy_a2, 
+                                            # "value_network_a2":train_state_value_a2,
                                             },
                                     step=timestep,
                                     overwrite=True, 
@@ -1016,10 +1216,12 @@ def train(envs, env_paramss, config, rng):
                                             "value_network_raa1":train_state_value_raa1,
                                             "policy_network_raa2":train_state_policy_raa2, 
                                             "value_network_raa2":train_state_value_raa2,
-                                            "policy_network_a1":train_state_policy_a1, 
-                                            "value_network_a1":train_state_value_a1,
-                                            "policy_network_a2":train_state_policy_a2, 
-                                            "value_network_a2":train_state_value_a2,
+                                            "policy_network_a":train_state_policy_a, 
+                                            "value_network_a":train_state_value_a,
+                                            # "policy_network_a1":train_state_policy_a1, 
+                                            # "value_network_a1":train_state_value_a1,
+                                            # "policy_network_a2":train_state_policy_a2, 
+                                            # "value_network_a2":train_state_value_a2,
                                             },
                                         step=timestep,
                                         overwrite=False,
@@ -1034,10 +1236,12 @@ def train(envs, env_paramss, config, rng):
                                             "value_network_raa1":train_state_value_raa1,
                                             "policy_network_raa2":train_state_policy_raa2, 
                                             "value_network_raa2":train_state_value_raa2,
-                                            "policy_network_a1":train_state_policy_a1, 
-                                            "value_network_a1":train_state_value_a1,
-                                            "policy_network_a2":train_state_policy_a2, 
-                                            "value_network_a2":train_state_value_a2,
+                                            "policy_network_a":train_state_policy_a, 
+                                            "value_network_a":train_state_value_a,
+                                            # "policy_network_a1":train_state_policy_a1, 
+                                            # "value_network_a1":train_state_value_a1,
+                                            # "policy_network_a2":train_state_policy_a2, 
+                                            # "value_network_a2":train_state_value_a2,
                                             },
                                         step=timestep,
                                         prefix="best_",
@@ -1060,14 +1264,19 @@ def train(envs, env_paramss, config, rng):
         if config["USE_WANDB"]:
             wandb.log({
                     #    "not reaching goal": cnt,
-                    "actor_loss": jnp.mean(loss_info["actor_loss"]), "value_loss": jnp.mean(loss_info["value_loss"]),
+                    "actor_rraa_loss": jnp.mean(loss_info_rraa["actor_loss"]), "value_rraa_loss": jnp.mean(loss_info_rraa["value_loss"]),
+                    "actor_raa1_loss": jnp.mean(loss_info_raa1["actor_loss"]), "value_raa1_loss": jnp.mean(loss_info_raa1["value_loss"]),
+                    "actor_raa2_loss": jnp.mean(loss_info_raa2["actor_loss"]), "value_raa2_loss": jnp.mean(loss_info_raa2["value_loss"]),
+                    "actor_a_loss": jnp.mean(loss_info_a["actor_loss"]), "value_a_loss": jnp.mean(loss_info_a["value_loss"]),
                     #    "entropy_loss": jnp.mean(loss_info["entropy_loss"]),
-                    "actor_1_loss": jnp.mean(loss_info_1["actor_loss"]), "value_1_loss": jnp.mean(loss_info_1["value_loss"]),
-                    "actor_2_loss": jnp.mean(loss_info_2["actor_loss"]), "value_2_loss": jnp.mean(loss_info_2["value_loss"]),
                     "reach_gamma": result['reach_gamma'][0], "entropy_weight": result['entropy_weight'][0],
-                    "Dec. Reach 1 Success %": reach_1_perc_1,
-                    "Dec. Reach 2 Success %": reach_2_perc_2,
-                    "Reach-Reach Success %": reach_perc,
+                    "(RAA-1) Reached 1 [%]": reach_1_perc_1,
+                    "(RAA-1) Crashed [%]": reach_1_perc_1,
+                    "(RAA-2) Reached 2 [%]": reach_2_perc_2,
+                    "(RAA-2) Crashed [%]": reach_2_perc_2,
+                    "(RRAA) Reach-Reached [%]": reach_perc,
+                    "(RRAA) Crashed [%]": reach_perc,
+                    "Crashed [%]": crash_perc,
                     }, step=timestep)
             
             if "F16" not in config["EXP_NAME"]: # FIXME make f16 methods uniform
@@ -1231,16 +1440,20 @@ if __name__ == "__main__":
         os.makedirs("model/{}/state_traj".format(config['DIR']))
     
     envs = get_env(config)
-    env_rraa, env_raa1, env_raa2, env_a1, env_a2 = envs
-    env_params_rraa, env_params_raa1, env_params_raa2, env_params_a1, env_params_a2 = env_rraa.default_params, env_raa1.default_params, env_raa2.default_params, env_a1.default_params, env_a2.default_params
+    env_rraa, env_raa1, env_raa2, env_a = envs
+    # env_rraa, env_raa1, env_raa2, env_a1, env_a2 = envs
+    env_params_rraa, env_params_raa1, env_params_raa2, env_params_a = env_rraa.default_params, env_raa1.default_params, env_raa2.default_params, env_a.default_params
+    # env_params_rraa, env_params_raa1, env_params_raa2, env_params_a1, env_params_a2 = env_rraa.default_params, env_raa1.default_params, env_raa2.default_params, env_a1.default_params, env_a2.default_params
 
     if config['EXP_NAME'] == 'WindField':
         env_params_rraa = env_params_rraa.replace(index=config['SECTION'])
         env_params_raa1 = env_params_raa1.replace(index=config['SECTION'])
         env_params_raa2 = env_params_raa2.replace(index=config['SECTION'])
-        env_params_a1 = env_params_a1.replace(index=config['SECTION'])
-        env_params_a2 = env_params_a2.replace(index=config['SECTION'])
-    env_paramss = (env_params_rraa, env_params_raa1, env_params_raa2, env_params_a1, env_params_a2)
+        env_params_a = env_params_a.replace(index=config['SECTION'])
+        # env_params_a1 = env_params_a1.replace(index=config['SECTION'])
+        # env_params_a2 = env_params_a2.replace(index=config['SECTION'])
+    env_paramss = (env_params_rraa, env_params_raa1, env_params_raa2, env_params_a)
+    # env_paramss = (env_params_rraa, env_params_raa1, env_params_raa2, env_params_a1, env_params_a2)
 
     config["USE_WANDB"] = True #not debug # False for debugging
     if config["USE_WANDB"]:
