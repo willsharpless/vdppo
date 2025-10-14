@@ -3,7 +3,7 @@ import jax.numpy as jnp
 from rraa_rl.src.rl.utils.gae import Transition_reach, Transition_raa, \
     Transition_rr, Transition_r1, Transition_r2, Transition_cppo, Transition_raa_respo, Transition_rr_respo, Transition_sac, \
         Transition_a, Transition_ra, Transition_rr_cppo, Transition_r, \
-        Transition_rcppo_adapted_raa, Transition_rcppo_adapted_rr
+        Transition_rcppo_adapted_raa, Transition_rcppo_adapted_rr, Transition_rraa
 
 def _env_step(env, env_params, runner_state, _):
     (train_state_policy, train_state_energy, train_state_h,
@@ -417,10 +417,13 @@ def _env_step_rraa(env, env_params, runner_state, _):
     # TAKE SECOND REACH ACTION IF FIRST REACHED (WAS)
     reached1 = last_env_state.has_reached_1
     reached2 = last_env_state.has_reached_2
-    reached_both = jnp.logical_and(reached1, reached2)
+    reached_both = last_env_state.has_reached_both
 
     # Combined if neither has been reached
     rraa_mask = jnp.logical_or(jnp.logical_not(jnp.logical_or(reached1, reached2)), force_combined)
+
+    # NOTE this is the reach-based switch, 
+    # technically should switch when min V1 next > min V2 next etc.
 
     # Reached 1 (but not 2)
     only_reach1_mask = jnp.logical_and(reached1, jnp.logical_not(reached2))
@@ -481,9 +484,6 @@ def _env_step_rraa(env, env_params, runner_state, _):
             )
         )
     )
-    
-    # NOTE this is the reach-based switch, 
-    # technically should switch when min V1 next > min V2 next etc.
 
     # STEP ENV
     rng, _rng = jax.random.split(rng)
@@ -494,16 +494,23 @@ def _env_step_rraa(env, env_params, runner_state, _):
     )(rng_step, last_env_state, action, env_params)
 
     transition = Transition_rraa(
-        done, action, value, value_raa1, value_raa2, value_a, reward, log_prob, last_obs, info,
-        last_env_state.reach1, last_env_state.reach2, 
-        last_env_state.has_reached_1, last_env_state.has_reached_2, 
-        last_env_state.avoid,
-        policy_taken
+        done=done, action=action, reward=reward, log_prob=log_prob, obs=last_obs, info=info,
+        value_rraa=value,
+        value_raa1=value_raa1, 
+        value_raa2=value_raa2, 
+        value_avoid=value_a,
+        reach1=last_env_state.reach1, 
+        reach2=last_env_state.reach2, 
+        avoid=last_env_state.avoid,
+        has_reached_1=last_env_state.has_reached_1, 
+        has_reached_2=last_env_state.has_reached_2, 
+        has_reached_both=last_env_state.has_reached_both,
+        policy_taken=policy_taken
     )
 
     runner_state = (train_state_policy_rraa, train_state_value_rraa, env_state, obsv, rng, decomposed_state, policy_controls)
     return runner_state, transition
-# TODO write the proper Transition_rraa to match this, and the correct _env_step_raa
+# TODO write the correct _env_step_raa
 
 def _env_step_raa_vanilla(env, env_params, runner_state, _, take_mean=False):
     (train_state_policy, train_state_value, last_env_state, last_obs, 

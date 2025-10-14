@@ -12,6 +12,7 @@ from .reach_avoid.humanoid_RR import HumanoidReachReach, HumanoidReach1, Humanoi
 from .reach_avoid.safety_gym_avoid import PointAvoid
 from .reach_avoid.safety_gym_RR import PointReachReach, PointReach1, PointReach2
 from .reach_avoid.safety_gym_RAA import PointReachAvoid, PointAvoidOnly
+from .reach_avoid.safety_gym_RRAA import PointRRAA, PointRAA1, PointRAA2, PointA
 
 from .baseline.pendulum_constraint_baseline import PendulumConstraintBaseline
 from .baseline.hopper_avoid_ceiling_baseline import HopperAvoidCeilingBaseline, HopperReachAlwaysAvoidBaseline_augmented, HopperReachReachBaseline_augmented_max, \
@@ -721,6 +722,32 @@ def get_env(config):
         env1.set_untransform_obs(untrans)
         env2.set_untransform_obs(untrans)
         return (env, env1, env2)
+    
+    elif config["EXP_NAME"] == 'PointRRAA':
+        vec1 = jnp.zeros(9, dtype=jnp.float32)
+        vec2 = jnp.ones(9, dtype=jnp.float32)
+        vec2 = vec2.at[0].set(2.)
+        vec2 = vec2.at[1].set(2.)
+        trans = partial(transform_observation, vec1, vec2)
+        untrans = partial(untransform_observation, vec1, vec2)
+
+        env_rraa = PointRRAA()
+        env_raa1 = PointRAA1()
+        env_raa2 = PointRAA2()
+        env_a = PointA()
+
+        env_rraa = TransformObservation(env_rraa, trans)
+        env_raa1= TransformObservation(env_raa1, trans)
+        env_raa2= TransformObservation(env_raa2, trans)
+        env_a = TransformObservation(env_a, trans)
+        env_rraa.set_untransform_obs(untrans)
+        env_raa1.set_untransform_obs(untrans)
+        env_raa2.set_untransform_obs(untrans)
+        env_a.set_untransform_obs(untrans)
+
+        # env.set_untransform_obs(untrans) # Not implemented
+        # env_avoid.set_untransform_obs(untrans)
+        return (env_rraa, env_raa1, env_raa2, env_a)
     
     elif config["EXP_NAME"] == 'PendulumConstraintBaseline':
         env = PendulumConstraintBaseline()

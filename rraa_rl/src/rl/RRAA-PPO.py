@@ -24,7 +24,10 @@ from rraa_rl.src.rl.utils.alg_utils import _ppo_vanilla_update, _env_step_rr_van
 from rraa_rl.src.rl.utils.alg_utils import _env_step_rraa, _env_step_raa, _env_step_a
 from rraa_rl.src.env.env_list import get_env
 from rraa_rl.src.model.actorcritic import Policy_Network, Value_Network, Policy_Network_Discrete, MoGPolicy_Network
-from rraa_rl.src.rl.utils.plot_utils import calculate_minimal_reach, calculate_consumption, calculate_reachreach, plot_target, plot_value_target, plot_contour, plot_contour_RRAA, plot_policy_decision, plot_video_contour_RRAA
+from rraa_rl.src.rl.utils.plot_utils import (calculate_minimal_reach, calculate_consumption, 
+                                             calculate_reachreach, calculate_reachalwaysavoid, calculate_reachavoid,
+                                             plot_target, plot_value_target, plot_contour, plot_contour_RRAA, 
+                                             plot_policy_decision, plot_video_contour_RRAA, calculate_rraa)
 from rraa_rl.src.rl.utils.utils import optimizer, get_BuRd, tree_index1, tree_index2
 from rraa_rl.src.rl.utils.gae import (Transition_reach,
                               calculate_gae, calculate_gae2, calculate_gae3,
@@ -563,7 +566,7 @@ def train(envs, env_paramss, config, rng):
         # V_reach2_append = jnp.concatenate((traj_batch.value_reach2, jnp.expand_dims(last_val2, axis=1).T))
         # V_append = jnp.concatenate((traj_batch.value, jnp.expand_dims(last_val, axis=1).T))
         
-        V_rraa_append = jnp.concatenate((traj_batch_rraa.value, jnp.expand_dims(last_val_rraa, axis=1).T))
+        V_rraa_append = jnp.concatenate((traj_batch_rraa.value_rraa, jnp.expand_dims(last_val_rraa, axis=1).T))
         r1_append = jnp.concatenate((traj_batch_rraa.reach1, jnp.expand_dims(env_state_rraa.reach1, axis=1).T))
         V_raa1_append = jnp.concatenate((traj_batch_rraa.value_raa1, jnp.expand_dims(last_val_raa1, axis=1).T))
         r2_append = jnp.concatenate((traj_batch_rraa.reach2, jnp.expand_dims(env_state_rraa.reach2, axis=1).T))
@@ -615,10 +618,10 @@ def train(envs, env_paramss, config, rng):
         last_val_a1 = train_state_value_a.apply_fn(train_state_value_a.params, last_obs_raa1)
         # last_val_a1 = train_state_value_a1.apply_fn(train_state_value_a1.params, last_obs_raa1)
 
-        r1_append = jnp.concatenate((traj_batch_raa1.reach1, jnp.expand_dims(env_state_raa1.reach1, axis=1).T))
-        V_raa1_append = jnp.concatenate((traj_batch_raa1.value_raa1, jnp.expand_dims(last_val_raa1, axis=1).T))
+        r1_append = jnp.concatenate((traj_batch_raa1.reach, jnp.expand_dims(env_state_raa1.reach, axis=1).T))
+        V_raa1_append = jnp.concatenate((traj_batch_raa1.value, jnp.expand_dims(last_val_raa1, axis=1).T))
         a1_append = jnp.concatenate((traj_batch_raa1.avoid, jnp.expand_dims(env_state_raa1.avoid, axis=1).T))
-        V_a1_append = jnp.concatenate((traj_batch_raa1.value_a, jnp.expand_dims(last_val_a1, axis=1).T))
+        V_a1_append = jnp.concatenate((traj_batch_raa1.value_avoid, jnp.expand_dims(last_val_a1, axis=1).T))
 
         l_tilde_raa1 = jnp.maximum(r1_append, V_a1_append)
 
@@ -664,10 +667,10 @@ def train(envs, env_paramss, config, rng):
         last_val_a2 = train_state_value_a.apply_fn(train_state_value_a.params, last_obs_raa2)
         # last_val_a2 = train_state_value_a2.apply_fn(train_state_value_a2.params, last_obs_raa2)
 
-        r2_append = jnp.concatenate((traj_batch_raa2.reach2, jnp.expand_dims(env_state_raa2.reach2, axis=1).T))
-        V_raa2_append = jnp.concatenate((traj_batch_raa2.value_raa2, jnp.expand_dims(last_val_raa2, axis=1).T))
+        r2_append = jnp.concatenate((traj_batch_raa2.reach, jnp.expand_dims(env_state_raa2.reach, axis=1).T))
+        V_raa2_append = jnp.concatenate((traj_batch_raa2.value, jnp.expand_dims(last_val_raa2, axis=1).T))
         a2_append = jnp.concatenate((traj_batch_raa2.avoid, jnp.expand_dims(env_state_raa2.avoid, axis=1).T))
-        V_a2_append = jnp.concatenate((traj_batch_raa2.value_a, jnp.expand_dims(last_val_a2, axis=1).T))
+        V_a2_append = jnp.concatenate((traj_batch_raa2.value_avoid, jnp.expand_dims(last_val_a2, axis=1).T))
 
         l_tilde_raa2 = jnp.maximum(r2_append, V_a2_append)
 
@@ -1150,7 +1153,7 @@ def train(envs, env_paramss, config, rng):
         result_traj_rraa = tree_index1(result['batch_info_rraa'], 0)
         result_traj_raa1 = tree_index1(result['batch_info_raa1'], 0)
         result_traj_raa2 = tree_index1(result['batch_info_raa2'], 0)
-        result_traj_a = tree_index1(result['batch_info_a1'], 0)
+        result_traj_a = tree_index1(result['batch_info_a'], 0)
         # result_traj_a1 = tree_index1(result['batch_info_a1'], 0)
         # result_traj_a2 = tree_index1(result['batch_info_a2'], 0)
         
@@ -1162,14 +1165,19 @@ def train(envs, env_paramss, config, rng):
         # traj_batch_a2, targets_V_a2, done_a2 = result_traj_a2
 
         # FIXME for RRAA
-        ((reach_1_perc, reach_2_perc, reach_perc),
-            (reach_idx_1, reach_idx_2, reach_idx)) = calculate_rraa(traj_batch_rraa)
-        raa1_reach_idx, raa1_avoid_idx = calculate_reachalwaysavoid(traj_batch_raa1, idx, type="both")
-        raa2_reach_idx, raa2_avoid_idx = calculate_reachalwaysavoid(traj_batch_raa2, idx, type="both")
-        a_reach_idx, a_avoid_idx = calculate_reachalwaysavoid(traj_batch_a, idx, type="avoid")
-        # a1_reach_idx, a1_avoid_idx = calculate_reachalwaysavoid(traj_batch_a1, idx, type="avoid")
-        # a2_reach_idx, a2_avoid_idx = calculate_reachalwaysavoid(traj_batch_a2, idx, type="avoid")
+        # ((rraa_reach_1_perc, rraa_reach_2_perc, rraa_reach_perc),
+        #     (rraa_reach_idx_1, rraa_reach_idx_2, rraa_reach_idx)) = calculate_reachreach(traj_batch_rraa)
+        # raa1_reach_idx, raa1_avoid_idx = calculate_reachalwaysavoid(traj_batch_raa1, idx, type="both")
+        # raa2_reach_idx, raa2_avoid_idx = calculate_reachalwaysavoid(traj_batch_raa2, idx, type="both")
+        # a_reach_idx, a_avoid_idx = calculate_reachalwaysavoid(traj_batch_a, idx, type="avoid")
+        # # a1_reach_idx, a1_avoid_idx = calculate_reachalwaysavoid(traj_batch_a1, idx, type="avoid")
+        # # a2_reach_idx, a2_avoid_idx = calculate_reachalwaysavoid(traj_batch_a2, idx, type="avoid")
+        # (reach_perc, crash_perc, reach_avoid_perc) = calculate_reachavoid(traj_batch_rraa, to_first_done=False)
 
+        (rraa_rr_perc, rraa_crash_perc, rraa_rraa_perc), rraa_reach_idxs, rraa_crash_idx = calculate_rraa(traj_batch_rraa, reach_type="both")
+        (raa1_r_perc, raa1_crash_perc, raa1_raa_perc), raa1_reach_idxs, raa1_crash_idx = calculate_rraa(traj_batch_raa1, reach_type="1")
+        (raa2_r_perc, raa2_crash_perc, raa2_raa_perc), raa2_reach_idxs, raa2_crash_idx = calculate_rraa(traj_batch_raa2, reach_type="2")
+        (_, a_crash_perc, _),  _, a_crash_idx = calculate_rraa(traj_batch_a, reach_type="none")
         idx = 0
 
         # reach_idx = calculate_minimal_reach(traj_batch.reach[:, idx])
@@ -1180,14 +1188,20 @@ def train(envs, env_paramss, config, rng):
         info_a = tree_index2(traj_batch_a.info, idx)
         # info_a1 = tree_index2(traj_batch_a1.info, idx)
         # info_a2 = tree_index2(traj_batch_a2.info, idx)
-        info['reach_index_1'], info['reach_index_2'] = reach_idx_1[idx], reach_idx_2[idx]
-        info_1['reach_index_1'], info_1['reach_index_2'] = reach_idx_1_1[idx], np.array(-1)
-        info_2['reach_index_1'], info_2['reach_index_2'] = np.array(-1), reach_idx_2_2[idx]
+        info_rraa['reach_index_1'], info_rraa['reach_index_2'] = rraa_reach_idxs[0][idx], rraa_reach_idxs[1][idx]
+        info_raa1['reach_index_1'], info_raa1['reach_index_2'] = raa1_reach_idxs[-1][idx], np.array(-1)
+        info_raa2['reach_index_1'], info_raa2['reach_index_2'] = np.array(-1), raa2_reach_idxs[-1][idx]
+        info_a['reach_index_1'], info_a['reach_index_2'] = np.array(-1), np.array(-1)
+
+        info_rraa['crash_index'] = rraa_crash_idx[idx]
+        info_raa1['crash_index'] = raa1_crash_idx[idx]
+        info_raa2['crash_index'] = raa2_crash_idx[idx]
+        info_a['crash_index'] = a_crash_idx[idx]
 
         if config['EXP_NAME'] == 'WindField' or config['EXP_NAME'] == 'WindFieldFull':
-            info['u_air'] = env_params.u_air
-            info['v_air'] = env_params.v_air
-            info['obs'] = env_params.obstacle
+            info_rraa['u_air'] = env_params_rraa.u_air
+            info_rraa['v_air'] = env_params_rraa.v_air
+            info_rraa['obs'] = env_params_rraa.obstacle
 
         ## SAVE MODEL CHECKPOINTS
         checkpoints.save_checkpoint(ckpt_dir=os.path.abspath(os.path.join("model", config["DIR"])),
@@ -1227,8 +1241,8 @@ def train(envs, env_paramss, config, rng):
                                         overwrite=False,
                                         prefix="milestone_",)
         
-        if reach_perc > best_score:
-            best_score = reach_perc
+        if rraa_rraa_perc > best_score:
+            best_score = rraa_rraa_perc
             checkpoints.save_checkpoint(ckpt_dir=os.path.abspath(os.path.join("model", config["DIR"])),
                                         target={"policy_network_rraa":train_state_policy_rraa, 
                                             "value_network_rraa":train_state_value_rraa,
@@ -1250,7 +1264,7 @@ def train(envs, env_paramss, config, rng):
         # MAKE DIAGNOSTIC PLOTS -- FIXME for RRAA
         policy_decision_sample = traj_batch_rraa.policy_taken[:,idx]
         # fig = plot_contour_RRAA((info, info_1, info_2), timestep, config)
-        fig = plot_contour_RRAA((info, info_1, info_2), timestep, config, policy_decision_sample=policy_decision_sample)
+        fig = plot_contour_RRAA((info_rraa, info_raa1, info_raa2, info_a), timestep, config, policy_decision_sample=policy_decision_sample)
 
         fig2 = plot_policy_decision(policy_decision_sample, timestep, config)
 
@@ -1260,23 +1274,35 @@ def train(envs, env_paramss, config, rng):
         #                   traj_batch.energy[0, idx], done[:, idx], config)
         t1 = time.time()
 
+        (rraa_rr_perc, rraa_crash_perc, rraa_rraa_perc)
+        (raa1_r_perc, raa1_crash_perc, raa1_raa_perc)
+        (raa2_r_perc, raa2_crash_perc, raa2_raa_perc)
+        (_, a_crash_perc, _)
+
         # WRITE TO WANDB -- FIXME for RRAA
         if config["USE_WANDB"]:
+            # group into wandb subheaders
             wandb.log({
-                    #    "not reaching goal": cnt,
-                    "actor_rraa_loss": jnp.mean(loss_info_rraa["actor_loss"]), "value_rraa_loss": jnp.mean(loss_info_rraa["value_loss"]),
-                    "actor_raa1_loss": jnp.mean(loss_info_raa1["actor_loss"]), "value_raa1_loss": jnp.mean(loss_info_raa1["value_loss"]),
-                    "actor_raa2_loss": jnp.mean(loss_info_raa2["actor_loss"]), "value_raa2_loss": jnp.mean(loss_info_raa2["value_loss"]),
-                    "actor_a_loss": jnp.mean(loss_info_a["actor_loss"]), "value_a_loss": jnp.mean(loss_info_a["value_loss"]),
-                    #    "entropy_loss": jnp.mean(loss_info["entropy_loss"]),
-                    "reach_gamma": result['reach_gamma'][0], "entropy_weight": result['entropy_weight'][0],
-                    "(RAA-1) Reached 1 [%]": reach_1_perc_1,
-                    "(RAA-1) Crashed [%]": reach_1_perc_1,
-                    "(RAA-2) Reached 2 [%]": reach_2_perc_2,
-                    "(RAA-2) Crashed [%]": reach_2_perc_2,
-                    "(RRAA) Reach-Reached [%]": reach_perc,
-                    "(RRAA) Crashed [%]": reach_perc,
-                    "Crashed [%]": crash_perc,
+                    "Score/(RRAA) RRAA [%]": rraa_rraa_perc,
+                    "Score/(RRAA) RR [%]": rraa_rr_perc,
+                    "Score/(RRAA) Crashed [%]": rraa_crash_perc,
+                    "Score/(RAA-1) R1 [%]": raa1_r_perc,
+                    "Score/(RAA-1) Crashed [%]": raa1_crash_perc,
+                    "Score/(RAA-1) RAA1 [%]": raa1_raa_perc,
+                    "Score/(RAA-2) R2 [%]": raa2_r_perc,
+                    "Score/(RAA-2) Crashed [%]": raa2_crash_perc,
+                    "Score/(RAA-2) RAA2 [%]": raa2_raa_perc,
+                    "Score/(A) Crashed [%]": a_crash_perc,
+                    "Loss/actor_rraa_loss": jnp.mean(loss_info_rraa["actor_loss"]), 
+                    "Loss/value_rraa_loss": jnp.mean(loss_info_rraa["value_loss"]),
+                    "Loss/actor_raa1_loss": jnp.mean(loss_info_raa1["actor_loss"]), 
+                    "Loss/value_raa1_loss": jnp.mean(loss_info_raa1["value_loss"]),
+                    "Loss/actor_raa2_loss": jnp.mean(loss_info_raa2["actor_loss"]), 
+                    "Loss/value_raa2_loss": jnp.mean(loss_info_raa2["value_loss"]),
+                    "Loss/actor_a_loss": jnp.mean(loss_info_a["actor_loss"]), 
+                    "Loss/value_a_loss": jnp.mean(loss_info_a["value_loss"]),
+                    "Train/reach_gamma": result['reach_gamma'][0], 
+                    "Train/entropy_weight": result['entropy_weight'][0],
                     }, step=timestep)
             
             if "F16" not in config["EXP_NAME"]: # FIXME make f16 methods uniform
@@ -1288,10 +1314,10 @@ def train(envs, env_paramss, config, rng):
         # Save video of trajectory 
         if "F16" not in config["EXP_NAME"]:
             if timestep % config['VIDEO_FREQ'] == 0 or timestep == total_timesteps - 1: 
-                video_frames = plot_video_contour_RRAA((info, info_1, info_2), timestep, config, save_video=True, log_wandb=config["USE_WANDB"])
+                video_frames = plot_video_contour_RRAA((info_rraa, info_raa1, info_raa2, info_a), timestep, config, save_video=True, log_wandb=config["USE_WANDB"])
 
         plt.close("all")
-        print(f"ITER TIME : {t1-t0:2.1f}s    SUCCESS : (DEC. R1)  {100*reach_1_perc_1:2.1f}%  (DEC. R2)  {100*reach_2_perc_2:2.1f}%  (COM. RR)  {100*reach_perc:2.1f}%")
+        print(f"ITER TIME : {t1-t0:2.1f}s : (A)  {100*(1-a_crash_perc):2.1f}%  (RAA1)  {100*raa1_raa_perc:2.1f}%  (RAA2)  {100*raa2_raa_perc:2.1f}%  (RRAA)  {100*rraa_rr_perc:2.1f}%")
         # print("Time {}".format(t1-t0))
 
     return
@@ -1395,7 +1421,7 @@ if __name__ == "__main__":
         # config["ANNEAL_ENT"]=True
         # config["NAME"]="humanoid_rr_debug_donefix"
 
-        config["EXP_NAME"]="PointReachReachAlwaysAvoid"
+        config["EXP_NAME"]="PointRRAA"
         config["DIR"]="point_rraa_debug"
         config["LR"]=3e-4
         config["NUM_ENVS"]=32

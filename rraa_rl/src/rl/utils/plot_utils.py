@@ -12,6 +12,7 @@ from time import time
 
 from rraa_rl.src.env.reach_avoid.safety_gym_RR import PointReachReach, PointReach1, PointReach2
 from rraa_rl.src.env.reach_avoid.safety_gym_RAA import PointReachAvoid, PointAvoidOnly
+from rraa_rl.src.env.reach_avoid.safety_gym_RRAA import PointRRAA
 from rraa_rl.src.env.reach_avoid.half_cheetah_RAA import HalfCheetahReachAvoid, HalfCheetahAvoidOnly
 from rraa_rl.src.env.reach_avoid.half_cheetah_RR import HalfCheetahReachReach, HalfCheetahReach1, HalfCheetahReach2
 from rraa_rl.src.env.reach_avoid.humanoid_RR import HumanoidReachReach, HUMANOID_TARGET_RIGHT, HUMANOID_TARGET_LEFT, HUMANOID_TARGET_RADIUS
@@ -93,6 +94,44 @@ def calculate_reachreach(traj_batch, reach_type="both", th=0, to_first_done=Fals
     reach_idxs = (reach_idx_1, reach_idx_2, reach_idx)
     return reach_percs, reach_idxs
 
+def calculate_rraa(traj_batch, th=0, to_first_done=False, reach_type="both"):
+
+    # Compute crash (avoid failure) indices
+    crash_idx = (traj_batch.avoid > 0).argmax(axis=0)
+    crash_idx = np.where(np.any((traj_batch.avoid > 0) == 1, axis=0), crash_idx, np.inf)
+
+    # Compute reach indices
+    if reach_type in ["1", "2"]:
+        reach_idx = (traj_batch.reach < (0 + th)).argmax(axis=0)
+        reach_idxs = (-1, -1, reach_idx)
+    elif reach_type == "both":
+        reach_idx_1 = (traj_batch.reach1 < (0 + th)).argmax(axis=0)
+        reach_idx_2 = (traj_batch.reach2 < (0 + th)).argmax(axis=0)
+        reach_idx_1 = np.where(np.any((traj_batch.reach1 < (0 + th)) == 1, axis=0), reach_idx_1, np.inf)
+        reach_idx_2 = np.where(np.any((traj_batch.reach2 < (0 + th)) == 1, axis=0), reach_idx_2, np.inf)
+        reach_idx = np.maximum(reach_idx_1, reach_idx_2)
+        reach_idxs = (reach_idx_1, reach_idx_2, reach_idx)
+    else:
+        reach_idx = None
+        reach_idxs = (None, None, None)
+
+    # if to_first_done: # FIXME
+    #     first_done = np.where(np.any(traj_batch.done, axis=0), traj_batch.done.argmax(axis=0), traj_batch.done.shape[0])
+    #     reach_idx = np.where(first_done >= reach_idx, reach_idx, np.inf)
+    #     crash_idx = np.where(first_done >= crash_idx, crash_idx, np.inf)
+
+    # Compute Percentages
+    crash_perc = ((crash_idx < np.inf).sum() / crash_idx.__len__()).item()
+    if reach_type in ["1", "2", "both"]:
+        reach_perc = ((reach_idx < np.inf).sum() / reach_idx.__len__()).item()
+        reach_and_avoid_idx = np.where(crash_idx == np.inf, reach_idx, np.inf)
+        reach_avoid_perc = ((reach_and_avoid_idx < np.inf).sum() / reach_and_avoid_idx.__len__()).item()
+    else:
+        reach_perc = None
+        reach_avoid_perc = None
+    percs = (reach_perc, crash_perc, reach_avoid_perc)
+
+    return percs, reach_idxs, crash_idx
 
 def calculate_reach(traj_batch):
     reach_idx = (traj_batch.reach < 0).argmax(axis=0)
@@ -1518,6 +1557,89 @@ def plot_contour_RRAA(multi_info, epoch, config, policy_decision_sample=None):
 
         plt.savefig('model/{}/reach/trajectory_{:0>4d}'.format(config["DIR"], epoch), dpi=300)
         return fig
+
+    elif 'Point' in config['EXP_NAME'] and 'RRAA' in config['EXP_NAME']: 
+        
+        info_rraa, info_raa1, info_raa2, info_a = multi_info
+        plt.figure(figsize=(8, 8))
+        fig, axes = plt.subplots(2, 2)
+        axes_upperx = 3.1
+        axes_lowerx = -3.1
+        axes_uppery = 3.1
+        axes_lowery = -3.1
+
+        def draw_point_rraa(info, title, ax, mode="a"):
+            first_reach1_idx = info.get('reach_index_1')
+            first_reach2_idx = info.get('reach_index_2')
+            first_crash_index = info.get('crash_index')
+            full_len = info['x'].shape[0]
+
+            # Plot Targets and Obstacles
+            x = np.linspace(axes_lowerx, axes_upperx, 400)
+            y = np.linspace(axes_lowery, axes_uppery, 400)
+            X, Y = np.meshgrid(x, y)
+            positions = np.stack([X, Y], axis=-1)  # shape (400, 400, 2)
+            model = PointRRAA()
+            is_reach1_np = jit(model.is_reach1)
+            is_reach2_np = jit(model.is_reach2)
+            reach1_values = np.array(is_reach1_np(positions))
+            reach2_values = np.array(is_reach2_np(positions))
+            is_avoid_np = jit(model.is_avoid)
+            avoid_values = np.array(is_avoid_np(positions))
+
+            if mode=="rraa":
+                ax.contourf(X, Y, np.maximum(np.maximum(reach1_values, reach2_values), avoid_values), alpha=0.3, levels=20)
+                ax.contourf(X, Y, np.maximum(reach1_values, avoid_values), levels=[reach1_values.min(), 0], colors=['green'], alpha=0.4)
+                ax.contourf(X, Y, np.maximum(reach2_values, avoid_values), levels=[reach2_values.min(), 0], colors=['blue'], alpha=0.4)
+            elif mode=="raa1":
+                ax.contourf(X, Y, np.maximum(reach1_values, avoid_values), levels=[reach1_values.min(), 0], colors=['green'], alpha=0.4)
+            elif mode=="raa2":
+                ax.contourf(X, Y, np.maximum(reach2_values, avoid_values), levels=[reach2_values.min(), 0], colors=['blue'], alpha=0.4)
+            ax.contourf(X, Y, avoid_values, levels=[0, avoid_values.max()], colors=['red'], alpha=0.4)
+
+            def draw_body(ax, info, i, alpha, color_mode="normal"):
+                color_dict = {"R1": 'g', "R2": 'b', "A": 'r', "normal": 'k'}
+                ax.scatter(info['x'][i], info['y'][i], color=color_dict[color_mode], alpha=alpha)
+
+            indices = np.linspace(0, full_len, 11, dtype=int)
+            for step_n, i in enumerate(indices):
+                alpha = (step_n + 1) / 11
+
+                reach1_val = is_reach1_np(np.array([info['x'][i].item(), info['y'][i].item()]))
+                reach2_val = is_reach2_np(np.array([info['x'][i].item(), info['y'][i].item()]))
+                avoid_val = is_avoid_np(np.array([info['x'][i].item(), info['y'][i].item()]))
+
+                if avoid_val > 0.:
+                    color_mode = "A"
+                elif reach1_val < 0. and mode in ["rraa", "raa1"]:
+                    color_mode = "R1"
+                elif reach2_val < 0. and mode in ["rraa", "raa2"]:
+                    color_mode = "R2"
+                else:
+                    color_mode = "normal"
+                draw_body(ax, info, i, alpha, color_mode=color_mode)
+
+            if first_reach1_idx is not None and first_reach1_idx > -1 and mode in ["rraa", "raa1"]:
+                draw_body(ax, info, first_reach1_idx, alpha, color_mode="R1")
+            if first_reach2_idx is not None and first_reach2_idx > -1 and mode in ["rraa", "raa2"]:
+                draw_body(ax, info, first_reach2_idx, alpha, color_mode="R2")
+            if first_crash_index is not None and first_crash_index > -1:
+                draw_body(ax, info, first_crash_index, alpha, color_mode="A")
+
+            ax.set_xlim((axes_lowerx, axes_upperx))
+            ax.set_ylim((axes_lowery, axes_uppery))
+            ax.set_aspect('equal')
+
+            ax.set_title(title)
+
+        # Draw Reach Avoid and Avoid Only 
+        draw_point_rraa(info_rraa, "RRAA", axes[0][0], mode="rraa")
+        draw_point_rraa(info_raa1, "RAA 1", axes[1][0], mode="raa1")
+        draw_point_rraa(info_raa2, "RAA 2", axes[1][1], mode="raa2")
+        draw_point_rraa(info_a, "A", axes[0][1], mode="a")
+
+        plt.savefig('model/{}/reach/trajectory_{:0>4d}'.format(config["DIR"], epoch), dpi=300)
+        return fig
     
 def plot_video_contour_RRAA(multi_info, epoch, config, save_video=False, prefix="", log_wandb=True):
     start_time = time()
@@ -2460,6 +2582,108 @@ def plot_video_contour_RRAA(multi_info, epoch, config, save_video=False, prefix=
             if config['EXP_NAME'] == 'PointReachAlwaysAvoid':
                 draw_point_raa(step_n, info_avoid, "Avoid Only", axes[1])
 
+            # Render the figure to an image (smaller size)
+            fig.canvas.draw()
+            frame = np.frombuffer(fig.canvas.buffer_rgba(), dtype=np.uint8)
+            frame = frame.reshape(fig.canvas.get_width_height()[::-1] + (4,))  # RGBA (4 channels)
+            frames.append(frame)
+            
+            plt.close(fig)
+            plt.close("all")
+
+    elif 'Point' in config['EXP_NAME'] and 'RRAA' in config['EXP_NAME']:
+        
+        info_rraa, info_raa1, info_raa2, info_a = multi_info
+
+        axes_upperx = 3.
+        axes_lowerx = -3.
+        axes_uppery = 3.
+        axes_lowery = -3.
+
+        # Reward percomputation (targets & obstacles)
+        x = np.linspace(axes_lowerx, axes_upperx, 400)
+        y = np.linspace(axes_lowery, axes_uppery, 400)
+        X, Y = np.meshgrid(x, y)
+        positions = np.stack([X, Y], axis=-1)  # shape (400, 400, 2)
+        model = PointRRAA()
+        is_reach1_np = jit(model.is_reach1)
+        is_reach2_np = jit(model.is_reach2)
+        is_avoid_np = jit(model.is_avoid)
+        reach1_values = np.array(is_reach1_np(positions))
+        reach2_values = np.array(is_reach2_np(positions))
+        avoid_values = np.array(is_avoid_np(positions))
+        
+        def draw_point_rraa(step, info, title, ax, mode="rraa"):
+
+            reach1_idx, reach2_idx, crash_idx = info.get('reach_index_1'), info.get('reach_index_2'), info.get('crash_index')
+
+            # Plot Reach  
+            if mode=="rraa":
+                ax.contourf(X, Y, np.maximum(np.maximum(reach1_values, reach2_values), avoid_values), alpha=0.3, levels=20)
+                ax.contourf(X, Y, np.maximum(reach1_values, avoid_values), levels=[reach1_values.min(), 0], colors=['green'], alpha=0.4)
+                ax.contourf(X, Y, np.maximum(reach2_values, avoid_values), levels=[reach2_values.min(), 0], colors=['blue'], alpha=0.4)
+            elif mode=="raa1":
+                ax.contourf(X, Y, np.maximum(reach1_values, avoid_values), levels=[reach1_values.min(), 0], colors=['green'], alpha=0.4)
+            elif mode=="raa2":
+                ax.contourf(X, Y, np.maximum(reach2_values, avoid_values), levels=[reach2_values.min(), 0], colors=['blue'], alpha=0.4)
+            ax.contourf(X, Y, avoid_values, levels=[0, avoid_values.max()], colors=['red'], alpha=0.4)
+
+            def draw_body(ax, info, i, alpha, color_mode="normal"):
+                color_dict = {"R1": 'g', "R2": 'b', "A": 'r', "normal": 'k'}
+                ax.scatter(info['x'][i], info['y'][i], color=color_dict[color_mode], alpha=alpha)
+
+            reach1_val = is_reach1_np(np.array([info['x'][step].item(), info['y'][step].item()]))
+            reach2_val = is_reach2_np(np.array([info['x'][step].item(), info['y'][step].item()]))
+            avoid_val = is_avoid_np(np.array([info['x'][step].item(), info['y'][step].item()]))
+
+            if avoid_val > 0.:
+                color_mode = "A"
+            elif reach1_val < 0. and mode in ["rraa", "raa1"]:
+                color_mode = "R1"
+            elif reach2_val < 0. and mode in ["rraa", "raa2"]:
+                color_mode = "R2"
+            else:
+                color_mode = "normal"
+
+            draw_body(ax, info, step, 0.9, color_mode=color_mode)
+
+            if reach1_idx is not None and step >= reach1_idx and reach1_idx > -1 and mode in ["rraa", "raa1"]:
+                draw_body(ax, info, reach1_idx, 0.5, color_mode="R1")
+            if reach2_idx is not None and step >= reach2_idx and reach2_idx > -1 and mode in ["rraa", "raa2"]:
+                draw_body(ax, info, reach2_idx, 0.5, color_mode="R2")
+            if crash_idx is not None and step >= crash_idx and crash_idx > -1:
+                draw_body(ax, info, crash_idx, 0.5, color_mode="A")
+            
+            ax.set_xlim((axes_lowerx, axes_upperx))
+            ax.set_ylim((axes_lowery, axes_uppery))
+            ax.set_aspect('equal')
+
+            ax.set_title(title)
+
+        # DEFINE VIDEO LENGTH TO FULL TRAJ (TODO or FIRST CRASH if working)
+        # reach_idx_1 = info_rraa['reach_index_1']
+        # reach_idx_2 = info_rraa['reach_index_2']
+        # crash_idx = info_rraa['crash_index']
+
+        # full_len = np.maximum(reach_idx_1, reach_idx_2)
+        full_len = info_rraa['x'].shape[0] if full_len.item() == np.inf else int(full_len.item())
+        # full_len = info['head_pos'].shape[0]
+        # reach_idx_1 = int(reach_idx_1.item()) if reach_idx_1.item() != np.inf else -1
+        # reach_idx_2 = int(reach_idx_2.item()) if reach_idx_2.item() != np.inf else -1
+        
+        frames = []
+        num_frames = full_len//2
+        indices = np.linspace(0, full_len, num_frames, dtype=int)
+            
+        for step_n in indices: 
+
+            fig, axes = plt.subplots(2, 2, figsize=(8, 8), dpi=100)
+
+            draw_point_rraa(step_n, info_rraa, "Reach Reach", axes[0, 0], mode="rraa")
+            draw_point_rraa(step_n, info_raa1, "RAA 1", axes[1, 0], mode="raa1")
+            draw_point_rraa(step_n, info_raa2, "RAA 2", axes[1, 1], mode="raa2")
+            draw_point_rraa(step_n, info_a, "A", axes[0, 1], mode="a")
+                
             # Render the figure to an image (smaller size)
             fig.canvas.draw()
             frame = np.frombuffer(fig.canvas.buffer_rgba(), dtype=np.uint8)
