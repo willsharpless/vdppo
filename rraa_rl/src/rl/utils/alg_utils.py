@@ -495,7 +495,7 @@ def _env_step_rraa(env, env_params, runner_state, _):
 
     transition = Transition_rraa(
         done=done, action=action, reward=reward, log_prob=log_prob, obs=last_obs, info=info,
-        value_rraa=value,
+        value=value,
         value_raa1=value_raa1, 
         value_raa2=value_raa2, 
         value_avoid=value_a,

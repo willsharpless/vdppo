@@ -21,7 +21,7 @@ from functools import partial
 from typing import Any
 
 from rraa_rl.src.rl.utils.alg_utils import _ppo_vanilla_update, _env_step_rr_vanilla, _env_step_r1_vanilla, _env_step_r2_vanilla
-from rraa_rl.src.rl.utils.alg_utils import _env_step_rraa, _env_step_raa, _env_step_a
+from rraa_rl.src.rl.utils.alg_utils import _env_step_rraa, _env_step_raa_vanilla, _env_step_a_vanilla
 from rraa_rl.src.env.env_list import get_env
 from rraa_rl.src.model.actorcritic import Policy_Network, Value_Network, Policy_Network_Discrete, MoGPolicy_Network
 from rraa_rl.src.rl.utils.plot_utils import (calculate_minimal_reach, calculate_consumption, 
@@ -154,21 +154,18 @@ def train(envs, env_paramss, config, rng):
                 raise NotImplementedError("Unknown environment type for toinput reset")
             
         else:
-            raise ValueError(f"Unknown init type: {config["DEC_INIT_TYPE"]}")
+            raise ValueError(f"Unknown init type: {config['DEC_INIT_TYPE']}")
         
         rng, _rng = jax.random.split(rng)
-        runner_state_standard_raa1 = (train_state_policy_rraa, train_state_value_rraa, env_state_raa1, obsv_raa1, _rng)
-        
-        # RAA DECOMPOSED STATES - 1
-        decomposed_state_raa1 = (
+        runner_state_standard_raa1 = (
             train_state_policy_raa1, train_state_value_raa1, 
-            # train_state_policy_raa2, train_state_value_raa2, 
-            train_state_policy_a, train_state_value_a,
-            # train_state_policy_a1, train_state_value_a1,
-            # train_state_policy_a2, train_state_value_a2
+            env_state_raa1, obsv_raa1, _rng
         )
-        force_reach1, force_reach2 = True, False
-        policy_controls_raa1 = (force_combined, force_reach1, force_reach2)
+        decomposed_state_raa1 = (
+            train_state_policy_a, train_state_value_a,
+        )
+        force_avoid = False
+        policy_controls_raa1 = (force_combined, force_avoid)
         runner_state_raa1 = (*runner_state_standard_raa1, decomposed_state_raa1, policy_controls_raa1)
 
         # COLLECT TRAJECTORY DECOMPOSED - 1
@@ -239,20 +236,19 @@ def train(envs, env_paramss, config, rng):
             else:
                 raise NotImplementedError("Unknown environment type for toinput reset")
         else:
-            raise ValueError(f"Unknown init type: {config["DEC_INIT_TYPE"]}")
+            raise ValueError(f"Unknown init type: {config['DEC_INIT_TYPE']}")
 
         rng, _rng = jax.random.split(rng)
-        runner_state_standard_raa2 = (train_state_policy_rraa, train_state_value_rraa, env_state_raa2, obsv_raa2, _rng)
-        # TODO clean this up so that the env_step only uses the following decomposed state 
-        
-        # SPECIAL DECOMPOSED STATES - RAA 2
-        decomposed_state_raa2 = ( 
+        runner_state_standard_raa2 = (
             train_state_policy_raa2, train_state_value_raa2, 
+            env_state_raa2, obsv_raa2, _rng
+        )
+        decomposed_state_raa2 = ( 
             train_state_policy_a, train_state_value_a
         )
-        force_reach1, force_reach2 = False, True
-        policy_controls_reach2 = (force_combined, force_reach1, force_reach2)
-        runner_state_raa2 = (*runner_state_standard_raa2, decomposed_state_raa2, policy_controls_reach2)
+        force_avoid = False
+        policy_controls_raa2 = (force_combined, force_avoid)
+        runner_state_raa2 = (*runner_state_standard_raa2, decomposed_state_raa2, policy_controls_raa2)
 
         # COLLECT TRAJECTORY DECOMPOSED - RAA 2
         runner_state_raa2, traj_batch_raa2 = jax.lax.scan(
@@ -302,7 +298,7 @@ def train(envs, env_paramss, config, rng):
                     # random_index_precrash = jax.random.randint(_rng_avoid, shape=(config["NUM_ENVS"],), minval=0, maxval=avoid_idx//2) # sample well before crashing
                     random_index_precrash_raa2 = jax.random.randint(_rng_avoid, shape=(config["NUM_ENVS"],), minval=0, maxval=avoid_idx_raa2) # sample before crashing
                 else:
-                    raise ValueError(f"Unknown init type: {config["DEC_INIT_TYPE"]}")
+                    raise ValueError(f"Unknown init type: {config['DEC_INIT_TYPE']}")
 
                 random_index_raa1 = jnp.where(jnp.logical_and(jnp.any(traj_batch_raa1.reach < 0, axis=0), # reached
                                                         #  reach_idx < avoid_idx), # reached before crash
@@ -321,7 +317,7 @@ def train(envs, env_paramss, config, rng):
                 random_index_raa1 = jax.random.randint(_rng_avoid, shape=(config["NUM_ENVS"],), minval=0, maxval=config["NUM_STEPS"])
                 random_index_raa2 = jax.random.randint(_rng_avoid, shape=(config["NUM_ENVS"],), minval=0, maxval=config["NUM_STEPS"])
             else:
-                raise ValueError(f"Unknown init type: {config["DEC_INIT_TYPE"]}")
+                raise ValueError(f"Unknown init type: {config['DEC_INIT_TYPE']}")
 
             # Multiple random indices
             if not "F16" in config["EXP_NAME"]:
@@ -350,7 +346,7 @@ def train(envs, env_paramss, config, rng):
             obsv_a, env_state_a = jax.vmap(env_a.reset_fullrandom, in_axes=(0, None))(reset_rng_avoid, env_params_a) # NOTE: old standard reset
         
         else:
-            raise ValueError(f"Unknown init type: {config["DEC_INIT_TYPE"]}")
+            raise ValueError(f"Unknown init type: {config['DEC_INIT_TYPE']}")
         
         rng, _rng = jax.random.split(rng_avoid)
         runner_state_standard_a = (train_state_policy_rraa, train_state_value_rraa, env_state_a, obsv_a, _rng)
@@ -397,7 +393,7 @@ def train(envs, env_paramss, config, rng):
         #             random_index_precrash = jax.random.randint(_rng_avoid, shape=(config["NUM_ENVS"],), minval=0, maxval=avoid_idx) # sample before crashing
         #             # random_index_precrash = jax.random.randint(_rng_avoid, shape=(config["NUM_ENVS"],), minval=0, maxval=avoid_idx//2) # sample well before crashing
         #         else:
-        #             raise ValueError(f"Unknown init type: {config["DEC_INIT_TYPE"]}")
+        #             raise ValueError(f"Unknown init type: {config['DEC_INIT_TYPE']}")
 
         #         random_index = jnp.where(jnp.logical_and(jnp.any(traj_batch_raa1.reach < 0, axis=0), # reached
         #                                                 #  reach_idx < avoid_idx), # reached before crash
@@ -409,7 +405,7 @@ def train(envs, env_paramss, config, rng):
         #     elif config["DEC_INIT_TYPE"] == "toinput":
         #         random_index = jax.random.randint(_rng_avoid, shape=(config["NUM_ENVS"],), minval=0, maxval=config["NUM_STEPS"])
         #     else:
-        #         raise ValueError(f"Unknown init type: {config["DEC_INIT_TYPE"]}")
+        #         raise ValueError(f"Unknown init type: {config['DEC_INIT_TYPE']}")
 
         #     # Multiple random indices
         #     if "Hopper" in config["EXP_NAME"] or "Cheetah" in config["EXP_NAME"]  or "Point" in config["EXP_NAME"]:
@@ -441,7 +437,7 @@ def train(envs, env_paramss, config, rng):
         #     obsv_a1, env_state_a1 = jax.vmap(env_a1.reset_fullrandom, in_axes=(0, None))(reset_rng_avoid, env_params_a1) # NOTE: old standard reset
         
         # else:
-        #     raise ValueError(f"Unknown init type: {config["DEC_INIT_TYPE"]}")
+        #     raise ValueError(f"Unknown init type: {config['DEC_INIT_TYPE']}")
         
         # rng, _rng = jax.random.split(rng_avoid)
         # runner_state_standard_a1 = (train_state_policy_rraa, train_state_value_rraa, env_state_a1, obsv_a1, _rng)
@@ -488,7 +484,7 @@ def train(envs, env_paramss, config, rng):
         #             random_index_precrash = jax.random.randint(_rng_avoid, shape=(config["NUM_ENVS"],), minval=0, maxval=avoid_idx) # sample before crashing
         #             # random_index_precrash = jax.random.randint(_rng_avoid, shape=(config["NUM_ENVS"],), minval=0, maxval=avoid_idx//2) # sample well before crashing
         #         else:
-        #             raise ValueError(f"Unknown init type: {config["DEC_INIT_TYPE"]}")
+        #             raise ValueError(f"Unknown init type: {config['DEC_INIT_TYPE']}")
 
         #         random_index = jnp.where(jnp.logical_and(jnp.any(traj_batch_raa2.reach2 < 0, axis=0), # reached
         #                                                 #  reach_idx < avoid_idx), # reached before crash
@@ -500,7 +496,7 @@ def train(envs, env_paramss, config, rng):
         #     elif config["DEC_INIT_TYPE"] == "toinput":
         #         random_index = jax.random.randint(_rng_avoid, shape=(config["NUM_ENVS"],), minval=0, maxval=config["NUM_STEPS"])
         #     else:
-        #         raise ValueError(f"Unknown init type: {config["DEC_INIT_TYPE"]}")
+        #         raise ValueError(f"Unknown init type: {config['DEC_INIT_TYPE']}")
 
         #     # Multiple random indices
         #     if "Hopper" in config["EXP_NAME"] or "Cheetah" in config["EXP_NAME"]  or "Point" in config["EXP_NAME"]:
@@ -532,7 +528,7 @@ def train(envs, env_paramss, config, rng):
         #     obsv_a2, env_state_a2 = jax.vmap(env_a2.reset_fullrandom, in_axes=(0, None))(reset_rng_avoid, env_params_a2) # NOTE: old standard reset
         
         # else:
-        #     raise ValueError(f"Unknown init type: {config["DEC_INIT_TYPE"]}")
+        #     raise ValueError(f"Unknown init type: {config['DEC_INIT_TYPE']}")
         
         # rng, _rng = jax.random.split(rng_avoid)
         # runner_state_standard_a2 = (train_state_policy_rraa, train_state_value_rraa, env_state_a2, obsv_a2, _rng)
@@ -566,7 +562,7 @@ def train(envs, env_paramss, config, rng):
         # V_reach2_append = jnp.concatenate((traj_batch.value_reach2, jnp.expand_dims(last_val2, axis=1).T))
         # V_append = jnp.concatenate((traj_batch.value, jnp.expand_dims(last_val, axis=1).T))
         
-        V_rraa_append = jnp.concatenate((traj_batch_rraa.value_rraa, jnp.expand_dims(last_val_rraa, axis=1).T))
+        V_rraa_append = jnp.concatenate((traj_batch_rraa.value, jnp.expand_dims(last_val_rraa, axis=1).T))
         r1_append = jnp.concatenate((traj_batch_rraa.reach1, jnp.expand_dims(env_state_rraa.reach1, axis=1).T))
         V_raa1_append = jnp.concatenate((traj_batch_rraa.value_raa1, jnp.expand_dims(last_val_raa1, axis=1).T))
         r2_append = jnp.concatenate((traj_batch_rraa.reach2, jnp.expand_dims(env_state_rraa.reach2, axis=1).T))
@@ -598,7 +594,7 @@ def train(envs, env_paramss, config, rng):
         # UPDATE COMPOSED NETWORK
         composed_policy_mask = jnp.where(traj_batch_rraa.policy_taken == 0, 1., 0.) 
         # FIXME FIXME FIXME needs to include all policies now for policy_taken
-        update_state = (train_state_policy_rraa, train_state_value_rraa,
+        update_state_rraa = (train_state_policy_rraa, train_state_value_rraa,
                         traj_batch_rraa, advantages_V_rraa, targets_V_rraa, advantages_V_rraa, composed_policy_mask, rng)
 
         xs = jnp.ones(config["UPDATE_EPOCHS"]) * ent_gamma[0]
@@ -834,9 +830,9 @@ def train(envs, env_paramss, config, rng):
     # INIT JAX WRAPPERS
     update_epoch_rraa = partial(_ppo_vanilla_update, config)
     env_step_rraa = partial(_env_step_rraa, env_rraa, env_params_rraa)
-    env_step_raa1 = partial(_env_step_raa, env_raa1, env_params_raa1)
-    env_step_raa2 = partial(_env_step_raa, env_raa2, env_params_raa2)
-    env_step_a = partial(_env_step_a, env_a, env_params_a)
+    env_step_raa1 = partial(_env_step_raa_vanilla, env_raa1, env_params_raa1)
+    env_step_raa2 = partial(_env_step_raa_vanilla, env_raa2, env_params_raa2)
+    env_step_a = partial(_env_step_a_vanilla, env_a, env_params_a)
     # env_step_a1 = partial(_env_step_a, env_a1, env_params_a1)
     # env_step_a2 = partial(_env_step_a, env_a2, env_params_a2)
     training = jax.jit(_train)
@@ -1164,24 +1160,12 @@ def train(envs, env_paramss, config, rng):
         # traj_batch_a1, targets_V_a1, done_a1 = result_traj_a1
         # traj_batch_a2, targets_V_a2, done_a2 = result_traj_a2
 
-        # FIXME for RRAA
-        # ((rraa_reach_1_perc, rraa_reach_2_perc, rraa_reach_perc),
-        #     (rraa_reach_idx_1, rraa_reach_idx_2, rraa_reach_idx)) = calculate_reachreach(traj_batch_rraa)
-        # raa1_reach_idx, raa1_avoid_idx = calculate_reachalwaysavoid(traj_batch_raa1, idx, type="both")
-        # raa2_reach_idx, raa2_avoid_idx = calculate_reachalwaysavoid(traj_batch_raa2, idx, type="both")
-        # a_reach_idx, a_avoid_idx = calculate_reachalwaysavoid(traj_batch_a, idx, type="avoid")
-        # # a1_reach_idx, a1_avoid_idx = calculate_reachalwaysavoid(traj_batch_a1, idx, type="avoid")
-        # # a2_reach_idx, a2_avoid_idx = calculate_reachalwaysavoid(traj_batch_a2, idx, type="avoid")
-        # (reach_perc, crash_perc, reach_avoid_perc) = calculate_reachavoid(traj_batch_rraa, to_first_done=False)
-
         (rraa_rr_perc, rraa_crash_perc, rraa_rraa_perc), rraa_reach_idxs, rraa_crash_idx = calculate_rraa(traj_batch_rraa, reach_type="both")
         (raa1_r_perc, raa1_crash_perc, raa1_raa_perc), raa1_reach_idxs, raa1_crash_idx = calculate_rraa(traj_batch_raa1, reach_type="1")
         (raa2_r_perc, raa2_crash_perc, raa2_raa_perc), raa2_reach_idxs, raa2_crash_idx = calculate_rraa(traj_batch_raa2, reach_type="2")
         (_, a_crash_perc, _),  _, a_crash_idx = calculate_rraa(traj_batch_a, reach_type="none")
+
         idx = 0
-
-        # reach_idx = calculate_minimal_reach(traj_batch.reach[:, idx])
-
         info_rraa = tree_index2(traj_batch_rraa.info, idx)
         info_raa1 = tree_index2(traj_batch_raa1.info, idx)
         info_raa2 = tree_index2(traj_batch_raa2.info, idx)
@@ -1325,7 +1309,7 @@ def train(envs, env_paramss, config, rng):
 if __name__ == "__main__":
     config = vars(get_args(sys.argv[1:]))
 
-    debug = False
+    debug = True
     if debug:
         # config["EXP_NAME"]="HopperReachReach"
         # config["DIR"]="hopper_reachreach_debug"

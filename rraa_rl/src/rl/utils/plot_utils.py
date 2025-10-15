@@ -103,6 +103,7 @@ def calculate_rraa(traj_batch, th=0, to_first_done=False, reach_type="both"):
     # Compute reach indices
     if reach_type in ["1", "2"]:
         reach_idx = (traj_batch.reach < (0 + th)).argmax(axis=0)
+        reach_idx = np.where(np.any((traj_batch.reach < (0 + th)) == 1, axis=0), reach_idx, np.inf)
         reach_idxs = (-1, -1, reach_idx)
     elif reach_type == "both":
         reach_idx_1 = (traj_batch.reach1 < (0 + th)).argmax(axis=0)
@@ -1571,8 +1572,12 @@ def plot_contour_RRAA(multi_info, epoch, config, policy_decision_sample=None):
         def draw_point_rraa(info, title, ax, mode="a"):
             first_reach1_idx = info.get('reach_index_1')
             first_reach2_idx = info.get('reach_index_2')
-            first_crash_index = info.get('crash_index')
+            first_crash_idx = info.get('crash_index')
             full_len = info['x'].shape[0]
+
+            first_reach1_idx = int(first_reach1_idx.item()) if first_reach1_idx.item() != np.inf else -1
+            first_reach2_idx = int(first_reach2_idx.item()) if first_reach2_idx.item() != np.inf else -1
+            first_crash_idx = int(first_crash_idx.item()) if first_crash_idx.item() != np.inf else -1
 
             # Plot Targets and Obstacles
             x = np.linspace(axes_lowerx, axes_upperx, 400)
@@ -1623,8 +1628,8 @@ def plot_contour_RRAA(multi_info, epoch, config, policy_decision_sample=None):
                 draw_body(ax, info, first_reach1_idx, alpha, color_mode="R1")
             if first_reach2_idx is not None and first_reach2_idx > -1 and mode in ["rraa", "raa2"]:
                 draw_body(ax, info, first_reach2_idx, alpha, color_mode="R2")
-            if first_crash_index is not None and first_crash_index > -1:
-                draw_body(ax, info, first_crash_index, alpha, color_mode="A")
+            if first_crash_idx is not None and first_crash_idx > -1:
+                draw_body(ax, info, first_crash_idx, alpha, color_mode="A")
 
             ax.set_xlim((axes_lowerx, axes_upperx))
             ax.set_ylim((axes_lowery, axes_uppery))
@@ -1803,8 +1808,8 @@ def plot_video_contour_RRAA(multi_info, epoch, config, save_video=False, prefix=
         num_frames = full_len//2
         indices = np.linspace(0, full_len, num_frames, dtype=int)
         if config['EXP_NAME'] == 'HopperReachReach':
-            reach_idx_1_reach1 = info_1['reach_index_1'].item()
-            reach_idx_2_reach2 = info_2['reach_index_2'].item()
+            first_reach1_idx = info_1['reach_index_1'].item()
+            first_reach2_idx = info_2['reach_index_2'].item()
             
         for step_n in indices: 
 
@@ -2616,6 +2621,9 @@ def plot_video_contour_RRAA(multi_info, epoch, config, save_video=False, prefix=
         def draw_point_rraa(step, info, title, ax, mode="rraa"):
 
             reach1_idx, reach2_idx, crash_idx = info.get('reach_index_1'), info.get('reach_index_2'), info.get('crash_index')
+            reach1_idx = int(reach1_idx.item()) if reach1_idx.item() != np.inf else -1
+            reach2_idx = int(reach2_idx.item()) if reach2_idx.item() != np.inf else -1
+            crash_idx = int(crash_idx.item()) if crash_idx.item() != np.inf else -1
 
             # Plot Reach  
             if mode=="rraa":
@@ -2666,7 +2674,7 @@ def plot_video_contour_RRAA(multi_info, epoch, config, save_video=False, prefix=
         # crash_idx = info_rraa['crash_index']
 
         # full_len = np.maximum(reach_idx_1, reach_idx_2)
-        full_len = info_rraa['x'].shape[0] if full_len.item() == np.inf else int(full_len.item())
+        full_len = info_rraa['x'].shape[0]
         # full_len = info['head_pos'].shape[0]
         # reach_idx_1 = int(reach_idx_1.item()) if reach_idx_1.item() != np.inf else -1
         # reach_idx_2 = int(reach_idx_2.item()) if reach_idx_2.item() != np.inf else -1

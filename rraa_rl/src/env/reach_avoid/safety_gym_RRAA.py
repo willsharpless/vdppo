@@ -108,7 +108,7 @@ class PointRRAATemplate:
         return spaces.Box(
             low=-jnp.inf,
             high=jnp.inf,
-            shape=(self._env.observation_size + 2,),
+            shape=(self._env.observation_size + 3,),
         )
 
     def action_space(self, params):
@@ -178,7 +178,7 @@ class PointRAA1(PointRRAATemplate):
 
         reach1_value = self.is_reach1(next_state.obs[0:2])
         reach2_value = self.is_reach2(next_state.obs[0:2])
-        has_reached_1 = jnp.logical_or(reach1_value < 0, state.has_reached_1)
+        has_reached_1 = jnp.logical_or(reach1_value < 0, state.has_reached)
         avoid_value = self.is_avoid(next_state.obs[0:2])
 
         observation = jnp.concatenate([next_state.obs, jnp.array([reach1_value, reach2_value, avoid_value])])
@@ -231,7 +231,7 @@ class PointRAA1(PointRRAATemplate):
         ## Set Observation and EnvState
         reach1_value = self.is_reach1(state.obs[0:2])
         reach2_value = self.is_reach2(state.obs[0:2])
-        has_reached_1 = jnp.logical_or(reach1_value < 0, state.has_reached_1)
+        has_reached_1 = reach1_value < 0
         avoid_value = self.is_avoid(state.obs[0:2])
         observation = jnp.concatenate([state.obs, jnp.array([reach1_value, reach2_value, avoid_value])])
         env_state = EnvStateRAA(state, reach1_value, avoid_value, has_reached_1)
@@ -260,7 +260,7 @@ class PointRAA2(PointRRAATemplate):
 
         reach1_value = self.is_reach1(next_state.obs[0:2])
         reach2_value = self.is_reach2(next_state.obs[0:2])
-        has_reached_2 = jnp.logical_or(reach2_value < 0, state.has_reached_2)
+        has_reached_2 = jnp.logical_or(reach2_value < 0, state.has_reached)
         avoid_value = self.is_avoid(next_state.obs[0:2])
 
         observation = jnp.concatenate([next_state.obs, jnp.array([reach1_value, reach2_value, avoid_value])])
@@ -313,7 +313,7 @@ class PointRAA2(PointRRAATemplate):
         ## Set Observation and EnvState
         reach1_value = self.is_reach1(state.obs[0:2])
         reach2_value = self.is_reach2(state.obs[0:2])
-        has_reached_2 = jnp.logical_or(reach2_value < 0, state.has_reached_2)
+        has_reached_2 = reach2_value < 0
         avoid_value = self.is_avoid(state.obs[0:2])
         observation = jnp.concatenate([state.obs, jnp.array([reach1_value, reach2_value, avoid_value])])
         env_state = EnvStateRAA(state, reach2_value, avoid_value, has_reached_2)

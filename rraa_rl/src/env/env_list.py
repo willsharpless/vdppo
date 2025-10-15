@@ -724,8 +724,8 @@ def get_env(config):
         return (env, env1, env2)
     
     elif config["EXP_NAME"] == 'PointRRAA':
-        vec1 = jnp.zeros(9, dtype=jnp.float32)
-        vec2 = jnp.ones(9, dtype=jnp.float32)
+        vec1 = jnp.zeros(10, dtype=jnp.float32)
+        vec2 = jnp.ones(10, dtype=jnp.float32)
         vec2 = vec2.at[0].set(2.)
         vec2 = vec2.at[1].set(2.)
         trans = partial(transform_observation, vec1, vec2)

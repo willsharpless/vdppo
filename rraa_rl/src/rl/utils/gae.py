@@ -143,7 +143,7 @@ class Transition_ra(NamedTuple):
 class Transition_rraa(NamedTuple):
     done: jnp.ndarray
     action: jnp.ndarray
-    value_rraa: jnp.ndarray
+    value: jnp.ndarray
     value_raa1: jnp.ndarray
     value_raa2: jnp.ndarray
     value_avoid: jnp.ndarray 
@@ -151,7 +151,8 @@ class Transition_rraa(NamedTuple):
     log_prob: jnp.ndarray
     obs: jnp.ndarray
     info: jnp.ndarray
-    reach: jnp.ndarray
+    reach1: jnp.ndarray
+    reach2: jnp.ndarray
     avoid: jnp.ndarray
     has_reached_1: jnp.ndarray
     has_reached_2: jnp.ndarray
@@ -202,19 +203,6 @@ class Transition_r2(NamedTuple):
     log_prob: jnp.ndarray
     obs: jnp.ndarray
     info: jnp.ndarray
-    reach2: jnp.ndarray
-
-class Transition_rraa(NamedTuple):
-    done: jnp.ndarray
-    action: jnp.ndarray
-    value: jnp.ndarray
-    value_reach1: jnp.ndarray
-    value_reach2: jnp.ndarray
-    reward: jnp.ndarray
-    log_prob: jnp.ndarray
-    obs: jnp.ndarray
-    info: jnp.ndarray
-    reach1: jnp.ndarray
     reach2: jnp.ndarray
 
 @partial(jax.jit)
