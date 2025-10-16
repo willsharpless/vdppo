@@ -1562,7 +1562,7 @@ def plot_contour_RRAA(multi_info, epoch, config, policy_decision_sample=None):
     elif 'Point' in config['EXP_NAME'] and 'RRAA' in config['EXP_NAME']: 
         
         info_rraa, info_raa1, info_raa2, info_a = multi_info
-        plt.figure(figsize=(8, 8))
+        plt.figure(figsize=(8, 11))
         fig, axes = plt.subplots(2, 2)
         axes_upperx = 3.1
         axes_lowerx = -3.1
@@ -1598,8 +1598,12 @@ def plot_contour_RRAA(multi_info, epoch, config, policy_decision_sample=None):
                 ax.contourf(X, Y, np.maximum(reach2_values, avoid_values), levels=[reach2_values.min(), 0], colors=['blue'], alpha=0.4)
             elif mode=="raa1":
                 ax.contourf(X, Y, np.maximum(reach1_values, avoid_values), levels=[reach1_values.min(), 0], colors=['green'], alpha=0.4)
+                ax.contourf(X, Y, np.maximum(reach1_values, avoid_values), alpha=0.3, levels=20)
             elif mode=="raa2":
                 ax.contourf(X, Y, np.maximum(reach2_values, avoid_values), levels=[reach2_values.min(), 0], colors=['blue'], alpha=0.4)
+                ax.contourf(X, Y, np.maximum(reach2_values, avoid_values), alpha=0.3, levels=20)
+            else:
+                ax.contourf(X, Y, avoid_values, alpha=0.3, levels=20)
             ax.contourf(X, Y, avoid_values, levels=[0, avoid_values.max()], colors=['red'], alpha=0.4)
 
             def draw_body(ax, info, i, alpha, color_mode="normal"):
@@ -1618,7 +1622,7 @@ def plot_contour_RRAA(multi_info, epoch, config, policy_decision_sample=None):
                     color_mode = "A"
                 elif reach1_val < 0. and mode in ["rraa", "raa1"]:
                     color_mode = "R1"
-                elif reach2_val < 0. and mode in ["rraa", "raa2"]:
+                elif reach2_val < 0. and mode in ["rraa", " "]:
                     color_mode = "R2"
                 else:
                     color_mode = "normal"
@@ -1638,10 +1642,10 @@ def plot_contour_RRAA(multi_info, epoch, config, policy_decision_sample=None):
             ax.set_title(title)
 
         # Draw Reach Avoid and Avoid Only 
-        draw_point_rraa(info_rraa, "RRAA", axes[0][0], mode="rraa")
-        draw_point_rraa(info_raa1, "RAA 1", axes[1][0], mode="raa1")
-        draw_point_rraa(info_raa2, "RAA 2", axes[1][1], mode="raa2")
-        draw_point_rraa(info_a, "A", axes[0][1], mode="a")
+        draw_point_rraa(info_rraa, "RRAA", axes[0, 0], mode="rraa")
+        draw_point_rraa(info_raa1, "RAA 1", axes[0, 1], mode="raa1")
+        draw_point_rraa(info_raa2, "RAA 2", axes[1, 0], mode="raa2")
+        draw_point_rraa(info_a, "A", axes[1, 1], mode="a")
 
         plt.savefig('model/{}/reach/trajectory_{:0>4d}'.format(config["DIR"], epoch), dpi=300)
         return fig
@@ -2632,8 +2636,12 @@ def plot_video_contour_RRAA(multi_info, epoch, config, save_video=False, prefix=
                 ax.contourf(X, Y, np.maximum(reach2_values, avoid_values), levels=[reach2_values.min(), 0], colors=['blue'], alpha=0.4)
             elif mode=="raa1":
                 ax.contourf(X, Y, np.maximum(reach1_values, avoid_values), levels=[reach1_values.min(), 0], colors=['green'], alpha=0.4)
+                ax.contourf(X, Y, np.maximum(reach1_values, avoid_values), alpha=0.3, levels=20)
             elif mode=="raa2":
                 ax.contourf(X, Y, np.maximum(reach2_values, avoid_values), levels=[reach2_values.min(), 0], colors=['blue'], alpha=0.4)
+                ax.contourf(X, Y, np.maximum(reach2_values, avoid_values), alpha=0.3, levels=20)
+            else:
+                ax.contourf(X, Y, avoid_values, alpha=0.3, levels=20)
             ax.contourf(X, Y, avoid_values, levels=[0, avoid_values.max()], colors=['red'], alpha=0.4)
 
             def draw_body(ax, info, i, alpha, color_mode="normal"):
@@ -2687,10 +2695,10 @@ def plot_video_contour_RRAA(multi_info, epoch, config, save_video=False, prefix=
 
             fig, axes = plt.subplots(2, 2, figsize=(8, 8), dpi=100)
 
-            draw_point_rraa(step_n, info_rraa, "Reach Reach", axes[0, 0], mode="rraa")
-            draw_point_rraa(step_n, info_raa1, "RAA 1", axes[1, 0], mode="raa1")
-            draw_point_rraa(step_n, info_raa2, "RAA 2", axes[1, 1], mode="raa2")
-            draw_point_rraa(step_n, info_a, "A", axes[0, 1], mode="a")
+            draw_point_rraa(step_n, info_rraa, "RRAA", axes[0, 0], mode="rraa")
+            draw_point_rraa(step_n, info_raa1, "RAA 1", axes[0, 1], mode="raa1")
+            draw_point_rraa(step_n, info_raa2, "RAA 2", axes[1, 0], mode="raa2")
+            draw_point_rraa(step_n, info_a, "A", axes[1, 1], mode="a")
                 
             # Render the figure to an image (smaller size)
             fig.canvas.draw()
