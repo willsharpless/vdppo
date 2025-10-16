@@ -8,7 +8,8 @@ from brax.envs.base import State
 
 from .point_random import PointRandom
 
-SAFETYGYM_TARGET_RIGHT, SAFETYGYM_TARGET_LEFT = [2.5, 2.5], [-2.5, -2.5] # v0
+# SAFETYGYM_TARGET_RIGHT, SAFETYGYM_TARGET_LEFT = [2.5, 2.5], [-2.5, -2.5] # v0
+SAFETYGYM_TARGET_RIGHT, SAFETYGYM_TARGET_LEFT = [2., 2.], [-2., -2.] # v1
 SAFETYGYM_TARGET_RADIUS = 0.3 # v0
 
 SAFETYGYM_RAA_OBSTACLE_RADIUS = 0.2

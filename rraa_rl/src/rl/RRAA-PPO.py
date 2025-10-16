@@ -626,10 +626,9 @@ def train(envs, env_paramss, config, rng):
 
         done_raa1 = done_raa1[:-1, :]
 
-        # new_done = jnp.zeros_like(done)
-        # new_done = new_done.at[-1, :].set(1.0) # TODO: check where this last point actually is 
-        # done = new_done
-        # # FIXME: FIXME FIXME FIXME FIXME FIXME FIXME FIXME FIXME - This is wrong? but was included in the working RAA code...
+        # new_done_raa1 = jnp.zeros_like(done_raa1)
+        # new_done_raa1 = new_done_raa1.at[-1, :].set(1.0) # TODO: check where this last point actually is 
+        # done_raa1 = new_done_raa1
 
         # advantages_V_raa1, targets_V_raa1 = calculate_gae_reach4(ent_gamma[1], config["GAE_LAMBDA"], r1_append, V_raa1_append, done_raa1)
 
@@ -1306,6 +1305,15 @@ def train(envs, env_paramss, config, rng):
 
     return
 
+
+# NOTES - Things to fix / check
+# - Does done setting we used work better/worse? (what should it be?)
+# - 1 vs 2 avoid functions (branch?)
+# - Reach/Avoid value scaling?
+# - Env length? (200 -> 400?)
+# - More envs per batch? (32 -> 128?)
+# - entropy/LR?
+
 if __name__ == "__main__":
     config = vars(get_args(sys.argv[1:]))
 
@@ -1406,14 +1414,14 @@ if __name__ == "__main__":
         # config["NAME"]="humanoid_rr_debug_donefix"
 
         config["EXP_NAME"]="PointRRAA"
-        config["DIR"]="point_rraa_debug"
+        config["DIR"]="point_rraa_bigp_plot"
         config["LR"]=3e-4
-        config["NUM_ENVS"]=32
-        config["NUM_STEPS"]=200
-        config["TOTAL_TIMESTEPS"]=10_000_000
-        config["STEP_SCAN"]=1
+        config["NUM_ENVS"]=128
+        config["NUM_STEPS"]=400
+        config["TOTAL_TIMESTEPS"]=100_000_000
+        config["STEP_SCAN"]=4
         config["UPDATE_EPOCHS"]=10
-        config["NUM_MINIBATCHES"]=8
+        config["NUM_MINIBATCHES"]=32
         config["GAMMA_ENERGY"]=1.0
         config["GAMMA_REACH_INIT"]=0.999
         config["GAMMA_REACH_FINAL"]=0.9999
@@ -1426,7 +1434,7 @@ if __name__ == "__main__":
         config["CUDA_USE"]="0"
         config["ANNEAL_LR"]=True
         config["ANNEAL_ENT"]=True
-        config["NAME"]="point_rraa_debug"
+        config["NAME"]="point_rraa_bigp_plot"
     
     #     # config["TEST_MODE"]=True # USES DETERMINISTIC MODELS
 

@@ -2600,10 +2600,10 @@ def plot_video_contour_RRAA(multi_info, epoch, config, save_video=False, prefix=
         
         info_rraa, info_raa1, info_raa2, info_a = multi_info
 
-        axes_upperx = 3.
-        axes_lowerx = -3.
-        axes_uppery = 3.
-        axes_lowery = -3.
+        axes_upperx = 3.1
+        axes_lowerx = -3.1
+        axes_uppery = 3.1
+        axes_lowery = -3.1
 
         # Reward percomputation (targets & obstacles)
         x = np.linspace(axes_lowerx, axes_upperx, 400)
