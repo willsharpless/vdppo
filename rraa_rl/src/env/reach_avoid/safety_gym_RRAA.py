@@ -82,12 +82,21 @@ class PointRRAATemplate:
     def is_avoid(self, state):
         radius = SAFETYGYM_RAA_OBSTACLE_RADIUS
         target_pos = state
+        obstacle_type='box'
 
         ## AVOID OBSTACLES
         avoid_obstacles = -jnp.inf
         for hazard_pos in self.hazard_pos_array:
-            avoid = -(jnp.sqrt((target_pos[..., 0] - hazard_pos[0]) ** 2 + \
-                             (target_pos[..., 1] - hazard_pos[1]) ** 2) - radius)
+
+            if obstacle_type == 'ball':
+                avoid = -(jnp.sqrt((target_pos[..., 0] - hazard_pos[0]) ** 2 + \
+                                (target_pos[..., 1] - hazard_pos[1]) ** 2) - radius)
+            elif obstacle_type == 'box':
+                avoid = -(jnp.maximum(jnp.fabs(target_pos[..., 0] - hazard_pos[0]), 
+                                    jnp.fabs(target_pos[..., 1] - hazard_pos[1])) - radius)
+            else:
+                raise NotImplementedError("Obstacle type not implemented")
+
             avoid_obstacles = jnp.maximum(avoid_obstacles, avoid)
         
         ## AVOID WALLS

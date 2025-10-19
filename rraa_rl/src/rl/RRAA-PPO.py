@@ -1414,7 +1414,7 @@ if __name__ == "__main__":
         # config["NAME"]="humanoid_rr_debug_donefix"
 
         config["EXP_NAME"]="PointRRAA"
-        config["DIR"]="point_rraa_bigp"
+        config["DIR"]="point_rraa_boxobs_bigp"
         config["LR"]=3e-4
         config["NUM_ENVS"]=128
         config["NUM_STEPS"]=400
@@ -1434,7 +1434,7 @@ if __name__ == "__main__":
         config["CUDA_USE"]="0"
         config["ANNEAL_LR"]=True
         config["ANNEAL_ENT"]=True
-        config["NAME"]="point_rraa_bigp"
+        config["NAME"]="point_rraa_boxobs_bigp"
     
     #     # config["TEST_MODE"]=True # USES DETERMINISTIC MODELS
 
