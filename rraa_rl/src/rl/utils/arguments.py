@@ -123,6 +123,12 @@ def get_args(args):
     parser.add_argument(
         '--WANDB_GROUP', default='default', type=str, help='WandB group name'
     )
+    parser.add_argument(
+        '--NOISE_PERCENT', default=0., type=float, help='Percentage of noise added to the dynamics (from I/Cs)'
+    )
+    parser.add_argument(
+        '--NOISY_STATES', default=[0, 1, 2, 6, 7, 8], type=list, help='Indices of states to add noise to'
+    )
     
     args = parser.parse_args(args) if args is not None else parser.parse_args()
 

@@ -31,8 +31,8 @@ class EnvParamsEmpty:
     pass
 
 class PointReachAvoidTemplate:
-    def __init__(self, backend="mjx"):
-        env = PointRandomOuter(backend=backend)
+    def __init__(self, backend="mjx", qd_noise_std=0.):
+        env = PointRandomOuter(backend=backend, qd_noise_std=qd_noise_std)
         env = EpisodeWrapper(env, episode_length=1000, action_repeat=1)
         env = AutoResetWrapper(env)
         self._env = env
@@ -180,6 +180,7 @@ class PointAvoidOnly(PointReachAvoidTemplate):
         
         ## Set Auxiliaries
         rng = key 
+        state.info['rng'] = rng
         for key_name in ['steps', 'truncation', 'episode_done']:
             state.info[key_name] = jnp.zeros(rng.shape[:-1])
         episode_metrics = dict()

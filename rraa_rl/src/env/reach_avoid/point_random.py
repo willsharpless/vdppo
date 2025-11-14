@@ -12,6 +12,7 @@ class PointRandom(PipelineEnv):
             self,
             backend='mjx',
             reset_noise_scale=1e-2,
+            qd_noise_std=0.0,
             **kwargs,
     ):
 
@@ -33,6 +34,7 @@ class PointRandom(PipelineEnv):
         super().__init__(sys=sys, backend=backend, **kwargs)
 
         self._reset_noise_scale = reset_noise_scale
+        self.qd_noise_std = qd_noise_std
 
     @property
     def action_size(self) -> int:
@@ -71,6 +73,15 @@ class PointRandom(PipelineEnv):
         """Runs one timestep of the environment's dynamics."""
 
         pipeline_state = self.pipeline_step(state.pipeline_state, action)
+
+        rng = state.info.get('rng', None)
+        if rng is not None:
+            rng_qd = jax.random.split(rng)[0]
+            qd_noise = jax.random.uniform(
+                rng_qd, (self.sys.qd_size(),), minval=-self._reset_noise_scale, maxval=self._reset_noise_scale
+            )  * self.qd_noise_std
+            pipeline_state = pipeline_state.replace(qd=pipeline_state.qd + qd_noise)
+
         obs = self._get_obs(pipeline_state)
 
         return state.replace(
@@ -101,6 +112,7 @@ class PointRandomOuter(PipelineEnv):
             self,
             backend='mjx',
             reset_noise_scale=1e-2,
+            qd_noise_std=0.0,
             **kwargs,
     ):
 
@@ -122,6 +134,7 @@ class PointRandomOuter(PipelineEnv):
         super().__init__(sys=sys, backend=backend, **kwargs)
 
         self._reset_noise_scale = reset_noise_scale
+        self.qd_noise_std = qd_noise_std
 
     @property
     def action_size(self) -> int:
@@ -158,16 +171,25 @@ class PointRandomOuter(PipelineEnv):
             'x_velocity': zero,
             'y_velocity': zero,
         }
-        return State(pipeline_state, obs, reward, done, metrics)
+        return State(pipeline_state, obs, reward, done, metrics, info={'rng': rng})
 
     def step(self, state: State, action: jax.Array) -> State:
         """Runs one timestep of the environment's dynamics."""
 
         pipeline_state = self.pipeline_step(state.pipeline_state, action)
+
+        rng = state.info.get('rng', None)
+        if rng is not None:
+            rng, rng_qd = jax.random.split(rng)
+            qd_noise = jax.random.uniform(
+                rng_qd, (self.sys.qd_size(),), minval=-self._reset_noise_scale, maxval=self._reset_noise_scale
+            )  * self.qd_noise_std
+            pipeline_state = pipeline_state.replace(qd=pipeline_state.qd + qd_noise)
+
         obs = self._get_obs(pipeline_state)
 
         return state.replace(
-            pipeline_state=pipeline_state, obs=obs, reward=0., done=0.
+            pipeline_state=pipeline_state, obs=obs, reward=0., done=0., info={**state.info, "rng": rng},
         )
 
     def _get_obs(

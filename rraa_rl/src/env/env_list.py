@@ -469,7 +469,7 @@ def get_env(config):
         vec2 = jnp.ones(26, dtype=jnp.float32)
         vec2 = vec2.at[-1].set(400.)
         trans = partial(transform_observation, vec1, vec2)
-        env = F16Avoid()
+        env = F16Avoid(noise_perc=config["NOISE_PERCENT"], noisy_states=config["NOISY_STATES"])
         env = TransformObservation(env, trans)
 
     elif config["EXP_NAME"] == "F16ReachAvoid":
@@ -480,7 +480,7 @@ def get_env(config):
         vec2 = vec2.at[-1].set(400.)
         trans = partial(transform_observation, vec1, vec2)
 
-        env = F16ReachAvoid()
+        env = F16ReachAvoid(noise_perc=config["NOISE_PERCENT"], noisy_states=config["NOISY_STATES"])
         env = TransformObservation(env, trans)
 
         return (env)
@@ -515,8 +515,8 @@ def get_env(config):
         vec2 = vec2.at[-2].set(80.)
         trans = partial(transform_observation, vec1, vec2)
 
-        env = F16ReachAvoid()
-        env_avoid = F16AvoidOnly()
+        env = F16ReachAvoid(noise_perc=config["NOISE_PERCENT"], noisy_states=config["NOISY_STATES"])
+        env_avoid = F16AvoidOnly(noise_perc=config["NOISE_PERCENT"], noisy_states=config["NOISY_STATES"])
 
         env = TransformObservation(env, trans)
         env_avoid = TransformObservation(env_avoid, trans)
@@ -542,7 +542,7 @@ def get_env(config):
         vec2 = vec2.at[-1].set(400.)
         trans = partial(transform_observation, vec1, vec2)
 
-        env = F16ReachAvoidBaseline()
+        env = F16ReachAvoidBaseline(noise_perc=config["NOISE_PERCENT"], noisy_states=config["NOISY_STATES"])
 
         env = TransformObservation(env, trans)
 
@@ -658,8 +658,8 @@ def get_env(config):
         trans = partial(transform_observation, vec1, vec2)
         untrans = partial(untransform_observation, vec1, vec2)
 
-        env = PointReachAvoid()
-        env_avoid = PointAvoidOnly()
+        env = PointReachAvoid(qd_noise_std=config["NOISE_PERCENT"])
+        env_avoid = PointAvoidOnly(qd_noise_std=config["NOISE_PERCENT"])
         env = TransformObservation(env, trans)
         env_avoid = TransformObservation(env_avoid, trans)
 
@@ -785,7 +785,7 @@ def get_env(config):
         env = TransformObservation(env, trans)
     elif config["EXP_NAME"] == 'F16AvoidBaseline':
         from .baseline.F16_avoid_baseline import F16AvoidBaseline
-        env = F16AvoidBaseline()
+        env = F16AvoidBaseline(noise_perc=config["NOISE_PERCENT"], noisy_states=config["NOISY_STATES"])
 
     elif config["EXP_NAME"] == 'HumanoidReachReach':
         obs_dim_base = 246

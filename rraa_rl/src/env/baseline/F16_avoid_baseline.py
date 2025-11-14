@@ -68,11 +68,13 @@ def compute_f16_vel_angles(state):
 
 class F16AvoidBaseline(environment.Environment):
 
-    def __init__(self):
+    def __init__(self, noise_perc: float = 0.0, noisy_states: list = [0,1,2,6,7,8]):
         super().__init__()
         self.obs_shape = (26,)
         self.NX = F16.NX
         self.NU = F16.NU
+        self.noise_perc = noise_perc
+        self.noisy_states = noisy_states
 
         (self.VT, self.ALPHA, self.BETA,
          self.PHI, self.THETA, self.PSI,
@@ -104,6 +106,11 @@ class F16AvoidBaseline(environment.Environment):
                 [-np.inf, np.inf],  # Ny+R integrator
             ]
         )
+        self.init_bounds = INIT_BOUNDS
+        noisy_state_mask = np.zeros((self.NX,))
+        noisy_state_mask[self.noisy_states] = 1.0
+        self.noise_std = noise_perc * (INIT_BOUNDS[:, 1] - INIT_BOUNDS[:, 0]) * noisy_state_mask
+
 
         self._dt = 0.05
         self._env = F16()
@@ -134,6 +141,9 @@ class F16AvoidBaseline(environment.Environment):
         h_4 = self._env.xdot(state.state + h_3 * self._dt, control)
         a_state_new = state.state + (h_1 + 2 * h_2 + 2 * h_3 + h_4) * self._dt / 6
 
+        noise = jax.random.normal(key, shape=a_state_new.shape) * self.noise_std
+        a_state_new = a_state_new + noise
+        
         state_high = jnp.full(16, jnp.inf)
         state_low = jnp.full(16, -jnp.inf)
         state_high = state_high.at[self.ALPHA].set(self.MORELLI_BOUNDS[self.ALPHA, 1])
@@ -176,29 +186,7 @@ class F16AvoidBaseline(environment.Environment):
         self, key: chex.PRNGKey, params: EnvParams
     ) -> Tuple[chex.Array, EnvState]:
 
-        _MAX_ALT_SAMPLE = 800.0
-        bounds = np.array(
-            [
-                (150.0, 550.0),  # vt
-                (-0.17453292519943295 / 10, 0.7853981633974483 / 10),  # alpha (rad)
-                (-0.5235987755982988 / 10, 0.5235987755982988 / 10),  # beta (rad)
-                (-np.pi / 4, np.pi / 4),  # phi roll
-                (-1.0, 1.0),  # theta pitch
-                (-1e-4, 1e-4),  # psi yaw
-                (-0.5, 0.5),  # P
-                (-0.5, 0.5),  # Q
-                (-0.5, 0.5),  # R
-                (0.0, 1900.0),  # pos_n
-                (-100.0, 100.0),  # pos_e
-                (300.0, _MAX_ALT_SAMPLE),  # alt.
-                (0.0, 10.0),  # power. Consider sampling wider range.
-                (-2.0, 2.0),  # nz_int
-                (-2.0, 2.0),  # ps_int
-                (-2.0, 2.0),  # nyr_int
-            ]
-        )
-
-        state = jax.random.uniform(key, shape=(16,), minval=bounds[:, 0], maxval=bounds[:, 1])
+        state = jax.random.uniform(key, shape=(16,), minval=self.init_bounds[:, 0], maxval=self.init_bounds[:, 1])
         is_avoid = self.is_avoid(state, params)
         avoid_value = jnp.where(is_avoid, -1, 1)
         reach_value = self.is_reach(state, avoid_value, params)
@@ -339,3 +327,44 @@ class F16AvoidBaseline(environment.Environment):
                 ),
             }
         )
+    
+_MAX_ALT_SAMPLE = 800.
+INIT_BOUNDS = np.array(
+    # [
+    #     (150.0, 550.0),  # vt
+    #     (-0.17453292519943295 / 10, 0.7853981633974483 / 10),  # alpha (rad)
+    #     (-0.5235987755982988 / 10, 0.5235987755982988 / 10),  # beta (rad)
+    #     (-np.pi / 4, np.pi / 4),  # phi roll
+    #     (-1.0, 1.0),  # theta pitch
+    #     (-1e-4, 1e-4),  # psi yaw
+    #     (-0.5, 0.5),  # P
+    #     (-0.5, 0.5),  # Q
+    #     (-0.5, 0.5),  # R
+    #     (0.0, 1900.0),  # pos_n
+    #     (-200.0, 200.0),  # pos_e
+    #     (300.0, _MAX_ALT_SAMPLE),  # alt.
+    #     (0.0, 10.0),  # power. Consider sampling wider range.
+    #     (-2.0, 2.0),  # nz_int
+    #     (-2.0, 2.0),  # ps_int
+    #     (-2.0, 2.0),  # nyr_int
+    # ]
+    [
+        # NOTE WAS: REDUCED
+        (250.0, 450.1),  # vt
+        (-0.17453292519943295 / 20, 0.7853981633974483 / 20),  # alpha (rad)
+        (-0.5235987755982988 / 20, 0.5235987755982988 / 20),  # beta (rad)
+        (-np.pi / 8, np.pi / 8),  # phi roll
+        (-0.5, 0.5),  # theta pitch
+        (-1e-4, 1e-4),  # psi yaw
+        (-0.25, 0.25),  # P
+        (-0.25, 0.25),  # Q
+        (-0.25, 0.25),  # R
+        (0.0, 1000.0),  # pos_n
+        (-200.0, 200.0),  # pos_e
+        (400.0, 700.0),  # alt.
+        (0.0, 10.0),  # power. Consider sampling wider range.
+        (-1.0, 1.0),  # nz_int
+        (-1.0, 1.0),  # ps_int
+        (-1.0, 1.0),  # nyr_int
+    ]
+)
