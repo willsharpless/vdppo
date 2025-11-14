@@ -418,13 +418,30 @@ def train(envs, env_paramss, config, rngs, env_test=None):
         # FIXME: FIXME FIXME FIXME FIXME FIXME FIXME FIXME FIXME FIXME 
         # TODO: Need to add plot utils function
         idx = 0
+
         reach_idx, avoid_idx = calculate_reachalwaysavoid(traj_batch, idx, type="both")
         reach_avoidonly_idx, avoid_avoidonly_idx = calculate_reachalwaysavoid(traj_batch_avoid, idx, type="avoid")
         info = tree_index2(traj_batch.info, idx)
         info_avoid = tree_index2(traj_batch_avoid.info, idx)
-
         cnt_never_reached, cnt_crashed, cnt_crash_after_reach = calculate_reach_avoid_stats(traj_batch)
-        (reach_perc, crash_perc, reach_avoid_perc) = calculate_reachavoid(traj_batch, to_first_done="Humanoid" in config["EXP_NAME"])
+
+        (
+            (reach_perc, crash_perc, reach_avoid_perc), 
+            (reach_idx_, crash_idx_, reach_and_avoid_idx_), 
+            rora_perc, values_mean, values_std
+        ) = calculate_reachavoid(traj_batch, to_first_done="Humanoid" in config["EXP_NAME"])
+
+        # write to score file
+        with open("model/{}/training_scores.txt".format(config['DIR']), "a") as f:
+            f.write("{},{},{},{},{},{},{}\n".format(
+                timestep, 
+                round(values_mean, 6), 
+                round(values_std, 6), 
+                round(crash_perc, 6), 
+                round(reach_perc, 6), 
+                round(rora_perc, 6), 
+                round(reach_avoid_perc, 6)
+            ))
 
         info['reach_index'] = reach_idx
         info['avoid_index'] = avoid_idx
@@ -433,7 +450,6 @@ def train(envs, env_paramss, config, rngs, env_test=None):
 
         # TODO: Need to add plot utils function
         # FIXME: FIXME FIXME FIXME FIXME FIXME FIXME FIXME FIXME FIXME 
-        
 
         if config['EXP_NAME'] == 'WindField' or config['EXP_NAME'] == 'WindFieldFull':
             info['u_air'] = env_params.u_air
@@ -563,7 +579,11 @@ def train(envs, env_paramss, config, rngs, env_test=None):
             info_avoid_eval['avoid_index'] = avoid_avoidonly_idx
             fig_eval = plot_contour_RRAA((info_eval, info_avoid_eval), timestep, config)
             cnt_never_reached, cnt_crashed, cnt_crash_after_reach = calculate_reach_avoid_stats(traj_batch_eval)
-            (reach_perc, crash_perc, reach_avoid_perc) = calculate_reachavoid(traj_batch_eval, to_first_done="Humanoid" in config["EXP_NAME"])
+            (
+                (reach_perc, crash_perc, reach_avoid_perc), 
+                (reach_idx_, crash_idx_, reach_and_avoid_idx_), 
+                reach_or_avoid_one_perc, min_values_mean, min_values_std
+            ) = calculate_reachavoid(traj_batch_eval, to_first_done="Humanoid" in config["EXP_NAME"])
             if config["USE_WANDB"]:
                 wandb.log({
                 "eval/not reaching goal": cnt_never_reached,
@@ -656,30 +676,30 @@ if __name__ == "__main__":
         # config["ANNEAL_ENT"]=True
         # config["NAME"]="F16_raa_PE500_halfsamp2_TO80m80s_tjreset_g999"
 
-        config["EXP_NAME"]="HalfCheetahReachAlwaysAvoid"
-        config["DIR"]="halfcheetah_raa_debug2"
-        config["DEC_INIT_TYPE"]="standard"
-        config["SAVE_MILESTONE"]=True
-        config["LR"]=3e-4
-        config["NUM_ENVS"]=128
-        config["NUM_STEPS"]=400
-        config["TOTAL_TIMESTEPS"]=100_000_000
-        config["STEP_SCAN"]=4
-        config["UPDATE_EPOCHS"]=10
-        config["NUM_MINIBATCHES"]=32
-        config["GAMMA_ENERGY"]=1.0
-        config["GAMMA_REACH_INIT"]=0.995
-        config["GAMMA_REACH_FINAL"]=0.9995
-        config["GAE_LAMBDA"]=0.95
-        config["CLIP_EPS"]=0.2
-        config["ENT_COEF"]=0.005
-        config["VF_COEF"]=2.0
-        config["MAX_GRAD_NORM"]=0.5
-        config["ACTIVATION"]="tanh"
-        config["CUDA_USE"]="0"
-        config["ANNEAL_LR"]=True
-        config["ANNEAL_ENT"]=True
-        config["NAME"]="halfcheetah_raa_debug2"
+        # config["EXP_NAME"]="HalfCheetahReachAlwaysAvoid"
+        # config["DIR"]="halfcheetah_raa_debug2"
+        # config["DEC_INIT_TYPE"]="standard"
+        # config["SAVE_MILESTONE"]=True
+        # config["LR"]=3e-4
+        # config["NUM_ENVS"]=128
+        # config["NUM_STEPS"]=400
+        # config["TOTAL_TIMESTEPS"]=100_000_000
+        # config["STEP_SCAN"]=4
+        # config["UPDATE_EPOCHS"]=10
+        # config["NUM_MINIBATCHES"]=32
+        # config["GAMMA_ENERGY"]=1.0
+        # config["GAMMA_REACH_INIT"]=0.995
+        # config["GAMMA_REACH_FINAL"]=0.9995
+        # config["GAE_LAMBDA"]=0.95
+        # config["CLIP_EPS"]=0.2
+        # config["ENT_COEF"]=0.005
+        # config["VF_COEF"]=2.0
+        # config["MAX_GRAD_NORM"]=0.5
+        # config["ACTIVATION"]="tanh"
+        # config["CUDA_USE"]="0"
+        # config["ANNEAL_LR"]=True
+        # config["ANNEAL_ENT"]=True
+        # config["NAME"]="halfcheetah_raa_debug2"
 
         # config["EXP_NAME"]="HumanoidReachAlwaysAvoid"
         # config["DIR"]="humanoid_raa_debug"
@@ -705,28 +725,29 @@ if __name__ == "__main__":
         # config["NAME"]="humanoid_raa_debug"
         # config["TEST_MODE"]=True # USES DETERMINISTIC MODELS
 
-        # config["EXP_NAME"]="PointReachAlwaysAvoid"
-        # config["DIR"]="point_raa_resetgoalsafe_avoidv0_debug2"
-        # config["LR"]=3e-4
-        # config["NUM_ENVS"]=128
-        # config["NUM_STEPS"]=400
-        # config["TOTAL_TIMESTEPS"]=100_000_000
-        # config["STEP_SCAN"]=4
-        # config["UPDATE_EPOCHS"]=10
-        # config["NUM_MINIBATCHES"]=32
-        # config["GAMMA_ENERGY"]=1.0
-        # config["GAMMA_REACH_INIT"]=0.995
-        # config["GAMMA_REACH_FINAL"]=0.9995
-        # config["GAE_LAMBDA"]=0.95
-        # config["CLIP_EPS"]=0.2
-        # config["ENT_COEF"]=0.005
-        # config["VF_COEF"]=2.0
-        # config["MAX_GRAD_NORM"]=0.5
-        # config["ACTIVATION"]="tanh"
-        # config["CUDA_USE"]="0"
-        # config["ANNEAL_LR"]=True,
-        # config["ANNEAL_ENT"]=True
-        # config["NAME"]="point_raa_resetgoalsafe_avoidv0_debug2"
+        config["EXP_NAME"]="PointReachAlwaysAvoid"
+        config["DIR"]="point_raa_resetgoalsafe_avoidv0_debug2"
+        config["LR"]=3e-4
+        config["NUM_ENVS"]=128
+        config["NUM_STEPS"]=400
+        config["TOTAL_TIMESTEPS"]=100_000_000
+        config["STEP_SCAN"]=4
+        config["UPDATE_EPOCHS"]=10
+        config["NUM_MINIBATCHES"]=32
+        config["GAMMA_ENERGY"]=1.0
+        config["GAMMA_REACH_INIT"]=0.995
+        config["GAMMA_REACH_FINAL"]=0.9995
+        config["GAE_LAMBDA"]=0.95
+        config["CLIP_EPS"]=0.2
+        config["ENT_COEF"]=0.005
+        config["VF_COEF"]=2.0
+        config["MAX_GRAD_NORM"]=0.5
+        config["ACTIVATION"]="tanh"
+        config["CUDA_USE"]="0"
+        config["ANNEAL_LR"]=True
+        config["ANNEAL_ENT"]=True
+        config["NOISE_PERCENT"]=10.0
+        config["NAME"]="point_raa_resetgoalsafe_avoidv0_debug2"
 
     config["NUM_UPDATES"] = int(
         config["TOTAL_TIMESTEPS"] // config["NUM_STEPS"] // config["NUM_ENVS"]
@@ -746,7 +767,12 @@ if __name__ == "__main__":
         os.makedirs("model/{}/target".format(config['DIR']))
         os.makedirs("model/{}/value_target".format(config['DIR']))
         os.makedirs("model/{}/state_traj".format(config['DIR']))
-    
+
+    # make file for current average value, raa success rate, crash rate, etc.
+    with open("model/{}/training_scores.txt".format(config['DIR']), "w") as f:
+        f.write("Training Scores for RAA-PPO-{}-{}, started {}\n".format(config["EXP_NAME"], config['NAME'], time.strftime("%Y-%m-%d %H:%M:%S", time.localtime())))
+        f.write("epoch,value_mean,crash_percent,reach_percent,rora_percent,raa_percent\n")
+
     envs = get_env(config)
     env, env_avoid = envs
 
@@ -766,6 +792,7 @@ if __name__ == "__main__":
     config["USE_WANDB"] = True # False for debugging 
     if config["USE_WANDB"]:
         wandb.init(project='DOHJ-{}-{}'.format(config["EXP_NAME"], config["WANDB_GROUP"]), name=config["NAME"], config=config,
+        # wandb.init(project='EC-EFPPO-{}'.format(config["EXP_NAME"]), name=config["NAME"], config=config,
                    entity='braat_brrt')
 
     config["LOAD_DECOMPOSED"] = False # TODO make args
