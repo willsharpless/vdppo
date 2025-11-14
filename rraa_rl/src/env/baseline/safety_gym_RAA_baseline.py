@@ -27,8 +27,8 @@ class EnvParamsEmpty:
     pass
 
 class PointReachAlwaysAvoidBaseline_augmented:
-    def __init__(self, backend="mjx"):
-        env = PointRandomOuter(backend=backend)
+    def __init__(self, backend="mjx", qd_noise_std=0.):
+        env = PointRandomOuter(backend=backend, qd_noise_std=qd_noise_std)
         env = EpisodeWrapper(env, episode_length=1000, action_repeat=1)
         env = AutoResetWrapper(env)
         self._env = env

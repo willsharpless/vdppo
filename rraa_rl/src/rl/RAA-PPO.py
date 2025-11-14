@@ -425,8 +425,7 @@ def train(envs, env_paramss, config, rngs, env_test=None):
         info_avoid = tree_index2(traj_batch_avoid.info, idx)
         cnt_never_reached, cnt_crashed, cnt_crash_after_reach = calculate_reach_avoid_stats(traj_batch)
 
-        (
-            (reach_perc, crash_perc, reach_avoid_perc), 
+        ((reach_perc, crash_perc, reach_avoid_perc), 
             (reach_idx_, crash_idx_, reach_and_avoid_idx_), 
             rora_perc, values_mean, values_std
         ) = calculate_reachavoid(traj_batch, to_first_done="Humanoid" in config["EXP_NAME"])

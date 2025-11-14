@@ -369,7 +369,22 @@ def train(env, env_params, config, rng, env_test=None):
             fig = plot_contour_RRAA((info, None), timestep, config)
 
             cnt_never_reached, cnt_crashed, cnt_crash_after_reach = calculate_reach_avoid_stats(traj_batch)
-            (reach_perc, crash_perc, reach_avoid_perc) = calculate_reachavoid(traj_batch)
+            ((reach_perc, crash_perc, reach_avoid_perc), 
+                (reach_idx_, crash_idx_, reach_and_avoid_idx_), 
+                rora_perc, values_mean, values_std
+            ) = calculate_reachavoid(traj_batch)
+
+            # write to score file
+            with open("model/{}/training_scores.txt".format(config['DIR']), "a") as f:
+                f.write("{},{},{},{},{},{},{}\n".format(
+                    timestep, 
+                    round(values_mean, 6), 
+                    round(values_std, 6), 
+                    round(crash_perc, 6), 
+                    round(reach_perc, 6), 
+                    round(rora_perc, 6), 
+                    round(reach_avoid_perc, 6)
+                ))
             
             # Keep the best performaing model
             best_score = -float(jnp.inf) if timestep == 0 else best_score
@@ -497,7 +512,11 @@ if __name__ == "__main__":
         os.makedirs("model/{}/target".format(config['DIR']))
         os.makedirs("model/{}/value_target".format(config['DIR']))
         os.makedirs("model/{}/state_traj".format(config['DIR']))
-    
+        
+    with open("model/{}/training_scores.txt".format(config['DIR']), "w") as f:
+        f.write("Training Scores for RAA-PPO-{}-{}, started {}\n".format(config["EXP_NAME"], config['NAME'], time.strftime("%Y-%m-%d %H:%M:%S", time.localtime())))
+        f.write("epoch,value_mean,crash_percent,reach_percent,rora_percent,raa_percent\n")
+
     ## Using the same CPPO baseline classes, which in RR case requires the following flags
     if "ReachReach" in config["EXP_NAME"]:
         config["ENV_REWARD_TYPE"] = "accumulated" # reward
