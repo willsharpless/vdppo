@@ -332,8 +332,8 @@ def get_env(config):
         trans = partial(transform_observation, vec1, vec2)
         untrans = partial(untransform_observation, vec1, vec2)
 
-        env = HalfCheetahReachAvoid()
-        env_avoid = HalfCheetahAvoidOnly() 
+        env = HalfCheetahReachAvoid(qd_noise_std=config["NOISE_PERCENT"])
+        env_avoid = HalfCheetahAvoidOnly(qd_noise_std=config["NOISE_PERCENT"]) 
         env = TransformObservation(env, trans)
         env_avoid = TransformObservation(env_avoid, trans)
 
@@ -349,7 +349,7 @@ def get_env(config):
         trans = partial(transform_observation, vec1, vec2)
         untrans = partial(untransform_observation, vec1, vec2)
 
-        env = HalfCheetahReachAvoid()
+        env = HalfCheetahReachAvoid(qd_noise_std=config["NOISE_PERCENT"])
 
         env = TransformObservation(env, trans)
         env.set_untransform_obs(untrans)
@@ -372,7 +372,7 @@ def get_env(config):
         trans = partial(transform_observation, vec1, vec2)
         untrans = partial(untransform_observation, vec1, vec2)
 
-        env = HalfCheetahReachAlwaysAvoidBaseline_augmented()
+        env = HalfCheetahReachAlwaysAvoidBaseline_augmented(qd_noise_std=config["NOISE_PERCENT"])
         env = TransformObservation(env, trans)
         env.set_untransform_obs(untrans)
 

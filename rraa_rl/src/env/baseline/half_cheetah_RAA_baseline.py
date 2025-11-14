@@ -33,8 +33,8 @@ class EnvParams:
     gamma: float = 0.99
 
 class HalfCheetahReachAlwaysAvoidBaseline_augmented:
-    def __init__(self, backend="positional"):
-        env = HalfCheetahRandom(backend=backend,
+    def __init__(self, backend="positional", qd_noise_std=0.):
+        env = HalfCheetahRandom(backend=backend, qd_noise_std=qd_noise_std,
                            exclude_current_positions_from_observation=False)
         env = EpisodeWrapper(env, episode_length=1000, action_repeat=1)
         env = AutoResetWrapper(env)

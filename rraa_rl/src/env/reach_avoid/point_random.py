@@ -67,7 +67,7 @@ class PointRandom(PipelineEnv):
             'x_velocity': zero,
             'y_velocity': zero,
         }
-        return State(pipeline_state, obs, reward, done, metrics)
+        return State(pipeline_state, obs, reward, done, metrics, info={'rng': rng})
 
     def step(self, state: State, action: jax.Array) -> State:
         """Runs one timestep of the environment's dynamics."""
