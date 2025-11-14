@@ -683,7 +683,7 @@ def get_env(config):
         trans = partial(transform_observation, vec1, vec2)
         untrans = partial(untransform_observation, vec1, vec2)
 
-        env = PointReachAlwaysAvoidBaseline_augmented()
+        env = PointReachAlwaysAvoidBaseline_augmented(qd_noise_std=config["NOISE_PERCENT"])
         env = TransformObservation(env, trans)
         env.set_untransform_obs(untrans)
 
@@ -697,7 +697,7 @@ def get_env(config):
         trans = partial(transform_observation, vec1, vec2)
         untrans = partial(untransform_observation, vec1, vec2)
 
-        env = PointReachAvoid()
+        env = PointReachAvoid(qd_noise_std=config["NOISE_PERCENT"])
         env = TransformObservation(env, trans)
         env.set_untransform_obs(untrans)
         return (env)
