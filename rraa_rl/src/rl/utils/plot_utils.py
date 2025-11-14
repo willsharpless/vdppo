@@ -68,7 +68,13 @@ def calculate_reachavoid(traj_batch, th=0, to_first_done=False):
     reach_perc = ((reach_idx < np.inf).sum() / reach_idx.__len__()).item()
     crash_perc = ((crash_idx < np.inf).sum() / crash_idx.__len__()).item()
     reach_avoid_perc = ((reach_and_avoid_idx < np.inf).sum() / reach_and_avoid_idx.__len__()).item()
-    return (reach_perc, crash_perc, reach_avoid_perc)
+    
+    reach_or_avoid_one = np.logical_or(reach_idx < np.inf, crash_idx == np.inf)
+    reach_or_avoid_one_perc = reach_or_avoid_one.sum() / reach_or_avoid_one.__len__()
+
+    min_values = np.maximum(np.min(traj_batch.reach, axis=0), np.max(traj_batch.avoid, axis=0))
+
+    return (reach_perc, crash_perc, reach_avoid_perc), (reach_idx, crash_idx, reach_and_avoid_idx), reach_or_avoid_one_perc, min_values.mean().item(), min_values.std().item()
 
 def calculate_reachreach(traj_batch, reach_type="both", th=0, to_first_done=False):
 
