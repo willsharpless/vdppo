@@ -124,6 +124,9 @@ def get_args(args):
         '--WANDB_GROUP', default='default', type=str, help='WandB group name'
     )
     parser.add_argument(
+        '--WANDB_PROJECT', default="", type=str, help='WandB project name (overwrites auto naming)'
+    )
+    parser.add_argument(
         '--NOISE_PERCENT', default=0., type=float, help='Percentage of noise added to the dynamics (from I/Cs)'
     )
     parser.add_argument(

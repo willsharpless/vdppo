@@ -259,9 +259,10 @@ if __name__ == "__main__":
     print("LOG_BARRIER,", config["LOG_BARRIER"])
 
     config["USE_WANDB"] = True 
-    if config["USE_WANDB"]:
-        wandb.init(project='RAN-{}'.format(config["EXP_NAME"]), name=config["NAME"], config=config,
-                   entity='braat_brrt')
+    if config["WANDB_PROJECT"] and config["USE_WANDB"]:
+        wandb.init(project=config["WANDB_PROJECT"], name=config["NAME"], config=config, entity='braat_brrt')
+    elif config["USE_WANDB"]: # auto-name
+        wandb.init(project='PPO-RAA-{}'.format(config["EXP_NAME"]), name=config["NAME"], config=config, entity='braat_brrt')
 
     config["NUM_UPDATES"] = int(
         config["TOTAL_TIMESTEPS"] // config["NUM_STEPS"] // config["NUM_ENVS"]

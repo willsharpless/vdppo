@@ -16,6 +16,7 @@ sys.path.append("/home/mepear_gc")
 
 import jax
 import jax.numpy as jnp
+import matplotlib.pyplot as plt
 
 from flax.training import train_state
 from flax.training import checkpoints
@@ -387,7 +388,11 @@ def train(env, env_params, config, rng):
         save_video = True 
         if timestep % video_freq == 0 or timestep == total_timesteps - 1: 
             video_frames = plot_video_contour_RRAA((info, None), timestep + 1, config, save_video=save_video, log_wandb=config["USE_WANDB"])
-        ####### RRAA Change ######
+            del video_frames
+        
+        # close all figures
+        plt.close('all')
+        del fig
 
         print("Iteration {}: not reach {} reward {} cost {}".format(timestep, cnt, -jnp.mean(reward), jnp.mean(cost)))
         print("Time {}".format(t1-t0))
@@ -398,9 +403,10 @@ if __name__ == "__main__":
     config = vars(get_args(sys.argv[1:]))
 
     config["USE_WANDB"] = True 
-    if config["USE_WANDB"]:
-        wandb.init(project='RAN-{}'.format(config["EXP_NAME"]), name=config["NAME"], config=config,
-                   entity='braat_brrt')
+    if config["WANDB_PROJECT"] and config["USE_WANDB"]:
+        wandb.init(project=config["WANDB_PROJECT"], name=config["NAME"], config=config, entity='braat_brrt')
+    elif config["USE_WANDB"]: # auto-name
+        wandb.init(project='MORLSPARSE-PPO-RAA-{}'.format(config["EXP_NAME"]), name=config["NAME"], config=config, entity='braat_brrt')
 
     config["NUM_UPDATES"] = int(
         config["TOTAL_TIMESTEPS"] // config["NUM_STEPS"] // config["NUM_ENVS"]
@@ -455,6 +461,5 @@ if __name__ == "__main__":
     env_params = env.default_params
     print(env_params)
     env_params = env_params.replace(gamma=config["GAMMA_ENERGY"])
-    wandb.init(project='PPO-RAA-{}'.format(config["EXP_NAME"]), name=config["NAME"], config=config)
     rng = jax.random.PRNGKey(20)
     out = train(env, env_params, config, rng)
