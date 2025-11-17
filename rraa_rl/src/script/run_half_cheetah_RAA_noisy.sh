@@ -6,7 +6,7 @@ for SEED in ${SEEDS[@]}; do
 
     # #################################### RAA-PPO RUN ##########################################
 
-    NOISE_PERCENTS=(0.0 5.0 10.0 20.0)
+    NOISE_PERCENTS=(0 5 10 20)
     for NOISE_PERCENT in ${NOISE_PERCENTS[@]}; do
         python ./rraa_rl/src/rl/RAA-PPO.py \
         --EXP_NAME=HalfCheetahReachAlwaysAvoid \
@@ -39,7 +39,7 @@ for SEED in ${SEEDS[@]}; do
 
     # #################################### SPARSE BASELINE RUN ##########################################
 
-    NOISE_PERCENTS=(1.0 5.0 10.0 20.0)
+    NOISE_PERCENTS=(0 5 10 20)
     for NOISE_PERCENT in ${NOISE_PERCENTS[@]}; do
         python ./rraa_rl/src/rl/baselines/MORL_PPO_RAA.py \
         --EXP_NAME=HalfCheetahReachAlwaysAvoidBaseline_Sparse \
@@ -75,7 +75,7 @@ for SEED in ${SEEDS[@]}; do
 
     #################################### CPPO BASELINE RUN ##########################################
 
-    NOISE_PERCENTS=(0.0 5.0 10.0 20.0)
+    NOISE_PERCENTS=(1 5 10 20)
     for NOISE_PERCENT in ${NOISE_PERCENTS[@]}; do
         python ./rraa_rl/src/rl/baselines/CPPO_RAA.py \
         --EXP_NAME=HalfCheetahReachAlwaysAvoid_CPPO \
@@ -110,7 +110,7 @@ for SEED in ${SEEDS[@]}; do
 
     # #################################### MORL BASELINE RUN ##########################################
 
-    NOISE_PERCENTS=(0.0 5.0 10.0 20.0)
+    NOISE_PERCENTS=(0 5 10 20)
     for NOISE_PERCENT in ${NOISE_PERCENTS[@]}; do
         python ./rraa_rl/src/rl/baselines/MORL_PPO_RAA.py \
         --EXP_NAME=HalfCheetahReachAlwaysAvoidBaseline_MORL \
