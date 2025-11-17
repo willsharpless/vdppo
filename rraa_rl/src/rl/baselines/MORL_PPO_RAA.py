@@ -435,7 +435,7 @@ if __name__ == "__main__":
     
     with open("model/{}/training_scores.txt".format(config['DIR']), "w") as f:
         f.write("Training Scores for RAA-PPO-{}-{}, started {}\n".format(config["EXP_NAME"], config['NAME'], time.strftime("%Y-%m-%d %H:%M:%S", time.localtime())))
-        f.write("epoch,value_mean,crash_percent,reach_percent,rora_percent,raa_percent\n")
+        f.write("epoch,value_mean,value_std,crash_percent,reach_percent,rora_percent,raa_percent\n")
 
     os.environ["XLA_PYTHON_CLIENT_PREALLOCATE"] = "false"
     os.environ["CUDA_VISIBLE_DEVICES"] = config['CUDA_USE']
@@ -461,5 +461,5 @@ if __name__ == "__main__":
     env_params = env.default_params
     print(env_params)
     env_params = env_params.replace(gamma=config["GAMMA_ENERGY"])
-    rng = jax.random.PRNGKey(20)
+    rng = jax.random.PRNGKey(config["SEED"])
     out = train(env, env_params, config, rng)

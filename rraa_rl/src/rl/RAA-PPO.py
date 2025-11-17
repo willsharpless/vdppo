@@ -770,7 +770,7 @@ if __name__ == "__main__":
     # make file for current average value, raa success rate, crash rate, etc.
     with open("model/{}/training_scores.txt".format(config['DIR']), "w") as f:
         f.write("Training Scores for RAA-PPO-{}-{}, started {}\n".format(config["EXP_NAME"], config['NAME'], time.strftime("%Y-%m-%d %H:%M:%S", time.localtime())))
-        f.write("epoch,value_mean,crash_percent,reach_percent,rora_percent,raa_percent\n")
+        f.write("epoch,value_mean,value_std,crash_percent,reach_percent,rora_percent,raa_percent\n")
 
     envs = get_env(config)
     env, env_avoid = envs
@@ -792,9 +792,8 @@ if __name__ == "__main__":
     if config["WANDB_PROJECT"] and config["USE_WANDB"]:
         wandb.init(project=config["WANDB_PROJECT"], name=config["NAME"], config=config, entity='braat_brrt')
     elif config["USE_WANDB"]: # auto-name
-        wandb.init(project='DOHJ-{}-{}'.format(config["EXP_NAME"], config["WANDB_GROUP"]), name=config["NAME"], config=config,
+        wandb.init(project='DOHJ-{}-{}'.format(config["EXP_NAME"], config["WANDB_GROUP"]), name=config["NAME"], config=config, entity='braat_brrt')
         # wandb.init(project='EC-EFPPO-{}'.format(config["EXP_NAME"]), name=config["NAME"], config=config,
-                   entity='braat_brrt')
 
 
     config["LOAD_DECOMPOSED"] = False # TODO make args

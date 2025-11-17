@@ -233,7 +233,7 @@ def train(env, env_params, config, rng):
                     "cnt crashed ": cnt_crashed,
                     "cnt not reaching goal ": cnt_never_reached,
                     "cnt crash after reach ": cnt_crash_after_reach,
-                   "lambda": jnp.mean(loss_info['lambda'])})
+                   "lambda": jnp.mean(loss_info['lambda'])}, step=timestep)
         
         if "F16" not in config["EXP_NAME"]:
             wandb.log({
@@ -288,5 +288,5 @@ if __name__ == "__main__":
     print(env_params)
     env_params = env_params.replace(gamma=config["GAMMA_ENERGY"])
     wandb.init(project='CPPO-{}'.format(config["EXP_NAME"]), name=config["NAME"], config=config)
-    rng = jax.random.PRNGKey(20)
+    rng = jax.random.PRNGKey(config["SEED"])
     out = train(env, env_params, config, rng)
