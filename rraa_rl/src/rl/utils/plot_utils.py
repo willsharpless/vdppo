@@ -18,6 +18,7 @@ from rraa_rl.src.env.reach_avoid.half_cheetah_RR import HalfCheetahReachReach, H
 from rraa_rl.src.env.reach_avoid.humanoid_RR import HumanoidReachReach, HUMANOID_TARGET_RIGHT, HUMANOID_TARGET_LEFT, HUMANOID_TARGET_RADIUS
 from rraa_rl.src.env.reach_avoid.humanoid_RAA import HumanoidReachAvoid, HUMANOID_RAA_TARGET, HUMANOID_RAA_TARGET_RADIUS, HUMANOID_RAA_BOX_RADIUS, HUMANOID_RAA_FLOOR_HEIGHT
 from jax import jit
+import jax.numpy as jnp
 
 def calculate_consumption(traj_batch):
     reach_idx = (traj_batch.reach < 0).argmax(axis=0)
@@ -98,7 +99,18 @@ def calculate_reachreach(traj_batch, reach_type="both", th=0, to_first_done=Fals
 
     reach_percs = (reach_1_perc, reach_2_perc, reach_perc)
     reach_idxs = (reach_idx_1, reach_idx_2, reach_idx)
-    return reach_percs, reach_idxs
+
+    reach_one = jnp.logical_or(reach_idx_1 < jnp.inf, reach_idx_2 < jnp.inf) if reach_type in ["both"] else None
+    reach_one_perc = reach_one.sum() / reach_one.__len__() if reach_type in ["both"] else None
+
+    if reach_type == "both":
+        min_values = jnp.maximum(jnp.min(traj_batch.reach1, axis=0), jnp.min(traj_batch.reach2, axis=0))
+    elif reach_type == "1":
+        min_values = jnp.min(traj_batch.reach1, axis=0)
+    elif reach_type == "2":
+        min_values = jnp.min(traj_batch.reach2, axis=0)
+
+    return reach_percs, reach_idxs, reach_one_perc, min_values.mean().item(), min_values.std().item()
 
 def calculate_rraa(traj_batch, th=0, to_first_done=False, reach_type="both"):
 

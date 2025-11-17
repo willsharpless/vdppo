@@ -553,11 +553,25 @@ def train(envs, env_paramss, config, rng):
         traj_batch_2, targets_V_2, done_2 = result_traj_2
 
         ((reach_1_perc, reach_2_perc, reach_perc),
-            (reach_idx_1, reach_idx_2, reach_idx)) = calculate_reachreach(traj_batch, to_first_done="Humanoid" in config["EXP_NAME"])
+            (reach_idx_1, reach_idx_2, reach_idx),
+            rone_perc, values_mean, values_std
+        ) = calculate_reachreach(traj_batch, to_first_done="Humanoid" in config["EXP_NAME"])
         ((reach_1_perc_1, _, _),
-            (reach_idx_1_1, _, _)) = calculate_reachreach(traj_batch_1, reach_type="1", to_first_done="Humanoid" in config["EXP_NAME"])
+            (reach_idx_1_1, _, _), _, _, _) = calculate_reachreach(traj_batch_1, reach_type="1", to_first_done="Humanoid" in config["EXP_NAME"])
         ((_, reach_2_perc_2, _),
-            (_, reach_idx_2_2, _)) = calculate_reachreach(traj_batch_2, reach_type="2", to_first_done="Humanoid" in config["EXP_NAME"])
+            (_, reach_idx_2_2, _), _, _, _) = calculate_reachreach(traj_batch_2, reach_type="2", to_first_done="Humanoid" in config["EXP_NAME"])
+
+        # write to score file
+        with open("model/{}/training_scores.txt".format(config['DIR']), "a") as f:
+            f.write("{},{},{},{},{},{},{}\n".format(
+                timestep, 
+                round(values_mean, 6), 
+                round(values_std, 6), 
+                round(reach_2_perc, 6), 
+                round(reach_1_perc, 6), 
+                round(rone_perc, 6), 
+                round(reach_perc, 6)
+            ))
 
         idx = 0
 
@@ -800,6 +814,11 @@ if __name__ == "__main__":
         os.makedirs("model/{}/value_target".format(config['DIR']))
         os.makedirs("model/{}/state_traj".format(config['DIR']))
     
+    # make file for current average value, raa success rate, crash rate, etc.
+    with open("model/{}/training_scores.txt".format(config['DIR']), "w") as f:
+        f.write("Training Scores for RR-PPO-{}-{}, started {}\n".format(config["EXP_NAME"], config['NAME'], time.strftime("%Y-%m-%d %H:%M:%S", time.localtime())))
+        f.write("epoch,value_mean,value_std,reach_2_percent,reach_1_percent,rone_percent,rr_percent\n")
+
     envs = get_env(config)
     env, env_reach_1, env_reach_2 = envs
     env_params = env.default_params
@@ -813,9 +832,11 @@ if __name__ == "__main__":
     env_paramss = (env_params, env_params_reach_1, env_params_reach_2)
 
     config["USE_WANDB"] = True #not debug # False for debugging
-    if config["USE_WANDB"]:
-        wandb.init(project='DOHJ-{}-{}'.format(config["EXP_NAME"], config["WANDB_GROUP"]), name=config["NAME"], config=config,
-                   entity='braat_brrt')
+    if config["WANDB_PROJECT"] and config["USE_WANDB"]:
+        wandb.init(project=config["WANDB_PROJECT"], name=config["NAME"], config=config, entity='braat_brrt')
+    elif config["USE_WANDB"]: # auto-name
+        wandb.init(project='DOHJ-{}-{}'.format(config["EXP_NAME"], config["WANDB_GROUP"]), name=config["NAME"], config=config, entity='braat_brrt')
+        # wandb.init(project='EC-EFPPO-{}'.format(config["EXP_NAME"]), name=config["NAME"], config=config,
 
     config["LOAD_DECOMPOSED"] = False # TODO make arg
     if config["LOAD_DECOMPOSED"]:

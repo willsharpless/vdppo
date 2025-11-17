@@ -15,6 +15,7 @@ sys.path.append("/home/mepear_gc")
 
 import jax
 import jax.numpy as jnp
+import matplotlib.pyplot as plt
 
 from flax.training import train_state
 from flax.training import checkpoints
@@ -333,7 +334,22 @@ def train(env, env_params, config, rng):
         idx = 0 # index to plot
         info = tree_index2(traj_batch.info, idx)
         ((reach_1_perc, reach_2_perc, reach_perc),
-            (reach_idx_1, reach_idx_2, reach_idx)) = calculate_reachreach(traj_batch)
+            (reach_idx_1, reach_idx_2, reach_idx),
+            rone_perc, values_mean, values_std    
+        ) = calculate_reachreach(traj_batch)
+
+        # write to score file
+        with open("model/{}/training_scores.txt".format(config['DIR']), "a") as f:
+            f.write("{},{},{},{},{},{},{}\n".format(
+                timestep, 
+                round(values_mean, 6), 
+                round(values_std, 6), 
+                round(reach_2_perc, 6), 
+                round(reach_1_perc, 6), 
+                round(rone_perc, 6), 
+                round(reach_perc, 6)
+            ))
+
         info["reach_index_1"] = reach_idx_1[idx]
         info["reach_index_2"] = reach_idx_2[idx]
 
@@ -353,20 +369,21 @@ def train(env, env_params, config, rng):
 
         reward, cost, cnt1, cnt2, cnt3 = calculate_reward_cost(traj_batch)
 
-        wandb.log({"not reaching reach 1": cnt1,
-                   "not reaching reach 2": cnt2,
-                   "not reaching both": cnt3,
-                   "average total return": -jnp.mean(reward),
-                   "average cost": jnp.mean(cost),
-                   "actor_loss": jnp.mean(loss_info["actor_loss"]), "entropy_loss": jnp.mean(loss_info["entropy_loss"]),
-                   "value_loss": jnp.mean(loss_info["value_loss"]), "cost_loss": jnp.mean(loss_info["cost_loss"]),
-                #    'trajectory_sample':wandb.Image(fig),
-                    "Reach 1 Success %": reach_1_perc,
-                    "Reach 2 Success %": reach_2_perc,
-                    "Reach-Reach Success %": reach_perc,
-                   "lambda": jnp.mean(loss_info['lambda'])}, step=timestep)
+        if config["USE_WANDB"]:
+            wandb.log({"not reaching reach 1": cnt1,
+                    "not reaching reach 2": cnt2,
+                    "not reaching both": cnt3,
+                    "average total return": -jnp.mean(reward),
+                    "average cost": jnp.mean(cost),
+                    "actor_loss": jnp.mean(loss_info["actor_loss"]), "entropy_loss": jnp.mean(loss_info["entropy_loss"]),
+                    "value_loss": jnp.mean(loss_info["value_loss"]), "cost_loss": jnp.mean(loss_info["cost_loss"]),
+                    #    'trajectory_sample':wandb.Image(fig),
+                        "Reach 1 Success %": reach_1_perc,
+                        "Reach 2 Success %": reach_2_perc,
+                        "Reach-Reach Success %": reach_perc,
+                    "lambda": jnp.mean(loss_info['lambda'])}, step=timestep)
         
-        if "F16" not in config["EXP_NAME"]:
+        if "F16" not in config["EXP_NAME"] and config["USE_WANDB"]:
                 wandb.log({
                     'trajectory_sample':wandb.Image(fig)
                 }, step=timestep)
@@ -376,6 +393,11 @@ def train(env, env_params, config, rng):
         save_video = True 
         if timestep % video_freq == 0 or timestep == total_timesteps - 1: 
             video_frames = plot_video_contour_RRAA((info, None, None), timestep, config, save_video=save_video, log_wandb=config["USE_WANDB"])
+            del video_frames
+        
+        # close all figures
+        plt.close('all')
+        del fig
 
         ####### RRAA Change ######
         print("Iteration {}: not reach 1 {} not reach 2 {} not reach both {} reward {} cost {}".format(timestep, cnt1, cnt2, cnt3, -jnp.mean(reward), jnp.mean(cost)))
@@ -434,10 +456,11 @@ if __name__ == "__main__":
         print('USE_STL: {}'.format(config["USE_STL"]))
         print('CPPO_UPDATE_TYPE: {}\n\n\n'.format(config["CPPO_UPDATE_TYPE"]))
 
-    config["USE_WANDB"] = False 
-    if config["USE_WANDB"]:
-        wandb.init(project='RAN-{}'.format(config["EXP_NAME"]), name=config["NAME"], config=config,
-                   entity='braat_brrt')
+    config["USE_WANDB"] = True 
+    if config["WANDB_PROJECT"] and config["USE_WANDB"]:
+        wandb.init(project=config["WANDB_PROJECT"], name=config["NAME"], config=config, entity='braat_brrt')
+    elif config["USE_WANDB"]: # auto-name
+        wandb.init(project='MORLSPARSE-PPO-RAA-{}'.format(config["EXP_NAME"]), name=config["NAME"], config=config, entity='braat_brrt')
 
     config["NUM_UPDATES"] = int(
         config["TOTAL_TIMESTEPS"] // config["NUM_STEPS"] // config["NUM_ENVS"]
@@ -463,6 +486,12 @@ if __name__ == "__main__":
         os.makedirs("model/{}/reach".format(config['DIR']))
         os.makedirs("model/{}/value_target".format(config['DIR']))
         os.makedirs("model/{}/traj".format(config['DIR']))
+        
+    # make file for current average value, raa success rate, crash rate, etc.
+    with open("model/{}/training_scores.txt".format(config['DIR']), "w") as f:
+        f.write("Training Scores for RR-PPO-{}-{}, started {}\n".format(config["EXP_NAME"], config['NAME'], time.strftime("%Y-%m-%d %H:%M:%S", time.localtime())))
+        f.write("epoch,value_mean,value_std,reach_2_percent,reach_1_percent,rone_percent,rr_percent\n")
+
     os.environ["XLA_PYTHON_CLIENT_PREALLOCATE"] = "false"
     os.environ["CUDA_VISIBLE_DEVICES"] = config['CUDA_USE']
     env = get_env(config)
@@ -483,9 +512,7 @@ if __name__ == "__main__":
         
     ########### MORL Changes ###########
 
-
     env_params = env.default_params
     env_params = env_params.replace(gamma=config["GAMMA_ENERGY"])
-    wandb.init(project='PPO-RR-{}'.format(config["EXP_NAME"]), name=config["NAME"], config=config)
     rng = jax.random.PRNGKey(20)
     out = train(env, env_params, config, rng)

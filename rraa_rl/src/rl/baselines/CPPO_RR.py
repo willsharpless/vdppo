@@ -197,7 +197,22 @@ def train(env, env_params, config, rng):
         idx = 0 # index to plot
         info = tree_index2(traj_batch.info, idx)
         ((reach_1_perc, reach_2_perc, reach_perc),
-            (reach_idx_1, reach_idx_2, reach_idx)) = calculate_reachreach(traj_batch)
+            (reach_idx_1, reach_idx_2, reach_idx),
+            rone_perc, values_mean, values_std
+        ) = calculate_reachreach(traj_batch)
+
+        # write to score file
+        with open("model/{}/training_scores.txt".format(config['DIR']), "a") as f:
+            f.write("{},{},{},{},{},{},{}\n".format(
+                timestep, 
+                round(values_mean, 6), 
+                round(values_std, 6), 
+                round(reach_2_perc, 6), 
+                round(reach_1_perc, 6), 
+                round(rone_perc, 6), 
+                round(reach_perc, 6)
+            ))
+        
         info["reach_index_1"] = reach_idx_1[idx]
         info["reach_index_2"] = reach_idx_2[idx]
 
@@ -301,9 +316,10 @@ if __name__ == "__main__":
         print('CPPO_UPDATE_TYPE: {}\n\n\n'.format(config["CPPO_UPDATE_TYPE"]))
 
     config["USE_WANDB"] = True 
-    if config["USE_WANDB"]:
-        wandb.init(project='RAN-{}'.format(config["EXP_NAME"]), name=config["NAME"], config=config,
-                   entity='braat_brrt')
+    if config["WANDB_PROJECT"] and config["USE_WANDB"]:
+        wandb.init(project=config["WANDB_PROJECT"], name=config["NAME"], config=config, entity='braat_brrt')
+    elif config["USE_WANDB"]: # auto-name
+        wandb.init(project='PPO-RR-{}'.format(config["EXP_NAME"]), name=config["NAME"], config=config, entity='braat_brrt')
 
     config["NUM_UPDATES"] = int(
         config["TOTAL_TIMESTEPS"] // config["NUM_STEPS"] // config["NUM_ENVS"]
@@ -317,11 +333,15 @@ if __name__ == "__main__":
         os.makedirs("model/{}/reach".format(config['DIR']))
         os.makedirs("model/{}/value_target".format(config['DIR']))
         os.makedirs("model/{}/traj".format(config['DIR']))
+
+    with open("model/{}/training_scores.txt".format(config['DIR']), "w") as f:
+        f.write("Training Scores for RR-PPO-{}-{}, started {}\n".format(config["EXP_NAME"], config['NAME'], time.strftime("%Y-%m-%d %H:%M:%S", time.localtime())))
+        f.write("epoch,value_mean,value_std,reach_2_percent,reach_1_percent,rone_percent,rr_percent\n")
+
     os.environ["XLA_PYTHON_CLIENT_PREALLOCATE"] = "false"
     os.environ["CUDA_VISIBLE_DEVICES"] = config['CUDA_USE']
     env = get_env(config)
     env_params = env.default_params
     env_params = env_params.replace(gamma=config["GAMMA_ENERGY"])
-    wandb.init(project='CPPO-{}'.format(config["EXP_NAME"]), name=config["NAME"], config=config)
     rng = jax.random.PRNGKey(20)
     out = train(env, env_params, config, rng)

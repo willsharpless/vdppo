@@ -32,9 +32,10 @@ class EnvParamsEmpty:
     pass
 
 class HalfCheetahReachReachTemplate:
-    def __init__(self, backend="positional"):
+    def __init__(self, backend="positional", qd_noise_std=0.):
         env = HalfCheetahRandom(backend=backend,
-                           exclude_current_positions_from_observation=False)
+                           exclude_current_positions_from_observation=False,
+                           qd_noise_std=qd_noise_std)
         env = EpisodeWrapper(env, episode_length=1000, action_repeat=1)
         env = AutoResetWrapper(env)
         self._env = env
@@ -316,6 +317,7 @@ class HalfCheetahReach2(HalfCheetahReachReachTemplate):
         state = State(pipeline_state, obs, reward, done, metrics)
         # Episode Metrics 
         rng = key 
+        state.info['rng'] = rng
         state.info['steps'] = jnp.zeros(rng.shape[:-1])
         state.info['truncation'] = jnp.zeros(rng.shape[:-1])
         # Keep separate record of episode done as state.info['done'] can be erased

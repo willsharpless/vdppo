@@ -390,12 +390,12 @@ def get_env(config):
         trans = partial(transform_observation, vec1, vec2)
         untrans = partial(untransform_observation, vec1, vec2)
 
-        env = HalfCheetahReachReach()
+        env = HalfCheetahReachReach(qd_noise_std=config["NOISE_PERCENT"])
         env = TransformObservation(env, trans)
-        
-        env1 = HalfCheetahReach1() # TODO make determinstic
+
+        env1 = HalfCheetahReach1(qd_noise_std=config["NOISE_PERCENT"])
         env1 = TransformObservation(env1, trans)
-        env2 = HalfCheetahReach2() # TODO make determinstic
+        env2 = HalfCheetahReach2(qd_noise_std=config["NOISE_PERCENT"]) # TODO make determinstic
         env2 = TransformObservation(env2, trans)
 
         env.set_untransform_obs(untrans)
@@ -419,7 +419,7 @@ def get_env(config):
         trans = partial(transform_observation, vec1, vec2)
         untrans = partial(untransform_observation, vec1, vec2)
 
-        env = HalfCheetahReachReachBaseline_augmented(use_stl=config["USE_STL"])
+        env = HalfCheetahReachReachBaseline_augmented(use_stl=config["USE_STL"], qd_noise_std=config["NOISE_PERCENT"])
         env = TransformObservation(env, trans)
         env.set_untransform_obs(untrans)
 
@@ -435,9 +435,9 @@ def get_env(config):
         
         from .baseline.half_cheetah_RR_baseline import HalfCheetahRR, HalfCheetahR1, HalfCheetahR2
         if config["TEST_MODE"] == False:
-            env = HalfCheetahRR()
-            env1 = HalfCheetahR1()
-            env2 = HalfCheetahR2()
+            env = HalfCheetahRR(qd_noise_std=config["NOISE_PERCENT"])
+            env1 = HalfCheetahR1(qd_noise_std=config["NOISE_PERCENT"])
+            env2 = HalfCheetahR2(qd_noise_std=config["NOISE_PERCENT"])
         else:
             env = HalfCheetahRR(deterministic=True)
             env1 = HalfCheetahR1(deterministic=True)

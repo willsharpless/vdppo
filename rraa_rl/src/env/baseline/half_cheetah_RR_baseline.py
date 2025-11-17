@@ -45,11 +45,11 @@ class EnvStateRRDecomposed:
 
 
 class HalfCheetahRRTemplate:
-    def __init__(self, backend="positional", deterministic=False):
+    def __init__(self, backend="positional", deterministic=False, qd_noise_std=0.):
         if deterministic:
             env = HalfCheetahDeterministic(backend=backend, exclude_current_positions_from_observation=False)
         else:
-            env = HalfCheetahRandom(backend=backend, exclude_current_positions_from_observation=False)
+            env = HalfCheetahRandom(backend=backend, exclude_current_positions_from_observation=False, qd_noise_std=qd_noise_std)
         env = EpisodeWrapper(env, episode_length=1000, action_repeat=1)
         env = AutoResetWrapper(env)
         self._env = env
@@ -258,9 +258,10 @@ class HalfCheetahReachReachBaseline_augmented:
         return params.gamma * (state.min_reach1 + state.min_reach2) - (last_state.min_reach1 + last_state.min_reach2)
         # corresponds to accumulated sum reward
 
-    def __init__(self, backend="positional", use_stl=False):
+    def __init__(self, backend="positional", use_stl=False, qd_noise_std=0.):
         env = HalfCheetahRandom(backend=backend,
-                           exclude_current_positions_from_observation=False)
+                           exclude_current_positions_from_observation=False,
+                           qd_noise_std=qd_noise_std)
         env = EpisodeWrapper(env, episode_length=1000, action_repeat=1)
         env = AutoResetWrapper(env)
         self._env = env

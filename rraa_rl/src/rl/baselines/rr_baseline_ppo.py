@@ -267,9 +267,23 @@ def train(envs, env_paramss, config, rng):
         traj_batch_1, targets_V_1, done_1 = result_traj_1
         traj_batch_2, targets_V_2, done_2 = result_traj_2
         ((reach_1_perc, reach_2_perc, reach_perc),
-            (reach_idx_1, reach_idx_2, reach_idx)) = calculate_reachreach(traj_batch)
+            (reach_idx_1, reach_idx_2, reach_idx),
+            rone_perc, values_mean, values_std
+        ) = calculate_reachreach(traj_batch)
         reach_1_perc_1, reach_idx_1_1 = calculate_reach(traj_batch_1)
         reach_2_perc_2, reach_idx_2_2 = calculate_reach(traj_batch_2)
+
+        # write to score file
+        with open("model/{}/training_scores.txt".format(config['DIR']), "a") as f:
+            f.write("{},{},{},{},{},{},{}\n".format(
+                timestep, 
+                round(values_mean, 6), 
+                round(values_std, 6), 
+                round(reach_2_perc, 6), 
+                round(reach_1_perc, 6), 
+                round(rone_perc, 6), 
+                round(reach_perc, 6)
+            ))
 
         idx = 0
 
@@ -399,6 +413,11 @@ if __name__ == "__main__":
         os.makedirs("model/{}/value_target".format(config['DIR']))
         os.makedirs("model/{}/state_traj".format(config['DIR']))
     
+    # make file for current average value, raa success rate, crash rate, etc.
+    with open("model/{}/training_scores.txt".format(config['DIR']), "w") as f:
+        f.write("Training Scores for RR-PPO-{}-{}, started {}\n".format(config["EXP_NAME"], config['NAME'], time.strftime("%Y-%m-%d %H:%M:%S", time.localtime())))
+        f.write("epoch,value_mean,value_std,reach_2_percent,reach_1_percent,rone_percent,rr_percent\n")
+ 
     envs = get_env(config)
     env, env_reach_1, env_reach_2 = envs
     env_params = env.default_params
@@ -411,10 +430,11 @@ if __name__ == "__main__":
         env_params_reach_2 = env_params_reach_2.replace(index=config['SECTION'])
     env_paramss = (env_params, env_params_reach_1, env_params_reach_2)
 
-    config["USE_WANDB"] = not debug # False for debugging
-    if config["USE_WANDB"]:
-        wandb.init(project='RAN-{}'.format(config["EXP_NAME"]), name=config["NAME"], config=config,
-                   entity='braat_brrt')
+    config["USE_WANDB"] = True # False for debugging
+    if config["WANDB_PROJECT"] and config["USE_WANDB"]:
+        wandb.init(project=config["WANDB_PROJECT"], name=config["NAME"], config=config, entity='braat_brrt')
+    elif config["USE_WANDB"]: # auto-name
+        wandb.init(project='PPO-RR-{}'.format(config["EXP_NAME"]), name=config["NAME"], config=config, entity='braat_brrt')
 
     config["LOAD_DECOMPOSED"] = False # TODO make arg
     if config["LOAD_DECOMPOSED"]:
