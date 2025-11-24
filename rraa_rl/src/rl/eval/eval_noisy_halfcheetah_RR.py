@@ -15,14 +15,14 @@ plt.style.use("seaborn-v0_8-darkgrid")
 if __name__ == "__main__":
     config = vars(get_args(sys.argv[1:]))
 
-    data_to_plot_ix =1  # [epoch, value_mean, value_std, crash_percent, reach_percent, rora_percent, raa_percent]
+    data_to_plot_ix = 1  # [epoch, value_mean, value_std, crash_percent, reach_percent, rora_percent, raa_percent]
 
     # Define a list of experiment directories to compare
     experiment_dirs = {
-        "DOHJ":"NOISY_halfcheetah_raa_rg_noisy",
-        "SPARSE":"NOISY_halfcheetah_raa_sparse_noisy",
-        "MORL":"NOISY_halfcheetah_raa_morl_noisy",
-        "CPPO":"NOISY_halfcheetah_raa_cppo_kp100_noisy",
+        "DOHJ":"NOISY_halfcheetah_rr_rg_noisy",
+        "DSTL":"NOISY_halfcheetah_rr_dstl_noisy",
+        "SPARSE":"NOISY_halfcheetah_rr_sparse_noisy",
+        "LOGBAR":"NOISY_halfcheetah_rr_logbar_noisy",
     }
     log_file_dir = "model"
     log_name = "training_scores.txt"
@@ -31,15 +31,15 @@ if __name__ == "__main__":
     noise_tags = ["_nz0", "_nz5", "_nz10", "_nz20"]
 
     # seaborn deep color dict corresponding to original baseline indices
-    alg_labels = ["DOHJ", "RA", "CPPO", "PPO-LAG", "PPO", "RCPPO", "RESPO", "MORL", "Sparse", "P2BPO", "LOGBAR"]
+    alg_labels = ["DOHJ", "DSTL", "CPPO", "PPO-LAG", "PPO", "RCPPO", "RESPO", "MORL", "Sparse", "P2BPO", "LOGBAR"]
     palette = sns.color_palette("deep", n_colors=len(alg_labels))
     palette[0] = (0, 0, 0)
     colors = {label: color for label, color in zip(alg_labels, palette)}
     color_dict = {
-        "NOISY_halfcheetah_raa_rg_noisy": colors["DOHJ"], 
-        "NOISY_halfcheetah_raa_sparse_noisy": colors["Sparse"],
-        "NOISY_halfcheetah_raa_morl_noisy": colors["MORL"],
-        "NOISY_halfcheetah_raa_cppo_kp100_noisy": colors["CPPO"],
+        "NOISY_halfcheetah_rr_rg_noisy": colors["DOHJ"], 
+        "NOISY_halfcheetah_rr_dstl_noisy": colors["DSTL"],
+        "NOISY_halfcheetah_rr_sparse_noisy": colors["Sparse"],
+        "NOISY_halfcheetah_rr_logbar_noisy": colors["LOGBAR"],
     }
 
     with open(os.path.join(log_file_dir, experiment_dirs["DOHJ"] + noise_tags[0], log_name), 'r') as f:
@@ -94,15 +94,15 @@ if __name__ == "__main__":
         
         ax.set_xlabel(r"Epoch")
         if data_to_plot_ix == 1:
-            ax.set_ylim([-0.3, 0.])
+            ax.set_ylim(top=210)
         if data_to_plot_ix == -1:
-            ax.set_ylim([0., 0.8])
+            ax.set_ylim([0., 1.])
         if noise_tag == noise_tags[0]:
-            nice_labels = ["Epoch", r"$\widetilde{V}_{RAA}$", "value_std", "Crash (%)", "reach_percent", "rora_percent", "RAA SUCCESS (%)"]
+            nice_labels = ["Epoch", r"$\widetilde{V}_{RR}$", "value_std", "Reach 2 (%)", "Reach 1 (%)", "Reached a Target (%)", "RR SUCCESS (%)"]
             ax.set_ylabel(r"{}".format(nice_labels[data_to_plot_ix]))
         if (noise_tag == noise_tags[-1] and data_to_plot_ix == -1) or \
             (noise_tag == noise_tags[0] and data_to_plot_ix == 1):
-            loc_ = 'lower right' if data_to_plot_ix != -1 else 'upper right'
+            loc_ = 'upper left' if data_to_plot_ix != -1 else 'upper right'
             # legend = ax.legend(["DOHJ", "SPARSE", "MORL", "CPPO"], loc='upper right')
             legend = ax.legend(loc=loc_, ncol=2,
                       handlelength=2, handletextpad=0.5, 
@@ -115,4 +115,4 @@ if __name__ == "__main__":
             ax.set_yticklabels([])
 
     plt.tight_layout()
-    plt.savefig("./eval/noisy_halfcheetah_raa_comparison_{}.png".format(data_labels[data_to_plot_ix]), dpi=300)
+    plt.savefig("./eval/noisy_halfcheetah_rr_comparison_{}.png".format(data_labels[data_to_plot_ix]), dpi=300)
