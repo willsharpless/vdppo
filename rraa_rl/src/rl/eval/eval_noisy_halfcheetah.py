@@ -11,6 +11,8 @@ from matplotlib.colors import CenteredNorm, ListedColormap
 import seaborn as sns
 
 plt.style.use("seaborn-v0_8-darkgrid")
+multiseed = True
+smoothing = True
 
 if __name__ == "__main__":
 
@@ -76,30 +78,55 @@ if __name__ == "__main__":
 
     for ax, noise_tag in zip(axes_raa, noise_tags):
         for alg_name, exp_dir in experiment_dirs_raa.items():
-
-            path = os.path.join(log_file_dir, exp_dir + noise_tag, log_name)
-            if not os.path.exists(path):
-                print(f"Log file not found: {path}")
-                continue
+            
+            paths = {}
+            seed_tags = ["", "_sd21", "_sd22"] if multiseed else [""]
+            for seed_tag in seed_tags:
+                path = os.path.join(log_file_dir, exp_dir + noise_tag + seed_tag, log_name)
+                seed_key = seed_tag if seed_tag != "" else "_sd20"
+                paths[seed_tag] = path
+                if not os.path.exists(path):
+                    print(f"Log file not found: {path}")
+                    continue
 
             # Read scores from the log file
-            scores = np.loadtxt(path, delimiter=',', skiprows=2)
-            if not scores.size:
-                print(f"No valid scores found in: {path}")
-                continue
-            
-            # Flip value for paper convention
-            scores[:, 1] = -scores[:, 1]
-            scores[:, -1] = 100 * scores[:, -1]
+            scoress = {}
+            for seed_tag, path in paths.items():
+                scores = np.loadtxt(path, delimiter=',', skiprows=2)
+                if not scores.size:
+                    print(f"No valid scores found in: {path}")
+                    continue
+                
+                # Flip value for paper convention
+                scores[:, 1] = -scores[:, 1]
+                scores[:, -1] = 100 * scores[:, -1]
+                scoress[seed_tag] = scores
 
+            # Average over seeds
+            scores = np.mean(np.array(list(scoress.values())), axis=0)
+            scores_max = np.max(np.array(list(scoress.values())), axis=0)[:, data_to_plot_ix]
+            scores_min = np.min(np.array(list(scoress.values())), axis=0)[:, data_to_plot_ix]
             data = scores[:, data_to_plot_ix]
-            if data_to_plot_ix==1 or data_to_plot_ix==-1:
-                ax.plot(np.array(scores[:, 0], dtype=int), data, alpha=0.3,
-                    label="", color=color_dict[exp_dir], linewidth=1) # plot raw data
+
+            if smoothing and (data_to_plot_ix==1 or data_to_plot_ix==-1):
+                if not multiseed:
+                    ax.plot(np.array(scores[:, 0], dtype=int), data, alpha=0.3,
+                        label="", color=color_dict[exp_dir], linewidth=1) # plot raw data
                 # running mean
                 window_size = 10
                 data = np.concatenate((np.min(data[:window_size-1]) + 0*data[:window_size-1], data)) # pad
                 data = np.convolve(data, np.ones(window_size)/window_size, mode='valid')
+
+                if multiseed:
+                    scores_min = np.concatenate((np.min(scores_min[:window_size-1]) + 0*scores_min[:window_size-1], scores_min)) # pad
+                    scores_min = np.convolve(scores_min, np.ones(window_size)/window_size, mode='valid')
+                    scores_max = np.concatenate((np.min(scores_max[:window_size-1]) + 0*scores_max[:window_size-1], scores_max)) # pad
+                    scores_max = np.convolve(scores_max, np.ones(window_size)/window_size, mode='valid')
+
+            # ribbon for min-max over seeds
+            if multiseed:
+                ax.fill_between(np.array(scores[:, 0], dtype=int), scores_min, scores_max,
+                            color=color_dict[exp_dir], alpha=0.3, label="")
 
             # Score Plot over epochs
             ax.plot(np.array(scores[:, 0], dtype=int), data,
@@ -151,29 +178,57 @@ if __name__ == "__main__":
     for ax, noise_tag in zip(axes_rr, noise_tags):
         for alg_name, exp_dir in experiment_dirs_rr.items():
 
-            path = os.path.join(log_file_dir, exp_dir + noise_tag, log_name)
-            if not os.path.exists(path):
-                print(f"Log file not found: {path}")
-                continue
+            paths = {}
+            seed_tags = ["", "_sd21", "_sd22"] if multiseed else [""]
+            for seed_tag in seed_tags:
+                path = os.path.join(log_file_dir, exp_dir + noise_tag + seed_tag, log_name)
+                seed_key = seed_tag if seed_tag != "" else "_sd20"
+                paths[seed_tag] = path
+                if not os.path.exists(path):
+                    print(f"Log file not found: {path}")
+                    continue
 
             # Read scores from the log file
-            scores = np.loadtxt(path, delimiter=',', skiprows=2)
-            if not scores.size:
-                print(f"No valid scores found in: {path}")
-                continue
-            
-            # Flip value for paper convention
-            scores[:, 1] = -scores[:, 1]
-            scores[:, -1] = 100 * scores[:, -1]
+            scoress = {}
+            for seed_tag, path in paths.items():
+                scores = np.loadtxt(path, delimiter=',', skiprows=2)
+                if not scores.size:
+                    print(f"No valid scores found in: {path}")
+                    continue
+                
+                # Flip value for paper convention
+                scores[:, 1] = -scores[:, 1]
+                scores[:, -1] = 100 * scores[:, -1]
 
+                if path == "model/NOISY_halfcheetah_rr_sparse_noisy_nz0/training_scores.txt":
+                    continue # throw out crashed run
+                scoress[seed_tag] = scores
+
+            # Average over seeds
+            scores = np.mean(np.array(list(scoress.values())), axis=0)
+            scores_max = np.max(np.array(list(scoress.values())), axis=0)[:, data_to_plot_ix]
+            scores_min = np.min(np.array(list(scoress.values())), axis=0)[:, data_to_plot_ix]
             data = scores[:, data_to_plot_ix]
-            if data_to_plot_ix==1 or data_to_plot_ix==-1:
-                ax.plot(np.array(scores[:, 0], dtype=int), data, alpha=0.3,
-                    label="", color=color_dict[exp_dir], linewidth=1) # plot raw data
+
+            if smoothing and (data_to_plot_ix==1 or data_to_plot_ix==-1):
+                if not multiseed:
+                    ax.plot(np.array(scores[:, 0], dtype=int), data, alpha=0.3,
+                        label="", color=color_dict[exp_dir], linewidth=1) # plot raw data
                 # running mean
                 window_size = 10
                 data = np.concatenate((np.min(data[:window_size-1]) + 0*data[:window_size-1], data)) # pad
                 data = np.convolve(data, np.ones(window_size)/window_size, mode='valid')
+
+                if multiseed:
+                    scores_min = np.concatenate((np.min(scores_min[:window_size-1]) + 0*scores_min[:window_size-1], scores_min)) # pad
+                    scores_min = np.convolve(scores_min, np.ones(window_size)/window_size, mode='valid')
+                    scores_max = np.concatenate((np.min(scores_max[:window_size-1]) + 0*scores_max[:window_size-1], scores_max)) # pad
+                    scores_max = np.convolve(scores_max, np.ones(window_size)/window_size, mode='valid')
+
+            # ribbon for min-max over seeds
+            if multiseed:
+                ax.fill_between(np.array(scores[:, 0], dtype=int), scores_min, scores_max,
+                            color=color_dict[exp_dir], alpha=0.3, label="")
 
             # Score Plot over epochs
             ax.plot(np.array(scores[:, 0], dtype=int), data,
@@ -215,4 +270,4 @@ if __name__ == "__main__":
             ax.set_yticklabels([])
 
     plt.tight_layout()
-    plt.savefig("./eval/noisy_halfcheetah_comparison_{}.png".format(data_labels[data_to_plot_ix]), dpi=300)
+    plt.savefig("./eval/noisy_halfcheetah_comparison_{}_ribbon.png".format(data_labels[data_to_plot_ix]), dpi=300)
