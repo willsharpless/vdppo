@@ -441,7 +441,7 @@ if __name__ == "__main__":
         config["LOAD_DEC_DIR"] ="hopper_reachreach_idxsMAX_switchfix_augstate_obsfix_long"
         config["LOAD_DEC_DIR_MODEL"] ="checkpoint_859"
 
-    rng = jax.random.PRNGKey(20)
+    rng = jax.random.PRNGKey(config["SEED"])
     out = train(envs, env_paramss, config, rng) # TODO assumes same env params (should be tuple if diff)
     # NOTE passing multiple envs (composed + decomposed)
     # TODO more elegant use one env w/ diff env_params, but this is safe for now
