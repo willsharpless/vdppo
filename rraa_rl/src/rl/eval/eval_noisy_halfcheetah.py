@@ -121,9 +121,9 @@ if __name__ == "__main__":
             data = scores[:, data_to_plot_ix]
 
             if smoothing and (data_to_plot_ix==1 or data_to_plot_ix==-1):
-                if not multiseed or best_seed_only:
-                    ax.plot(np.array(scores[:, 0], dtype=int), data, alpha=0.3,
-                        label="", color=color_dict[exp_dir], linewidth=1) # plot raw data
+                # if not multiseed or best_seed_only:
+                #     ax.plot(np.array(scores[:, 0], dtype=int), data, alpha=0.3,
+                #         label="", color=color_dict[exp_dir], linewidth=1) # plot raw data
                 # running mean
                 window_size = WINDOW_SIZE
                 data = np.concatenate((np.min(data[:window_size-1]) + 0*data[:window_size-1], data)) # pad
@@ -240,9 +240,9 @@ if __name__ == "__main__":
             data = scores[:, data_to_plot_ix]
 
             if smoothing and (data_to_plot_ix==1 or data_to_plot_ix==-1):
-                if not multiseed or best_seed_only:
-                    ax.plot(np.array(scores[:, 0], dtype=int), data, alpha=0.3,
-                        label="", color=color_dict[exp_dir], linewidth=1) # plot raw data
+                # if not multiseed or best_seed_only:
+                #     ax.plot(np.array(scores[:, 0], dtype=int), data, alpha=0.3,
+                #         label="", color=color_dict[exp_dir], linewidth=1) # plot raw data
                 # running mean
                 window_size = WINDOW_SIZE
                 data = np.concatenate((np.min(data[:window_size-1]) + 0*data[:window_size-1], data)) # pad
