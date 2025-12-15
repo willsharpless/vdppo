@@ -3,7 +3,7 @@ import jax.numpy as jnp
 from rraa_rl.src.rl.utils.gae import Transition_reach, Transition_raa, \
     Transition_rr, Transition_r1, Transition_r2, Transition_cppo, Transition_raa_respo, Transition_rr_respo, Transition_sac, \
         Transition_a, Transition_ra, Transition_rr_cppo, Transition_r, \
-        Transition_rcppo_adapted_raa, Transition_rcppo_adapted_rr, Transition_rraa
+        Transition_rcppo_adapted_raa, Transition_rcppo_adapted_rr, Transition_rraa, Transition_general_task
 
 def _env_step(env, env_params, runner_state, _):
     (train_state_policy, train_state_energy, train_state_h,
@@ -360,6 +360,40 @@ def _env_step_r2_vanilla(env, env_params, runner_state, _):
     )
 
     runner_state = (train_state_policy, train_state_value, env_state, obsv, rng, decomposed_state, policy_contols)
+    return runner_state, transition
+
+def _env_step_general_task(env, env_params, runner_state, value_transition, _):
+    train_state_policies, train_state_values, last_env_state, last_value_node, last_obs, rng = runner_state
+
+    # NODE TRANSITION
+    current_value_node = value_transition(last_env_state, last_value_node)
+    
+    # SELECT ACTION
+    rng, _rng = jax.random.split(rng)
+    pi = train_state_policies[current_value_node].apply_fn(train_state_policies[current_value_node].params, last_obs)
+    value = train_state_values[current_value_node].apply_fn(train_state_values[current_value_node].params, last_obs)
+
+    action = pi.sample(seed=_rng)
+    log_prob = pi.log_prob(action)
+
+    # STEP ENV
+    rng, _rng = jax.random.split(rng)
+    env_num = last_obs.shape[0]
+    rng_step = jax.random.split(_rng, env_num)
+    obsv, env_state, reward, done, info = jax.vmap(
+        env.step, in_axes=(0, 0, 0, None)
+    )(rng_step, last_env_state, action, env_params)
+
+    transition = Transition_general_task(
+        done=done, action=action, reward=reward, log_prob=log_prob, obs=last_obs, info=info,
+        value=value,
+        all_values=jnp.array([train_state_values[i].apply_fn(train_state_values[i].params, last_obs) for i in range(len(train_state_values))]),
+        predicate_values=env_state.predicate_values, 
+        predicate_history_extrema=env_state.predicate_history_extrema, 
+        current_value_node=current_value_node,
+    )
+
+    runner_state = (train_state_policies, train_state_values, env_state, current_value_node, obsv, rng)
     return runner_state, transition
 
 def _env_step_rraa(env, env_params, runner_state, _):

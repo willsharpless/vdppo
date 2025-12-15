@@ -205,6 +205,20 @@ class Transition_r2(NamedTuple):
     info: jnp.ndarray
     reach2: jnp.ndarray
 
+class Transition_general_task(NamedTuple):
+    done: jnp.ndarray
+    action: jnp.ndarray
+    value: jnp.ndarray
+    reward: jnp.ndarray
+    log_prob: jnp.ndarray
+    obs: jnp.ndarray
+    info: jnp.ndarray
+    value: jnp.ndarray
+    all_values: jnp.ndarray
+    predicate_values: jnp.ndarray
+    predicate_history_extrema: jnp.ndarray
+    current_value_node: jnp.ndarray
+
 @partial(jax.jit)
 def calculate_advantage(
     gae_nval_gamma_lambda: Tuple[jnp.ndarray, jnp.ndarray, float, float],
