@@ -362,11 +362,11 @@ def _env_step_r2_vanilla(env, env_params, runner_state, _):
     runner_state = (train_state_policy, train_state_value, env_state, obsv, rng, decomposed_state, policy_contols)
     return runner_state, transition
 
-def _env_step_general_task(env, env_params, runner_state, value_transition, _):
-    train_state_policies, train_state_values, last_env_state, last_value_node, last_obs, rng = runner_state
+def _env_step_general_task(env, env_params, value_transition, runner_state, _):
+    train_state_policies, train_state_values, last_env_state, last_value_node, last_obs, current_value_node, rng = runner_state
 
     # NODE TRANSITION
-    current_value_node = value_transition(last_env_state, last_value_node)
+    current_value_node = value_transition(last_value_node, last_env_state)
     
     # SELECT ACTION
     rng, _rng = jax.random.split(rng)
@@ -393,7 +393,7 @@ def _env_step_general_task(env, env_params, runner_state, value_transition, _):
         current_value_node=current_value_node,
     )
 
-    runner_state = (train_state_policies, train_state_values, env_state, current_value_node, obsv, rng)
+    runner_state = (train_state_policies, train_state_values, env_state, obsv, current_value_node, rng)
     return runner_state, transition
 
 def _env_step_rraa(env, env_params, runner_state, _):

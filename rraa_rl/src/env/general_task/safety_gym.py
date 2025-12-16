@@ -44,7 +44,7 @@ class EnvParamsEmpty:
 class PointGeneralTask:
     def __init__(self, 
                  active_predicates=["reach1", "reach2", "obstacles"], 
-                 negated_predicate_mask=jnp.array([0, 0, 1]),
+                 negated_predicate_mask=jnp.array([1, 1, 0]), #TODO this is old conv, new would be jnp.array([0, 0, 1])
                  backend="mjx"):
         env = PointRandom(backend=backend)
         env = EpisodeWrapper(env, episode_length=1000, action_repeat=1)
