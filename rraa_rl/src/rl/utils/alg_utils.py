@@ -363,33 +363,56 @@ def _env_step_r2_vanilla(env, env_params, runner_state, _):
     return runner_state, transition
 
 def _env_step_general_task(env, env_params, value_transition, runner_state, _):
-    train_state_policies, train_state_values, last_env_state, last_value_node, last_obs, current_value_node, rng = runner_state
+    train_state_policies, train_state_values, last_env_state, last_obs, last_value_node, rng = runner_state
 
-    # NODE TRANSITION
+    # NODE TRANSITION (per-env positions)
     current_value_node = value_transition(last_value_node, last_env_state)
-    
-    # SELECT ACTION
-    rng, _rng = jax.random.split(rng)
-    pi = train_state_policies[current_value_node].apply_fn(train_state_policies[current_value_node].params, last_obs)
-    value = train_state_values[current_value_node].apply_fn(train_state_values[current_value_node].params, last_obs)
 
-    action = pi.sample(seed=_rng)
-    log_prob = pi.log_prob(action)
+    # SELECT ACTION via position-indexed arrays using vmap over envs
+    rng, _rng = jax.random.split(rng)
+    num_nodes = len(train_state_policies)
+
+    # Branch functions take operand=single-env obs
+    branches_pi = tuple([lambda o, i=i: train_state_policies[i].apply_fn(train_state_policies[i].params, o[None, ...]) for i in range(num_nodes)])
+    branches_v = tuple([lambda o, i=i: train_state_values[i].apply_fn(train_state_values[i].params, o[None, ...]) for i in range(num_nodes)])
+
+    def select_pi_val(obs_e, idx_e, rng_e):
+        # idx_e must be scalar per env
+        pi_e = jax.lax.switch(idx_e, branches_pi, operand=obs_e)
+        val_e = jax.lax.switch(idx_e, branches_v, operand=obs_e)
+        action_e = pi_e.sample(seed=rng_e)
+        log_prob_e = pi_e.log_prob(action_e)
+        
+        # Remove singleton batch dims introduced by [None, ...]
+        action_e = jnp.squeeze(action_e, axis=0)
+        log_prob_e = jnp.squeeze(log_prob_e, axis=0)
+        val_e = jnp.squeeze(val_e, axis=0)
+
+        return val_e, action_e, log_prob_e
+
+    env_num = last_obs.shape[0]
+    rng_actions = jax.random.split(_rng, env_num)
+    value, action, log_prob = jax.vmap(select_pi_val, in_axes=(0, 0, 0))(last_obs, current_value_node, rng_actions)
 
     # STEP ENV
     rng, _rng = jax.random.split(rng)
-    env_num = last_obs.shape[0]
     rng_step = jax.random.split(_rng, env_num)
     obsv, env_state, reward, done, info = jax.vmap(
         env.step, in_axes=(0, 0, 0, None)
     )(rng_step, last_env_state, action, env_params)
 
+    # COMPUTE ALL VALUES FOR ADVANTAGE (should be ENV_NUM x NUM_NODES)
+    all_values = jnp.array(
+        [train_state_values[i].apply_fn(train_state_values[i].params, last_obs[None, ...]) 
+         for i in range(num_nodes)]
+    ).squeeze(axis=1).T
+
     transition = Transition_general_task(
         done=done, action=action, reward=reward, log_prob=log_prob, obs=last_obs, info=info,
         value=value,
-        all_values=jnp.array([train_state_values[i].apply_fn(train_state_values[i].params, last_obs) for i in range(len(train_state_values))]),
-        predicate_values=env_state.predicate_values, 
-        predicate_history_extrema=env_state.predicate_history_extrema, 
+        all_values=all_values,
+        predicate_values=env_state.predicate_values,
+        predicate_history_extrema=env_state.predicate_history_extrema,
         current_value_node=current_value_node,
     )
 

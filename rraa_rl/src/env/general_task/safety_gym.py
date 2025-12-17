@@ -76,7 +76,7 @@ class PointGeneralTask:
     @partial(jax.jit, static_argnums=(0,))
     def predicate_value_extrema(self, state, predicate_values):
         current_values = predicate_values * (1 - 2 * self.negated_predicate_mask) # flip negated for min tracking
-        last_maxes = state.predicate_extrema * (1 - 2 * self.negated_predicate_mask)
+        last_maxes = state.predicate_history_extrema * (1 - 2 * self.negated_predicate_mask)
         maxes = jnp.maximum(current_values, last_maxes)
         maxes = maxes * (1 - 2 * self.negated_predicate_mask)
         return maxes
@@ -145,10 +145,9 @@ class PointGeneralTask:
         state = self._env.reset(key)
 
         predicate_values = self.predicate_values(state)
-        predicate_extrema = predicate_values
-
+        
         observation = jnp.concatenate([state.obs, predicate_values])
-        env_state = EnvStateGeneralTask(state, predicate_values, predicate_extrema)
+        env_state = EnvStateGeneralTask(state, predicate_values, predicate_values)
 
         return observation, env_state
 
@@ -158,7 +157,7 @@ class PointGeneralTask:
         next_state = self._env.step(state.state, u)
 
         predicate_values = self.predicate_values(next_state)
-        predicate_extrema = self.predicate_value_extrema(next_state, predicate_values)
+        predicate_extrema = self.predicate_value_extrema(state, predicate_values)
 
         observation = jnp.concatenate([next_state.obs, predicate_values])
         next_state_new = EnvStateGeneralTask(next_state, predicate_values, predicate_extrema)
@@ -210,9 +209,8 @@ class PointGeneralTask:
 
         ## Set Observation and EnvState
         predicate_values = self.predicate_values(state)
-        predicate_extrema = self.predicate_value_extrema(state, predicate_values)
         observation = jnp.concatenate([state.obs, predicate_values])
-        env_state = EnvStateGeneralTask(state, predicate_values, predicate_extrema)
+        env_state = EnvStateGeneralTask(state, predicate_values, predicate_values)
 
         return observation, env_state
 
@@ -220,7 +218,7 @@ class PointGeneralTask:
         return spaces.Box(
             low=-jnp.inf,
             high=jnp.inf,
-            shape=(self._env.observation_size + params.n_active_predicates,), #depends on number of active predicates (reach1, reach2, reach3, avoid -> 4 added)
+            shape=(self._env.observation_size + self.n_active_predicates,), #depends on number of active predicates (reach1, reach2, reach3, avoid -> 4 added)
         )
 
     def action_space(self, params):

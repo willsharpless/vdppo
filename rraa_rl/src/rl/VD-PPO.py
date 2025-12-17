@@ -64,58 +64,60 @@ def train(env, env_params, value_dag, config, rng):
         ####################################################################################################################
         # ROLLOUT BATCHES FOR EACH NODE
 
-        def roll_out_node(train_state_total, node_info):
-            (train_state_policies, train_state_values, rng, timestep, traj_batch_dict) = train_state_total
-            node, parent_nodes, trigger_predicate_ix = node_info
-            
-            def coupled_reset(env, env_params, config, traj_batch_dict, rng):
-                
-                def reset_from_parent(rng, parent_node):
-                    
-                    parent_batch = traj_batch_dict[parent_node]
-                    rng, _rng = jax.random.split(rng)
+        # Pre-allocate functional buffers to carry parent data across node rollouts
+        num_nodes = value_dag.nodes.shape[0]
+        obs_shape = env.observation_space(env_params).shape
+        num_predicates = len(value_dag.predicates)
 
-                    # DEFINE RESET INDEX
-                    if config["DEC_INIT_TYPE"] == "toinput_goal":
-                        random_index_pre = jax.random.randint(rng, shape=(config["NUM_ENVS"],), minval=0, maxval=config["NUM_STEPS"])
-                        trigger_idx_pre = (parent_batch.predicate_maxes[:, trigger_predicate_ix] < 0).argmax(axis=0) # reached trigger (old convention FIXME)
-                        trigger_idx = jnp.where(jnp.any((parent_batch.predicate_maxes[:, trigger_predicate_ix] < 0) == 1, axis=0),
-                                            trigger_idx_pre, config["NUM_STEPS"]) # where reached use reach_idx, else max step
-                        random_index = jnp.where(jnp.any((parent_batch.predicate_maxes[:, trigger_predicate_ix] < 0), axis=0), 
-                                                trigger_idx, random_index_pre) # where reached use reach_idx, else random
-                    else:
-                        random_index = jax.random.randint(rng, shape=(config["NUM_ENVS"],), minval=0, maxval=config["NUM_STEPS"])
+        def roll_out_node(carry, node_pos):
+            (train_state_policies,
+                train_state_values,
+                rng,
+                timestep,
+                obs_buffer,              # [num_nodes, config["NUM_STEPS"], config["NUM_ENVS"], *obs_shape]
+                predicate_extrema_buffer          # [num_nodes, config["NUM_STEPS"], config["NUM_ENVS"], num_predicates]
+            ) = carry
 
-                    # RESET ENV WITH RESET INDEX + (PARTIAL) OBS FROM PARENT
-                    if "Hopper" in config["EXP_NAME"] or "HalfCheetah" in config["EXP_NAME"] or "Point" in config["EXP_NAME"]:
-                        traj_batch_observations_full = parent_batch.obs
-                        untrans_traj_batch_observations_full = env.untransform_obs(traj_batch_observations_full)
-                        untrans_traj_batch_observations_full = jnp.transpose(untrans_traj_batch_observations_full, axes=(1, 0, 2))
-                        untrans_traj_batch_observations = jax.vmap(lambda obs, idx: obs[idx])(
-                            untrans_traj_batch_observations_full, random_index)
+            # node = value_dag.nodes[node_pos]
+            parent_positions = value_dag.parent_pos_padded[node_pos]  # padded with -1
+            trigger_predicate_ix = value_dag.trigger_predicate_ix_arr[node_pos]
 
-                    # TODO Add other environment types...
+            def coupled_reset(env, env_params, config, rng):
+                # choose a parent per-env and sample a time index from its trajectory
+                rng, _rng_par = jax.random.split(rng)
+                # number of candidate parents (padded)
+                max_parents = parent_positions.shape[0]
+                valid_mask = parent_positions >= 0
+                valid_count = jnp.sum(valid_mask)
+                # random parent choice over valid entries only
+                rand_parent_choice = jax.random.randint(_rng_par, shape=(config["NUM_ENVS"],), minval=0, maxval=jnp.maximum(valid_count, 1))
+                chosen_parent_pos = parent_positions[rand_parent_choice]  # [config["NUM_ENVS"]]
 
-                    return untrans_traj_batch_observations
+                def sample_from_parent(per_env_rng, p_pos, env_ix):
+                    # Compute time index based on trigger of chosen valid parent
+                    rng1, rng2 = jax.random.split(per_env_rng)
+                    pred_series = predicate_extrema_buffer[p_pos, :, env_ix, trigger_predicate_ix]
+                    random_index_pre = jax.random.randint(rng1, shape=(), minval=0, maxval=config["NUM_STEPS"])
+                    trigger_hit = (pred_series < 0)
+                    trigger_any = jnp.any(trigger_hit)
+                    trigger_idx_pre = jnp.argmax(trigger_hit)
+                    trigger_idx = jnp.where(trigger_any, trigger_idx_pre, config["NUM_STEPS"])
+                    random_index = jnp.where(trigger_any, trigger_idx, random_index_pre)
+                    # select untransformed observation at that time
+                    obs_series = obs_buffer[p_pos, :, env_ix, ...]  # [config["NUM_STEPS"], *obs_shape]
+                    sel_obs = jax.lax.dynamic_slice_in_dim(obs_series, random_index, slice_size=1, axis=0)
+                    sel_obs = jnp.squeeze(sel_obs, axis=0)
+                    return sel_obs
 
-                # Aggregate parent traj obs
-                untrans_traj_batch_observations_list = jax.vmap(reset_from_parent, in_axes=(None, 0))(rng, jnp.array(parent_nodes))
-
+                # rngs for each env
                 rng, _rng = jax.random.split(rng)
                 reset_rng = jax.random.split(_rng, config["NUM_ENVS"])
-
-                # IF MULTIPLE PARENTS, COMBINE OBSERVATIONS (SAMPLE FROM PARENTS) # TODO TEST ME
-                if untrans_traj_batch_observations_list.shape[0] > 1:
-                    rand_parent_indices = jax.random.randint(rng, shape=(config["NUM_ENVS"],), minval=0, maxval=len(parent_nodes))
-                    untrans_traj_batch_observations = jax.vmap(lambda obs_list, idx: obs_list[idx])(
-                        untrans_traj_batch_observations_list, rand_parent_indices)
-                    # TODO improve to use more info than random? eg if reaching/crashing
-                else:
-                    untrans_traj_batch_observations = untrans_traj_batch_observations_list[0]
-
+                # gather per-env untransformed obs from chosen parents
+                untrans_traj_batch_observations = jax.vmap(sample_from_parent, in_axes=(0, 0, 0))(reset_rng, chosen_parent_pos, jnp.arange(config["NUM_ENVS"]))
+                # reset env to those observations
                 obsv, env_state = jax.vmap(env.reset_toinput, in_axes=(0, 0, None))(
-                    reset_rng, untrans_traj_batch_observations, env_params)
-                
+                    reset_rng, untrans_traj_batch_observations, env_params
+                )
                 return obsv, env_state
             
             def standard_reset(env, env_params, config, rng):
@@ -124,58 +126,91 @@ def train(env, env_params, value_dag, config, rng):
                 obsv, env_state = jax.vmap(env.reset, in_axes=(0, None))(reset_rng, env_params)
                 return obsv, env_state
 
-            # Conditional reset
-            is_root_node = parent_nodes is None
+            # root node if all parents are -1
+            is_root_node = jnp.all(parent_positions < 0)
             obsv, env_state = jax.lax.cond(
                 is_root_node,
-                lambda rng: standard_reset(env, env_params, config, rng),
-                lambda rng: coupled_reset(env, env_params, config, traj_batch_dict, rng),
+                lambda r: standard_reset(env, env_params, config, r),
+                lambda r: standard_reset(env, env_params, config, r),
+                # lambda r: coupled_reset(env, env_params, config, r),
                 rng
             )
             
             # COLLECT TRAJECTORY
             rng, _rng = jax.random.split(rng)
-            current_value_node = node + 0 * rng
-            runner_state = (train_state_policies, train_state_values, env_state, obsv, current_value_node, _rng)
+            # pass node position (not node id) so value_transition and env_step work with position indexing
+            initial_value_node = jnp.ones((config["NUM_ENVS"],), dtype=jnp.int32) * node_pos
+            runner_state = (train_state_policies, train_state_values, env_state, obsv, initial_value_node, _rng)
             runner_state, traj_batch = jax.lax.scan(
                 env_step, runner_state, None, config["NUM_STEPS"]
             )
 
-            new_traj_batch_dict = traj_batch_dict.copy() if traj_batch_dict else {}
-            new_traj_batch_dict[node] = traj_batch
+            # UPDATE BUFFERS FOR CHILDREN
 
-            return (train_state_policies, train_state_values, rng, timestep, new_traj_batch_dict), runner_state, traj_batch
+            # store untransformed observations
+            untrans_obs_full = env.untransform_obs(traj_batch.obs)
+            obs_buffer = jax.lax.dynamic_update_slice_in_dim(
+                obs_buffer, 
+                untrans_obs_full[None, ...], 
+                node_pos, 
+                axis=0
+            )
+            
+            # store predicate maxima over time (as produced during rollout)
+            predicate_extrema_buffer = jax.lax.dynamic_update_slice_in_dim(
+                predicate_extrema_buffer, 
+                traj_batch.predicate_history_extrema[None, ...], 
+                node_pos, 
+                axis=0
+            )
 
-        # node_infos = [(node, 
-        #                value_dag.get_parents(node), # parent node, None if root
-        #                value_dag.get_trigger_predicate(node)) # index of predicate that triggers transition to this node
-        #                for node in value_dag.nodes]
+            new_carry = (
+                train_state_policies,
+                train_state_values,
+                rng,
+                timestep,
+                obs_buffer,
+                predicate_extrema_buffer,
+            )
 
-        ## DEBUG FIXME: Fixed for 4-node RRAA DAG
-        node_infos = [(9, None, None), # RRAA
-                      (6, 9, 0), # RAA1
-                      (3, 9, 1), # RAA2
-                      (0, [3, 6], 2)] # A
+            return new_carry, (runner_state, traj_batch)
 
-        initial_carry = (*train_state_total, None)
-        train_state_total, runner_states, traj_batches = jax.lax.scan(
-            roll_out_node, initial_carry, node_infos, 
+        # initialize buffers for parent-conditioned resets
+        obs_buf0 = jnp.zeros((num_nodes, config["NUM_STEPS"], config["NUM_ENVS"]) + tuple(obs_shape), dtype=jnp.float32)
+        pred_max_buf0 = jnp.zeros((num_nodes, config["NUM_STEPS"], config["NUM_ENVS"], num_predicates), dtype=jnp.float32)
+
+        initial_carry = (*train_state_total, obs_buf0, pred_max_buf0)
+        (train_state_total, (runner_states, traj_batches)) = jax.lax.scan(
+            roll_out_node, initial_carry, jnp.arange(num_nodes), 
         )
 
-        train_state_policies, train_state_values, rng, timestep, traj_batch_dict = train_state_total
+        train_state_policies, train_state_values, rng, timestep, _, _ = train_state_total
 
-        ## DEBUG FIXME: Fixed for 4-node RRAA DAG
-        runner_state_rraa, runner_state_raa1, runner_state_raa2, runner_state_a = runner_states
+        ## DEBUG FIXME: Fixed for 4-node RRAA DAG (use node positions)
+        
+        pos_rraa = int(value_dag.node_index[9])
+        pos_raa1 = int(value_dag.node_index[6])
+        pos_raa2 = int(value_dag.node_index[3])
+        pos_a    = int(value_dag.node_index[0])
 
-        train_state_policy_rraa, train_state_value_rraa, env_state_rraa = train_state_policies[9], train_state_values[9]
-        train_state_policy_raa1, train_state_value_raa1, env_state_raa1 = train_state_policies[6], train_state_values[6]
-        train_state_policy_raa2, train_state_value_raa2, env_state_raa2 = train_state_policies[3], train_state_values[3]
-        train_state_policy_a, train_state_value_a, env_state_a = train_state_policies[0], train_state_values[0]
+        pred_pos_r1 = 0
+        pred_pos_r2 = 1
+        pred_pos_a  = 2
 
-        traj_batch_rraa = traj_batch_dict[9]
-        traj_batch_raa1 = traj_batch_dict[6]
-        traj_batch_raa2 = traj_batch_dict[3]
-        traj_batch_a = traj_batch_dict[0]
+        runner_state_rraa = tree_index1(runner_states, pos_rraa)
+        runner_state_raa1 = tree_index1(runner_states, pos_raa1)
+        runner_state_raa2 = tree_index1(runner_states, pos_raa2)
+        runner_state_a    = tree_index1(runner_states, pos_a)
+
+        train_state_policy_rraa, train_state_value_rraa = train_state_policies[pos_rraa], train_state_values[pos_rraa]
+        train_state_policy_raa1, train_state_value_raa1 = train_state_policies[pos_raa1], train_state_values[pos_raa1]
+        train_state_policy_raa2, train_state_value_raa2 = train_state_policies[pos_raa2], train_state_values[pos_raa2]
+        train_state_policy_a,   train_state_value_a   = train_state_policies[pos_a],    train_state_values[pos_a]
+
+        traj_batch_rraa = tree_index1(traj_batches, pos_rraa)
+        traj_batch_raa1 = tree_index1(traj_batches, pos_raa1)
+        traj_batch_raa2 = tree_index1(traj_batches, pos_raa2)
+        traj_batch_a    = tree_index1(traj_batches, pos_a)
 
         ## DEBUG FIXME EVERYTHING BELOW IS OLD RRAA CODE 
 
@@ -198,13 +233,13 @@ def train(env, env_params, value_dag, config, rng):
         # r2_append = jnp.concatenate((traj_batch_rraa.reach2, jnp.expand_dims(env_state_rraa.reach2, axis=1).T))
         # V_raa2_append = jnp.concatenate((traj_batch_rraa.value_raa2, jnp.expand_dims(last_val_raa2, axis=1).T))
         # a_append = jnp.concatenate((traj_batch_rraa.avoid, jnp.expand_dims(env_state_rraa.avoid, axis=1).T))
-        
+
         V_rraa_append = jnp.concatenate((traj_batch_rraa.value, jnp.expand_dims(last_val_rraa, axis=1).T))
-        r1_append = jnp.concatenate((traj_batch_rraa.predicate_values[0], jnp.expand_dims(env_state_rraa.predicate_values[0], axis=1).T))
-        V_raa1_append = jnp.concatenate((traj_batch_rraa.all_values[6], jnp.expand_dims(last_val_raa1, axis=1).T))
-        r2_append = jnp.concatenate((traj_batch_rraa.predicate_values[1], jnp.expand_dims(env_state_rraa.predicate_values[1], axis=1).T))
-        V_raa2_append = jnp.concatenate((traj_batch_rraa.all_values[3], jnp.expand_dims(last_val_raa2, axis=1).T))
-        a_append = jnp.concatenate((traj_batch_rraa.predicate_values[2], jnp.expand_dims(env_state_rraa.predicate_values[2], axis=1).T))
+        r1_append = jnp.concatenate((traj_batch_rraa.predicate_values[..., pred_pos_r1], jnp.expand_dims(env_state_rraa.predicate_values[..., pred_pos_r1], axis=1).T))
+        V_raa1_append = jnp.concatenate((traj_batch_rraa.all_values[..., pos_raa1], jnp.expand_dims(last_val_raa1, axis=1).T))
+        r2_append = jnp.concatenate((traj_batch_rraa.predicate_values[..., pred_pos_r2], jnp.expand_dims(env_state_rraa.predicate_values[..., pred_pos_r2], axis=1).T))
+        V_raa2_append = jnp.concatenate((traj_batch_rraa.all_values[..., pos_raa2], jnp.expand_dims(last_val_raa2, axis=1).T))
+        a_append = jnp.concatenate((traj_batch_rraa.predicate_values[..., pred_pos_a], jnp.expand_dims(env_state_rraa.predicate_values[..., pred_pos_a], axis=1).T))
 
         # SPECIAL BRT TARGET FOR BRRT PROBLEM
         l_tilde_rraa = jnp.minimum(jnp.maximum(r1_append, V_raa2_append), jnp.maximum(r2_append, V_raa1_append))
@@ -246,10 +281,10 @@ def train(env, env_params, value_dag, config, rng):
         last_val_a1 = train_state_value_a.apply_fn(train_state_value_a.params, last_obs_raa1)
         # last_val_a1 = train_state_value_a1.apply_fn(train_state_value_a1.params, last_obs_raa1)
 
-        r1_append = jnp.concatenate((traj_batch_raa1.predicate_values[0], jnp.expand_dims(env_state_raa1.predicate_values[0], axis=1).T))
+        r1_append = jnp.concatenate((traj_batch_raa1.predicate_values[..., pred_pos_r1], jnp.expand_dims(env_state_raa1.predicate_values[..., pred_pos_r1], axis=1).T))
         V_raa1_append = jnp.concatenate((traj_batch_raa1.value, jnp.expand_dims(last_val_raa1, axis=1).T))
-        a1_append = jnp.concatenate((traj_batch_raa1.predicate_values[2], jnp.expand_dims(env_state_raa1.predicate_values[2], axis=1).T))
-        V_a1_append = jnp.concatenate((traj_batch_raa1.all_values[0], jnp.expand_dims(last_val_a1, axis=1).T))
+        a1_append = jnp.concatenate((traj_batch_raa1.predicate_values[..., pred_pos_a], jnp.expand_dims(env_state_raa1.predicate_values[..., pred_pos_a], axis=1).T))
+        V_a1_append = jnp.concatenate((traj_batch_raa1.all_values[..., pos_a], jnp.expand_dims(last_val_a1, axis=1).T))
 
         l_tilde_raa1 = jnp.maximum(r1_append, V_a1_append)
 
@@ -289,16 +324,16 @@ def train(env, env_params, value_dag, config, rng):
         # UPDATE RAA2
 
         # CALCULATE DECOMPOSED ADVANTAGES - RAA 2
-        (_, _, env_state_raa2, last_obs_raa2, rng, _, _) = runner_state_raa2
+        (_, _, env_state_raa2, last_obs_raa2, _, rng) = runner_state_raa2
 
         last_val_raa2 = train_state_value_raa2.apply_fn(train_state_value_raa2.params, last_obs_raa2)
         last_val_a2 = train_state_value_a.apply_fn(train_state_value_a.params, last_obs_raa2)
         # last_val_a2 = train_state_value_a2.apply_fn(train_state_value_a2.params, last_obs_raa2)
 
-        r2_append = jnp.concatenate((traj_batch_raa2.predicate_values[1], jnp.expand_dims(env_state_raa2.predicate_values[1], axis=1).T))
+        r2_append = jnp.concatenate((traj_batch_raa2.predicate_values[..., pred_pos_r2], jnp.expand_dims(env_state_raa2.predicate_values[..., pred_pos_r2], axis=1).T))
         V_raa2_append = jnp.concatenate((traj_batch_raa2.value, jnp.expand_dims(last_val_raa2, axis=1).T))
-        a2_append = jnp.concatenate((traj_batch_raa2.predicate_values[2], jnp.expand_dims(env_state_raa2.predicate_values[2], axis=1).T))
-        V_a2_append = jnp.concatenate((traj_batch_raa2.all_values[0], jnp.expand_dims(last_val_a2, axis=1).T))
+        a2_append = jnp.concatenate((traj_batch_raa2.predicate_values[..., pred_pos_a], jnp.expand_dims(env_state_raa2.predicate_values[..., pred_pos_a], axis=1).T))
+        V_a2_append = jnp.concatenate((traj_batch_raa2.all_values[..., pos_a], jnp.expand_dims(last_val_a2, axis=1).T))
 
         l_tilde_raa2 = jnp.maximum(r2_append, V_a2_append)
 
@@ -334,11 +369,11 @@ def train(env, env_params, value_dag, config, rng):
         # UPDATE A
 
         # CALCULATE COMPOSED ADVANTAGE - A1
-        (_, _, env_state_a, last_obs_a, rng, _, _) = runner_state_a
+        (_, _, env_state_a, last_obs_a, _, rng) = runner_state_a
 
         last_val_a = train_state_value_a.apply_fn(train_state_value_a.params, last_obs_a)
 
-        a_append = jnp.concatenate((traj_batch_a.avoid, jnp.expand_dims(env_state_a.avoid, axis=1).T)) # avoid function
+        a_append = jnp.concatenate((traj_batch_a.predicate_values[..., pred_pos_a], jnp.expand_dims(env_state_a.predicate_values[..., pred_pos_a], axis=1).T)) # avoid function
         V_a_append = jnp.concatenate((traj_batch_a.value, jnp.expand_dims(last_val_a, axis=1).T)) # avoid value function
 
         indexs, done_a = calculate_indexs3_rr(ent_gamma[1], traj_batch_a.reward, a_append,
@@ -355,8 +390,8 @@ def train(env, env_params, value_dag, config, rng):
                                                             done=done_a)
         
         # UPDATE DECOMPOSED NETWORK - AVOID
-        dummy_mask = jnp.ones(traj_batch_a.avoid.shape)
-        update_state_a = (train_state_policy_a, train_state_value_a, 
+        dummy_mask = jnp.ones(traj_batch_a.predicate_values[..., pred_pos_a].shape)
+        update_state_a = (train_state_policy_a, train_state_value_a,
                            traj_batch_a, advantages_V_a, targets_V_a, advantages_V_a, dummy_mask, rng)
         xs = jnp.ones(config["UPDATE_EPOCHS"]) * ent_gamma[0]
         update_state_a, loss_info_a = jax.lax.scan(
@@ -376,20 +411,20 @@ def train(env, env_params, value_dag, config, rng):
         #     rng, timestep)
         
         # DEBUG FIXME: Fixed for 4-node RRAA DAG
-        train_state_policies_out = {
-            9: train_state_policy_rraa,
-            6: train_state_policy_raa1,
-            3: train_state_policy_raa2,
-            0: train_state_policy_a
-        } 
-        train_state_values_out = {
-            9: train_state_value_rraa,
-            6: train_state_value_raa1,
-            3: train_state_value_raa2,
-            0: train_state_value_a
-        }
+        # train_state_policies_out = train_state_policies[pos_rraa].set(train_state_policy_rraa)
+        # train_state_policies_out = train_state_policies_out[pos_raa1].set(train_state_policy_raa1)
+        # train_state_policies_out = train_state_policies_out[pos_raa2].set(train_state_policy_raa2)
+        # train_state_policies_out = train_state_policies_out[pos_a].set(train_state_policy_a)
 
-        train_state_total_out = (train_state_policies_out, train_state_values_out, rng, timestep)
+        # train_state_values_out = train_state_values[pos_rraa].set(train_state_value_rraa)
+        # train_state_values_out = train_state_values_out[pos_raa1].set(train_state_value_raa1)
+        # train_state_values_out = train_state_values_out[pos_raa2].set(train_state_value_raa2)
+        # train_state_values_out = train_state_values_out[pos_a].set(train_state_value_a)
+
+        train_state_policies = [train_state_policy_rraa, train_state_policy_raa1, train_state_policy_raa2, train_state_policy_a]
+        train_state_values = [train_state_value_rraa, train_state_value_raa1, train_state_value_raa2, train_state_value_a]
+
+        train_state_total_out = (train_state_policies, train_state_values, rng, timestep)
         
         return (train_state_total_out,
                 {"batch_info_rraa": (traj_batch_rraa, targets_V_rraa, done_rraa), "loss_info_rraa": loss_info_rraa,
@@ -405,22 +440,34 @@ def train(env, env_params, value_dag, config, rng):
 
     # NEEDS TO DO: current_value_node = value_transition(last_env_state, last_value_node)
     def _value_transition(value_dag, last_value_node, last_env_state):
+        # last_value_node: (NUM_ENVS,) positions
+        # last_env_state.predicate_values: expected shape (NUM_ENVS, P)
+        pred_vals = last_env_state.predicate_values  # (E, P)
+        trigger_pred_ix_arr = value_dag.trigger_predicate_ix_arr  # (N,)
+        children_pos_padded = value_dag.children_pos_padded       # (N, K)
 
-        def check_child_trigger(child):
-            child_trigger_ix = value_dag.trigger_predicates.get(child, None)
-            last_env_state_predicate_value = last_env_state['predicates'][child_trigger_ix]
-            return last_env_state_predicate_value < 0
+        def per_env_transition(cur_pos_e, pred_vals_e):
+            # Children positions for this env’s current node
+            child_pos = children_pos_padded[cur_pos_e]          # (K,)
+            child_exists = child_pos >= 0                               # (K,), means child
+            child_pos_safe = jnp.where(child_exists, child_pos, 0)      # (K,)
 
-        current_value_node, _ = jax.lax.scan(
-            lambda current_node, child: (jax.lax.cond(
-                    check_child_trigger(child),
-                    lambda: child,
-                    lambda: current_node
-                ), None),
-            last_value_node,
-            value_dag.node_children.get(last_value_node, [])
-        )
+            # Trigger predicate index for each child position
+            trig_ix = trigger_pred_ix_arr[child_pos_safe]        # (K,)
+            trigger_exists = trig_ix >= 0                           # (K,)
 
+            # Select each child’s trigger predicate value
+            pred_sel = jnp.take(pred_vals_e, jnp.where(trigger_exists, trig_ix, 0), axis=0)  # (K,)
+            triggers = (pred_sel < 0) & trigger_exists & child_exists
+
+            # Pick first triggered child or stay
+            any_trig = jnp.any(triggers)
+            first_idx = jnp.argmax(triggers)
+            sel_child_pos = jnp.take(child_pos_safe, first_idx, axis=0)
+            next_pos_e = jnp.where(any_trig, sel_child_pos, cur_pos_e)
+            return next_pos_e
+
+        current_value_node = jax.vmap(per_env_transition, in_axes=(0, 0))(last_value_node, pred_vals)
         return current_value_node
 
     value_transition = partial(_value_transition, value_dag)
@@ -428,14 +475,18 @@ def train(env, env_params, value_dag, config, rng):
     # INIT JAX WRAPPERS
     update_epoch = partial(_ppo_vanilla_update, config)
     env_step = partial(_env_step_general_task, env, env_params, value_transition)
+    # Now JIT-wrap _train since dicts are removed and we use position indices
     training = jax.jit(_train)
 
     tx = optimizer(config)
 
     def create_train_state(value_dag, config, env, env_params, rng):
 
-        train_state_policies, train_state_values, node_tags = {}, {}, {}
-        for node, tag in zip(value_dag.nodes, value_dag.node_tags):
+        train_state_policies_list = []
+        train_state_values_list = []
+        node_tags = {}
+        for pos in range(len(value_dag.nodes)):
+            node = int(value_dag.nodes[pos])
 
             # INIT POLICY NETWORK
             if config["DISCRETE"] == False:
@@ -460,7 +511,7 @@ def train(env, env_params, value_dag, config, rng):
                 variance=jnp.zeros(env.observation_space(env_params).shape),
                 count=1e-4,
             )
-            train_state_policies[node] = train_state_policy
+            train_state_policies_list.append(train_state_policy)
             
             # INIT VALUE NETWORK
             value_network = Value_Network(activation=config["ACTIVATION"])
@@ -475,11 +526,11 @@ def train(env, env_params, value_dag, config, rng):
                 variance=jnp.zeros(env.observation_space(env_params).shape),
                 count=1e-4,
             )
-            train_state_values[node] = train_state_value
+            train_state_values_list.append(train_state_value)
 
-            node_tags[node] = tag
+            node_tags[node] = value_dag.node_tags[node] if isinstance(value_dag.node_tags, dict) and node in value_dag.node_tags else None
 
-        return train_state_policies, train_state_values, node_tags, rng
+        return train_state_policies_list, train_state_values_list, node_tags, rng
 
     train_state_policies, train_state_values, node_tags, rng = create_train_state(value_dag, config, env, env_params, rng)
 
@@ -612,8 +663,8 @@ def train(env, env_params, value_dag, config, rng):
 
         ## SAVE MODEL CHECKPOINTS
 
-        all_training_states = {"policy_network_{}".format(node): train_state_policies[node] for node in value_dag.nodes}
-        all_training_states.update({"value_network_{}".format(node): train_state_values[node] for node in value_dag.nodes})
+        all_training_states = {"policy_network_{}".format(int(node)): train_state_policies[int(value_dag.node_index[int(node)])] for node in value_dag.nodes}
+        all_training_states.update({"value_network_{}".format(int(node)): train_state_values[int(value_dag.node_index[int(node)])] for node in value_dag.nodes})
         checkpoints.save_checkpoint(ckpt_dir=os.path.abspath(os.path.join("model", config["DIR"])),
                                     target=all_training_states,
                                     step=timestep,
@@ -754,6 +805,41 @@ if __name__ == "__main__":
     # env = get_env(config)
     # env_params = env.default_params
 
+        ## MAKE THE VALUE DAG
+    # value_dag = valt.make_value_dag(config)
+    class DummyRRAAdag: # DEBUG FIXME placeholder, fake node numbers
+        def __init__(self):
+            # fixed topological order: [RRAA(9), RAA1(6), RAA2(3), A(0)]
+            self.nodes = jnp.array([9, 6, 3, 0])
+            self.node_tags = {0: 'A', 6: 'RAA1', 3: 'RAA2', 9: 'RRAA'}
+            # parent positions (padded with -1 to fixed width 2)
+            # positions: 9->0, 6->1, 3->2, 0->3
+            # parents: 6 <- [9], 3 <- [9], 0 <- [3,6], 9 <- []
+            self.parent_pos_padded = jnp.array([
+                [-1, -1],  # node 9 (pos 0) root
+                [ 0, -1],  # node 6 (pos 1) parent: 9(pos0)
+                [ 0, -1],  # node 3 (pos 2) parent: 9(pos0)
+                [ 2,  1],  # node 0 (pos 3) parents: 3(pos2), 6(pos1)
+            ])
+            # children positions (not used in this edit, but kept for completeness)
+            self.children_pos_padded = jnp.array([
+                [ 1,  2],  # pos 0 (node 9) -> children: 6(pos1), 3(pos2)
+                [ 3, -1],  # pos 1 (node 6) -> child: A(pos3)
+                [ 3, -1],  # pos 2 (node 3) -> child: A(pos3)
+                [-1, -1],  # pos 3 (node 0) -> leaf
+            ])
+            # trigger predicate index for each node (in same order as nodes)
+            # RRAA(9): no trigger -> -1, RAA1(6): reach1->0, RAA2(3): reach2->1, A(0): obstacles->2
+            self.trigger_predicate_ix_arr = jnp.array([-1, 0, 1, 2])
+            # simple helpers
+            self.predicates = ["reach1", "reach2", "obstacles"]
+            self.node_parents = {0: jnp.array([3,6]), 3: jnp.array([9]), 6: jnp.array([9]), 9: jnp.array([])}
+            self.node_children = {0: jnp.array([]), 3: jnp.array([0]), 6: jnp.array([0]), 9: jnp.array([3,6])}
+            self.trigger_predicate_ix = {0: jnp.array([2]), 6: jnp.array([0]), 3: jnp.array([1]), 9: jnp.array([])}
+            # mapping node id -> position (Python dict for convenient lookup outside JIT)
+            self.node_index = {9: 0, 6: 1, 3: 2, 0: 3}
+    value_dag = DummyRRAAdag()
+
     ## DEBUG FIXME PLACEHOLDER for env/env_params modifications
     def transform_observation(mean, variance, obs):
         return (obs - mean) / variance
@@ -767,7 +853,7 @@ if __name__ == "__main__":
     trans = partial(transform_observation, vec1, vec2)
     untrans = partial(untransform_observation, vec1, vec2)
     env = PointGeneralTask(
-        active_predicates=["reach1", "reach2", "obstacles"], 
+        active_predicates=value_dag.predicates, 
         negated_predicate_mask=jnp.array([1, 1, 0])
     )
     env = TransformObservation(env, trans)
@@ -792,21 +878,6 @@ if __name__ == "__main__":
             config['VIDEO_FREQ'] = 200
         else:
             config['VIDEO_FREQ'] = 25
-
-    ## MAKE THE VALUE DAG
-    # value_dag = valt.make_value_dag(config)
-    class DummyRRAAdag: # DEBUG FIXME placeholder
-        def __init__(self):
-            self.nodes = [0, 3, 6, 9]
-            self.node_tags = {0: 'A', 6: 'RAA1', 3: 'RAA2', 9: 'RRAA'}
-            self.node_parents = {0: [3,6], 3: [9], 6: [9], 9: []}
-            self.node_children = {0: [], 3: [0], 6: [0], 9: [3,6]}
-            self.active_predicates = ["reach1", "reach2", "obstacles"]
-            self.trigger_predicate_ix = {0: 2, # A node triggers on obstacles
-                                         6: 0, # RAA1 triggers on reach1
-                                         3: 1, # RAA2 triggers on reach2
-                                         9: None} # RRAA has no trigger
-    value_dag = DummyRRAAdag()
 
     rng = jax.random.PRNGKey(config["SEED"])
     out = train(env, env_params, value_dag, config, rng) 
