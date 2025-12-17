@@ -27,7 +27,7 @@ from rraa_rl.src.model.actorcritic import Policy_Network, Value_Network, Policy_
 from rraa_rl.src.rl.utils.plot_utils import (calculate_minimal_reach, calculate_consumption, 
                                              calculate_reachreach, calculate_reachalwaysavoid, calculate_reachavoid,
                                              plot_target, plot_value_target, plot_contour, plot_contour_RRAA, 
-                                             plot_policy_decision, plot_video_contour_RRAA, calculate_rraa)
+                                             plot_policy_decision, plot_video_contour_RRAA, calculate_rraa, calculate_rraa_TEMP_VDPPO)
 from rraa_rl.src.rl.utils.utils import optimizer, get_BuRd, tree_index1, tree_index2
 from rraa_rl.src.rl.utils.gae import (Transition_reach,
                               calculate_gae, calculate_gae2, calculate_gae3,
@@ -220,7 +220,7 @@ def train(env, env_params, value_dag, config, rng):
         # CALCULATE COMPOSED ADVANTAGE
         # (train_state_policy_rraa, train_state_value_rraa, env_state_rraa, last_obs, rng,
         #   decomposed_state, policy_controls) = runner_state_rraa
-        (_, _, env_state_rraa, last_obs, last_node, rng) = runner_state_rraa
+        (_, _, env_state_rraa, last_obs, _, rng) = runner_state_rraa
 
         last_val_rraa = train_state_value_rraa.apply_fn(train_state_value_rraa.params, last_obs)
         last_val_raa1 = train_state_value_raa1.apply_fn(train_state_value_raa1.params, last_obs)
@@ -438,7 +438,7 @@ def train(env, env_params, value_dag, config, rng):
     # MAKE THE VALUE TRANSITION FUNCTION FROM THE DAG
     # value_transition = make_value_transition_fn(value_dag, config)
 
-    # NEEDS TO DO: current_value_node = value_transition(last_env_state, last_value_node)
+    # FIXME TODO: Allows only one node transition per step, what about multiple satisfactions?
     def _value_transition(value_dag, last_value_node, last_env_state):
         # last_value_node: (NUM_ENVS,) positions
         # last_env_state.predicate_values: expected shape (NUM_ENVS, P)
@@ -448,13 +448,13 @@ def train(env, env_params, value_dag, config, rng):
 
         def per_env_transition(cur_pos_e, pred_vals_e):
             # Children positions for this env’s current node
-            child_pos = children_pos_padded[cur_pos_e]          # (K,)
+            child_pos = children_pos_padded[cur_pos_e]                  # (K,)
             child_exists = child_pos >= 0                               # (K,), means child
             child_pos_safe = jnp.where(child_exists, child_pos, 0)      # (K,)
 
             # Trigger predicate index for each child position
-            trig_ix = trigger_pred_ix_arr[child_pos_safe]        # (K,)
-            trigger_exists = trig_ix >= 0                           # (K,)
+            trig_ix = trigger_pred_ix_arr[child_pos_safe]               # (K,)
+            trigger_exists = trig_ix >= 0                               # (K,)
 
             # Select each child’s trigger predicate value
             pred_sel = jnp.take(pred_vals_e, jnp.where(trigger_exists, trig_ix, 0), axis=0)  # (K,)
@@ -475,7 +475,6 @@ def train(env, env_params, value_dag, config, rng):
     # INIT JAX WRAPPERS
     update_epoch = partial(_ppo_vanilla_update, config)
     env_step = partial(_env_step_general_task, env, env_params, value_transition)
-    # Now JIT-wrap _train since dicts are removed and we use position indices
     training = jax.jit(_train)
 
     tx = optimizer(config)
@@ -490,7 +489,7 @@ def train(env, env_params, value_dag, config, rng):
 
             # INIT POLICY NETWORK
             if config["DISCRETE"] == False:
-                policy_network = MoGPolicy_Network( # MoG
+                policy_network = MoGPolicy_Network( # Gaussian Mixture (TODO does this really work better?)
                 # policy_network_rraa = Policy_Network(
                     env.action_space(env_params).shape[0], activation=config["ACTIVATION"]
                 )
@@ -635,10 +634,10 @@ def train(env, env_params, value_dag, config, rng):
         traj_batch_raa2, targets_V_raa2, done_raa2 = result_traj_raa2
         traj_batch_a, targets_V_a, done_a = result_traj_a
 
-        (rraa_rr_perc, rraa_crash_perc, rraa_rraa_perc), rraa_reach_idxs, rraa_crash_idx = calculate_rraa(traj_batch_rraa, reach_type="both")
-        (raa1_r_perc, raa1_crash_perc, raa1_raa_perc), raa1_reach_idxs, raa1_crash_idx = calculate_rraa(traj_batch_raa1, reach_type="1")
-        (raa2_r_perc, raa2_crash_perc, raa2_raa_perc), raa2_reach_idxs, raa2_crash_idx = calculate_rraa(traj_batch_raa2, reach_type="2")
-        (_, a_crash_perc, _),  _, a_crash_idx = calculate_rraa(traj_batch_a, reach_type="none")
+        (rraa_rr_perc, rraa_crash_perc, rraa_rraa_perc), rraa_reach_idxs, rraa_crash_idx = calculate_rraa_TEMP_VDPPO(traj_batch_rraa, reach_type="both")
+        (raa1_r_perc, raa1_crash_perc, raa1_raa_perc), raa1_reach_idxs, raa1_crash_idx = calculate_rraa_TEMP_VDPPO(traj_batch_raa1, reach_type="1")
+        (raa2_r_perc, raa2_crash_perc, raa2_raa_perc), raa2_reach_idxs, raa2_crash_idx = calculate_rraa_TEMP_VDPPO(traj_batch_raa2, reach_type="2")
+        (_, a_crash_perc, _),  _, a_crash_idx = calculate_rraa_TEMP_VDPPO(traj_batch_a, reach_type="none")
 
         idx = 0
         info_rraa = tree_index2(traj_batch_rraa.info, idx)
@@ -751,7 +750,7 @@ def train(env, env_params, value_dag, config, rng):
 # - 1 vs 2 avoid functions (branch?)
 # - Reach/Avoid value scaling?
 # - Env length? (200 -> 400?)
-# - More envs per batch? (32 -> 128?)
+# - More envs per batch? (32 -> 128? )
 # - entropy/LR?
 
 if __name__ == "__main__":
@@ -760,6 +759,7 @@ if __name__ == "__main__":
     debug = True
     if debug:
         config["EXP_NAME"]="PointValDec"
+        config["MODEL_DIR"] = 'model_valdec'
         config["DIR"]="point_VD_test"
         config["LR"]=3e-4
         config["NUM_ENVS"]=128
@@ -790,23 +790,24 @@ if __name__ == "__main__":
     )
     os.environ["XLA_PYTHON_CLIENT_PREALLOCATE"] = "false"
     os.environ["CUDA_VISIBLE_DEVICES"] = config['CUDA_USE']
-    MODEL_DIR = 'model_valdec'
-    folder = os.path.exists("{}/{}".format(MODEL_DIR, config['DIR']))
+    
+    folder = os.path.exists("{}/{}".format(config["MODEL_DIR"], config['DIR']))
     if not folder:
-        os.makedirs("{}/{}".format(MODEL_DIR, config['DIR']))
-        os.makedirs("{}/{}/reach".format(MODEL_DIR, config['DIR']))
-        os.makedirs("{}/{}/policy".format(MODEL_DIR, config['DIR']))
-        os.makedirs("{}/{}/value".format(MODEL_DIR, config['DIR']))
-        os.makedirs("{}/{}/total".format(MODEL_DIR, config['DIR']))
-        os.makedirs("{}/{}/target".format(MODEL_DIR, config['DIR']))
-        os.makedirs("{}/{}/value_target".format(MODEL_DIR, config['DIR']))
-        os.makedirs("{}/{}/state_traj".format(MODEL_DIR, config['DIR']))
+        os.makedirs("{}/{}".format(config["MODEL_DIR"], config['DIR']))
+        os.makedirs("{}/{}/reach".format(config["MODEL_DIR"], config['DIR']))
+        os.makedirs("{}/{}/policy".format(config["MODEL_DIR"], config['DIR']))
+        os.makedirs("{}/{}/value".format(config["MODEL_DIR"], config['DIR']))
+        os.makedirs("{}/{}/total".format(config["MODEL_DIR"], config['DIR']))
+        os.makedirs("{}/{}/target".format(config["MODEL_DIR"], config['DIR']))
+        os.makedirs("{}/{}/value_target".format(config["MODEL_DIR"], config['DIR']))
+        os.makedirs("{}/{}/state_traj".format(config["MODEL_DIR"], config['DIR']))
 
     # env = get_env(config)
     # env_params = env.default_params
 
-        ## MAKE THE VALUE DAG
+    ## MAKE THE VALUE DAG
     # value_dag = valt.make_value_dag(config)
+
     class DummyRRAAdag: # DEBUG FIXME placeholder, fake node numbers
         def __init__(self):
             # fixed topological order: [RRAA(9), RAA1(6), RAA2(3), A(0)]

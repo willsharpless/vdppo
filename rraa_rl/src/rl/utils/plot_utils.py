@@ -152,6 +152,51 @@ def calculate_rraa(traj_batch, th=0, to_first_done=False, reach_type="both"):
 
     return percs, reach_idxs, crash_idx
 
+def calculate_rraa_TEMP_VDPPO(traj_batch, th=0, to_first_done=False, reach_type="both"):
+
+    pred_pos_r1 = 0
+    pred_pos_r2 = 1
+    pred_pos_a = 2
+
+    # Compute crash (avoid failure) indices
+    crash_idx = (traj_batch.predicate_values[..., pred_pos_a] > 0).argmax(axis=0)
+    crash_idx = np.where(np.any((traj_batch.predicate_values[..., pred_pos_a] > 0) == 1, axis=0), crash_idx, np.inf)
+
+    # Compute reach indices
+    if reach_type in ["1", "2"]:
+        pred_pos_r = pred_pos_r1 if reach_type == "1" else pred_pos_r2
+        reach_idx = (traj_batch.predicate_values[..., pred_pos_r] < (0 + th)).argmax(axis=0)
+        reach_idx = np.where(np.any((traj_batch.predicate_values[..., pred_pos_r] < (0 + th)) == 1, axis=0), reach_idx, np.inf)
+        reach_idxs = (-1, -1, reach_idx)
+    elif reach_type == "both":
+        reach_idx_1 = (traj_batch.predicate_values[..., pred_pos_r1] < (0 + th)).argmax(axis=0)
+        reach_idx_2 = (traj_batch.predicate_values[..., pred_pos_r2] < (0 + th)).argmax(axis=0)
+        reach_idx_1 = np.where(np.any((traj_batch.predicate_values[..., pred_pos_r1] < (0 + th)) == 1, axis=0), reach_idx_1, np.inf)
+        reach_idx_2 = np.where(np.any((traj_batch.predicate_values[..., pred_pos_r2] < (0 + th)) == 1, axis=0), reach_idx_2, np.inf)
+        reach_idx = np.maximum(reach_idx_1, reach_idx_2)
+        reach_idxs = (reach_idx_1, reach_idx_2, reach_idx)
+    else:
+        reach_idx = None
+        reach_idxs = (None, None, None)
+
+    # if to_first_done: # FIXME
+    #     first_done = np.where(np.any(traj_batch.done, axis=0), traj_batch.done.argmax(axis=0), traj_batch.done.shape[0])
+    #     reach_idx = np.where(first_done >= reach_idx, reach_idx, np.inf)
+    #     crash_idx = np.where(first_done >= crash_idx, crash_idx, np.inf)
+
+    # Compute Percentages
+    crash_perc = ((crash_idx < np.inf).sum() / crash_idx.__len__()).item()
+    if reach_type in ["1", "2", "both"]:
+        reach_perc = ((reach_idx < np.inf).sum() / reach_idx.__len__()).item()
+        reach_and_avoid_idx = np.where(crash_idx == np.inf, reach_idx, np.inf)
+        reach_avoid_perc = ((reach_and_avoid_idx < np.inf).sum() / reach_and_avoid_idx.__len__()).item()
+    else:
+        reach_perc = None
+        reach_avoid_perc = None
+    percs = (reach_perc, crash_perc, reach_avoid_perc)
+
+    return percs, reach_idxs, crash_idx
+
 def calculate_reach(traj_batch):
     reach_idx = (traj_batch.reach < 0).argmax(axis=0)
     reach_idx = np.where(np.any((traj_batch.reach < 0) == 1, axis=0), reach_idx, np.inf)
@@ -202,7 +247,8 @@ def plot_policy_decision(policy_decision_sample, epoch, config):
     plt.xlabel("Trajectory Step")
     plt.ylim((-0.1, 2.1))
     plt.legend()
-    plt.savefig('model/{}/policy/policy_decision_{:0>4d}'.format(config['DIR'], epoch), dpi=300)
+    model_dir_tag = 'model' if "MODEL_DIR" not in config else config["MODEL_DIR"]
+    plt.savefig('{}/{}/policy/policy_decision_{:0>4d}'.format(model_dir_tag, config['DIR'], epoch), dpi=300)
     return fig
 
 def plot_target(target_reach, value_reach, reach, epoch, init_energy, done, config):
@@ -215,7 +261,7 @@ def plot_target(target_reach, value_reach, reach, epoch, init_energy, done, conf
             ax.axvline(i, color='red', alpha=0.4, zorder=1.5)
     plt.title("init energy {:.2f}".format(init_energy))
     plt.legend()
-    plt.savefig('model/{}/target/contour_target_{:0>4d}'.format(config['DIR'], epoch), dpi=300)
+    plt.savefig('{}/{}/target/contour_target_{:0>4d}'.format(config['MODEL_DIR'], config['DIR'], epoch), dpi=300)
     plt.close("all")
     return
 
@@ -229,7 +275,7 @@ def plot_value_target(target_value, value, epoch, init_energy, done, config):
         if int(done_signal) == 1:
             ax.axvline(i, color='red', alpha=0.4, zorder=1.5)
     plt.legend()
-    plt.savefig('model/{}/value_target/contour_target_{:0>4d}'.format(config['DIR'], epoch), dpi=300)
+    plt.savefig('{}/{}/value_target/contour_target_{:0>4d}'.format(config['MODEL_DIR'], config['DIR'], epoch), dpi=300)
     plt.close("all")
     return
 
@@ -262,7 +308,7 @@ def plot_contour(train_state_energy, train_state_h, train_state_policy, info, ep
             ax.axvline(-30, color='red', alpha=0.7,)
             ax.axvline(-25, color='green', alpha=0.4, linewidth=10)
         ax.set_title('Contour_Plot')
-        plt.savefig('./model/{}/value/contour_value_{:0>4d}'.format(config['DIR'], epoch), dpi=300)
+        plt.savefig('{}/{}/value/contour_value_{:0>4d}'.format(config['MODEL_DIR'], config['DIR'], epoch), dpi=300)
         plt.close("all")
         fig, ax = plt.subplots(1, 1)
         cp = ax.contourf(X, Y, Z_2, norm=CenteredNorm(), cmap=get_BuRd())
@@ -271,7 +317,7 @@ def plot_contour(train_state_energy, train_state_h, train_state_policy, info, ep
             ax.axvline(-30, color='red', alpha=0.7,)
             ax.axvline(-25, color='green', alpha=0.4, linewidth=10)
         ax.set_title('Contour_Plot')
-        plt.savefig('./model/{}/reach/contour_reach_{:0>4d}'.format(config['DIR'], epoch), dpi=300)
+        plt.savefig('{}/{}/reach/contour_reach_{:0>4d}'.format(config['MODEL_DIR'], config['DIR'], epoch), dpi=300)
         plt.close("all")
         fig, ax = plt.subplots(1, 1)
         cp = ax.contourf(X, Y, np.maximum(Z_2, Z_1 - Y), norm=CenteredNorm(), cmap=get_BuRd())
@@ -280,7 +326,7 @@ def plot_contour(train_state_energy, train_state_h, train_state_policy, info, ep
             ax.axvline(-30, color='red', alpha=0.7,)
             ax.axvline(-25, color='green', alpha=0.4, linewidth=10)
         ax.set_title('Contour_Plot')
-        plt.savefig('./model/{}/total/contour_total_{:0>4d}'.format(config['DIR'], epoch), dpi=300)
+        plt.savefig('{}/{}/total/contour_total_{:0>4d}'.format(config['MODEL_DIR'], config['DIR'], epoch), dpi=300)
         plt.close("all")
         fig, ax = plt.subplots(1, 1)
         cp = ax.contourf(X, Y, Z_3[:, :, 1], cmap=get_BuRd())
@@ -289,7 +335,7 @@ def plot_contour(train_state_energy, train_state_h, train_state_policy, info, ep
             ax.axvline(-30, color='red', alpha=0.7,)
             ax.axvline(-25, color='green', alpha=0.4, linewidth=10)
         ax.set_title('Contour_Plot')
-        plt.savefig('./model/{}/policy/contour_policy_{:0>4d}'.format(config['DIR'], epoch), dpi=300)
+        plt.savefig('{}/{}/policy/contour_policy_{:0>4d}'.format(config['MODEL_DIR'], config['DIR'], epoch), dpi=300)
         plt.close("all")
     elif config['EXP_NAME'] == 'PendulumConstraint':
         num = 200
@@ -317,7 +363,7 @@ def plot_contour(train_state_energy, train_state_h, train_state_policy, info, ep
         plt.xlim((-3 * np.pi, 3 * np.pi))
         ax.vlines([-2 * np.pi, 0, 2 * np.pi], -8, 8, colors='red')
         ax.set_title('Contour_Plot')
-        plt.savefig('model/{}/value/contour_value_{:0>4d}'.format(config["DIR"], epoch), dpi=300)
+        plt.savefig('{}/{}/value/contour_value_{:0>4d}'.format(config["MODEL_DIR"], config["DIR"], epoch), dpi=300)
         plt.close("all")
         fig, ax = plt.subplots(1, 1)
         cp = ax.contourf(X, Y, Z_2, norm=CenteredNorm(), cmap=get_BuRd())
@@ -327,7 +373,7 @@ def plot_contour(train_state_energy, train_state_h, train_state_policy, info, ep
         plt.xlim((-3 * np.pi, 3 * np.pi))
         ax.vlines([-2 * np.pi, 0, 2 * np.pi], -8, 8, colors='red')
         ax.set_title('Contour_Plot Init {:.2f} Final {:.2f}'.format(info['init_energy'], info['final_energy']))
-        plt.savefig('model/{}/reach/contour_reach_{:0>4d}'.format(config["DIR"], epoch), dpi=300)
+        plt.savefig('{}/{}/reach/contour_reach_{:0>4d}'.format(config["MODEL_DIR"], config["DIR"], epoch), dpi=300)
         plt.close("all")
         fig, ax = plt.subplots(1, 1)
         cp = ax.contourf(X, Y, np.maximum(Z_1 - 140., Z_2), norm=CenteredNorm(), cmap=get_BuRd())
@@ -337,7 +383,7 @@ def plot_contour(train_state_energy, train_state_h, train_state_policy, info, ep
         plt.xlim((-3 * np.pi, 3 * np.pi))
         ax.vlines([-2 * np.pi, 0, 2 * np.pi], -8, 8, colors='red')
         ax.set_title('Contour_Plot Init {:.2f} Final {:.2f}'.format(info['init_energy'], info['final_energy']))
-        plt.savefig('model/{}/total/contour_total_{:0>4d}'.format(config["DIR"], epoch), dpi=300)
+        plt.savefig('{}/{}/total/contour_total_{:0>4d}'.format(config["MODEL_DIR"], config["DIR"], epoch), dpi=300)
         plt.close("all")
     elif config['EXP_NAME'] == 'HopperReach':
         plt.figure(figsize=(12, 6))
@@ -358,7 +404,7 @@ def plot_contour(train_state_energy, train_state_h, train_state_policy, info, ep
         ax.set_xlim((-0.5, 2.5))
         ax.set_ylim((0, 1.5))
         ax.set_aspect('equal')
-        plt.savefig('model/{}/reach/trajectory_{:0>4d}'.format(config["DIR"], epoch), dpi=300)
+        plt.savefig('{}/{}/reach/trajectory_{:0>4d}'.format(config["MODEL_DIR"], config["DIR"], epoch), dpi=300)
         plt.close("all")
     elif config['EXP_NAME'] == 'HopperAvoid':
         plt.figure(figsize=(12, 6))
@@ -379,7 +425,7 @@ def plot_contour(train_state_energy, train_state_h, train_state_policy, info, ep
         ax.set_xlim((-0.5, 2.5))
         ax.set_ylim((0, 1.5))
         ax.set_aspect('equal')
-        plt.savefig('model/{}/reach/trajectory_{:0>4d}'.format(config["DIR"], epoch), dpi=300)
+        plt.savefig('{}/{}/reach/trajectory_{:0>4d}'.format(config["MODEL_DIR"], config["DIR"], epoch), dpi=300)
         plt.close("all")
     elif config['EXP_NAME'] == 'HopperAvoidCeiling' or config['EXP_NAME'] == 'HopperAvoidCeilingWall' or config['EXP_NAME'] == 'HopperAvoidCeilingWallEnergy':
         plt.figure(figsize=(12, 6))
@@ -410,7 +456,7 @@ def plot_contour(train_state_energy, train_state_h, train_state_policy, info, ep
         ax.set_aspect('equal')
         ax.set_title("Trajectory Plot Init Energy {:.2f} Final Energy {:.2f}"
                      .format(info['init_energy'], info['final_energy']))
-        plt.savefig('model/{}/reach/trajectory_{:0>4d}'.format(config["DIR"], epoch), dpi=300)
+        plt.savefig('{}/{}/reach/trajectory_{:0>4d}'.format(config["MODEL_DIR"], config["DIR"], epoch), dpi=300)
         # plt.close("all")
     elif config['EXP_NAME'] == 'HopperReachReach':
         plt.figure(figsize=(12, 6))
@@ -461,7 +507,7 @@ def plot_contour(train_state_energy, train_state_h, train_state_policy, info, ep
         ax.set_ylim((0, 1.6))
         ax.set_aspect('equal')
         ax.set_title("Reach Reach ?")
-        plt.savefig('model/{}/reach/trajectory_{:0>4d}'.format(config["DIR"], epoch), dpi=300)
+        plt.savefig('{}/{}/reach/trajectory_{:0>4d}'.format(config["MODEL_DIR"], config["DIR"], epoch), dpi=300)
         # plt.close("all")
         return fig
     elif config['EXP_NAME'] == 'HalfCheetahAvoid':
@@ -510,7 +556,7 @@ def plot_contour(train_state_energy, train_state_h, train_state_policy, info, ep
         ax.set_aspect('equal')
         ax.set_title("Trajectory Plot Init Energy {:.2f} Final Energy {:.2f}"
                      .format(info['init_energy'], info['final_energy']))
-        plt.savefig('model/{}/reach/trajectory_{:0>4d}'.format(config["DIR"], epoch), dpi=300)
+        plt.savefig('{}/{}/reach/trajectory_{:0>4d}'.format(config["MODEL_DIR"], config["DIR"], epoch), dpi=300)
         plt.close("all")
     elif config['EXP_NAME'] == 'WindField':
         x_index = config['SECTION'] % 2
@@ -538,7 +584,7 @@ def plot_contour(train_state_energy, train_state_h, train_state_policy, info, ep
         ax.set_aspect('equal')
         ax.set_title("Trajectory Plot Init Energy {:.2f} Final Energy {:.2f}"
                      .format(info['init_energy'], info['final_energy']))
-        plt.savefig('model/{}/reach/trajectory_{:0>4d}'.format(config["DIR"], epoch), dpi=300)
+        plt.savefig('{}/{}/reach/trajectory_{:0>4d}'.format(config["MODEL_DIR"], config["DIR"], epoch), dpi=300)
         plt.close("all")
         num = 128
         arr_1 = np.zeros((num, num, 14))
@@ -558,7 +604,7 @@ def plot_contour(train_state_energy, train_state_h, train_state_policy, info, ep
         ax.set_xlim((-20., 20.))
         ax.set_ylim((-20., 20.))
         ax.set_title('Contour_Plot')
-        plt.savefig('model/{}/total/contour_total_{:0>4d}_0'.format(config["DIR"], epoch), dpi=300)
+        plt.savefig('{}/{}/total/contour_total_{:0>4d}_0'.format(config["MODEL_DIR"], config["DIR"], epoch), dpi=300)
         plt.close("all")
         num = 128
         arr_1 = np.zeros((num, num, 14))
@@ -578,7 +624,7 @@ def plot_contour(train_state_energy, train_state_h, train_state_policy, info, ep
         ax.set_xlim((-20., 20.))
         ax.set_ylim((-20., 20.))
         ax.set_title('Contour_Plot')
-        plt.savefig('model/{}/total/contour_total_{:0>4d}_1'.format(config["DIR"], epoch), dpi=300)
+        plt.savefig('{}/{}/total/contour_total_{:0>4d}_1'.format(config["MODEL_DIR"], config["DIR"], epoch), dpi=300)
         plt.close("all")
     elif config['EXP_NAME'] == 'F16Avoid':
         reach_idx = info['reach_index']
@@ -601,7 +647,7 @@ def plot_contour(train_state_energy, train_state_h, train_state_policy, info, ep
         ax.set_aspect('equal')
         ax.set_title("Trajectory Plot Init Energy {:.2f} Final Energy {:.2f}"
                      .format(info['init_energy'], info['final_energy']))
-        plt.savefig('model/{}/reach/trajectory_{:0>4d}_0'.format(config["DIR"], epoch), dpi=300)
+        plt.savefig('{}/{}/reach/trajectory_{:0>4d}_0'.format(config["MODEL_DIR"], config["DIR"], epoch), dpi=300)
         plt.close("all")
         plt.figure(figsize=(12, 6))
         fig, ax = plt.subplots(1, 1)
@@ -614,7 +660,7 @@ def plot_contour(train_state_energy, train_state_h, train_state_policy, info, ep
         ax.set_aspect('equal')
         ax.set_title("Trajectory Plot Init Energy {:.2f} Final Energy {:.2f}"
                      .format(info['init_energy'], info['final_energy']))
-        plt.savefig('model/{}/reach/trajectory_{:0>4d}_1'.format(config["DIR"], epoch), dpi=300)
+        plt.savefig('{}/{}/reach/trajectory_{:0>4d}_1'.format(config["MODEL_DIR"], config["DIR"], epoch), dpi=300)
         plt.close("all")
         plt.figure(figsize=(30, 10))
         fig, ax = plt.subplots(3, 2, layout='constrained')
@@ -635,7 +681,7 @@ def plot_contour(train_state_energy, train_state_h, train_state_policy, info, ep
         ax[2, 0].plot(info['state'][:, -2], label='PS_INT')
         ax[2, 0].plot(info['state'][:, -1], label='NYR_INT')
         ax[2, 0].legend()
-        plt.savefig('model/{}/state_traj/trajectory_{:0>4d}'.format(config["DIR"], epoch), dpi=300)
+        plt.savefig('{}/{}/state_traj/trajectory_{:0>4d}'.format(config["MODEL_DIR"], config["DIR"], epoch), dpi=300)
         plt.close("all")
     elif config['EXP_NAME'] == 'PendulumConstraintBaseline':
         fig, ax = plt.subplots(1, 1)
@@ -644,7 +690,7 @@ def plot_contour(train_state_energy, train_state_h, train_state_policy, info, ep
         plt.xlim((-3 * np.pi, 3 * np.pi))
         ax.vlines([-2 * np.pi, 0, 2 * np.pi], -8, 8, colors='red')
         ax.set_title('Trajectory_Plot')
-        plt.savefig('model/{}/reach/traj_reach_{:0>4d}'.format(config["DIR"], epoch), dpi=300)
+        plt.savefig('{}/{}/reach/traj_reach_{:0>4d}'.format(config["MODEL_DIR"], config["DIR"], epoch), dpi=300)
         plt.close("all")
     elif config['EXP_NAME'] == 'HopperAvoidCeilingBaseline':
         plt.figure(figsize=(12, 6))
@@ -679,7 +725,7 @@ def plot_contour(train_state_energy, train_state_h, train_state_policy, info, ep
         ax.set_ylim((0, 1.5))
         ax.set_aspect('equal')
         ax.set_title("Trajectory Plot")
-        plt.savefig('model/{}/reach/trajectory_{:0>4d}'.format(config["DIR"], epoch), dpi=300)
+        plt.savefig('{}/{}/reach/trajectory_{:0>4d}'.format(config["MODEL_DIR"], config["DIR"], epoch), dpi=300)
         plt.close("all")
     
     return fig
@@ -773,7 +819,7 @@ def plot_contour_RRAA(multi_info, epoch, config, policy_decision_sample=None):
             # axes[3].set_box_aspect(1.6 / 3.0)
             axes[3].legend()
 
-        plt.savefig('model/{}/reach/trajectory_{:0>4d}'.format(config["DIR"], epoch), dpi=300)
+        plt.savefig('{}/{}/reach/trajectory_{:0>4d}'.format(config["MODEL_DIR"], config["DIR"], epoch), dpi=300)
         return fig
     
         
@@ -855,7 +901,7 @@ def plot_contour_RRAA(multi_info, epoch, config, policy_decision_sample=None):
         if config['EXP_NAME'] == 'HopperReachAlwaysAvoid':
             draw_hopper_raa(info_avoid, "Avoid Only", axes[1])
 
-        plt.savefig('model/{}/reach/trajectory_{:0>4d}'.format(config["DIR"], epoch), dpi=300)
+        plt.savefig('{}/{}/reach/trajectory_{:0>4d}'.format(config["MODEL_DIR"], config["DIR"], epoch), dpi=300)
         return fig
     
     elif 'HalfCheetah' in config['EXP_NAME'] and 'Avoid' in config['EXP_NAME']: 
@@ -954,7 +1000,7 @@ def plot_contour_RRAA(multi_info, epoch, config, policy_decision_sample=None):
         if config['EXP_NAME'] == 'HalfCheetahReachAlwaysAvoid':
             draw_cheetah_raa(info_avoid, "Avoid Only", axes[1])
 
-        plt.savefig('model/{}/reach/trajectory_{:0>4d}'.format(config["DIR"], epoch), dpi=300)
+        plt.savefig('{}/{}/reach/trajectory_{:0>4d}'.format(config["MODEL_DIR"], config["DIR"], epoch), dpi=300)
         return fig
 
     elif 'HalfCheetah' in config['EXP_NAME'] and 'ReachReach' in config['EXP_NAME']: 
@@ -1059,7 +1105,7 @@ def plot_contour_RRAA(multi_info, epoch, config, policy_decision_sample=None):
             draw_cheetah_rr(info_1, "Reach 1", axes[1], mode="reach1")
             draw_cheetah_rr(info_2, "Reach 2", axes[2], mode="reach2")
 
-        plt.savefig('model/{}/reach/trajectory_{:0>4d}'.format(config["DIR"], epoch), dpi=300)
+        plt.savefig('{}/{}/reach/trajectory_{:0>4d}'.format(config["MODEL_DIR"], config["DIR"], epoch), dpi=300)
         return fig
 
     elif 'Humanoid' in config['EXP_NAME'] and 'ReachReach' in config['EXP_NAME']:
@@ -1188,7 +1234,7 @@ def plot_contour_RRAA(multi_info, epoch, config, policy_decision_sample=None):
             draw_humanoid_rr(info_1, "Reach 1", axes[1], mode="reach1")
             draw_humanoid_rr(info_2, "Reach 2", axes[2], mode="reach2")
 
-        plt.savefig('model/{}/reach/trajectory_{:0>4d}'.format(config["DIR"], epoch), dpi=300)
+        plt.savefig('{}/{}/reach/trajectory_{:0>4d}'.format(config["MODEL_DIR"], config["DIR"], epoch), dpi=300)
         return fig
     
     elif 'Humanoid' in config['EXP_NAME'] and 'Avoid' in config['EXP_NAME']:
@@ -1318,7 +1364,7 @@ def plot_contour_RRAA(multi_info, epoch, config, policy_decision_sample=None):
         if config['EXP_NAME'] == 'HumanoidReachAlwaysAvoid':
             draw_humanoid_raa(info_avoid, "Avoid Only", axes[1], mode="avoid")
 
-        plt.savefig('model/{}/reach/trajectory_{:0>4d}'.format(config["DIR"], epoch), dpi=300)
+        plt.savefig('{}/{}/reach/trajectory_{:0>4d}'.format(config["MODEL_DIR"], config["DIR"], epoch), dpi=300)
         return fig
     
     elif 'F16' in config['EXP_NAME']:
@@ -1351,7 +1397,7 @@ def plot_contour_RRAA(multi_info, epoch, config, policy_decision_sample=None):
         ax.set_aspect('equal')
         # ax.set_title("Trajectory Plot Init Energy {:.2f} Final Energy {:.2f}"
         #              .format(info['init_energy'], info['final_energy']))
-        plt.savefig('model/{}/reach/trajectory_{:0>4d}_0'.format(config["DIR"], epoch), dpi=300)
+        plt.savefig('{}/{}/reach/trajectory_{:0>4d}_0'.format(config["MODEL_DIR"], config["DIR"], epoch), dpi=300)
         if config["USE_WANDB"]: 
             wandb.log({"trajectory_view1": wandb.Image(fig)}, step=epoch)
         plt.close("all")
@@ -1380,7 +1426,7 @@ def plot_contour_RRAA(multi_info, epoch, config, policy_decision_sample=None):
         ax.set_aspect('equal')
         # ax.set_title("Trajectory Plot Init Energy {:.2f} Final Energy {:.2f}"
         #              .format(info['init_energy'], info['final_energy']))
-        plt.savefig('model/{}/reach/trajectory_{:0>4d}_1'.format(config["DIR"], epoch), dpi=300)
+        plt.savefig('{}/{}/reach/trajectory_{:0>4d}_1'.format(config["MODEL_DIR"], config["DIR"], epoch), dpi=300)
         if config["USE_WANDB"]: 
             wandb.log({"trajectory_view2": wandb.Image(fig)}, step=epoch)
         plt.close("all")
@@ -1403,7 +1449,7 @@ def plot_contour_RRAA(multi_info, epoch, config, policy_decision_sample=None):
         ax[2, 0].plot(info['state'][:, -2], label='PS_INT')
         ax[2, 0].plot(info['state'][:, -1], label='NYR_INT')
         ax[2, 0].legend()
-        plt.savefig('model/{}/reach/trajectory_{:0>4d}_2'.format(config["DIR"], epoch), dpi=300)
+        plt.savefig('{}/{}/reach/trajectory_{:0>4d}_2'.format(config["MODEL_DIR"], config["DIR"], epoch), dpi=300)
         if config["USE_WANDB"]: 
             wandb.log({"trajectory_view3": wandb.Image(fig)}, step=epoch)
         plt.close("all")
@@ -1492,7 +1538,7 @@ def plot_contour_RRAA(multi_info, epoch, config, policy_decision_sample=None):
             draw_point_rr(info_1, "Reach 1", axes[1], mode="reach1")
             draw_point_rr(info_2, "Reach 2", axes[2], mode="reach2")
 
-        plt.savefig('model/{}/reach/trajectory_{:0>4d}'.format(config["DIR"], epoch), dpi=300)
+        plt.savefig('{}/{}/reach/trajectory_{:0>4d}'.format(config["MODEL_DIR"], config["DIR"], epoch), dpi=300)
         return fig
 
     elif 'Point' in config['EXP_NAME'] and 'Avoid' in config['EXP_NAME']: 
@@ -1574,7 +1620,7 @@ def plot_contour_RRAA(multi_info, epoch, config, policy_decision_sample=None):
         if config['EXP_NAME'] == 'PointReachAlwaysAvoid':
             draw_point_raa(info_avoid, "Avoid Only", axes[1])
 
-        plt.savefig('model/{}/reach/trajectory_{:0>4d}'.format(config["DIR"], epoch), dpi=300)
+        plt.savefig('{}/{}/reach/trajectory_{:0>4d}'.format(config["MODEL_DIR"], config["DIR"], epoch), dpi=300)
         return fig
 
     elif 'Point' in config['EXP_NAME'] and 'RRAA' in config['EXP_NAME']: 
@@ -1665,7 +1711,7 @@ def plot_contour_RRAA(multi_info, epoch, config, policy_decision_sample=None):
         draw_point_rraa(info_raa2, "RAA 2", axes[1, 0], mode="raa2")
         draw_point_rraa(info_a, "A", axes[1, 1], mode="a")
 
-        plt.savefig('model/{}/reach/trajectory_{:0>4d}'.format(config["DIR"], epoch), dpi=300)
+        plt.savefig('{}/{}/reach/trajectory_{:0>4d}'.format(config["MODEL_DIR"], config["DIR"], epoch), dpi=300)
         return fig
     
 def plot_video_contour_RRAA(multi_info, epoch, config, save_video=False, prefix="", log_wandb=True):

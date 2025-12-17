@@ -11,6 +11,7 @@
 /model_rebuttal_results_NIKHIL/*
 /BASELINE_Hopper_rebuttal/*
 /model_old_results_DELETE/*
+/model_valdec/**
 
 # Ignore all experiments
 /rraa_rl/exp/**

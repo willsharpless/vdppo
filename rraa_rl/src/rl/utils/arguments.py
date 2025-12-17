@@ -6,6 +6,9 @@ def get_args(args):
         '--EXP_NAME', default='GridConstraint', type=str, help='experiment environment name'
     )
     parser.add_argument(
+        '--MODEL_DIR', default='model', type=str, help='experiment model directory'
+    )
+    parser.add_argument(
         '--DIR', default='grid_constraint', type=str, help='experiment data directory'
     )
     parser.add_argument(
