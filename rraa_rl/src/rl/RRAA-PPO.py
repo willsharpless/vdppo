@@ -1414,7 +1414,7 @@ if __name__ == "__main__":
         # config["NAME"]="humanoid_rr_debug_donefix"
 
         config["EXP_NAME"]="PointRRAA"
-        config["DIR"]="point_rraa_boxobs_bigp"
+        config["DIR"]="point_rraa_baseline_dohjppo"
         config["LR"]=3e-4
         config["NUM_ENVS"]=128
         config["NUM_STEPS"]=400
@@ -1434,7 +1434,7 @@ if __name__ == "__main__":
         config["CUDA_USE"]="0"
         config["ANNEAL_LR"]=True
         config["ANNEAL_ENT"]=True
-        config["NAME"]="point_rraa_boxobs_bigp"
+        config["NAME"]="point_rraa_baseline_dohjppo"
     
     #     # config["TEST_MODE"]=True # USES DETERMINISTIC MODELS
 
@@ -1475,8 +1475,10 @@ if __name__ == "__main__":
 
     config["USE_WANDB"] = True #not debug # False for debugging
     if config["USE_WANDB"]:
-        wandb.init(project='RRAA-{}-{}'.format(config["EXP_NAME"], config["WANDB_GROUP"]), name=config["NAME"], config=config,
-                   entity='braat_brrt')
+        # wandb.init(project='RRAA-{}-{}'.format(config["EXP_NAME"], config["WANDB_GROUP"]), name=config["NAME"], config=config,
+        #            entity='braat_brrt')
+        wandb.init(project='valdec-DEBUG-{}-{}'.format(config["EXP_NAME"], config["WANDB_GROUP"]), name=config["NAME"], config=config,
+                   entity='valdec')
 
     config["LOAD_DECOMPOSED"] = False # TODO make arg
     # if config["LOAD_DECOMPOSED"]:
