@@ -1623,7 +1623,7 @@ def plot_contour_RRAA(multi_info, epoch, config, policy_decision_sample=None):
         plt.savefig('{}/{}/reach/trajectory_{:0>4d}'.format(config["MODEL_DIR"], config["DIR"], epoch), dpi=300)
         return fig
 
-    elif 'Point' in config['EXP_NAME'] and 'RRAA' in config['EXP_NAME']: 
+    elif 'Point' in config['EXP_NAME'] and ('RRAA' in config['EXP_NAME'] or 'ValDec' in config['EXP_NAME']): # DEBUG FIXME for testing
         
         info_rraa, info_raa1, info_raa2, info_a = multi_info
         plt.figure(figsize=(8, 11))
@@ -2664,7 +2664,7 @@ def plot_video_contour_RRAA(multi_info, epoch, config, save_video=False, prefix=
             plt.close(fig)
             plt.close("all")
 
-    elif 'Point' in config['EXP_NAME'] and 'RRAA' in config['EXP_NAME']:
+    elif 'Point' in config['EXP_NAME'] and ('RRAA' in config['EXP_NAME'] or 'ValDec' in config['EXP_NAME']):
         
         info_rraa, info_raa1, info_raa2, info_a = multi_info
 
@@ -2782,7 +2782,7 @@ def plot_video_contour_RRAA(multi_info, epoch, config, save_video=False, prefix=
             # frames[0].save(video_path, save_all=True, append_images=frames[1:], duration=100, loop=0)
             # mod prefix from / to _
             prefix_underscore = prefix.replace("/", "_")
-            video_path = 'model/{}/reach/trajectory_{}{:0>4d}.mp4'.format(config["DIR"], prefix_underscore, epoch)
+            video_path = '{}/{}/reach/trajectory_{}{:0>4d}.mp4'.format(config["MODEL_DIR"], config["DIR"], prefix_underscore, epoch)
             print("\n\nSaving video to: ", video_path)
             imageio.mimsave(video_path, frames, fps=30)
             if log_wandb: 
