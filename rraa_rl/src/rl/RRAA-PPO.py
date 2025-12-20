@@ -1477,7 +1477,7 @@ if __name__ == "__main__":
     if config["USE_WANDB"]:
         # wandb.init(project='RRAA-{}-{}'.format(config["EXP_NAME"], config["WANDB_GROUP"]), name=config["NAME"], config=config,
         #            entity='braat_brrt')
-        wandb.init(project='valdec-DEBUG-{}-{}'.format(config["EXP_NAME"], config["WANDB_GROUP"]), name=config["NAME"], config=config,
+        wandb.init(project='valdec-DEBUG-PointValDec-default', name=config["NAME"], config=config,
                    entity='valdec')
 
     config["LOAD_DECOMPOSED"] = False # TODO make arg
