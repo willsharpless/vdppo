@@ -46,12 +46,8 @@ class TrainState(train_state.TrainState):
 
 ### SCRIPTING TODO/FIXME/NOTE
 # - valtr dag creation
-# - dag transition fn
-# - iterative rollouts
-# - iterative gae comps
-# - iterative model updates
 # - generalized scoring method
-# - generalized reset mechanism
+# - generalized plotting method
 # - FIX the done-reset mechanism
 # - FIX sequential-policy mask -> reset instead (true seq rollout in eval)
 # - ^related, when masking we waste data valid for other node/decomp
@@ -182,7 +178,7 @@ def train(env, env_params, value_dag, config, rng):
             roll_out_node, initial_carry, jnp.arange(num_nodes), 
         )
 
-        _, _, rng, timestep, _, _, reset_indices = final_carry
+        train_state_policies, train_state_values, rng, timestep, obs_buffer, predicate_buffer, reset_indices = final_carry
 
         ####################################################################################################################
         ## COMPUTE ADVANTAGES AND TARGETS PER NODE
@@ -253,7 +249,7 @@ def train(env, env_params, value_dag, config, rng):
             traj_batch = tree_index1(traj_batches, node_pos)
 
             node_type = value_dag.node_types[node_pos]
-            node_avoid_mask = value_dag.avoid_predicates_mask[node_pos] # (P,)
+            avoid_mask = value_dag.predicate_types == 1  # (P,)
 
             # Compute appended values
             last_pred = node_last_preds[node_pos][None, ...]  # (1, E, P)
@@ -263,7 +259,7 @@ def train(env, env_params, value_dag, config, rng):
             val_append = jnp.concatenate([traj_batch.value, last_vals[node_pos][None, ...]], axis=0)  # (T+1, E)
             
             # Compute avoid target (neutralized if none)
-            a_masked = jnp.where(node_avoid_mask[None, None, :], pred_append, -jnp.inf) # (T+1, E, P), NOTE old convention, neg avoiding
+            a_masked = jnp.where(avoid_mask[None, None, :], pred_append, -jnp.inf) # (T+1, E, P), NOTE old convention, neg avoiding
             a_target = jnp.max(a_masked, axis=-1)
 
             # General Reach-Avoid with multiple reach/avoid predicates
@@ -601,10 +597,115 @@ def train(env, env_params, value_dag, config, rng):
         loss_info_raa2 = tree_index1(loss_infos, pos_raa2)
         loss_info_a    = tree_index1(loss_infos, pos_a)
 
-        (rraa_rr_perc, rraa_crash_perc, rraa_rraa_perc), rraa_reach_idxs, rraa_crash_idx = calculate_rraa_TEMP_VDPPO(traj_batch_rraa, reach_type="both")
-        (raa1_r_perc, raa1_crash_perc, raa1_raa_perc), raa1_reach_idxs, raa1_crash_idx = calculate_rraa_TEMP_VDPPO(traj_batch_raa1, reach_type="1")
-        (raa2_r_perc, raa2_crash_perc, raa2_raa_perc), raa2_reach_idxs, raa2_crash_idx = calculate_rraa_TEMP_VDPPO(traj_batch_raa2, reach_type="2")
-        (_, a_crash_perc, _),  _, a_crash_idx = calculate_rraa_TEMP_VDPPO(traj_batch_a, reach_type="none")
+        # OLD method
+        def calculate_rraa_OLD(traj_batch, th=0, to_first_done=False, reach_type="both"):
+
+            pred_pos_r1 = 0
+            pred_pos_r2 = 1
+            pred_pos_a = 2
+
+            # Compute crash (avoid failure) indices
+            crash_idx = (traj_batch.predicate_values[..., pred_pos_a] > 0).argmax(axis=0)
+            crash_idx = np.where(np.any((traj_batch.predicate_values[..., pred_pos_a] > 0) == 1, axis=0), crash_idx, np.inf)
+
+            # Compute reach indices
+            if reach_type in ["1", "2"]:
+                pred_pos_r = pred_pos_r1 if reach_type == "1" else pred_pos_r2
+                reach_idx = (traj_batch.predicate_values[..., pred_pos_r] < (0 + th)).argmax(axis=0)
+                reach_idx = np.where(np.any((traj_batch.predicate_values[..., pred_pos_r] < (0 + th)) == 1, axis=0), reach_idx, np.inf)
+                reach_idxs = (-1, -1, reach_idx)
+            elif reach_type == "both":
+                reach_idx_1 = (traj_batch.predicate_values[..., pred_pos_r1] < (0 + th)).argmax(axis=0)
+                reach_idx_2 = (traj_batch.predicate_values[..., pred_pos_r2] < (0 + th)).argmax(axis=0)
+                reach_idx_1 = np.where(np.any((traj_batch.predicate_values[..., pred_pos_r1] < (0 + th)) == 1, axis=0), reach_idx_1, np.inf)
+                reach_idx_2 = np.where(np.any((traj_batch.predicate_values[..., pred_pos_r2] < (0 + th)) == 1, axis=0), reach_idx_2, np.inf)
+                reach_idx = np.maximum(reach_idx_1, reach_idx_2)
+                reach_idxs = (reach_idx_1, reach_idx_2, reach_idx)
+            else:
+                reach_idx = None
+                reach_idxs = (None, None, None)
+
+            # Compute Percentages
+            crash_perc = ((crash_idx < np.inf).sum() / crash_idx.__len__()).item()
+            if reach_type in ["1", "2", "both"]:
+                reach_perc = ((reach_idx < np.inf).sum() / reach_idx.__len__()).item()
+                reach_and_avoid_idx = np.where(crash_idx == np.inf, reach_idx, np.inf)
+                reach_avoid_perc = ((reach_and_avoid_idx < np.inf).sum() / reach_and_avoid_idx.__len__()).item()
+            else:
+                reach_perc = None
+                reach_avoid_perc = None
+            percs = (reach_perc, crash_perc, reach_avoid_perc)
+
+            return percs, reach_idxs, crash_idx            
+
+        (rraa_rr_perc, rraa_crash_perc, rraa_rraa_perc), rraa_reach_idxs, rraa_crash_idx = calculate_rraa_OLD(traj_batch_rraa, reach_type="both")
+        (raa1_r_perc, raa1_crash_perc, raa1_raa_perc), raa1_reach_idxs, raa1_crash_idx = calculate_rraa_OLD(traj_batch_raa1, reach_type="1")
+        (raa2_r_perc, raa2_crash_perc, raa2_raa_perc), raa2_reach_idxs, raa2_crash_idx = calculate_rraa_OLD(traj_batch_raa2, reach_type="2")
+        (_, a_crash_perc, _),  _, a_crash_idx = calculate_rraa_OLD(traj_batch_a, reach_type="none")
+
+        # Generalized scoring method
+        def per_batch_success(traj_batches, node_pos, th=0.):
+            traj_batch = tree_index1(traj_batches, node_pos)
+
+            reach_predicates = value_dag.trigger_predicate_map[node_pos] > 0
+            any_reaches = jnp.any(traj_batch.predicate_values < th, axis=0) & reach_predicates[None, :] # (E, P) & (P,) -> (E, P)
+            reach_all = jnp.all(any_reaches == reach_predicates[None, :], axis=-1) # (E,)
+            each_reach_idx = jnp.where(any_reaches, (traj_batch.predicate_values < th).argmax(axis=0), -jnp.inf)  # (E, P)
+            reach_all_idx = jnp.where(reach_all, each_reach_idx.max(axis=-1), jnp.inf)  # (E,)
+            each_reach_idx = jnp.where(each_reach_idx > 0., each_reach_idx, jnp.inf)  # to match old convention
+
+            avoid_predicates = value_dag.predicate_types == 1
+            any_crashes = jnp.any(traj_batch.predicate_values > th, axis=0) & avoid_predicates[None, :] # (E, P) & (P,) -> (E, P)
+            any_crash = jnp.any(any_crashes, axis=-1) # (E)
+            each_crash_idxs = jnp.where(any_crashes, (traj_batch.predicate_values > th).argmax(axis=0), jnp.inf)  # (E, P)
+            any_crash_idx = jnp.where(any_crash, each_crash_idxs.min(axis=-1), jnp.inf)  # (E,)
+
+            reach_all_perc = (jnp.sum(reach_all) / reach_all.__len__())
+            any_crash_perc = (jnp.sum(any_crash) / any_crash.__len__())
+            reach_avoid_perc = (jnp.sum((~any_crash) & reach_all) / reach_all.__len__())
+            each_reach_perc = (jnp.sum(any_reaches, axis=0) / any_reaches.shape[0])
+            each_crash_perc = (jnp.sum(any_crashes, axis=0) / any_crashes.shape[0])
+
+            return traj_batches, {
+                "reach_perc": reach_all_perc,
+                "crash_perc": any_crash_perc,
+                "reach_avoid_perc": reach_avoid_perc,
+                "each_reach_perc": each_reach_perc,
+                "each_crash_perc": each_crash_perc,
+                "reach_idx": reach_all_idx,
+                "crash_idx": any_crash_idx,
+                "each_reach_idx": each_reach_idx,
+                "each_crash_idx": each_crash_idxs,
+            }
+
+        traj_batches, scores = jax.lax.scan(
+            per_batch_success, traj_batches, jnp.arange(len(value_dag.nodes))
+        )
+
+        ## Compare against OLD method
+        # DEBUG FIXME
+        scores_rraa = tree_index1(scores, 0)
+        scores_raa1 = tree_index1(scores, 1)
+        scores_raa2 = tree_index1(scores, 2)
+        scores_a    = tree_index1(scores, 3)
+
+        assert jnp.isclose(scores_rraa["reach_perc"].item(), rraa_rr_perc)
+        assert jnp.isclose(scores_rraa["crash_perc"].item(), rraa_crash_perc)
+        assert jnp.isclose(scores_rraa["reach_avoid_perc"].item(), rraa_rraa_perc)
+        assert jnp.allclose(scores_rraa["reach_idx"], rraa_reach_idxs[-1])
+        assert jnp.allclose(scores_rraa["crash_idx"], rraa_crash_idx)
+        assert jnp.isclose(scores_raa1["reach_perc"].item(), raa1_r_perc)
+        assert jnp.isclose(scores_raa1["crash_perc"].item(), raa1_crash_perc)
+        assert jnp.isclose(scores_raa1["reach_avoid_perc"].item(), raa1_raa_perc)
+        assert jnp.allclose(scores_raa1["reach_idx"], raa1_reach_idxs[-1])
+        assert jnp.allclose(scores_raa1["crash_idx"], raa1_crash_idx)
+        assert jnp.isclose(scores_raa2["reach_perc"].item(), raa2_r_perc)
+        assert jnp.isclose(scores_raa2["crash_perc"].item(), raa2_crash_perc)
+        assert jnp.isclose(scores_raa2["reach_avoid_perc"].item(), raa2_raa_perc)
+        assert jnp.allclose(scores_raa2["reach_idx"], raa2_reach_idxs[-1])
+        assert jnp.allclose(scores_raa2["crash_idx"], raa2_crash_idx)
+        assert jnp.isclose(scores_a["crash_perc"].item(), a_crash_perc)
+        assert jnp.allclose(scores_a["crash_idx"], a_crash_idx)
 
         idx = 0
         info_rraa = tree_index2(traj_batch_rraa.info, idx)
@@ -612,15 +713,26 @@ def train(env, env_params, value_dag, config, rng):
         info_raa2 = tree_index2(traj_batch_raa2.info, idx)
         info_a = tree_index2(traj_batch_a.info, idx)
 
-        info_rraa['reach_index_1'], info_rraa['reach_index_2'] = rraa_reach_idxs[0][idx], rraa_reach_idxs[1][idx]
-        info_raa1['reach_index_1'], info_raa1['reach_index_2'] = raa1_reach_idxs[-1][idx], np.array(-1)
-        info_raa2['reach_index_1'], info_raa2['reach_index_2'] = np.array(-1), raa2_reach_idxs[-1][idx]
+        # info_rraa['reach_index_1'], info_rraa['reach_index_2'] = rraa_reach_idxs[0][idx], rraa_reach_idxs[1][idx]
+        # info_raa1['reach_index_1'], info_raa1['reach_index_2'] = raa1_reach_idxs[-1][idx], np.array(-1)
+        # info_raa2['reach_index_1'], info_raa2['reach_index_2'] = np.array(-1), raa2_reach_idxs[-1][idx]
+        # info_a['reach_index_1'], info_a['reach_index_2'] = np.array(-1), np.array(-1)
+
+        # info_rraa['crash_index'] = rraa_crash_idx[idx]
+        # info_raa1['crash_index'] = raa1_crash_idx[idx]
+        # info_raa2['crash_index'] = raa2_crash_idx[idx]
+        # info_a['crash_index'] = a_crash_idx[idx]
+
+        # DEBUG FIXME just for testing with old plotting
+        info_rraa['reach_index_1'], info_rraa['reach_index_2'] = scores_rraa["each_reach_idx"][:, 0][idx], scores_rraa["each_reach_idx"][:, 1][idx]
+        info_raa1['reach_index_1'], info_raa1['reach_index_2'] = scores_raa1["reach_idx"][idx], np.array(-1)
+        info_raa2['reach_index_1'], info_raa2['reach_index_2'] = np.array(-1), scores_raa2["reach_idx"][idx]
         info_a['reach_index_1'], info_a['reach_index_2'] = np.array(-1), np.array(-1)
 
-        info_rraa['crash_index'] = rraa_crash_idx[idx]
-        info_raa1['crash_index'] = raa1_crash_idx[idx]
-        info_raa2['crash_index'] = raa2_crash_idx[idx]
-        info_a['crash_index'] = a_crash_idx[idx]
+        info_rraa['crash_index'] = scores_rraa["crash_idx"][idx]
+        info_raa1['crash_index'] = scores_raa1["crash_idx"][idx]
+        info_raa2['crash_index'] = scores_raa2["crash_idx"][idx]
+        info_a['crash_index'] = scores_a["crash_idx"][idx]
 
         if config['EXP_NAME'] == 'WindField' or config['EXP_NAME'] == 'WindFieldFull':
             info_rraa['u_air'] = env_params.u_air
@@ -663,26 +775,21 @@ def train(env, env_params, value_dag, config, rng):
 
         t1 = time.time()
 
-        (rraa_rr_perc, rraa_crash_perc, rraa_rraa_perc)
-        (raa1_r_perc, raa1_crash_perc, raa1_raa_perc)
-        (raa2_r_perc, raa2_crash_perc, raa2_raa_perc)
-        (_, a_crash_perc, _)
-
         # WRITE TO WANDB -- FIXME for GENERAL TASK LOGIC
 
         if config["USE_WANDB"]:
             # group into wandb subheaders
             wandb.log({
-                    "Score/(RRAA) RRAA [%]": rraa_rraa_perc,
-                    "Score/(RRAA) RR [%]": rraa_rr_perc,
-                    "Score/(RRAA) Crashed [%]": rraa_crash_perc,
-                    "Score/(RAA-1) R1 [%]": raa1_r_perc,
-                    "Score/(RAA-1) Crashed [%]": raa1_crash_perc,
-                    "Score/(RAA-1) RAA1 [%]": raa1_raa_perc,
-                    "Score/(RAA-2) R2 [%]": raa2_r_perc,
-                    "Score/(RAA-2) Crashed [%]": raa2_crash_perc,
-                    "Score/(RAA-2) RAA2 [%]": raa2_raa_perc,
-                    "Score/(A) Crashed [%]": a_crash_perc,
+                    "Score/(RRAA) RRAA [%]": scores_rraa["reach_avoid_perc"].item(),
+                    "Score/(RRAA) RR [%]": scores_rraa["reach_perc"].item(),
+                    "Score/(RRAA) Crashed [%]": scores_rraa["crash_perc"].item(),
+                    "Score/(RAA-1) R1 [%]": scores_raa1["reach_perc"].item(),
+                    "Score/(RAA-1) Crashed [%]": scores_raa1["crash_perc"].item(),
+                    "Score/(RAA-1) RAA1 [%]": scores_raa1["reach_avoid_perc"].item(),
+                    "Score/(RAA-2) R2 [%]": scores_raa2["reach_perc"].item(),
+                    "Score/(RAA-2) Crashed [%]": scores_raa2["crash_perc"].item(),
+                    "Score/(RAA-2) RAA2 [%]": scores_raa2["reach_avoid_perc"].item(),
+                    "Score/(A) Crashed [%]": scores_a["crash_perc"].item(),
                     "Loss/actor_rraa_loss": jnp.mean(loss_info_rraa["actor_loss"]), 
                     "Loss/value_rraa_loss": jnp.mean(loss_info_rraa["value_loss"]),
                     "Loss/actor_raa1_loss": jnp.mean(loss_info_raa1["actor_loss"]), 
@@ -728,12 +835,12 @@ if __name__ == "__main__":
     if debug:
         config["EXP_NAME"]="PointValDec"
         config["MODEL_DIR"] = 'model_valdec'
-        config["DIR"]="point_raa_debug_stage2_coupled_dyn_advs_tgts"
+        config["DIR"]="point_raa_debug_stage3_scan8_newscore"
         config["LR"]=3e-4
         config["NUM_ENVS"]=128
         config["NUM_STEPS"]=400
         config["TOTAL_TIMESTEPS"]=200_000_000
-        config["STEP_SCAN"]=4
+        config["STEP_SCAN"]=8
         config["UPDATE_EPOCHS"]=10
         config["NUM_MINIBATCHES"]=32
         config["GAMMA_ENERGY"]=1.0
@@ -748,7 +855,7 @@ if __name__ == "__main__":
         config["CUDA_USE"]="0"
         config["ANNEAL_LR"]=True
         config["ANNEAL_ENT"]=True
-        config["NAME"]="point_raa_debug_stage2_coupled_dyn_advs_tgts"
+        config["NAME"]="point_raa_debug_stage3_scan8_newscore"
 
     config["NUM_UPDATES"] = int(
         config["TOTAL_TIMESTEPS"] // config["NUM_STEPS"] // config["NUM_ENVS"]
@@ -796,24 +903,22 @@ if __name__ == "__main__":
                 [ 3, -1, -1],  # RAA1 can reach1 (-> A)
                 [-1,  3, -1],  # RAA2  can reach2 (-> A)
                 [-1, -1, -1],  # A is a terminal node
-            ])
+            ]) # (N, P) where entry is the child pos we switch to upon satisfaction of that predicate, or -1 if none
             self.node_types = jnp.array([ # 0: reach-avoid, 1: avoid-only, TODO: 2: reach-only, 3: GF 4: release?
                 0, 
                 0, 
                 0, 
                 1
             ]) 
-            self.avoid_predicates_mask = jnp.array([
-                [ 0, 0, 1], 
-                [ 0, 0, 1], 
-                [ 0, 0, 1], 
-                [ 0, 0, 1]
-            ]).astype(bool)
+            self.predicate_types = jnp.array([ # 0: reach, 1: avoid
+                0, 
+                0, 
+                1
+            ])
 
             # simple helpers
             self.predicates = ["reach1", "reach2", "obstacles"]
-            self.negated_predicate_mask=jnp.array([1, 1, 0]) #TODO this is old conv, new would be jnp.array([0, 0, 1])
-            # self.trigger_predicate_ix = {0: jnp.array([2]), 1: jnp.array([0]), 2: jnp.array([1]), 3: jnp.array([])}
+            self.negated_predicate_mask=jnp.array([1, 1, 0]) # NOTE this is used in env directly, < 0 triggers reach-preds, > 0 triggers avoid-preds
             # mapping node id -> position (Python dict for convenient lookup outside JIT)
             self.node_index = {0: 0, 1: 1, 2: 2, 3: 3}
     value_dag = DummyRRAAdag()
