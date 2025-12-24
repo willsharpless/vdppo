@@ -12,6 +12,7 @@
 /BASELINE_Hopper_rebuttal/*
 /model_old_results_DELETE/*
 /model_valdec/**
+/dags/**
 
 # Ignore all experiments
 /rraa_rl/exp/**

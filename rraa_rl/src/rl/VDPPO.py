@@ -1,9 +1,8 @@
 """
-File for General Task PPO training by Value Decomposition.
+File for General Task PPO training by Value Decomposition (VDPPO).
 """
 from statistics import variance
 import sys
-# sys.path.append("/home/mepear_gc")
 
 import os
 import time
@@ -31,6 +30,9 @@ from rraa_rl.src.rl.utils.gae import calculate_gae_reachavoid4, calculate_gae_av
 from rraa_rl.src.env.general_task.safety_gym import PointGeneralTask
 from rraa_rl.src.env.wrappers import TransformObservation
 
+from valtr.reachability import DAGAvoid, DAGReachAvoid, DAGVar, DAGNegate
+from valtr.reachability import extract_trigger_predicate_map
+
 class TrainState(train_state.TrainState):
     mean: Any
     variance: Any
@@ -51,10 +53,60 @@ class TrainState(train_state.TrainState):
 ## Why might training be different? vs. DOHJPPO
 # - exposing all predicate values to obs (even in decompsed nodes)
 
+def process_dag(value_dag, dag_root, reported_nodes="all", neg_reach_conv=True):
+    
+    (predicates, predicate_ids, predicate_roles, negated_predicate_mask, 
+        temporal_nodes, trigger_map) = extract_trigger_predicate_map(value_dag, dag_root)
+
+    # Define Temporal Nodes (list of node ids which are RA/A)
+    value_dag.temporal_nodes = jnp.array(temporal_nodes)
+
+    # Define Trigger Predicate Map (node i, predicate j) -> child node position
+    value_dag.trigger_predicate_map = jnp.array(trigger_map)
+
+    # Define Negated Predicate Mask for Env
+    value_dag.negated_predicate_mask = jnp.array([not n for n in negated_predicate_mask], dtype=jnp.int32) \
+        if neg_reach_conv else jnp.array(negated_predicate_mask, dtype=jnp.int32)
+
+    # Define Predicates and Predicate IDs
+    value_dag.predicates = predicates
+    value_dag.predicate_ids = predicate_ids
+
+    # Define Parent Positions (padded with -1 for jax)
+    parent_mask = jax.vmap(
+        lambda idx: jnp.any(jnp.where(value_dag.trigger_predicate_map == idx, 1, 0), axis=1), in_axes=(0)
+    )(jnp.arange(len(temporal_nodes)))
+    parent_pos_padded_long = jnp.where(parent_mask, jnp.arange(len(temporal_nodes)), -1)
+    parent_pos_padded_long_sorted = jnp.take_along_axis(parent_pos_padded_long, jnp.argsort(parent_pos_padded_long < 0, axis=1), axis=1)
+    value_dag.parent_pos_padded = parent_pos_padded_long_sorted[:, :jnp.max(jnp.sum(parent_pos_padded_long >= 0, axis=1))]
+
+    # Define Node Types (0: reach-avoid, 1: avoid-only)
+    def node_type(node_id):
+        node = value_dag.nodes[node_id]
+        match node:
+            case DAGReachAvoid():
+                return 0
+            case DAGAvoid():
+                return 1
+            case _:
+                raise ValueError(f"Unknown node type: {node}") # DEBUG FIXME extend for Reach, GF, etc.
+    value_dag.node_types = jnp.array([node_type(nid) for nid in temporal_nodes])
+
+    # Define Node Index Mapping (node id -> position)
+    value_dag.node_index = {nid: idx for idx, nid in enumerate(temporal_nodes)}
+
+    # Define Predicate Types (0: reach, 1: avoid)
+    role_to_type = {'reach': 0, 'avoid': 1}
+    value_dag.predicate_types = jnp.array([role_to_type[role] for role in predicate_roles])
+
+    # Define Nodes to Report Scores
+    value_dag.reported_nodes = temporal_nodes if reported_nodes == "all" else reported_nodes
+    assert all(rn in temporal_nodes for rn in value_dag.reported_nodes),   "Reported nodes must be a subset of temporal nodes."
+
+    return value_dag
+
 def train(env, env_params, value_dag, config, rng, plot_function=None):
     def _train(train_state_total, ent_gamma):
-        
-        ####################################################################################################################
 
         # ROLLOUT BATCHES FOR EACH NODE
 
@@ -62,7 +114,7 @@ def train(env, env_params, value_dag, config, rng, plot_function=None):
         _, _, rng_og, _ = train_state_total
 
         # Pre-allocate functional buffers to carry parent data across node rollouts
-        num_nodes = value_dag.nodes.shape[0]
+        num_nodes = value_dag.temporal_nodes.shape[0]
         obs_shape = env.observation_space(env_params).shape
         num_predicates = len(value_dag.predicates)
 
@@ -80,7 +132,7 @@ def train(env, env_params, value_dag, config, rng, plot_function=None):
             is_root_node = jnp.all(parent_positions_per_node < 0)
 
             def coupled_reset(env, env_params, config, rng):
-                # Choose a parent per-env, check trigger predicate sat and sample a time index from its trajectory
+                # Choose a parent per-env, check trigger predicate satisfaction and sample a time index from its trajectory
                 rng, _rng_par = jax.random.split(rng)
                 rand_parent_choice = jax.random.randint(_rng_par, shape=(config["NUM_ENVS"],), minval=0, maxval=(parent_positions_per_node >= 0).sum())
                 chosen_parent_pos = parent_positions_per_node[rand_parent_choice]
@@ -454,10 +506,9 @@ def train(env, env_params, value_dag, config, rng, plot_function=None):
 
         train_state_policies_list = []
         train_state_values_list = []
-        node_tags = {}
 
-        for pos in range(len(value_dag.nodes)):
-            node = int(value_dag.nodes[pos])
+        for pos in range(len(value_dag.temporal_nodes)):
+            node = int(value_dag.temporal_nodes[pos])
 
             # INIT NETWORKS
             value_network = Value_Network(activation=config["ACTIVATION"])
@@ -482,8 +533,8 @@ def train(env, env_params, value_dag, config, rng, plot_function=None):
                 count_pol = count_val = 1e-4
             
             else:
-                raw_restored = checkpoints.restore_checkpoint(ckpt_dir=os.path.abspath('model/{}/{}'.format(
-                    config["LOAD_DEC_DIR"], config["LOAD_DEC_DIR_MODEL"])), target=None)
+                raw_restored = checkpoints.restore_checkpoint(ckpt_dir=os.path.abspath('{}/{}/{}'.format(
+                    config["MODEL_DIR"], config["LOAD_DEC_DIR"], config["LOAD_DEC_DIR_MODEL"])), target=None)
                 
                 network_params_pol = raw_restored['policy_network_{}'.format(node)]['params']
                 mean_pol = raw_restored['policy_network_{}'.format(node)]["mean"]
@@ -517,11 +568,9 @@ def train(env, env_params, value_dag, config, rng, plot_function=None):
             train_state_policies_list.append(train_state_policy)
             train_state_values_list.append(train_state_value)
 
-            node_tags[node] = value_dag.node_tags[node] if isinstance(value_dag.node_tags, dict) and node in value_dag.node_tags else None
+        return tuple(train_state_policies_list), tuple(train_state_values_list), rng
 
-        return tuple(train_state_policies_list), tuple(train_state_values_list), node_tags, rng
-
-    train_state_policies, train_state_values, node_tags, rng = create_train_state(
+    train_state_policies, train_state_values, rng = create_train_state(
         value_dag, config, env, env_params, rng, load=config["LOAD_DECOMPOSED"])
 
     # LOAD PRETRAINED DECOMPOSED IF SPECIFIED
@@ -538,6 +587,20 @@ def train(env, env_params, value_dag, config, rng, plot_function=None):
     #         }
     #         return update_state, dummy_loss
     #     update_epoch_dec = partial(_no_update, config)
+
+    ## MAKE MODEL SAVE FOLDERS
+
+    folder = os.path.exists("{}/{}".format(config["MODEL_DIR"], config['DIR']))
+    if not folder:
+        os.makedirs("{}/{}".format(config["MODEL_DIR"], config['DIR']))
+        os.makedirs("{}/{}/reach".format(config["MODEL_DIR"], config['DIR']))
+        os.makedirs("{}/{}/policy".format(config["MODEL_DIR"], config['DIR']))
+        os.makedirs("{}/{}/value".format(config["MODEL_DIR"], config['DIR']))
+        os.makedirs("{}/{}/total".format(config["MODEL_DIR"], config['DIR']))
+        os.makedirs("{}/{}/target".format(config["MODEL_DIR"], config['DIR']))
+        os.makedirs("{}/{}/value_target".format(config["MODEL_DIR"], config['DIR']))
+        os.makedirs("{}/{}/state_traj".format(config["MODEL_DIR"], config['DIR']))
+    # TODO not all of these are still used
 
     ########################################################################################################################
 
@@ -612,15 +675,15 @@ def train(env, env_params, value_dag, config, rng, plot_function=None):
             }
 
         traj_batches, scores = jax.lax.scan(
-            per_batch_success, traj_batches, jnp.arange(len(value_dag.nodes))
+            per_batch_success, traj_batches, jnp.arange(len(value_dag.temporal_nodes))
         )
 
         t1 = time.time()
 
         ## SAVE MODEL CHECKPOINTS
 
-        all_training_states = {"policy_network_{}".format(int(node)): train_state_policies[int(value_dag.node_index[int(node)])] for node in value_dag.nodes}
-        all_training_states.update({"value_network_{}".format(int(node)): train_state_values[int(value_dag.node_index[int(node)])] for node in value_dag.nodes})
+        all_training_states = {"policy_network_{}".format(int(node)): train_state_policies[int(value_dag.node_index[int(node)])] for node in value_dag.temporal_nodes}
+        all_training_states.update({"value_network_{}".format(int(node)): train_state_values[int(value_dag.node_index[int(node)])] for node in value_dag.temporal_nodes})
         checkpoints.save_checkpoint(ckpt_dir=os.path.abspath(os.path.join("model", config["DIR"])),
                                     target=all_training_states,
                                     step=timestep,
@@ -671,7 +734,7 @@ def train(env, env_params, value_dag, config, rng, plot_function=None):
 
         ## PRINT REPORTED NODES TO CONSOLE
 
-        print_statements = [f"ITER: {timestep:<d}/{total_timesteps:<d}, TIME: {t1-t0:2.1f}s", "||"]
+        print_statements = [f"ITER: {timestep+1:<d}/{total_timesteps:<d}, TIME: {t1-t0:2.1f}s", "||"]
         for node in value_dag.reported_nodes:
             pos = value_dag.node_index[node]
             node_score = tree_index1(scores, pos)
@@ -725,17 +788,6 @@ if __name__ == "__main__": ## DEBUG
     )
     os.environ["XLA_PYTHON_CLIENT_PREALLOCATE"] = "false"
     os.environ["CUDA_VISIBLE_DEVICES"] = config['CUDA_USE']
-    
-    folder = os.path.exists("{}/{}".format(config["MODEL_DIR"], config['DIR']))
-    if not folder:
-        os.makedirs("{}/{}".format(config["MODEL_DIR"], config['DIR']))
-        os.makedirs("{}/{}/reach".format(config["MODEL_DIR"], config['DIR']))
-        os.makedirs("{}/{}/policy".format(config["MODEL_DIR"], config['DIR']))
-        os.makedirs("{}/{}/value".format(config["MODEL_DIR"], config['DIR']))
-        os.makedirs("{}/{}/total".format(config["MODEL_DIR"], config['DIR']))
-        os.makedirs("{}/{}/target".format(config["MODEL_DIR"], config['DIR']))
-        os.makedirs("{}/{}/value_target".format(config["MODEL_DIR"], config['DIR']))
-        os.makedirs("{}/{}/state_traj".format(config["MODEL_DIR"], config['DIR']))
 
     # env = get_env(config) # DEBUG FIXME
     # env_params = env.default_params
@@ -746,8 +798,8 @@ if __name__ == "__main__": ## DEBUG
     class DummyRRAAdag: # DEBUG FIXME placeholder, fake node numbers
         def __init__(self):
             # fixed topological order: [RRAA(0), RAA1(1), RAA2(2), A(3)]
-            self.nodes = jnp.array([0, 1, 2, 3])
-            self.node_tags = {0: 'RRAA', 1: 'RAA1', 2: 'RAA2', 3: 'A'}
+            self.temporal_nodes = jnp.array([0, 1, 2, 3])
+            # self.node_tags = {0: 'RRAA', 1: 'RAA1', 2: 'RAA2', 3: 'A'}
             # parent positions (padded with -1 to fixed width 2)
             # positions: 0->0, 1->1, 2->2, 3->3
             # parents: 0 <- [], 1 <- [0], 2 <- [0], 3 <- [2,1]
@@ -757,7 +809,7 @@ if __name__ == "__main__": ## DEBUG
                 [ 0, -1],  # node 2 (pos 2) parent: 0(pos0)
                 [ 1,  2],  # node 3 (pos 3) parents: 1(pos1), 2(pos2)
             ])
-            # trigger predicate index for each node (in same order as nodes)
+            # trigger predicate index for each node (in same order as temporal_nodes)
             self.trigger_predicate_map = jnp.array([
                 [ 2,  1, -1],  # RRAA can reach1 (-> RAA2) or reach2 (-> RAA1)
                 [ 3, -1, -1],  # RAA1 can reach1 (-> A)
