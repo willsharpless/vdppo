@@ -39,13 +39,12 @@ class TrainState(train_state.TrainState):
     count: Any
 
 ### SCRIPTING TODO/FIXME/NOTE
-# - valtr dag creation
-# - generalized scoring method
 # - generalized plotting method
+# - G(...), eg. GF, nodes + advantage/target computation
 # - FIX the done-reset mechanism
 # - FIX sequential-policy mask -> reset instead (true seq rollout in eval)
 # - ^related, when masking we waste data valid for other node/decomp
-# - automatic reweighting of reach/avoid predicates to improve satisfaction
+# - automatic reweighting of reach/avoid predicates to improve satisfaction?
 
 ## OPEN QUESTIONS
 # - one vs multiple representations? (one per node vs shared)
