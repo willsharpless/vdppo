@@ -1,0 +1,112 @@
+<mujoco>
+    <size njmax="3000" nconmax="1000"/>
+    <option timestep="0.002"/>
+    <default>
+        <geom condim="3" density="1" rgba="1 0 0 1" />
+        <joint damping=".001"/>
+        <motor ctrlrange="-1 1" ctrllimited="true" forcerange="-.5 .5" forcelimited="true"/>
+        <velocity ctrlrange="-1 1" ctrllimited="true" forcerange="-.5 .5" forcelimited="true"/>
+        <site size="0.032" type="sphere"/>
+    </default>
+    <worldbody>
+        <geom name="floor" size="5 5 0.1" type="plane" condim="3"/>
+        
+        <!-- Agent 1 -->
+        <body name="robot1" pos="0 0 .1">
+            <camera name="vision1" pos="0 0 .15" xyaxes="0 -1 0 .4 0 1" fovy="90"/>
+            <joint type="slide" axis="1 0 0" name="x1" damping="0.01"/>
+            <joint type="slide" axis="0 1 0" name="y1" damping="0.01"/>
+            <joint type="hinge" axis="0 0 1" name="z1" damping="0.005"/>
+            <geom name="robot1" type="sphere" size=".1" friction="1 0.01 0.01" rgba="1 0 0 1"/>
+            <geom name="pointarrow1" pos="0.1 0 0" size="0.05 0.05 0.05" type="box" rgba="1 0 0 1"/>
+            <site name="robot1" rgba="1 0 0 .1"/>
+        </body>
+        
+        <!-- Agent 2 -->
+        <body name="robot2" pos="0 0 .1">
+            <camera name="vision2" pos="0 0 .15" xyaxes="0 -1 0 .4 0 1" fovy="90"/>
+            <joint type="slide" axis="1 0 0" name="x2" damping="0.01"/>
+            <joint type="slide" axis="0 1 0" name="y2" damping="0.01"/>
+            <joint type="hinge" axis="0 0 1" name="z2" damping="0.005"/>
+            <geom name="robot2" type="sphere" size=".1" friction="1 0.01 0.01" rgba="0 1 0 1"/>
+            <geom name="pointarrow2" pos="0.1 0 0" size="0.05 0.05 0.05" type="box" rgba="0 1 0 1"/>
+            <site name="robot2" rgba="0 1 0 .1"/>
+        </body>
+        
+        <!-- Agent 3 -->
+        <body name="robot3" pos="0 0 .1">
+            <camera name="vision3" pos="0 0 .15" xyaxes="0 -1 0 .4 0 1" fovy="90"/>
+            <joint type="slide" axis="1 0 0" name="x3" damping="0.01"/>
+            <joint type="slide" axis="0 1 0" name="y3" damping="0.01"/>
+            <joint type="hinge" axis="0 0 1" name="z3" damping="0.005"/>
+            <geom name="robot3" type="sphere" size=".1" friction="1 0.01 0.01" rgba="0 0 1 1"/>
+            <geom name="pointarrow3" pos="0.1 0 0" size="0.05 0.05 0.05" type="box" rgba="0 0 1 1"/>
+            <site name="robot3" rgba="0 0 1 .1"/>
+        </body>
+        
+        <!-- Agent 4 -->
+        <body name="robot4" pos="0 0 .1">
+            <camera name="vision4" pos="0 0 .15" xyaxes="0 -1 0 .4 0 1" fovy="90"/>
+            <joint type="slide" axis="1 0 0" name="x4" damping="0.01"/>
+            <joint type="slide" axis="0 1 0" name="y4" damping="0.01"/>
+            <joint type="hinge" axis="0 0 1" name="z4" damping="0.005"/>
+            <geom name="robot4" type="sphere" size=".1" friction="1 0.01 0.01" rgba="1 1 0 1"/>
+            <geom name="pointarrow4" pos="0.1 0 0" size="0.05 0.05 0.05" type="box" rgba="1 1 0 1"/>
+            <site name="robot4" rgba="1 1 0 .1"/>
+        </body>
+    </worldbody>
+    <sensor>
+        <!-- Agent 1 sensors -->
+        <accelerometer site="robot1" name="accelerometer1"/>
+        <velocimeter site="robot1" name="velocimeter1"/>
+        <gyro site="robot1" name="gyro1"/>
+        <magnetometer site="robot1" name="magnetometer1"/>
+        <subtreecom body="robot1" name="subtreecom1"/>
+        <subtreelinvel body="robot1" name="subtreelinvel1"/>
+        <subtreeangmom body="robot1" name="subtreeangmom1"/>
+        
+        <!-- Agent 2 sensors -->
+        <accelerometer site="robot2" name="accelerometer2"/>
+        <velocimeter site="robot2" name="velocimeter2"/>
+        <gyro site="robot2" name="gyro2"/>
+        <magnetometer site="robot2" name="magnetometer2"/>
+        <subtreecom body="robot2" name="subtreecom2"/>
+        <subtreelinvel body="robot2" name="subtreelinvel2"/>
+        <subtreeangmom body="robot2" name="subtreeangmom2"/>
+        
+        <!-- Agent 3 sensors -->
+        <accelerometer site="robot3" name="accelerometer3"/>
+        <velocimeter site="robot3" name="velocimeter3"/>
+        <gyro site="robot3" name="gyro3"/>
+        <magnetometer site="robot3" name="magnetometer3"/>
+        <subtreecom body="robot3" name="subtreecom3"/>
+        <subtreelinvel body="robot3" name="subtreelinvel3"/>
+        <subtreeangmom body="robot3" name="subtreeangmom3"/>
+        
+        <!-- Agent 4 sensors -->
+        <accelerometer site="robot4" name="accelerometer4"/>
+        <velocimeter site="robot4" name="velocimeter4"/>
+        <gyro site="robot4" name="gyro4"/>
+        <magnetometer site="robot4" name="magnetometer4"/>
+        <subtreecom body="robot4" name="subtreecom4"/>
+        <subtreelinvel body="robot4" name="subtreelinvel4"/>
+        <subtreeangmom body="robot4" name="subtreeangmom4"/>
+    </sensor>
+    <actuator>
+        <!-- Agent 1 actuators -->
+        <motor gear="0.3 0 0 0 0 0" site="robot1" name="x1"/>
+        <motor gear="0.3 0 0 0 0 0" joint="z1" name="z1"/>
+        
+        <!-- Agent 2 actuators -->
+        <motor gear="0.3 0 0 0 0 0" site="robot2" name="x2"/>
+        <motor gear="0.3 0 0 0 0 0" joint="z2" name="z2"/>
+        
+        <!-- Agent 3 actuators -->
+        <motor gear="0.3 0 0 0 0 0" site="robot3" name="x3"/>
+        <motor gear="0.3 0 0 0 0 0" joint="z3" name="z3"/>
+        
+        <!-- Agent 4 actuators -->
+        <motor gear="0.3 0 0 0 0 0" site="robot4" name="x4"/>
+        <motor gear="0.3 0 0 0 0 0" joint="z4" name="z4"/>
+    </actuator>
+</mujoco>
