@@ -44,6 +44,7 @@ class MultiPointGeneralTask:
                  n_agents=2,
                  active_predicates=["reach1", "reach2", "obstacles"], 
                  negated_predicate_mask=jnp.array([1, 1, 0]),
+                 add_ag_vals_to_obs=False,
                  backend="mjx"):
         """Multi-agent general task environment.
         
@@ -66,6 +67,7 @@ class MultiPointGeneralTask:
         self.active_predicates = active_predicates
         self.n_active_predicates = len(active_predicates)
         self.negated_predicate_mask = negated_predicate_mask
+        self.add_ag_vals_to_obs = add_ag_vals_to_obs
         
         assert self.n_active_predicates == self.negated_predicate_mask.shape[0], \
             "Number of active predicates must match negated predicate mask length"
@@ -83,15 +85,17 @@ class MultiPointGeneralTask:
     @partial(jax.jit, static_argnums=(0,))
     def predicate_values(self, state):
         values = []
+        auxs = []
         for predicate in self.active_predicates:
             func = getattr(self, f"is_{predicate}", None)
             if func is not None:
-                value = func(state)
+                value, aux = func(state)
                 values.append(value)
+                auxs.append(aux)
             else:
                 raise NotImplementedError(f"Predicate {predicate} not implemented")
-        return jnp.stack(values, axis=-1)
-    
+        return jnp.stack(values, axis=-1), jnp.stack(auxs, axis=-1)
+
     @partial(jax.jit, static_argnums=(0,))
     def predicate_value_extrema(self, state, predicate_values):
         current_values = predicate_values * (1 - 2 * self.negated_predicate_mask)
@@ -113,8 +117,9 @@ class MultiPointGeneralTask:
         # Take min (best) over agents
         reach = jnp.min(reaches)
         value = jnp.where(reach < 0., -3., reach)
-        return value * 100.0
-    
+        agent_values = jnp.where(reaches < 0., -3., reaches)
+        return value * 100.0, agent_values * 100.0
+
     @partial(jax.jit, static_argnums=(0,))
     def is_reach2_any(self, state):
         """Any agent reaching target 2 (best over agents)."""
@@ -127,7 +132,8 @@ class MultiPointGeneralTask:
         # Take min (best) over agents
         reach = jnp.min(reaches)
         value = jnp.where(reach < 0., -3., reach)
-        return value * 100.0
+        agent_values = jnp.where(reaches < 0., -3., reaches)
+        return value * 100.0, agent_values * 100.0
     
     @partial(jax.jit, static_argnums=(0,))
     def is_reach3_all(self, state):
@@ -141,8 +147,9 @@ class MultiPointGeneralTask:
         # Take max (worst) over agents
         reach = jnp.max(reaches)
         value = jnp.where(reach < 0., -3., reach)
-        return value * 100.0
-    
+        agent_values = jnp.where(reaches < 0., -3., reaches)
+        return value * 100.0, agent_values * 100.0
+
     @partial(jax.jit, static_argnums=(0,))
     def is_obstacles(self, state):
         """All agents must avoid obstacles (min over agents)."""
@@ -152,7 +159,8 @@ class MultiPointGeneralTask:
 
         # Compute worst avoidance value across all agents
         worst_avoid = -jnp.inf
-        
+        agent_avoids = []
+
         for i in range(self.n_agents):
             agent_pos = positions[i]
             
@@ -174,21 +182,26 @@ class MultiPointGeneralTask:
             avoid_wall_obstacles = jnp.maximum(jnp.fabs(agent_pos[0]), jnp.fabs(agent_pos[1])) - SAFETYGYM_RAA_BOX_RADIUS
             
             # Combine obstacles and walls for this agent
-            agent_avoid = jnp.maximum(10. * avoid_obstacles, 0.1 * avoid_wall_obstacles)
-            
+            agent_avoid = jnp.maximum(5. * avoid_obstacles, 0.5 * avoid_wall_obstacles)
+            agent_avoids.append(agent_avoid)
+
             # Track worst violation across agents (highest value = worst)
             worst_avoid = jnp.maximum(worst_avoid, agent_avoid)
-        
+
+        agent_avoids = jnp.array(agent_avoids)
         value = jnp.where(worst_avoid > 0., 3., worst_avoid)
-        return value * 100.0
+        agent_values = jnp.where(agent_avoids > 0., 3., agent_avoids)
+        return value * 100.0, agent_values * 100.0
 
     @partial(jax.jit, static_argnums=(0,))
     def reset(self, key, params=None):
         state = self._env.reset(key)
 
-        predicate_values = self.predicate_values(state)
-        
-        observation = jnp.concatenate([state.obs, predicate_values])
+        predicate_values, aux = self.predicate_values(state)
+        if self.add_ag_vals_to_obs:
+            observation = jnp.concatenate([state.obs, predicate_values, aux])
+        else:
+            observation = jnp.concatenate([state.obs, predicate_values])
         env_state = EnvStateMultiGeneralTask(state, predicate_values, predicate_values)
 
         return observation, env_state
@@ -198,10 +211,14 @@ class MultiPointGeneralTask:
         u = jnp.clip(action, -1., 1.)
         next_state = self._env.step(state.state, u)
 
-        predicate_values = self.predicate_values(next_state)
+        predicate_values, aux = self.predicate_values(next_state)
         predicate_extrema = self.predicate_value_extrema(state, predicate_values)
 
-        observation = jnp.concatenate([next_state.obs, predicate_values])
+        if self.add_ag_vals_to_obs:
+            observation = jnp.concatenate([next_state.obs, predicate_values, aux])
+        else:
+            observation = jnp.concatenate([next_state.obs, predicate_values])
+
         next_state_new = EnvStateMultiGeneralTask(next_state, predicate_values, predicate_extrema)
 
         reward = 0.
@@ -279,17 +296,22 @@ class MultiPointGeneralTask:
         state.info['first_obs'] = state.obs
 
         # Set Observation and EnvState
-        predicate_values = self.predicate_values(state)
-        observation = jnp.concatenate([state.obs, predicate_values])
+        predicate_values, aux = self.predicate_values(state)
+        if self.add_ag_vals_to_obs:
+            observation = jnp.concatenate([state.obs, predicate_values, aux])
+        else:
+            observation = jnp.concatenate([state.obs, predicate_values])
         env_state = EnvStateMultiGeneralTask(state, predicate_values, predicate_values)
 
         return observation, env_state
 
     def observation_space(self, params):
+        aux_size = self.add_ag_vals_to_obs * self.n_active_predicates * self.n_agents
         return spaces.Box(
             low=-jnp.inf,
             high=jnp.inf,
-            shape=(self._env.observation_size + self.n_active_predicates,),
+            shape=(self._env.observation_size + self.n_active_predicates + aux_size,),
+            # store predicates and predicate histories
         )
 
     def action_space(self, params):
