@@ -18,8 +18,6 @@ from rraa_rl.src.rl.utils.utils import optimizer, get_BuRd, tree_index1, tree_in
 
 from rraa_rl.src.env.general_task.multi_safety_gym import MultiPointGeneralTask
 from rraa_rl.src.env.wrappers import TransformObservation
-
-from rraa_rl.src.env.reach_avoid.safety_gym_RRAA import PointRRAA
 from jax import jit
 
 from rraa_rl.src.rl.VDPPO import process_dag, train
@@ -43,12 +41,12 @@ from time import time
 
 config = vars(get_args(sys.argv[1:]))
 
-config["N_AGENGTS"] = 2
+config["N_AGENTS"] = 2
 config["TASK_SOURCE"] = "F reach1_any && F reach2_any && G !obstacles"
 
 config["EXP_NAME"]="MultiPointValDec"
 config["MODEL_DIR"] = 'model_valdec'
-config["NAME"]=config["DIR"]="multi_point_rraa_debug_{N_AGENTS}ag".format(N_AGENTS=config["N_AGENGTS"])
+config["NAME"]=config["DIR"]="multi_point_rraa_debug_{}ag_200m_ow10x_plottest".format(config["N_AGENTS"])
 config["LR"]=3e-4
 config["NUM_ENVS"]=128
 config["NUM_STEPS"]=400
@@ -76,7 +74,7 @@ config["MINIBATCH_SIZE"] = int(config["NUM_ENVS"] * config["NUM_STEPS"] // confi
 os.environ["XLA_PYTHON_CLIENT_PREALLOCATE"] = "false"
 os.environ["CUDA_VISIBLE_DEVICES"] = config['CUDA_USE']
 
-config["USE_WANDB"] = True
+config["USE_WANDB"] = False
 if config["USE_WANDB"]:
     wandb.init(project='valdec-{}-{}'.format(config["EXP_NAME"], config["WANDB_GROUP"]), name=config["NAME"], config=config, entity='valdec')
 
@@ -130,11 +128,10 @@ def main():
     # env = get_env(config) # DEBUG FIXME
     # env_params = env.default_params
 
-    n_agents = 2
     env = MultiPointGeneralTask(
         active_predicates=value_dag.predicates, 
         negated_predicate_mask=value_dag.negated_predicate_mask,
-        n_agents=n_agents
+        n_agents=config["N_AGENTS"]
     )
 
     ## Define transformation vectors
@@ -147,7 +144,7 @@ def main():
     obs_size = env._env.observation_size + env.n_active_predicates,
     vec1 = jnp.zeros(obs_size, dtype=jnp.float32)
     vec2 = jnp.ones(obs_size, dtype=jnp.float32)
-    for i in range(n_agents):
+    for i in range(config["N_AGENTS"]):
         vec2 = vec2.at[i * env.obs_size_per_agent].set(2.)
         vec2 = vec2.at[i * env.obs_size_per_agent + 1].set(2.)
     # TODO define mean/var for predicate values?
@@ -201,7 +198,7 @@ def plot_multipoint_rraa(value_dag, config, result, scores, timestep, total_time
 
     reset_indices = result["reset_indices"]
     policy_decision_sample = traj_batch_rraa.current_value_node[:,idx]
-    fig = plot_contour_RRAA_old((info_rraa, info_raa1, info_raa2, info_a), timestep, config, policy_decision_sample=policy_decision_sample)
+    fig = plot_contour_multipoint((info_rraa, info_raa1, info_raa2, info_a), timestep, config, policy_decision_sample=policy_decision_sample)
     # fig2 = plot_policy_decision(policy_decision_sample, timestep, config)
 
     if config["USE_WANDB"]:
@@ -224,13 +221,46 @@ def _get_contour_data():
     x = np.linspace(-3.1, 3.1, 400)
     y = np.linspace(-3.1, 3.1, 400)
     X, Y = np.meshgrid(x, y)
-    positions = np.stack([X, Y], axis=-1)
+    positions = np.stack([X, Y], axis=-1)  # Shape: (400, 400, 2)
     
-    model = PointRRAA()
-    reach1_values = np.array(jit(model.is_reach1)(positions))
-    reach2_values = np.array(jit(model.is_reach2)(positions))
-    avoid_values = np.array(jit(model.is_avoid)(positions))
+    model = MultiPointGeneralTask()
     
+    # Create dummy states for each position in the grid
+    # For single agent: obs = [x, y, sin(theta)=0, cos(theta)=1, vx=0, vy=0, vtheta=0]
+    flat_positions = positions.reshape(-1, 2)  # Shape: (160000, 2)
+    
+    # Vectorized computation - create obs array for all positions at once
+    # Stack constant values: [sin(0), cos(0), 0, 0, 0] = [0, 1, 0, 0, 0]
+    num_positions = flat_positions.shape[0]
+    constant_part = jnp.tile(jnp.array([0., 1., 0., 0., 0.]), (num_positions, 1))  # Shape: (160000, 5)
+    all_obs_single_ag = jnp.concatenate([flat_positions, constant_part], axis=1)  # Shape: (160000, 7)
+    
+    # For multi-agent: repeat the single agent obs N_AGENTS times along axis 1
+    # This creates obs where all agents are at the same position
+    all_obs = jnp.tile(all_obs_single_ag, (1, config["N_AGENTS"]))  # Shape: (160000, 7*N_AGENTS)
+
+    # Define vectorized predicate evaluation function
+    from brax.envs.base import State
+    dummy_pipeline_state = jnp.zeros((1, 5))
+    reward, done = jnp.zeros(2)
+    metrics = {}
+    
+    def eval_predicates(obs):
+        dummy_state = State(dummy_pipeline_state, obs, reward, done, metrics)
+        reach1_val, _ = model.is_reach1_any(dummy_state)
+        reach2_val, _ = model.is_reach2_any(dummy_state)
+        avoid_val, _ = model.is_obstacles(dummy_state)
+        return reach1_val, reach2_val, avoid_val
+    
+    # Use vmap to vectorize over all positions
+    vectorized_eval = jax.vmap(eval_predicates)
+    reach1_flat, reach2_flat, avoid_flat = vectorized_eval(all_obs)
+    
+    # Reshape back to grid
+    reach1_values = np.array(reach1_flat).reshape(400, 400)
+    reach2_values = np.array(reach2_flat).reshape(400, 400)
+    avoid_values = np.array(avoid_flat).reshape(400, 400)
+
     return X, Y, reach1_values, reach2_values, avoid_values
 
 def _plot_contours(ax, X, Y, reach1_values, reach2_values, avoid_values, mode="rraa"):
@@ -254,25 +284,61 @@ def _get_agent_keys(info):
     x_keys = sorted([k for k in info.keys() if k.startswith('x_') and k[2:].isdigit()])
     return [(k, k.replace('x_', 'y_')) for k in x_keys]
 
-def _draw_agents(ax, info, step_idx, alpha, reach1_values, reach2_values, avoid_values, mode="rraa"):
-    """Draw all agents at a given step with appropriate coloring."""
-    model = PointRRAA()
-    is_reach1_np, is_reach2_np, is_avoid_np = jit(model.is_reach1), jit(model.is_reach2), jit(model.is_avoid)
+def _draw_agents(ax, info, step_idx, alpha, reach1_values, reach2_values, avoid_values, mode="rraa", predicate_funcs=None):
+    """Draw all agents at a given step with appropriate coloring.
+    
+    Args:
+        predicate_funcs: Optional dict with cached predicate functions to avoid recreating them.
+                        If None, creates new ones (slower).
+    """
     color_dict = {"R1": 'g', "R2": 'b', "A": 'r', "normal": 'k'}
     agent_colors = ['yellow', 'magenta', 'cyan', 'orange', 'purple', 'brown']
     
+    # Create or reuse predicate evaluation functions
+    if predicate_funcs is None:
+        from brax.envs.base import State
+        model = MultiPointGeneralTask(n_agents=config["N_AGENTS"])
+        is_reach1_fn = jit(model.is_reach1_any)
+        is_reach2_fn = jit(model.is_reach2_any)
+        is_obstacles_fn = jit(model.is_obstacles)
+        dummy_pipeline_state = jnp.zeros((1, 5))
+        reward, done = jnp.zeros(2)
+        metrics = {}
+        predicate_funcs = {
+            'is_reach1': is_reach1_fn,
+            'is_reach2': is_reach2_fn,
+            'is_obstacles': is_obstacles_fn,
+            'dummy_pipeline_state': dummy_pipeline_state,
+            'reward': reward,
+            'done': done,
+            'metrics': metrics
+        }
+    
     agent_keys = _get_agent_keys(info)
     if not agent_keys:
-        # Fallback to single agent (original behavior)
         agent_keys = [('x', 'y')]
     
     for agent_idx, (x_key, y_key) in enumerate(agent_keys):
         x_val, y_val = info[x_key][step_idx].item(), info[y_key][step_idx].item()
+
+        # Make Dummy brax State with x_val, y_val to assess satisfaction
+        ag_obs = jnp.array([x_val, y_val, 0., 1., 0., 0., 0.])
+        # For multi-agent: tile to all agents at same position
+        dummy_full_obs = jnp.tile(ag_obs, config["N_AGENTS"])
         
-        # Determine color based on predicate satisfaction
-        reach1_val = is_reach1_np(np.array([x_val, y_val]))
-        reach2_val = is_reach2_np(np.array([x_val, y_val]))
-        avoid_val = is_avoid_np(np.array([x_val, y_val]))
+        from brax.envs.base import State
+        dummy_state = State(
+            predicate_funcs['dummy_pipeline_state'], 
+            dummy_full_obs, 
+            predicate_funcs['reward'], 
+            predicate_funcs['done'], 
+            predicate_funcs['metrics']
+        )
+
+        # Determine color based on predicate satisfaction using cached functions
+        reach1_val = predicate_funcs['is_reach1'](dummy_state)[0]
+        reach2_val = predicate_funcs['is_reach2'](dummy_state)[0]
+        avoid_val = predicate_funcs['is_obstacles'](dummy_state)[0]
         
         if avoid_val > 0.:
             color_mode = "A"
@@ -286,8 +352,10 @@ def _draw_agents(ax, info, step_idx, alpha, reach1_values, reach2_values, avoid_
         # Plot agent with border to distinguish multiple agents
         agent_color = agent_colors[agent_idx % len(agent_colors)]
         ax.scatter(x_val, y_val, color=color_dict[color_mode], alpha=alpha, s=100, edgecolors=agent_color, linewidths=2)
+    
+    return predicate_funcs
 
-def plot_contour_RRAA_old(multi_info, epoch, config, policy_decision_sample=None):
+def plot_contour_multipoint(multi_info, epoch, config, policy_decision_sample=None):
     info_rraa, info_raa1, info_raa2, info_a = multi_info
     fig, axes = plt.subplots(2, 2, figsize=(8, 8))
     
@@ -353,7 +421,25 @@ def plot_video_contour_RRAA_old(multi_info, epoch, config, save_video=False, pre
     # Precompute contour data once
     X, Y, reach1_values, reach2_values, avoid_values = _get_contour_data()
     
+    # Get trajectory length
+    agent_keys = _get_agent_keys(info_rraa)
+    if not agent_keys:
+        agent_keys = [('x', 'y')]
+    full_len = info_rraa[agent_keys[0][0]].shape[0]
+    
+    # LIMIT number of frames to avoid hanging - max 100 frames
+    num_frames = min(full_len // 2, 100)
+    indices = np.linspace(0, full_len - 1, num_frames, dtype=int)
+    
+    print(f"Generating {num_frames} video frames from {full_len} timesteps...")
+    
+    # Create predicate functions once and reuse across all frames (massive speedup!)
+    print("Creating cached predicate functions...")
+    cached_predicate_funcs = None  # Will be populated on first call to _draw_agents
+    
     def draw_point_rraa(step, info, title, ax, mode="rraa"):
+        nonlocal cached_predicate_funcs
+        
         # Handle infinity and NaN values for reach indices
         def safe_int_convert(val, default=-1):
             if hasattr(val, 'item'):
@@ -372,34 +458,28 @@ def plot_video_contour_RRAA_old(multi_info, epoch, config, save_video=False, pre
         # Plot contours
         _plot_contours(ax, X, Y, reach1_values, reach2_values, avoid_values, mode)
         
-        # Draw current agents
-        _draw_agents(ax, info, step, 0.9, reach1_values, reach2_values, avoid_values, mode)
+        # Draw current agents (reusing cached functions)
+        cached_predicate_funcs = _draw_agents(ax, info, step, 0.9, reach1_values, reach2_values, avoid_values, mode, cached_predicate_funcs)
         
         # Highlight special events if they've occurred
         if reach1_idx > -1 and step >= reach1_idx and mode in ["rraa", "raa1"]:
-            _draw_agents(ax, info, reach1_idx, 0.5, reach1_values, reach2_values, avoid_values, mode)
+            cached_predicate_funcs = _draw_agents(ax, info, reach1_idx, 0.5, reach1_values, reach2_values, avoid_values, mode, cached_predicate_funcs)
         if reach2_idx > -1 and step >= reach2_idx and mode in ["rraa", "raa2"]:
-            _draw_agents(ax, info, reach2_idx, 0.5, reach1_values, reach2_values, avoid_values, mode)
+            cached_predicate_funcs = _draw_agents(ax, info, reach2_idx, 0.5, reach1_values, reach2_values, avoid_values, mode, cached_predicate_funcs)
         if crash_idx > -1 and step >= crash_idx:
-            _draw_agents(ax, info, crash_idx, 0.5, reach1_values, reach2_values, avoid_values, mode)
+            cached_predicate_funcs = _draw_agents(ax, info, crash_idx, 0.5, reach1_values, reach2_values, avoid_values, mode, cached_predicate_funcs)
         
         ax.set_xlim((-3.1, 3.1))
         ax.set_ylim((-3.1, 3.1))
         ax.set_aspect('equal')
         ax.set_title(title)
     
-    # Get trajectory length
-    agent_keys = _get_agent_keys(info_rraa)
-    if not agent_keys:
-        agent_keys = [('x', 'y')]
-    full_len = info_rraa[agent_keys[0][0]].shape[0]
-    
     # Generate video frames
     frames = []
-    num_frames = full_len // 2
-    indices = np.linspace(0, full_len - 1, num_frames, dtype=int)
-    
-    for step_n in indices:
+    for frame_idx, step_n in enumerate(indices):
+        if frame_idx % 10 == 0:
+            print(f"Rendering frame {frame_idx}/{num_frames}...")
+        
         fig, axes = plt.subplots(2, 2, figsize=(8, 8), dpi=100)
         
         draw_point_rraa(step_n, info_rraa, "RRAA", axes[0, 0], mode="rraa")
@@ -426,19 +506,19 @@ def plot_video_contour_RRAA_old(multi_info, epoch, config, save_video=False, pre
             video_path = '{}/{}/reach/trajectory_{}{:0>4d}.mp4'.format(
                 config["MODEL_DIR"], config["DIR"], prefix_underscore, epoch
             )
-            print("\n\nSaving video to: ", video_path)
+            print(f"\nSaving video to: {video_path}")
             imageio.mimsave(video_path, frames, fps=30)
             
             if log_wandb:
                 wandb_name = f"{prefix}trajectory video"
-                print("Logging video to wandb: ", wandb_name)
+                print(f"Logging video to wandb: {wandb_name}")
                 try:
                     wandb.log({wandb_name: wandb.Video(video_path, format="mp4")}, step=epoch)
-                except:
-                    print("Error logging video to wandb")
+                except Exception as e:
+                    print(f"Error logging video to wandb: {e}")
         
         end_time = time()
-        print("Time taken to plot and push video: ", end_time - start_time)
+        print(f"Time taken to plot and push video: {end_time - start_time:.2f}s")
     
     return frames
     
