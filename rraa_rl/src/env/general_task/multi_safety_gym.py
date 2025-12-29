@@ -15,19 +15,11 @@ from brax.envs.wrappers.training import EpisodeWrapper, AutoResetWrapper
 from flax import struct
 from brax.envs.base import State
 
-from ..reach_avoid.multi_point_random import MultiPointRandom
+from ..reach_avoid.multi_point_random import MultiPointRandom, SAFETYGYM_RAA_OBSTACLE_CUSHION_RADIUS, SAFETYGYM_RAA_BOX_CUSHION_RADIUS, SAFETYGYM_OBSTACLE_SET
 
 # Target locations
 SAFETYGYM_TARGET_1, SAFETYGYM_TARGET_2, SAFETYGYM_TARGET_3 = [2., 2.], [-2., -2.], [0., 0.]
 SAFETYGYM_TARGET_RADIUS = 0.3
-
-SAFETYGYM_RAA_OBSTACLE_RADIUS = 0.2
-SAFETYGYM_RAA_BOX_RADIUS = 3.0
-
-SAFETYGYM_OBSTACLE_SET = jnp.array([[1.403247, 0.6281236], [0.42943087, 1.17059302],
-                                    [-1.16036429, 0.89811093], [-0.88776483, 1.46420776],
-                                    [-0.07556364, -1.10567521], [0.72648704, 0.17957757],
-                                    [-0.33115742, 0.83026827], [-1.33470321, -1.3259373]])
 
 @struct.dataclass
 class EnvStateMultiGeneralTask:
@@ -154,7 +146,7 @@ class MultiPointGeneralTask:
     def is_obstacles(self, state):
         """All agents must avoid obstacles (min over agents)."""
         positions = self._get_agent_positions(state)
-        radius = SAFETYGYM_RAA_OBSTACLE_RADIUS
+        radius = SAFETYGYM_RAA_OBSTACLE_CUSHION_RADIUS
         obstacle_type = 'box'
 
         # Compute worst avoidance value across all agents
@@ -179,7 +171,7 @@ class MultiPointGeneralTask:
                 avoid_obstacles = jnp.maximum(avoid_obstacles, avoid)
             
             # Check against walls
-            avoid_wall_obstacles = jnp.maximum(jnp.fabs(agent_pos[0]), jnp.fabs(agent_pos[1])) - SAFETYGYM_RAA_BOX_RADIUS
+            avoid_wall_obstacles = jnp.maximum(jnp.fabs(agent_pos[0]), jnp.fabs(agent_pos[1])) - SAFETYGYM_RAA_BOX_CUSHION_RADIUS
             
             # Combine obstacles and walls for this agent
             agent_avoid = jnp.maximum(5. * avoid_obstacles, 0.5 * avoid_wall_obstacles)

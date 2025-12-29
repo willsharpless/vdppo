@@ -7,6 +7,18 @@ from brax import base
 from brax.envs.base import PipelineEnv, State
 from brax.io import mjcf
 
+SAFETYGYM_RAA_OBSTACLE_RADIUS = 0.05
+SAFETYGYM_RAA_BOX_RADIUS = 3.15
+CUSHION_RADIUS = 0.15
+SAFETYGYM_RAA_OBSTACLE_CUSHION_RADIUS = SAFETYGYM_RAA_OBSTACLE_RADIUS + CUSHION_RADIUS
+SAFETYGYM_RAA_BOX_CUSHION_RADIUS = SAFETYGYM_RAA_BOX_RADIUS - 2 * CUSHION_RADIUS
+# NOTE cushion must be greater than robot radius (0.1)
+
+SAFETYGYM_OBSTACLE_SET = jnp.array([[1.403247, 0.6281236], [0.42943087, 1.17059302],
+                                    [-1.16036429, 0.89811093], [-0.88776483, 1.46420776],
+                                    [-0.07556364, -1.10567521], [0.72648704, 0.17957757],
+                                    [-0.33115742, 0.83026827], [-1.33470321, -1.3259373]])
+
 class MultiPointRandom(PipelineEnv):
 
     def __init__(
@@ -77,6 +89,20 @@ class MultiPointRandom(PipelineEnv):
     <worldbody>
         <geom name="floor" size="5 5 0.1" type="plane" condim="3"/>
         
+        <!-- Boundary walls -->
+"""
+        xml += f"""        <geom name="wall_north" pos="0 {SAFETYGYM_RAA_BOX_RADIUS} 0.5" size="{SAFETYGYM_RAA_BOX_RADIUS} 0.05 0.5" type="box" rgba="0.3 0.3 0.3 1" friction="1 0.1 0.1"/>\n"""
+        xml += f"""        <geom name="wall_south" pos="0 -{SAFETYGYM_RAA_BOX_RADIUS} 0.5" size="{SAFETYGYM_RAA_BOX_RADIUS} 0.05 0.5" type="box" rgba="0.3 0.3 0.3 1" friction="1 0.1 0.1"/>\n"""
+        xml += f"""        <geom name="wall_east" pos="{SAFETYGYM_RAA_BOX_RADIUS} 0 0.5" size="0.05 {SAFETYGYM_RAA_BOX_RADIUS} 0.5" type="box" rgba="0.3 0.3 0.3 1" friction="1 0.1 0.1"/>\n"""
+        xml += f"""        <geom name="wall_west" pos="-{SAFETYGYM_RAA_BOX_RADIUS} 0 0.5" size="0.05 {SAFETYGYM_RAA_BOX_RADIUS} 0.5" type="box" rgba="0.3 0.3 0.3 1" friction="1 0.1 0.1"/>\n"""
+
+        # Add obstacles from SAFETYGYM_OBSTACLE_SET
+        for idx, obstacle_pos in enumerate(SAFETYGYM_OBSTACLE_SET):
+            x, y = float(obstacle_pos[0]), float(obstacle_pos[1])
+            # Create box obstacles with size = SAFETYGYM_RAA_OBSTACLE_RADIUS
+            xml += f"""        <geom name="obstacle_{idx}" pos="{x} {y} 0.1" size="{SAFETYGYM_RAA_OBSTACLE_RADIUS} {SAFETYGYM_RAA_OBSTACLE_RADIUS} 0.1" type="box" rgba="0.8 0.2 0.2 0.8" friction="1 0.1 0.1"/>\n"""
+        
+        xml += """        
 """
         
         # Add agents
@@ -147,15 +173,69 @@ class MultiPointRandom(PipelineEnv):
         qpos = self.sys.init_q.copy()
         qvel_list = []
         
-        # Initialize each agent
+        # Initialize each agent with collision-free positions
         for i in range(self.n_agents):
-            rng, rng1, rng2, rng3, rng4 = jax.random.split(rng, 5)
-            # Position indices for agent i: [3*i, 3*i+1, 3*i+2] for [x, y, theta]
-            qpos = qpos.at[3*i].set(qpos[3*i] + jax.random.uniform(rng1, minval=-2., maxval=2.))
-            qpos = qpos.at[3*i+1].set(qpos[3*i+1] + jax.random.uniform(rng2, minval=-2., maxval=2.))
-            qpos = qpos.at[3*i+2].set(qpos[3*i+2] + jax.random.uniform(rng3, minval=-jnp.pi, maxval=jnp.pi))
+            rng, rng_agent = jax.random.split(rng)
+            
+            # Sample valid position for agent i
+            def sample_valid_position(rng_key):
+                """Sample a position that's not inside obstacles or too close to walls."""
+                rng_key, rng_x, rng_y, rng_theta, rng_vel = jax.random.split(rng_key, 5)
+                
+                # Sample position uniformly within valid box bounds
+                x = jax.random.uniform(rng_x, minval=-SAFETYGYM_RAA_BOX_CUSHION_RADIUS, 
+                                      maxval=SAFETYGYM_RAA_BOX_CUSHION_RADIUS)
+                y = jax.random.uniform(rng_y, minval=-SAFETYGYM_RAA_BOX_CUSHION_RADIUS, 
+                                      maxval=SAFETYGYM_RAA_BOX_CUSHION_RADIUS)
+                theta = jax.random.uniform(rng_theta, minval=-jnp.pi, maxval=jnp.pi)
+                
+                # Check if position is valid (not inside any obstacle's cushion)
+                pos = jnp.array([x, y])
+                distances_to_obstacles = jnp.linalg.norm(SAFETYGYM_OBSTACLE_SET - pos, axis=1)
+                min_dist_to_obstacle = jnp.min(distances_to_obstacles)
+                
+                # Valid if minimum distance to any obstacle is greater than cushion radius
+                is_valid = min_dist_to_obstacle > SAFETYGYM_RAA_OBSTACLE_CUSHION_RADIUS
+                
+                return is_valid, x, y, theta, rng_vel
+            
+            # Rejection sampling to find valid position
+            def sample_until_valid(carry):
+                rng_key, is_valid, x, y, theta, rng_vel = carry
+                rng_key, rng_new = jax.random.split(rng_key)
+                is_valid_new, x_new, y_new, theta_new, rng_vel_new = sample_valid_position(rng_new)
+                
+                # Keep new sample if valid, otherwise keep trying
+                x = jnp.where(is_valid, x, x_new)
+                y = jnp.where(is_valid, y, y_new)
+                theta = jnp.where(is_valid, theta, theta_new)
+                is_valid = is_valid | is_valid_new
+                
+                return (rng_key, is_valid, x, y, theta, rng_vel_new)
+            
+            def sample_condition(carry):
+                _, is_valid, _, _, _, _ = carry
+                return ~is_valid
+            
+            # Initialize with invalid state to start sampling
+            init_carry = (rng_agent, False, 0.0, 0.0, 0.0, rng_agent)
+            
+            # Run rejection sampling for max 100 iterations (should succeed much earlier)
+            final_carry = jax.lax.while_loop(
+                sample_condition, 
+                sample_until_valid, 
+                init_carry,
+            )
+            
+            _, _, x_final, y_final, theta_final, rng_vel = final_carry
+            
+            # Set position for agent i
+            qpos = qpos.at[3*i].set(x_final)
+            qpos = qpos.at[3*i+1].set(y_final)
+            qpos = qpos.at[3*i+2].set(theta_final)
 
-            qvel_agent = jax.random.uniform(rng4, (3,), minval=low, maxval=hi)
+            # Set velocity
+            qvel_agent = jax.random.uniform(rng_vel, (3,), minval=low, maxval=hi)
             qvel_list.append(qvel_agent)
         
         qvel = jnp.concatenate(qvel_list)
