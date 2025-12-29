@@ -46,21 +46,21 @@ config["TASK_SOURCE"] = "F reach1_any && F reach2_any && G !obstacles"
 
 config["EXP_NAME"]="MultiPointValDec"
 config["MODEL_DIR"] = 'model_valdec'
-config["NAME"]=config["DIR"]="multi_point_rraa_debug_{}ag_200m_ow10x_plottest".format(config["N_AGENTS"])
+config["NAME"]=config["DIR"]="multi_point_{}ag_realobst_bigp".format(config["N_AGENTS"])
 config["LR"]=3e-4
-config["NUM_ENVS"]=128
+config["NUM_ENVS"]=256
 config["NUM_STEPS"]=400
-config["TOTAL_TIMESTEPS"]=200_000_000
-config["STEP_SCAN"]=8
+config["TOTAL_TIMESTEPS"]=2_000_000_000
+config["STEP_SCAN"]=40
 config["UPDATE_EPOCHS"]=10
-config["NUM_MINIBATCHES"]=32
+config["NUM_MINIBATCHES"]=64
 config["GAMMA_ENERGY"]=1.0
-config["GAMMA_REACH_INIT"]=0.999
-config["GAMMA_REACH_FINAL"]=0.9999
+config["GAMMA_REACH_INIT"]=0.995
+config["GAMMA_REACH_FINAL"]=0.9975
 config["GAE_LAMBDA"]=0.95
 config["CLIP_EPS"]=0.2
-config["ENT_COEF"]=0.01
-config["VF_COEF"]=0.5
+config["ENT_COEF"]=0.0001
+config["VF_COEF"]=2.0
 config["MAX_GRAD_NORM"]=0.5
 config["ACTIVATION"]="tanh"
 config["CUDA_USE"]="1"
@@ -74,7 +74,7 @@ config["MINIBATCH_SIZE"] = int(config["NUM_ENVS"] * config["NUM_STEPS"] // confi
 os.environ["XLA_PYTHON_CLIENT_PREALLOCATE"] = "false"
 os.environ["CUDA_VISIBLE_DEVICES"] = config['CUDA_USE']
 
-config["USE_WANDB"] = False
+config["USE_WANDB"] = True
 if config["USE_WANDB"]:
     wandb.init(project='valdec-{}-{}'.format(config["EXP_NAME"], config["WANDB_GROUP"]), name=config["NAME"], config=config, entity='valdec')
 
@@ -431,11 +431,8 @@ def plot_video_contour_RRAA_old(multi_info, epoch, config, save_video=False, pre
     num_frames = min(full_len // 2, 100)
     indices = np.linspace(0, full_len - 1, num_frames, dtype=int)
     
-    print(f"Generating {num_frames} video frames from {full_len} timesteps...")
-    
-    # Create predicate functions once and reuse across all frames (massive speedup!)
-    print("Creating cached predicate functions...")
-    cached_predicate_funcs = None  # Will be populated on first call to _draw_agents
+    # Create predicate functions once and reuse across all frames
+    cached_predicate_funcs = None 
     
     def draw_point_rraa(step, info, title, ax, mode="rraa"):
         nonlocal cached_predicate_funcs
@@ -477,9 +474,6 @@ def plot_video_contour_RRAA_old(multi_info, epoch, config, save_video=False, pre
     # Generate video frames
     frames = []
     for frame_idx, step_n in enumerate(indices):
-        if frame_idx % 10 == 0:
-            print(f"Rendering frame {frame_idx}/{num_frames}...")
-        
         fig, axes = plt.subplots(2, 2, figsize=(8, 8), dpi=100)
         
         draw_point_rraa(step_n, info_rraa, "RRAA", axes[0, 0], mode="rraa")
