@@ -46,11 +46,11 @@ config["TASK_SOURCE"] = "F reach1_any && F reach2_any && G !obstacles"
 
 config["EXP_NAME"]="MultiPointValDec"
 config["MODEL_DIR"] = 'model_valdec'
-config["NAME"]=config["DIR"]="multi_point_{}ag_realobst_bigp".format(config["N_AGENTS"])
+config["NAME"]=config["DIR"]="multi_point_{}ag_realobst_bigp3".format(config["N_AGENTS"])
 config["LR"]=3e-4
 config["NUM_ENVS"]=256
 config["NUM_STEPS"]=400
-config["TOTAL_TIMESTEPS"]=2_000_000_000
+config["TOTAL_TIMESTEPS"]=1_000_000_000
 config["STEP_SCAN"]=40
 config["UPDATE_EPOCHS"]=10
 config["NUM_MINIBATCHES"]=64
