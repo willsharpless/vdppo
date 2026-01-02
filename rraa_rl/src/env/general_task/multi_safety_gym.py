@@ -37,7 +37,8 @@ class MultiPointGeneralTask:
                  active_predicates=["reach1", "reach2", "obstacles"], 
                  negated_predicate_mask=jnp.array([1, 1, 0]),
                  add_ag_vals_to_obs=False,
-                 backend="mjx"):
+                 backend="mjx",
+                 fixed_velocity=None):
         """Multi-agent general task environment.
         
         Args:
@@ -46,7 +47,7 @@ class MultiPointGeneralTask:
             negated_predicate_mask: Mask indicating which predicates are negated
             backend: Physics backend
         """
-        env = MultiPointRandom(n_agents=n_agents, backend=backend)
+        env = MultiPointRandom(n_agents=n_agents, backend=backend, fixed_velocity=fixed_velocity)
         env = EpisodeWrapper(env, episode_length=1000, action_repeat=1)
         env = AutoResetWrapper(env)
         self._env = env

@@ -27,6 +27,7 @@ class MultiPointRandom(PipelineEnv):
             backend='mjx',
             reset_noise_scale=1e-2,
             qd_noise_std=0.0,
+            fixed_velocity=None,  # Add this parameter (e.g., 0.5 for constant speed)
             **kwargs,
     ):
         """Multi-agent point robot environment.
@@ -36,6 +37,7 @@ class MultiPointRandom(PipelineEnv):
             backend: Physics backend ('mjx' or 'generalized')
             reset_noise_scale: Scale of noise for reset
             qd_noise_std: Standard deviation of velocity noise
+            fixed_velocity: If not None, agents move at constant speed (only control rotation)
         """
         assert n_agents >= 1, "n_agents must be at least 1"
         
@@ -61,6 +63,7 @@ class MultiPointRandom(PipelineEnv):
         self.qd_noise_std = qd_noise_std
         self.n_agents = n_agents
         self.obs_size_per_agent = 7  # x, y, sin(theta), cos(theta), vx, vy, vtheta
+        self.fixed_velocity = fixed_velocity  # Store the fixed velocity
 
     def _generate_xml(self, n_agents):
         """Generate MuJoCo XML for n agents."""
@@ -160,7 +163,9 @@ class MultiPointRandom(PipelineEnv):
 
     @property
     def action_size(self) -> int:
-        return 2 * self.n_agents
+        # If fixed velocity, only control rotation (1 action per agent)
+        # Otherwise, control both velocity and rotation (2 actions per agent)
+        return self.n_agents if self.fixed_velocity is not None else 2 * self.n_agents
 
     @property
     def observation_size(self) -> int:
@@ -261,8 +266,19 @@ class MultiPointRandom(PipelineEnv):
 
     def step(self, state: State, action: jax.Array) -> State:
         """Runs one timestep of the environment's dynamics."""
-        # action should be shape (2*n_agents,)
-        pipeline_state = self.pipeline_step(state.pipeline_state, action)
+        # Convert action based on fixed_velocity mode
+        if self.fixed_velocity is not None:
+            # action is shape (n_agents,) - only rotation control
+            # Create full action with fixed forward velocity
+            full_action_list = []
+            for i in range(self.n_agents):
+                full_action_list.extend([self.fixed_velocity, action[i]])
+            full_action = jnp.array(full_action_list)
+        else:
+            # action is already shape (2*n_agents,)
+            full_action = action
+            
+        pipeline_state = self.pipeline_step(state.pipeline_state, full_action)
 
         rng = state.info.get('rng', None)
         if rng is not None:

@@ -308,7 +308,10 @@ def train(env, env_params, value_dag, config, rng, plot_function=None):
             a_masked = jnp.where(avoid_mask[None, None, :], pred_append, -jnp.inf) # (T+1, E, P), NOTE old convention, neg avoiding
             a_target = jnp.max(a_masked, axis=-1)
 
-            # General Reach-Avoid with multiple reach/avoid predicates
+            # Policy mask: update only when this node was active (FIXME, could also just reset upon trigger)
+            policy_mask = (traj_batch.current_value_node == node_pos).astype(jnp.float32) # (T+1, E)
+
+            # N-Reach-Avoid Bellman update: AND-of-N-UNTILs
             def reachavoid_N_advantage_target(_):
 
                 # Get reach trigger children for target
@@ -334,8 +337,9 @@ def train(env, env_params, value_dag, config, rng, plot_function=None):
                 T_ls = ra_target
                 T_gs = a_target
                 T_Vs = val_append
-                return adv, tgt, T_ls, T_gs, T_Vs, done
+                return adv, tgt, T_ls, T_gs, T_Vs, done, policy_mask
 
+            # N-Avoid Bellman update: AND-of-N-ALWAYS
             def avoid_N_advantage_target(_):
 
                 # Compute done flags (FIXME, use resets properly)
@@ -350,13 +354,47 @@ def train(env, env_params, value_dag, config, rng, plot_function=None):
                 # return adv, tgt #DEBUG FIXME
                 T_hs = a_target
                 T_Vhs = val_append
-                return adv, tgt, T_hs, T_hs, T_Vhs, done
+                return adv, tgt, T_hs, T_hs, T_Vhs, done, policy_mask
 
-            # # TODO
-            # def advantage_globally_wrapped(_):
-            #     return adv, tgt
+            # Inf-Reach-Avoid Bellman update: ALWAYS-AND-of-N-UNTILs
+            # def reachavoid_loop_N_advantage_target(_):
+                
+            #     # Get reach trigger children for target
+            #     child_pos_per_pred = value_dag.trigger_predicate_map[node_pos]          # (P,)
+            #     reach_mask = (child_pos_per_pred >= 0)                                  # (P,)
+            #     child_pos_safe = jnp.where(reach_mask, child_pos_per_pred, 0)           # (P,)
+            #     r_append = jnp.where(reach_mask[None, None, :], pred_append, jnp.inf)   # (T+1, E, P), NOTE old convention, neg reaching
+            #     V_child_append = jnp.take(all_val_append, child_pos_safe, axis=-1)      # (T+1, E, P)
+
+            #     # Recursive satisfaction, pad and shift appended arrays
+            #     # shift = config["REACH_AVOID_LOOP_GAP"]
+            #     shift = 1 # DEBUG FIXME
+            #     val_next = jnp.concatenate(val_append, jnp.full((shift, val_append.shape[1]), jnp.inf), axis=0)[shift:, :]  # (T+1, E)
+
+            #     # Reach-Avoid target (l_tilde), (T+1, E, P) -> (T+1, E)
+            #     ra_target = jnp.min(jnp.maximum(r_append, V_child_append), axis=-1)
+            #     ra_loop_target = jnp.maximum(ra_target, val_next)
+            #     # DEBUG FIXME check, inf-N-order doesn't matter right? instead of considering system of eqn, can force this for always...
+            #     # if we eventually have to be able to reach, we do intermittently as well right?                                                                              
+
+            #     # Compute done flags (FIXME, use resets properly)
+            #     indexs, done = calculate_indexs3_rr(ent_gamma[1], traj_batch.reward, ra_target,
+            #                                    last_vals[node_pos][None, ...])
+            #     done = done[:-1, :] # FIXME
+
+            #     # Compute advantage and targets
+            #     adv, tgt = calculate_gae_reachavoid4(
+            #         ent_gamma[1], config["GAE_LAMBDA"], T_ls=ra_loop_target, T_gs=a_target, T_Vs=val_append, done=done
+            #     )
+
+            #     mask = jnp.where(jnp.arange(config["NUM_STEPS"] + 1)[..., None] < config["NUM_STEPS"] + 1 - config["REACH_AVOID_LOOP_GAP"], 
+            #                      policy_mask, 0)
+            #     # DEBUG FIXME this maybe should be longer, ie addnl size of advantage look-ahead (4-steps), ask oswin
+
+            #     return adv, tgt, ra_loop_target, a_target, val_append, done, mask
 
             branches = (reachavoid_N_advantage_target, avoid_N_advantage_target)
+            # branches = (reachavoid_N_advantage_target, avoid_N_advantage_target, reachavoid_loop_N_advantage_target)
             return jax.lax.switch(node_type, branches, operand=None)
 
         def _updates_over_nodes(ts_pi, ts_v, nodes_last_preds, nodes_last_vals, rng):
@@ -404,18 +442,15 @@ def train(env, env_params, value_dag, config, rng, plot_function=None):
 
                 ## COMPUTE PER-NODE ADVANTAGE AND TARGETS
 
-                adv, tgt, T_ls, T_gs, T_Vs, done = _per_node_adv_targets(node_pos, nodes_last_preds, nodes_last_vals)
+                adv, tgt, T_ls, T_gs, T_Vs, done, mask = _per_node_adv_targets(node_pos, nodes_last_preds, nodes_last_vals)
 
                 ## UPDATE
 
-                # Policy mask: update only when this node was active (FIXME, could also just reset upon trigger)
-                traj_batch = tree_index1(traj_batches, node_pos)
-                policy_mask = (traj_batch.current_value_node == node_pos).astype(jnp.float32)
-                
+                traj_batch = tree_index1(traj_batches, node_pos)                
                 ts_pi_node = _select_train_state(ts_pi, node_pos)
                 ts_v_node  = _select_train_state(ts_v, node_pos)
 
-                upd_state = (ts_pi_node, ts_v_node, traj_batch, adv, tgt, adv, policy_mask, rng)
+                upd_state = (ts_pi_node, ts_v_node, traj_batch, adv, tgt, adv, mask, rng)
                 xs = jnp.ones(config["UPDATE_EPOCHS"]) * ent_gamma[0]
                 upd_state, loss_info = jax.lax.scan(
                     update_epoch, upd_state, xs, length=config["UPDATE_EPOCHS"]
@@ -494,6 +529,7 @@ def train(env, env_params, value_dag, config, rng, plot_function=None):
         return current_value_node
 
     # INIT JAX WRAPPERS
+    # config["REACH_AVOID_LOOP_GAP"] = 1 if not config["REACH_AVOID_LOOP_GAP"] else config["REACH_AVOID_LOOP_GAP"] # DEBUG FIXME
     value_transition = partial(_value_transition, value_dag)
     update_epoch = partial(_ppo_vanilla_update, config)
     env_step = partial(_env_step_general_task, env, env_params, value_transition)
