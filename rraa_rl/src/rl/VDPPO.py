@@ -749,14 +749,24 @@ def train(env, env_params, value_dag, config, rng, plot_function=None):
         for node in value_dag.reported_nodes:
             pos = value_dag.node_index[node]
             node_score = tree_index1(scores, pos)
+
+            # Store success scores
             if value_dag.node_types[pos] == 0:  # Reach-Avoid
                 reported_dict[f"Score/RA_Node_{node}_Reach[%]"] = node_score["reach_perc"].item()
                 reported_dict[f"Score/RA_Node_{node}_Crash[%]"] = node_score["crash_perc"].item()
                 reported_dict[f"Score/RA_Node_{node}_ReachAvoid[%]"] = node_score["reach_avoid_perc"].item()
             elif value_dag.node_types[pos] == 1:  # Avoid
                 reported_dict[f"Score/A_Node_{node}_Crash[%]"] = node_score["crash_perc"].item()
+            
+            # Store losses
             reported_dict[f"Loss/Node_{node}_actor_loss"] = jnp.mean(tree_index1(loss_infos, pos)["actor_loss"])
             reported_dict[f"Loss/Node_{node}_value_loss"] = jnp.mean(tree_index1(loss_infos, pos)["value_loss"])
+
+            # Store predicate stats
+            traj_batch = tree_index1(traj_batches, pos)
+            for pred_id, pred in zip(value_dag.predicate_ids, value_dag.predicates):
+                reported_dict[f"Predicates/Node_{node}_{pred}_Mean"] = jnp.mean(traj_batch.predicate_values[pred_id])
+                reported_dict[f"Predicates/Node_{node}_{pred}_Var"] = jnp.var(traj_batch.predicate_values[pred_id])
 
         if config["USE_WANDB"]:
             wandb.log(reported_dict, step=timestep)

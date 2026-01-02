@@ -46,7 +46,7 @@ config["TASK_SOURCE"] = "F reach1_any && F reach2_any && G !obstacles"
 
 config["EXP_NAME"]="MultiPointValDec"
 config["MODEL_DIR"] = 'model_valdec'
-config["NAME"]=config["DIR"]="multi_point_{}ag_realobst_bigp3_fxdvel0p1".format(config["N_AGENTS"])
+config["NAME"]=config["DIR"]="multi_point_{}ag_realobst_bigp3".format(config["N_AGENTS"])
 config["LR"]=3e-4
 config["NUM_ENVS"]=256
 config["NUM_STEPS"]=400
@@ -71,7 +71,7 @@ config['VIDEO_FREQ'] = 25
 config["NUM_UPDATES"] = int(config["TOTAL_TIMESTEPS"] // config["NUM_STEPS"] // config["NUM_ENVS"])
 config["MINIBATCH_SIZE"] = int(config["NUM_ENVS"] * config["NUM_STEPS"] // config["NUM_MINIBATCHES"])
 
-config["FIXED_VELOCITY"] = 0.1
+config["FIXED_VELOCITY"] = None
 
 os.environ["XLA_PYTHON_CLIENT_PREALLOCATE"] = "false"
 os.environ["CUDA_VISIBLE_DEVICES"] = config['CUDA_USE']
