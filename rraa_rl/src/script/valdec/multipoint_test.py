@@ -46,7 +46,7 @@ config["TASK_SOURCE"] = "F reach1_any && F reach2_any && G !obstacles"
 
 config["EXP_NAME"]="MultiPointValDec"
 config["MODEL_DIR"] = 'model_valdec'
-config["NAME"]=config["DIR"]="multi_point_{}ag_realobst_bigp3".format(config["N_AGENTS"])
+config["NAME"]=config["DIR"]="multi_point_{}ag_realobst_bigp3_normfix".format(config["N_AGENTS"])
 config["LR"]=3e-4
 config["NUM_ENVS"]=256
 config["NUM_STEPS"]=400
@@ -145,15 +145,21 @@ def main():
         return obs * variance + mean
 
     obs_size = env._env.observation_size + env.n_active_predicates,
-    vec1 = jnp.zeros(obs_size, dtype=jnp.float32)
-    vec2 = jnp.ones(obs_size, dtype=jnp.float32)
+    obs_mean = jnp.zeros(obs_size, dtype=jnp.float32)
+    obs_std = jnp.ones(obs_size, dtype=jnp.float32)
     for i in range(config["N_AGENTS"]):
-        vec2 = vec2.at[i * env.obs_size_per_agent].set(2.)
-        vec2 = vec2.at[i * env.obs_size_per_agent + 1].set(2.)
-    # TODO define mean/var for predicate values?
+        obs_std = obs_std.at[i * env.obs_size_per_agent].set(2.)
+        obs_std = obs_std.at[i * env.obs_size_per_agent + 1].set(2.)
 
-    trans = partial(transform_observation, vec1, vec2)
-    untrans = partial(untransform_observation, vec1, vec2)
+    obs_mean = obs_mean.at[env._env.observation_size].set(60)  # reach1_any
+    obs_mean = obs_mean.at[env._env.observation_size+1].set(60)  # reach2_any
+    obs_mean = obs_mean.at[env._env.observation_size+2].set(-20)  # obst
+    obs_std = obs_std.at[env._env.observation_size].set(15000)  # reach1_any
+    obs_std = obs_std.at[env._env.observation_size+1].set(15000)  # reach2_any
+    obs_std = obs_std.at[env._env.observation_size+2].set(5000)  # obst
+
+    trans = partial(transform_observation, obs_mean, obs_std)
+    untrans = partial(untransform_observation, obs_mean, obs_std)
     env = TransformObservation(env, trans)
     env.set_untransform_obs(untrans)
     env_params = env.default_params

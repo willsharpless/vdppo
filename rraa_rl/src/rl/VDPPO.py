@@ -765,8 +765,8 @@ def train(env, env_params, value_dag, config, rng, plot_function=None):
             # Store predicate stats
             traj_batch = tree_index1(traj_batches, pos)
             for pred_id, pred in zip(value_dag.predicate_ids, value_dag.predicates):
-                reported_dict[f"Predicates/Node_{node}_{pred}_Mean"] = jnp.mean(traj_batch.predicate_values[pred_id])
-                reported_dict[f"Predicates/Node_{node}_{pred}_Var"] = jnp.var(traj_batch.predicate_values[pred_id])
+                reported_dict[f"Predicates/Node_{node}_[{pred}]_mean"] = jnp.mean(traj_batch.predicate_values[pred_id])
+                reported_dict[f"Predicates/Node_{node}_[{pred}]_var"] = jnp.var(traj_batch.predicate_values[pred_id])
 
         if config["USE_WANDB"]:
             wandb.log(reported_dict, step=timestep)
