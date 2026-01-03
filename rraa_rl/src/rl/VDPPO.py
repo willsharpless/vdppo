@@ -44,7 +44,8 @@ class TrainState(train_state.TrainState):
 # - FIX the done-reset mechanism
 # - FIX sequential-policy mask -> reset instead (true seq rollout in eval)
 # - ^related, when masking we waste data valid for other node/decomp
-# - automatic reweighting of reach/avoid predicates to improve satisfaction?
+# - automatic reweighting of reach/avoid predicates to improve satisfaction? -> would f up normalization
+# - dynamic normalization?
 
 ## OPEN QUESTIONS
 # - one vs multiple representations? (one per node vs shared)
@@ -357,44 +358,43 @@ def train(env, env_params, value_dag, config, rng, plot_function=None):
                 return adv, tgt, T_hs, T_hs, T_Vhs, done, policy_mask
 
             # Inf-Reach-Avoid Bellman update: ALWAYS-AND-of-N-UNTILs
-            # def reachavoid_loop_N_advantage_target(_):
+            def reachavoid_loop_N_advantage_target(_):
                 
-            #     # Get reach trigger children for target
-            #     child_pos_per_pred = value_dag.trigger_predicate_map[node_pos]          # (P,)
-            #     reach_mask = (child_pos_per_pred >= 0)                                  # (P,)
-            #     child_pos_safe = jnp.where(reach_mask, child_pos_per_pred, 0)           # (P,)
-            #     r_append = jnp.where(reach_mask[None, None, :], pred_append, jnp.inf)   # (T+1, E, P), NOTE old convention, neg reaching
-            #     V_child_append = jnp.take(all_val_append, child_pos_safe, axis=-1)      # (T+1, E, P)
+                # Get reach trigger children for target
+                child_pos_per_pred = value_dag.trigger_predicate_map[node_pos]          # (P,)
+                reach_mask = (child_pos_per_pred >= 0)                                  # (P,)
+                child_pos_safe = jnp.where(reach_mask, child_pos_per_pred, 0)           # (P,)
+                r_append = jnp.where(reach_mask[None, None, :], pred_append, jnp.inf)   # (T+1, E, P), NOTE old convention, neg reaching
+                V_child_append = jnp.take(all_val_append, child_pos_safe, axis=-1)      # (T+1, E, P)
 
-            #     # Recursive satisfaction, pad and shift appended arrays
-            #     # shift = config["REACH_AVOID_LOOP_GAP"]
-            #     shift = 1 # DEBUG FIXME
-            #     val_next = jnp.concatenate(val_append, jnp.full((shift, val_append.shape[1]), jnp.inf), axis=0)[shift:, :]  # (T+1, E)
+                # Recursive satisfaction, pad and shift appended arrays
+                shift = config["REACH_AVOID_LOOP_GAP"]
+                val_next = jnp.concatenate((val_append, jnp.full((shift, val_append.shape[1]), jnp.inf)), axis=0)[shift:, :]  # (T+1, E)
 
-            #     # Reach-Avoid target (l_tilde), (T+1, E, P) -> (T+1, E)
-            #     ra_target = jnp.min(jnp.maximum(r_append, V_child_append), axis=-1)
-            #     ra_loop_target = jnp.maximum(ra_target, val_next)
-            #     # DEBUG FIXME check, inf-N-order doesn't matter right? instead of considering system of eqn, can force this for always...
-            #     # if we eventually have to be able to reach, we do intermittently as well right?                                                                              
+                # Reach-Avoid target (l_tilde), (T+1, E, P) -> (T+1, E)
+                ra_target = jnp.min(jnp.maximum(r_append, V_child_append), axis=-1)
+                ra_loop_target = jnp.maximum(ra_target, val_next)
+                # DEBUG FIXME check, inf-N-order doesn't matter right? instead of considering system of eqn, can force this for always...
+                # if we eventually have to be able to reach, we do intermittently as well right?                                                                              
 
-            #     # Compute done flags (FIXME, use resets properly)
-            #     indexs, done = calculate_indexs3_rr(ent_gamma[1], traj_batch.reward, ra_target,
-            #                                    last_vals[node_pos][None, ...])
-            #     done = done[:-1, :] # FIXME
+                # Compute done flags (FIXME, use resets properly)
+                indexs, done = calculate_indexs3_rr(ent_gamma[1], traj_batch.reward, ra_loop_target,
+                                               last_vals[node_pos][None, ...])
+                done = done[:-1, :] # FIXME
 
-            #     # Compute advantage and targets
-            #     adv, tgt = calculate_gae_reachavoid4(
-            #         ent_gamma[1], config["GAE_LAMBDA"], T_ls=ra_loop_target, T_gs=a_target, T_Vs=val_append, done=done
-            #     )
+                # Compute advantage and targets
+                adv, tgt = calculate_gae_reachavoid4(
+                    ent_gamma[1], config["GAE_LAMBDA"], T_ls=ra_loop_target, T_gs=a_target, T_Vs=val_append, done=done
+                )
 
-            #     mask = jnp.where(jnp.arange(config["NUM_STEPS"] + 1)[..., None] < config["NUM_STEPS"] + 1 - config["REACH_AVOID_LOOP_GAP"], 
-            #                      policy_mask, 0)
-            #     # DEBUG FIXME this maybe should be longer, ie addnl size of advantage look-ahead (4-steps), ask oswin
+                mask = jnp.where(jnp.arange(config["NUM_STEPS"] + 1)[..., None] < config["NUM_STEPS"] + 1 - config["REACH_AVOID_LOOP_GAP"], 
+                                 policy_mask, 0)
+                # DEBUG FIXME maybe the mask should cut out farther back, ie addnl size of advantage look-ahead (4-steps), ask oswin
 
-            #     return adv, tgt, ra_loop_target, a_target, val_append, done, mask
+                return adv, tgt, ra_loop_target, a_target, val_append, done, mask
 
-            branches = (reachavoid_N_advantage_target, avoid_N_advantage_target)
-            # branches = (reachavoid_N_advantage_target, avoid_N_advantage_target, reachavoid_loop_N_advantage_target)
+            # branches = (reachavoid_N_advantage_target, avoid_N_advantage_target)
+            branches = (reachavoid_N_advantage_target, avoid_N_advantage_target, reachavoid_loop_N_advantage_target)
             return jax.lax.switch(node_type, branches, operand=None)
 
         def _updates_over_nodes(ts_pi, ts_v, nodes_last_preds, nodes_last_vals, rng):
@@ -529,7 +529,6 @@ def train(env, env_params, value_dag, config, rng, plot_function=None):
         return current_value_node
 
     # INIT JAX WRAPPERS
-    # config["REACH_AVOID_LOOP_GAP"] = 1 if not config["REACH_AVOID_LOOP_GAP"] else config["REACH_AVOID_LOOP_GAP"] # DEBUG FIXME
     value_transition = partial(_value_transition, value_dag)
     update_epoch = partial(_ppo_vanilla_update, config)
     env_step = partial(_env_step_general_task, env, env_params, value_transition)
@@ -642,6 +641,7 @@ def train(env, env_params, value_dag, config, rng, plot_function=None):
     ## MAIN TRAINING LOOP
 
     total_timesteps = config["NUM_UPDATES"] // config["STEP_SCAN"]
+    config["REACH_AVOID_LOOP_GAP"] = 1 if "REACH_AVOID_LOOP_GAP" not in config else config["REACH_AVOID_LOOP_GAP"]
 
     best_score = -jnp.inf
     for timestep in range(config["NUM_UPDATES"] // config["STEP_SCAN"]):
@@ -697,6 +697,14 @@ def train(env, env_params, value_dag, config, rng, plot_function=None):
             each_reach_perc = (jnp.sum(any_reaches, axis=0) / any_reaches.shape[0])
             each_crash_perc = (jnp.sum(any_crashes, axis=0) / any_crashes.shape[0])
 
+            reach_mask = (traj_batch.predicate_values < th) & reach_predicates[None, None, :] # (T, E, P) & (P,)
+            each_reach_qty_perc_mean = jnp.where(reach_predicates, jnp.sum(reach_mask, axis=(0, 1)) / (reach_mask.shape[0] + reach_mask.shape[1]), jnp.inf)
+            reach_all_qty_perc_mean = each_reach_qty_perc_mean.min()
+
+            safe_reach_mask = reach_mask & (~any_crash[None, :, None])  # (T, E, P)
+            safe_each_reach_qty_perc_mean = jnp.where(reach_predicates, jnp.sum(safe_reach_mask, axis=(0, 1)) / (safe_reach_mask.shape[0] + safe_reach_mask.shape[1]), jnp.inf)
+            safe_reach_all_qty_perc_mean = safe_each_reach_qty_perc_mean.min()
+
             return traj_batches, {
                 "reach_perc": reach_all_perc,
                 "crash_perc": any_crash_perc,
@@ -707,6 +715,8 @@ def train(env, env_params, value_dag, config, rng, plot_function=None):
                 "crash_idx": any_crash_idx,
                 "each_reach_idx": each_reach_idx,
                 "each_crash_idx": each_crash_idxs,
+                "reach_qty_perc_mean": reach_all_qty_perc_mean,
+                "reach_avoid_qty_perc_mean": safe_reach_all_qty_perc_mean
             }
 
         traj_batches, scores = jax.lax.scan(
@@ -731,8 +741,14 @@ def train(env, env_params, value_dag, config, rng, plot_function=None):
                                         step=timestep,
                                         overwrite=False,
                                         prefix="milestone_",)
-        
-        top_node_score = tree_index1(scores, 0)["reach_avoid_perc"].item()
+
+        if value_dag.node_types[0] == 0: # Reach-Avoid
+            top_node_score = tree_index1(scores, 0)["reach_avoid_perc"].item()
+        elif value_dag.node_types[0] == 1: # Avoid
+            top_node_score = 1 - tree_index1(scores, 0)["crash_perc"].item()
+        elif value_dag.node_types[0] == 2: # G(...)
+            top_node_score = tree_index1(scores, 0)["reach_avoid_qty_perc_mean"].item()
+
         if top_node_score > best_score:
             best_score = top_node_score
             checkpoints.save_checkpoint(ckpt_dir=os.path.abspath(os.path.join("model", config["DIR"])),
@@ -757,7 +773,13 @@ def train(env, env_params, value_dag, config, rng, plot_function=None):
                 reported_dict[f"Score/RA_Node_{node}_ReachAvoid[%]"] = node_score["reach_avoid_perc"].item()
             elif value_dag.node_types[pos] == 1:  # Avoid
                 reported_dict[f"Score/A_Node_{node}_Crash[%]"] = node_score["crash_perc"].item()
-            
+            elif value_dag.node_types[pos] == 2:  # G(...)
+                reported_dict[f"Score/RA_Node_{node}_Reach[%]"] = node_score["reach_perc"].item() # DEBUG FIXME, remove after debug
+                reported_dict[f"Score/RA_Node_{node}_Crash[%]"] = node_score["crash_perc"].item() # DEBUG FIXME, remove after debug
+                reported_dict[f"Score/RA_Node_{node}_ReachAvoid[%]"] = node_score["reach_avoid_perc"].item()
+                reported_dict[f"Score/RA_Node_{node}_ReachQty[mean%]"] = node_score["reach_qty_perc_mean"].item()
+                reported_dict[f"Score/RA_Node_{node}_ReachAvoidQty[mean%]"] = node_score["reach_avoid_qty_perc_mean"].item()
+
             # Store losses
             reported_dict[f"Loss/Node_{node}_actor_loss"] = jnp.mean(tree_index1(loss_infos, pos)["actor_loss"])
             reported_dict[f"Loss/Node_{node}_value_loss"] = jnp.mean(tree_index1(loss_infos, pos)["value_loss"])
@@ -794,9 +816,13 @@ def train(env, env_params, value_dag, config, rng, plot_function=None):
 
 #########################################################################################################################################
 #########################################################################################################################################
+ ## DEBUG
 
+if __name__ == "__main__":
 
-if __name__ == "__main__": ## DEBUG
+    ########################################################################################################################################
+    # RRAA Demo
+
     config = vars(get_args(sys.argv[1:]))
 
     debug = True

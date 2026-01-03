@@ -18,7 +18,7 @@ from brax.envs.base import State
 from ..reach_avoid.multi_point_random import MultiPointRandom, SAFETYGYM_RAA_OBSTACLE_CUSHION_RADIUS, SAFETYGYM_RAA_BOX_CUSHION_RADIUS, SAFETYGYM_OBSTACLE_SET
 
 # Target locations
-SAFETYGYM_TARGET_1, SAFETYGYM_TARGET_2, SAFETYGYM_TARGET_3 = [2., 2.], [-2., -2.], [0., 0.]
+SAFETYGYM_TARGET_1, SAFETYGYM_TARGET_2, SAFETYGYM_TARGET_3, SAFETYGYM_TARGET_4 = [2., 2.], [-2., -2.], [0.2, 1.75], [0.0, 0.0]
 SAFETYGYM_TARGET_RADIUS = 0.3
 
 @struct.dataclass
@@ -129,11 +129,26 @@ class MultiPointGeneralTask:
         return value * 100.0, agent_values * 100.0
     
     @partial(jax.jit, static_argnums=(0,))
-    def is_reach3_all(self, state):
-        """All agents reaching target 3 (worst over agents)."""
+    def is_reach3_static(self, state):
+        """Any agents reaching target 3 (worst over agents)."""
         positions = self._get_agent_positions(state)
         target_center, radius = SAFETYGYM_TARGET_3, SAFETYGYM_TARGET_RADIUS
         
+        distances = jnp.sqrt(jnp.sum((positions - jnp.array(target_center)) ** 2, axis=1))
+        reaches = distances - radius
+        
+        # Take min (best) over agents
+        reach = jnp.min(reaches)
+        value = jnp.where(reach < 0., -3., reach)
+        agent_values = jnp.where(reaches < 0., -3., reaches)
+        return value * 100.0, agent_values * 100.0
+
+    @partial(jax.jit, static_argnums=(0,))
+    def is_reach4_all(self, state):
+        """All agents reaching target 4 (worst over agents)."""
+        positions = self._get_agent_positions(state)
+        target_center, radius = SAFETYGYM_TARGET_4, SAFETYGYM_TARGET_RADIUS
+
         distances = jnp.sqrt(jnp.sum((positions - jnp.array(target_center)) ** 2, axis=1))
         reaches = distances - radius
         
