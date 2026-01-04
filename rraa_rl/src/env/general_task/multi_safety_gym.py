@@ -18,7 +18,7 @@ from brax.envs.base import State
 from ..reach_avoid.multi_point_random import MultiPointRandom, SAFETYGYM_RAA_OBSTACLE_CUSHION_RADIUS, SAFETYGYM_RAA_BOX_CUSHION_RADIUS, SAFETYGYM_OBSTACLE_SET
 
 # Target locations
-SAFETYGYM_TARGET_1, SAFETYGYM_TARGET_2, SAFETYGYM_TARGET_3, SAFETYGYM_TARGET_4 = [2., 2.], [-2., -2.], [0.2, 1.75], [0.0, 0.0]
+SAFETYGYM_TARGET_1, SAFETYGYM_TARGET_2, SAFETYGYM_TARGET_3, SAFETYGYM_TARGET_4 = [2., 2.], [-2., -2.], [0.25, 0.7], [0.0, 0.0]
 SAFETYGYM_TARGET_RADIUS = 0.3
 
 @struct.dataclass

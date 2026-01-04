@@ -310,7 +310,7 @@ def train(env, env_params, value_dag, config, rng, plot_function=None):
             a_target = jnp.max(a_masked, axis=-1)
 
             # Policy mask: update only when this node was active (FIXME, could also just reset upon trigger)
-            policy_mask = (traj_batch.current_value_node == node_pos).astype(jnp.float32) # (T+1, E)
+            policy_mask = (traj_batch.current_value_node == node_pos).astype(jnp.float32) # (T, E)
 
             # N-Reach-Avoid Bellman update: AND-of-N-UNTILs
             def reachavoid_N_advantage_target(_):
@@ -370,6 +370,7 @@ def train(env, env_params, value_dag, config, rng, plot_function=None):
                 # Recursive satisfaction, pad and shift appended arrays
                 shift = config["REACH_AVOID_LOOP_GAP"]
                 val_next = jnp.concatenate((val_append, jnp.full((shift, val_append.shape[1]), jnp.inf)), axis=0)[shift:, :]  # (T+1, E)
+                # TODO FIXME Should we be filling these values with inf??
 
                 # Reach-Avoid target (l_tilde), (T+1, E, P) -> (T+1, E)
                 ra_target = jnp.min(jnp.maximum(r_append, V_child_append), axis=-1)
@@ -387,9 +388,11 @@ def train(env, env_params, value_dag, config, rng, plot_function=None):
                     ent_gamma[1], config["GAE_LAMBDA"], T_ls=ra_loop_target, T_gs=a_target, T_Vs=val_append, done=done
                 )
 
-                mask = jnp.where(jnp.arange(config["NUM_STEPS"] + 1)[..., None] < config["NUM_STEPS"] + 1 - config["REACH_AVOID_LOOP_GAP"], 
+                mask = jnp.where(jnp.arange(config["NUM_STEPS"])[..., None] < config["NUM_STEPS"] - config["REACH_AVOID_LOOP_GAP"], 
                                  policy_mask, 0)
                 # DEBUG FIXME maybe the mask should cut out farther back, ie addnl size of advantage look-ahead (4-steps), ask oswin
+                # NOTE if we fix the reset properly, things get more complicated 
+                # (might need to roll out gap past done, or use same val, maybe ok bc done=crash)
 
                 return adv, tgt, ra_loop_target, a_target, val_append, done, mask
 

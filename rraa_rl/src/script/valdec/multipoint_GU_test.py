@@ -42,13 +42,13 @@ from time import time
 config = vars(get_args(sys.argv[1:]))
 
 config["N_AGENTS"] = 1
-config["DEBUG_JUST_RAA"] = True # DEBUG FIXME
+config["DEBUG_JUST_RAA"] = False # DEBUG FIXME
 
 config["TASK_SOURCE"] = "G(F reach3_static) && G !obstacles" # DEBUG FIXME not used
 
-config["EXP_NAME"]="MultiPointValDec_GU"
+config["EXP_NAME"]="GUtest_MultiPointValDec"
 config["MODEL_DIR"] = 'model_valdec'
-config["NAME"]=config["DIR"]="multi_point_GU_{}ag_RAAdebug".format(config["N_AGENTS"])
+config["NAME"]=config["DIR"]="GU_multi_point_{}ag_RAAtest".format(config["N_AGENTS"])
 config["LR"]=3e-4
 config["NUM_ENVS"]=128
 config["NUM_STEPS"]=400
@@ -150,6 +150,7 @@ def main():
                 1
             ])
             self.predicates = ["reach3_static", "obstacles"]
+            self.predicate_ids = jnp.array([0, 1])
             self.negated_predicate_mask=jnp.array([1, 0])
             self.node_index = {0: 0, 1: 1}
             self.reported_nodes = [0, 1]
@@ -255,7 +256,12 @@ def _get_contour_data():
     X, Y = np.meshgrid(x, y)
     positions = np.stack([X, Y], axis=-1)  # Shape: (400, 400, 2)
     
-    model = MultiPointGeneralTask()
+    model = MultiPointGeneralTask(
+        # active_predicates=value_dag.predicates, 
+        # negated_predicate_mask=value_dag.negated_predicate_mask,
+        n_agents=config["N_AGENTS"],
+        fixed_velocity=config["FIXED_VELOCITY"],
+    )
     
     # Create dummy states for each position in the grid
     flat_positions = positions.reshape(-1, 2)  # Shape: (160000, 2)
@@ -326,7 +332,12 @@ def _draw_agents(ax, info, step_idx, alpha, reach1_values, reach2_values, reach3
     # Create or reuse predicate evaluation functions
     if predicate_funcs is None:
         from brax.envs.base import State
-        model = MultiPointGeneralTask(n_agents=config["N_AGENTS"])
+        model = MultiPointGeneralTask(
+            # active_predicates=value_dag.predicates, 
+            # negated_predicate_mask=value_dag.negated_predicate_mask,
+            n_agents=config["N_AGENTS"],
+            fixed_velocity=config["FIXED_VELOCITY"],
+        )
         is_reach1_fn = jit(model.is_reach1_any)
         is_reach2_fn = jit(model.is_reach2_any)
         is_reach3_fn = jit(model.is_reach3_static)
@@ -393,7 +404,7 @@ def plot_contour_multipoint(multi_info, epoch, config, policy_decision_sample=No
     # info_rraa, info_raa1, info_raa2, info_a = multi_info
     info_raa, info_a = multi_info
     fig, axes = plt.subplots(1, 2, figsize=(8, 4))
-    
+
     # Precompute contour data once
     X, Y, reach1_values, reach2_values, reach3_values, avoid_values = _get_contour_data()
     
@@ -444,10 +455,10 @@ def plot_contour_multipoint(multi_info, epoch, config, policy_decision_sample=No
         ax.set_title(title)
     
     title = "RA-Loop" if not config["DEBUG_JUST_RAA"] else "RAA"
-    draw_point_rraa(info_raa, title, axes[0, 0], mode="raa3")
+    draw_point_rraa(info_raa, title, axes[0], mode="raa3")
     # draw_point_rraa(info_raa1, "RAA 1", axes[0, 1], mode="raa1")
     # draw_point_rraa(info_raa2, "RAA 2", axes[1, 0], mode="raa2")
-    draw_point_rraa(info_a, "A", axes[1, 1], mode="a")
+    draw_point_rraa(info_a, "A", axes[1], mode="a")
     
     plt.tight_layout()
     plt.savefig('{}/{}/reach/trajectory_{:0>4d}'.format(config["MODEL_DIR"], config["DIR"], epoch), dpi=300)
@@ -517,14 +528,14 @@ def plot_video_contour_raa_loop(multi_info, epoch, config, save_video=False, pre
     # Generate video frames
     frames = []
     for frame_idx, step_n in enumerate(indices):
-        fig, axes = plt.subplots(2, 2, figsize=(8, 8), dpi=100)
+        fig, axes = plt.subplots(1, 2, figsize=(8, 8), dpi=100)
         
         title = "RA-Loop" if not config["DEBUG_JUST_RAA"] else "RAA"
-        draw_point_rraa(step_n, info_raa, title, axes[0, 0], mode="raa")
+        draw_point_rraa(step_n, info_raa, title, axes[0], mode="raa3")
         # draw_point_rraa(step_n, info_raa1, "RAA 1", axes[0, 1], mode="raa1")
         # draw_point_rraa(step_n, info_raa2, "RAA 2", axes[1, 0], mode="raa2")
-        draw_point_rraa(step_n, info_a, "A", axes[1, 1], mode="a")
-        
+        draw_point_rraa(step_n, info_a, "A", axes[1], mode="a")
+
         plt.tight_layout()
         
         # Render to frame

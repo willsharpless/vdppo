@@ -46,7 +46,7 @@ config["TASK_SOURCE"] = "F reach1_any && F reach2_any && G !obstacles"
 
 config["EXP_NAME"]="MultiPointValDec"
 config["MODEL_DIR"] = 'model_valdec'
-config["NAME"]=config["DIR"]="multi_point_{}ag_realobst_bigp3_normfix".format(config["N_AGENTS"])
+config["NAME"]=config["DIR"]="multi_point_{}ag_realobst_bigp3_normfix_newname".format(config["N_AGENTS"])
 config["LR"]=3e-4
 config["NUM_ENVS"]=256
 config["NUM_STEPS"]=400
