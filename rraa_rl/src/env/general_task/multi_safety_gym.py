@@ -238,7 +238,7 @@ class MultiPointGeneralTask:
             start_idx = i * self.obs_size_per_agent
             info[f"x_{i}"] = state.state.obs[start_idx]
             info[f"y_{i}"] = state.state.obs[start_idx + 1]
-            info[f"theta_{i}"] = jnp.arcsin(state.state.obs[start_idx + 2])
+            info[f"theta_{i}"] = jnp.arctan2(state.state.obs[start_idx + 2], state.state.obs[start_idx + 3])
 
         return observation, next_state_new, reward, done, info
     

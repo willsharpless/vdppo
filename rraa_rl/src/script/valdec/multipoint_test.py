@@ -10,6 +10,7 @@ import jax.numpy as jnp
 import numpy as np
 import pdb
 import matplotlib.pyplot as plt
+import matplotlib.patches as mpatches
 
 from rraa_rl.src.rl.utils.arguments import get_args
 from functools import partial
@@ -329,6 +330,13 @@ def _draw_agents(ax, info, step_idx, alpha, reach1_values, reach2_values, avoid_
     
     for agent_idx, (x_key, y_key) in enumerate(agent_keys):
         x_val, y_val = info[x_key][step_idx].item(), info[y_key][step_idx].item()
+        
+        # Extract orientation (theta) from info if available
+        theta_key = x_key.replace('x_', 'theta_') if x_key.startswith('x_') else 'theta'
+        if theta_key in info:
+            theta = info[theta_key][step_idx].item()
+        else:
+            theta = 0.0  # Default orientation
 
         # Make Dummy brax State with x_val, y_val to assess satisfaction
         ag_obs = jnp.array([x_val, y_val, 0., 1., 0., 0., 0.])
@@ -358,9 +366,20 @@ def _draw_agents(ax, info, step_idx, alpha, reach1_values, reach2_values, avoid_
         else:
             color_mode = "normal"
         
-        # Plot agent with border to distinguish multiple agents
+        # Plot agent with oriented triangle marker
         agent_color = agent_colors[agent_idx % len(agent_colors)]
-        ax.scatter(x_val, y_val, color=color_dict[color_mode], alpha=alpha, s=100, edgecolors=agent_color, linewidths=2)
+        verts = np.array([[0.25, 0], [-0.15, -0.12], [-0.15, 0.12]])
+        angle_rad = theta
+        cos_a, sin_a = np.cos(angle_rad), np.sin(angle_rad)
+        rotation_matrix = np.array([[cos_a, -sin_a], [sin_a, cos_a]])
+        rotated_verts = verts @ rotation_matrix.T
+        rotated_verts += np.array([x_val, y_val])
+        triangle = mpatches.Polygon(rotated_verts, closed=True, 
+                                   facecolor=color_dict[color_mode], 
+                                   edgecolor=agent_color, 
+                                   linewidth=2, 
+                                   alpha=alpha)
+        ax.add_patch(triangle)
     
     return predicate_funcs
 
