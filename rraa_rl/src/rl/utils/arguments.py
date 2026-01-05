@@ -135,7 +135,10 @@ def get_args(args):
     parser.add_argument(
         '--NOISY_STATES', default=[0, 1, 2, 6, 7, 8], type=list, help='Indices of states to add noise to'
     )
-    
+    parser.add_argument(
+        '--REACH_AVOID_LOOP_GAP', default=1, type=int, help='Gap size for reach-avoid loop'
+    )
+
     args = parser.parse_args(args) if args is not None else parser.parse_args()
 
     return args

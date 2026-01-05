@@ -43,13 +43,14 @@ from time import time
 config = vars(get_args(sys.argv[1:]))
 
 config["N_AGENTS"] = 1
+# config["REACH_AVOID_LOOP_GAP"] = 2
 config["DEBUG_JUST_RAA"] = False # DEBUG FIXME
 
 config["TASK_SOURCE"] = "G(F reach3_static) && G !obstacles" # DEBUG FIXME not used
 
-config["EXP_NAME"]="GUtest_MultiPointValDec"
+config["EXP_NAME"]="GUtest_MultiPointValDec_GapTest"
 config["MODEL_DIR"] = 'model_valdec'
-config["NAME"]=config["DIR"]="GU_multi_point_{}ag_RAAtest_fxdvel".format(config["N_AGENTS"])
+config["NAME"]=config["DIR"]="GU_multi_point_{}ag_RAALoop_fxdvel_gap{}_expval_sd{}".format(config["N_AGENTS"], config["REACH_AVOID_LOOP_GAP"], config["SEED"])
 config["LR"]=3e-4
 config["NUM_ENVS"]=128
 config["NUM_STEPS"]=400
@@ -73,7 +74,6 @@ config['VIDEO_FREQ'] = 25
 config["LOAD_DECOMPOSED"] = False
 config["NUM_UPDATES"] = int(config["TOTAL_TIMESTEPS"] // config["NUM_STEPS"] // config["NUM_ENVS"])
 config["MINIBATCH_SIZE"] = int(config["NUM_ENVS"] * config["NUM_STEPS"] // config["NUM_MINIBATCHES"])
-
 config["FIXED_VELOCITY"] = 0.05
 
 os.environ["XLA_PYTHON_CLIENT_PREALLOCATE"] = "false"

@@ -367,14 +367,17 @@ def train(env, env_params, value_dag, config, rng, plot_function=None):
                 r_append = jnp.where(reach_mask[None, None, :], pred_append, jnp.inf)   # (T+1, E, P), NOTE old convention, neg reaching
                 V_child_append = jnp.take(all_val_append, child_pos_safe, axis=-1)      # (T+1, E, P)
 
-                # Recursive satisfaction, pad and shift appended arrays
-                shift = config["REACH_AVOID_LOOP_GAP"]
-                val_next = jnp.concatenate((val_append, jnp.full((shift, val_append.shape[1]), jnp.inf)), axis=0)[shift:, :]  # (T+1, E)
-                # TODO FIXME Should we be filling these values with inf??
+                # Recursive satisfaction, compute max of next value(s) for each timestep
+                gap = config["REACH_AVOID_LOOP_GAP"]
+                # val_padded = jnp.concatenate((val_append, jnp.full((gap, val_append.shape[1]), jnp.inf)), axis=0)  # (T+1+gap, E) # Inf-val extrapolation + mask
+                val_padded = jnp.concatenate((val_append, last_vals[node_pos][None, ...] * jnp.ones((gap, val_append.shape[1]))), axis=0)  # (T+1+gap, E) # Last-val extrapolation
+                val_next_gap_max = jax.vmap(
+                    lambda t: jax.lax.dynamic_slice(val_padded, (t+1, 0), (gap, val_append.shape[1])).max(axis=0) # (gap, E) -> (E,)
+                )(jnp.arange(val_append.shape[0]))  # (T+1, E)
 
                 # Reach-Avoid target (l_tilde), (T+1, E, P) -> (T+1, E)
                 ra_target = jnp.min(jnp.maximum(r_append, V_child_append), axis=-1)
-                ra_loop_target = jnp.maximum(ra_target, val_next)
+                ra_loop_target = jnp.maximum(ra_target, val_next_gap_max)
                 # DEBUG FIXME check, inf-N-order doesn't matter right? instead of considering system of eqn, can force this for always...
                 # if we eventually have to be able to reach, we do intermittently as well right?                                                                              
 
@@ -681,7 +684,7 @@ def train(env, env_params, value_dag, config, rng, plot_function=None):
         def per_batch_success(traj_batches, node_pos, th=0.):
             traj_batch = tree_index1(traj_batches, node_pos)
 
-            reach_predicates = value_dag.trigger_predicate_map[node_pos] > 0
+            reach_predicates = value_dag.trigger_predicate_map[node_pos] > -1
             any_reaches = jnp.any(traj_batch.predicate_values < th, axis=0) & reach_predicates[None, :] # (E, P) & (P,) -> (E, P)
             reach_all = jnp.all(any_reaches == reach_predicates[None, :], axis=-1) # (E,)
             each_reach_idx = jnp.where(any_reaches, (traj_batch.predicate_values < th).argmax(axis=0), -jnp.inf)  # (E, P)
@@ -700,12 +703,12 @@ def train(env, env_params, value_dag, config, rng, plot_function=None):
             each_reach_perc = (jnp.sum(any_reaches, axis=0) / any_reaches.shape[0])
             each_crash_perc = (jnp.sum(any_crashes, axis=0) / any_crashes.shape[0])
 
-            reach_mask = (traj_batch.predicate_values < th) & reach_predicates[None, None, :] # (T, E, P) & (P,)
-            each_reach_qty_perc_mean = jnp.where(reach_predicates, jnp.sum(reach_mask, axis=(0, 1)) / (reach_mask.shape[0] + reach_mask.shape[1]), jnp.inf)
+            reach_mask = (traj_batch.predicate_values < th) & reach_predicates[None, None, :] # (T, E, P) & (P,) -> (T, E, P)
+            each_reach_qty_perc_mean = jnp.where(reach_predicates, jnp.sum(reach_mask, axis=(0, 1)) / (reach_mask.shape[0] * reach_mask.shape[1]), jnp.inf)
             reach_all_qty_perc_mean = each_reach_qty_perc_mean.min()
 
             safe_reach_mask = reach_mask & (~any_crash[None, :, None])  # (T, E, P)
-            safe_each_reach_qty_perc_mean = jnp.where(reach_predicates, jnp.sum(safe_reach_mask, axis=(0, 1)) / (safe_reach_mask.shape[0] + safe_reach_mask.shape[1]), jnp.inf)
+            safe_each_reach_qty_perc_mean = jnp.where(reach_predicates, jnp.sum(safe_reach_mask, axis=(0, 1)) / (safe_reach_mask.shape[0] * safe_reach_mask.shape[1]), jnp.inf)
             safe_reach_all_qty_perc_mean = safe_each_reach_qty_perc_mean.min()
 
             return traj_batches, {
@@ -812,6 +815,8 @@ def train(env, env_params, value_dag, config, rng, plot_function=None):
                 print_statements.append(f"(N{node}-RA): {100*node_score['reach_avoid_perc']:.1f}%")
             elif value_dag.node_types[pos] == 1:  # Avoid
                 print_statements.append(f"(N{node}-A): {100*(1-node_score['crash_perc']):.1f}%")
+            elif value_dag.node_types[pos] == 2:  # G(...)
+                print_statements.append(f"(N{node}-RAL): {100*node_score['reach_avoid_qty_perc_mean']:.1f}%")
         print("   ".join(print_statements))
 
     return
