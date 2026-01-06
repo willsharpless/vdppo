@@ -106,122 +106,124 @@ def process_dag(value_dag, dag_root, reported_nodes="all", neg_reach_conv=True):
     return value_dag
 
 def train(env, env_params, value_dag, config, rng, plot_function=None):
+
+    def roll_out_node(carry, node_pos, num_steps):
+        (train_state_policies,
+            train_state_values,
+            rng,
+            timestep,
+            obs_buffer,        # [N, T, E, O]
+            predicate_buffer,  # [N, T, E, P]
+            reset_buffer,      # [N, E]
+        ) = carry
+
+        parent_positions_per_node = value_dag.parent_pos_padded[node_pos]  # padded with -1
+        is_root_node = jnp.all(parent_positions_per_node < 0)
+
+        def coupled_reset(env, env_params, config, rng):
+            # Choose a parent per-env, check trigger predicate satisfaction and sample a time index from its trajectory
+            rng, _rng_par = jax.random.split(rng)
+            rand_parent_choice = jax.random.randint(_rng_par, shape=(config["NUM_ENVS"],), minval=0, maxval=(parent_positions_per_node >= 0).sum())
+            chosen_parent_pos = parent_positions_per_node[rand_parent_choice]
+
+            def sample_from_parent(per_env_rng, p_pos, env_ix):
+                # Compute time index based on trigger of chosen valid parent
+                rng1, rng2 = jax.random.split(per_env_rng)
+                random_index = jax.random.randint(rng1, shape=(), minval=0, maxval=num_steps)
+
+                trigger_ix_mask = value_dag.trigger_predicate_map[p_pos] == node_pos
+                has_trigger = jnp.any(trigger_ix_mask)
+                trigger_ix_safe = jnp.where(has_trigger, jnp.argmax(trigger_ix_mask), 0) # so tracing works for root without parents
+
+                pred_series = predicate_buffer[p_pos, :, env_ix, trigger_ix_safe]
+                satisfied = (pred_series < 0) # TODO old convention, neg reaching
+                satisfied_idx = jnp.where(has_trigger & jnp.any(satisfied), jnp.argmax(satisfied), num_steps)
+                reset_index = jnp.where(has_trigger & jnp.any(satisfied), satisfied_idx, random_index)
+                # NOTE previously called toinput_goal coupling, could try other forms
+
+                obs_series = obs_buffer[p_pos, :, env_ix, ...]
+                sel_obs = jax.lax.dynamic_slice_in_dim(obs_series, reset_index, slice_size=1, axis=0).squeeze(axis=0)
+                return sel_obs, reset_index
+                # return sel_obs
+
+            rng, _rng = jax.random.split(rng)
+            reset_rng = jax.random.split(_rng, config["NUM_ENVS"])
+            untrans_parent_batch_obs, reset_indices = jax.vmap(sample_from_parent, in_axes=(0, 0, 0))(reset_rng, chosen_parent_pos, jnp.arange(config["NUM_ENVS"]))
+            obsv, env_state = jax.vmap(env.reset_toinput, in_axes=(0, 0, None))(
+                reset_rng, untrans_parent_batch_obs, env_params
+            )
+            return obsv, env_state, reset_indices
+            # return obsv, env_state
+        # TODO: could check sat then sample parents to increase efficiency
+        
+        def standard_reset(env, env_params, config, rng):
+            rng, _rng = jax.random.split(rng)
+            reset_rng = jax.random.split(_rng, config["NUM_ENVS"])
+            obsv, env_state = jax.vmap(env.reset, in_axes=(0, None))(reset_rng, env_params)
+            # return obsv, env_state
+        
+            # dummy reset for jax conditional (type tree gets altered here somehow?)
+            untrans_obs = env.untransform_obs(obsv)
+            obsv_dummy, env_state_dummy = jax.vmap(env.reset_toinput, in_axes=(0, 0, None))(
+                reset_rng, untrans_obs, env_params
+            )
+            reset_indices = -1 * jnp.ones((config["NUM_ENVS"],), dtype=jnp.int32)
+            return obsv_dummy, env_state_dummy, reset_indices
+
+        ## RESET
+
+        obsv, env_state, reset_indices = jax.lax.cond(
+            is_root_node,
+            lambda r: standard_reset(env, env_params, config, r),
+            lambda r: coupled_reset(env, env_params, config, r),
+            rng
+        )
+
+        ## COLLECT TRAJECTORY
+
+        rng, _rng = jax.random.split(rng)
+        # pass node position (not node id) so value_transition and env_step work with position indexing
+        initial_value_node = jnp.ones((config["NUM_ENVS"],), dtype=jnp.int32) * node_pos
+        runner_state = (train_state_policies, train_state_values, env_state, obsv, initial_value_node, _rng)
+        runner_state, traj_batch = jax.lax.scan(
+            env_step, runner_state, None, num_steps
+        )
+
+        ## UPDATE BUFFERS FOR CHILDREN
+
+        # store untransformed observations
+        untrans_obs_full = env.untransform_obs(traj_batch.obs)
+        obs_buffer = jax.lax.dynamic_update_slice_in_dim(obs_buffer, untrans_obs_full[None, ...], node_pos, axis=0)
+        
+        # store predicate maxima over time (as produced during rollout)
+        predicate_buffer = jax.lax.dynamic_update_slice_in_dim(predicate_buffer, traj_batch.predicate_values[None, ...], node_pos, axis=0)
+
+        # store resets (for tracking)
+        reset_buffer = jax.lax.dynamic_update_slice_in_dim(reset_buffer, reset_indices[None, :], node_pos, axis=0)
+
+        return (train_state_policies, train_state_values, rng, timestep, obs_buffer, predicate_buffer, reset_buffer), (runner_state, traj_batch)
+    
+    ####################################################################################################################
+        
     def _train(train_state_total, ent_gamma):
 
         # ROLLOUT BATCHES FOR EACH NODE
-
-        # get original rng for comparison
-        _, _, rng_og, _ = train_state_total
 
         # Pre-allocate functional buffers to carry parent data across node rollouts
         num_nodes = value_dag.temporal_nodes.shape[0]
         obs_shape = env.observation_space(env_params).shape
         num_predicates = len(value_dag.predicates)
-
-        def roll_out_node(carry, node_pos):
-            (train_state_policies,
-                train_state_values,
-                rng,
-                timestep,
-                obs_buffer,        # [N, T, E, O]
-                predicate_buffer,  # [N, T, E, P]
-                reset_buffer       # [N, E]
-            ) = carry
-
-            parent_positions_per_node = value_dag.parent_pos_padded[node_pos]  # padded with -1
-            is_root_node = jnp.all(parent_positions_per_node < 0)
-
-            def coupled_reset(env, env_params, config, rng):
-                # Choose a parent per-env, check trigger predicate satisfaction and sample a time index from its trajectory
-                rng, _rng_par = jax.random.split(rng)
-                rand_parent_choice = jax.random.randint(_rng_par, shape=(config["NUM_ENVS"],), minval=0, maxval=(parent_positions_per_node >= 0).sum())
-                chosen_parent_pos = parent_positions_per_node[rand_parent_choice]
-
-                def sample_from_parent(per_env_rng, p_pos, env_ix):
-                    # Compute time index based on trigger of chosen valid parent
-                    rng1, rng2 = jax.random.split(per_env_rng)
-                    random_index = jax.random.randint(rng1, shape=(), minval=0, maxval=config["NUM_STEPS"])
-
-                    trigger_ix_mask = value_dag.trigger_predicate_map[p_pos] == node_pos
-                    has_trigger = jnp.any(trigger_ix_mask)
-                    trigger_ix_safe = jnp.where(has_trigger, jnp.argmax(trigger_ix_mask), 0) # so tracing works for root without parents
-
-                    pred_series = predicate_buffer[p_pos, :, env_ix, trigger_ix_safe]
-                    satisfied = (pred_series < 0) # TODO old convention, neg reaching
-                    satisfied_idx = jnp.where(has_trigger & jnp.any(satisfied), jnp.argmax(satisfied), config["NUM_STEPS"])
-                    reset_index = jnp.where(has_trigger & jnp.any(satisfied), satisfied_idx, random_index)
-                    # NOTE previously called toinput_goal coupling, could try other forms
-
-                    obs_series = obs_buffer[p_pos, :, env_ix, ...]
-                    sel_obs = jax.lax.dynamic_slice_in_dim(obs_series, reset_index, slice_size=1, axis=0).squeeze(axis=0)
-                    return sel_obs, reset_index
-                    # return sel_obs
-
-                rng, _rng = jax.random.split(rng)
-                reset_rng = jax.random.split(_rng, config["NUM_ENVS"])
-                untrans_parent_batch_obs, reset_indices = jax.vmap(sample_from_parent, in_axes=(0, 0, 0))(reset_rng, chosen_parent_pos, jnp.arange(config["NUM_ENVS"]))
-                obsv, env_state = jax.vmap(env.reset_toinput, in_axes=(0, 0, None))(
-                    reset_rng, untrans_parent_batch_obs, env_params
-                )
-                return obsv, env_state, reset_indices
-                # return obsv, env_state
-            # TODO: could check sat then sample parents to increase efficiency
-            
-            def standard_reset(env, env_params, config, rng):
-                rng, _rng = jax.random.split(rng)
-                reset_rng = jax.random.split(_rng, config["NUM_ENVS"])
-                obsv, env_state = jax.vmap(env.reset, in_axes=(0, None))(reset_rng, env_params)
-                # return obsv, env_state
-            
-                # dummy reset for jax conditional (type tree gets altered here somehow?)
-                untrans_obs = env.untransform_obs(obsv)
-                obsv_dummy, env_state_dummy = jax.vmap(env.reset_toinput, in_axes=(0, 0, None))(
-                    reset_rng, untrans_obs, env_params
-                )
-                reset_indices = -1 * jnp.ones((config["NUM_ENVS"],), dtype=jnp.int32)
-                return obsv_dummy, env_state_dummy, reset_indices
-
-            ## RESET
-
-            obsv, env_state, reset_indices = jax.lax.cond(
-                is_root_node,
-                lambda r: standard_reset(env, env_params, config, r),
-                lambda r: coupled_reset(env, env_params, config, r),
-                rng
-            )
-
-            ## COLLECT TRAJECTORY
-
-            rng, _rng = jax.random.split(rng)
-            # pass node position (not node id) so value_transition and env_step work with position indexing
-            initial_value_node = jnp.ones((config["NUM_ENVS"],), dtype=jnp.int32) * node_pos
-            runner_state = (train_state_policies, train_state_values, env_state, obsv, initial_value_node, _rng)
-            runner_state, traj_batch = jax.lax.scan(
-                env_step, runner_state, None, config["NUM_STEPS"]
-            )
-
-            ## UPDATE BUFFERS FOR CHILDREN
-
-            # store untransformed observations
-            untrans_obs_full = env.untransform_obs(traj_batch.obs)
-            obs_buffer = jax.lax.dynamic_update_slice_in_dim(obs_buffer, untrans_obs_full[None, ...], node_pos, axis=0)
-            
-            # store predicate maxima over time (as produced during rollout)
-            predicate_buffer = jax.lax.dynamic_update_slice_in_dim(predicate_buffer, traj_batch.predicate_values[None, ...], node_pos, axis=0)
-
-            # store resets (for tracking)
-            reset_buffer = jax.lax.dynamic_update_slice_in_dim(reset_buffer, reset_indices[None, :], node_pos, axis=0)
-
-            return (train_state_policies, train_state_values, rng, timestep, obs_buffer, predicate_buffer, reset_buffer), (runner_state, traj_batch)
+        num_steps = config["NUM_STEPS"]
 
         # initialize buffers for parent-conditioned resets
-        obs_buffer_init = jnp.zeros((num_nodes, config["NUM_STEPS"], config["NUM_ENVS"]) + tuple(obs_shape), dtype=jnp.float32)
-        predicate_buffer_init = jnp.zeros((num_nodes, config["NUM_STEPS"], config["NUM_ENVS"], num_predicates), dtype=jnp.float32)
+        obs_buffer_init = jnp.zeros((num_nodes, num_steps, config["NUM_ENVS"]) + tuple(obs_shape), dtype=jnp.float32)
+        predicate_buffer_init = jnp.zeros((num_nodes, num_steps, config["NUM_ENVS"], num_predicates), dtype=jnp.float32)
         reset_buffer_init = -1 * jnp.ones((num_nodes, config["NUM_ENVS"]), dtype=jnp.int32)
 
         initial_carry = (*train_state_total, obs_buffer_init, predicate_buffer_init, reset_buffer_init)
+        roll_out = partial(roll_out_node, num_steps=num_steps)
         (final_carry, (runner_states, traj_batches)) = jax.lax.scan(
-            roll_out_node, initial_carry, jnp.arange(num_nodes), 
+            roll_out, initial_carry, jnp.arange(num_nodes), 
         )
 
         train_state_policies, train_state_values, rng, timestep, obs_buffer, predicate_buffer, reset_indices = final_carry
@@ -678,7 +680,7 @@ def train(env, env_params, value_dag, config, rng, plot_function=None):
         ## SCORING
         
         traj_batches = tree_index1(result['traj_batches'], 0) # first scan step
-        loss_infos = tree_index1(result['loss_infos'], 0)   
+        loss_infos = tree_index1(result['loss_infos'], 0)
 
         # Generalized scoring method
         def per_batch_success(traj_batches, node_pos, th=0.):
@@ -729,6 +731,28 @@ def train(env, env_params, value_dag, config, rng, plot_function=None):
             per_batch_success, traj_batches, jnp.arange(len(value_dag.temporal_nodes))
         )
 
+        ## EVAL
+
+        if config["EVAL"]:
+            if timestep % config['EVAL_FREQ'] == 0 or timestep == total_timesteps - 1: 
+                num_steps = config["EVAL_HORIZON"]
+                
+                # Pre-allocate functional buffers to carry parent data across node rollouts
+                num_nodes = value_dag.temporal_nodes.shape[0]
+                obs_shape = env.observation_space(env_params).shape
+                num_predicates = len(value_dag.predicates)
+
+                # initialize buffers for parent-conditioned resets
+                obs_buffer_init = jnp.zeros((num_nodes, num_steps, config["NUM_ENVS"]) + tuple(obs_shape), dtype=jnp.float32)
+                predicate_buffer_init = jnp.zeros((num_nodes, num_steps, config["NUM_ENVS"], num_predicates), dtype=jnp.float32)
+                reset_buffer_init = -1 * jnp.ones((num_nodes, config["NUM_ENVS"]), dtype=jnp.int32)
+
+                initial_carry = (*update_state, obs_buffer_init, predicate_buffer_init, reset_buffer_init)
+                roll_out = partial(roll_out_node, num_steps=num_steps)
+                (_, (_, traj_batches_eval)) = jax.lax.scan(
+                    roll_out, initial_carry, jnp.arange(num_nodes), 
+                )
+
         t1 = time.time()
 
         ## SAVE MODEL CHECKPOINTS
@@ -763,46 +787,75 @@ def train(env, env_params, value_dag, config, rng, plot_function=None):
                                         prefix="best_",
                                         overwrite=True,)
 
-        ## WRITE TO WANDB
-
-        reported_dict={}
-        reported_dict["Train/reach_gamma"] = result['reach_gamma'][0]
-        reported_dict["Train/entropy_weight"] = result['entropy_weight'][0]
-        for node in value_dag.reported_nodes:
-            pos = value_dag.node_index[node]
-            node_score = tree_index1(scores, pos)
-
-            # Store success scores
-            if value_dag.node_types[pos] == 0:  # Reach-Avoid
-                reported_dict[f"Score/RA_Node_{node}_Reach[%]"] = node_score["reach_perc"].item()
-                reported_dict[f"Score/RA_Node_{node}_Crash[%]"] = node_score["crash_perc"].item()
-                reported_dict[f"Score/RA_Node_{node}_ReachAvoid[%]"] = node_score["reach_avoid_perc"].item()
-            elif value_dag.node_types[pos] == 1:  # Avoid
-                reported_dict[f"Score/A_Node_{node}_Crash[%]"] = node_score["crash_perc"].item()
-            elif value_dag.node_types[pos] == 2:  # G(...)
-                reported_dict[f"Score/RA_Node_{node}_Reach[%]"] = node_score["reach_perc"].item() # DEBUG FIXME, remove after debug
-                reported_dict[f"Score/RA_Node_{node}_Crash[%]"] = node_score["crash_perc"].item() # DEBUG FIXME, remove after debug
-                reported_dict[f"Score/RA_Node_{node}_ReachAvoid[%]"] = node_score["reach_avoid_perc"].item()
-                reported_dict[f"Score/RA_Node_{node}_ReachQty[mean%]"] = node_score["reach_qty_perc_mean"].item()
-                reported_dict[f"Score/RA_Node_{node}_ReachAvoidQty[mean%]"] = node_score["reach_avoid_qty_perc_mean"].item()
-
-            # Store losses
-            reported_dict[f"Loss/Node_{node}_actor_loss"] = jnp.mean(tree_index1(loss_infos, pos)["actor_loss"])
-            reported_dict[f"Loss/Node_{node}_value_loss"] = jnp.mean(tree_index1(loss_infos, pos)["value_loss"])
-
-            # Store predicate stats
-            traj_batch = tree_index1(traj_batches, pos)
-            for pred_id, pred in zip(value_dag.predicate_ids, value_dag.predicates):
-                reported_dict[f"Predicates/Node_{node}_[{pred}]_mean"] = jnp.mean(traj_batch.predicate_values[pred_id])
-                reported_dict[f"Predicates/Node_{node}_[{pred}]_var"] = jnp.var(traj_batch.predicate_values[pred_id])
-
+        ## REPORT
+        
         if config["USE_WANDB"]:
+            reported_dict={}
+            reported_dict["Train/reach_gamma"] = result['reach_gamma'][0]
+            reported_dict["Train/entropy_weight"] = result['entropy_weight'][0]
+            for node in value_dag.reported_nodes:
+                pos = value_dag.node_index[node]
+                node_score = tree_index1(scores, pos)
+
+                # Store success scores
+                if value_dag.node_types[pos] == 0:  # Reach-Avoid
+                    reported_dict[f"Score/RA_Node_{node}_Reach[%]"] = node_score["reach_perc"].item()
+                    reported_dict[f"Score/RA_Node_{node}_Crash[%]"] = node_score["crash_perc"].item()
+                    reported_dict[f"Score/RA_Node_{node}_ReachAvoid[%]"] = node_score["reach_avoid_perc"].item()
+                elif value_dag.node_types[pos] == 1:  # Avoid
+                    reported_dict[f"Score/A_Node_{node}_Crash[%]"] = node_score["crash_perc"].item()
+                elif value_dag.node_types[pos] == 2:  # G(...)
+                    reported_dict[f"Score/RA_Node_{node}_ReachAvoid[%]"] = node_score["reach_avoid_perc"].item()
+                    reported_dict[f"Score/RA_Node_{node}_ReachQty[mean%]"] = node_score["reach_qty_perc_mean"].item()
+                    reported_dict[f"Score/RA_Node_{node}_ReachAvoidQty[mean%]"] = node_score["reach_avoid_qty_perc_mean"].item()
+
+                # Store losses
+                reported_dict[f"Loss/Node_{node}_actor_loss"] = jnp.mean(tree_index1(loss_infos, pos)["actor_loss"])
+                reported_dict[f"Loss/Node_{node}_value_loss"] = jnp.mean(tree_index1(loss_infos, pos)["value_loss"])
+
+                # Store predicate stats
+                traj_batch = tree_index1(traj_batches, pos)
+                for pred_id, pred in zip(value_dag.predicate_ids, value_dag.predicates):
+                    reported_dict[f"Predicates/Node_{node}_[{pred}]_mean"] = jnp.mean(traj_batch.predicate_values[pred_id])
+                    reported_dict[f"Predicates/Node_{node}_[{pred}]_var"] = jnp.var(traj_batch.predicate_values[pred_id])
+
+            ## SCORE EVAL
+            
+            if config["EVAL"]:
+                if timestep % config['EVAL_FREQ'] == 0 or timestep == total_timesteps - 1:
+
+                    traj_batches_eval, scores = jax.lax.scan(
+                        per_batch_success, traj_batches_eval, jnp.arange(len(value_dag.temporal_nodes))
+                    )
+
+                    for node in value_dag.reported_nodes:
+                        pos = value_dag.node_index[node]
+                        node_score = tree_index1(scores, pos)
+
+                        # Store success scores
+                        if value_dag.node_types[pos] == 0:  # Reach-Avoid
+                            reported_dict[f"Eval/RA_Node_{node}_Reach[%]"] = node_score["reach_perc"].item()
+                            reported_dict[f"Eval/RA_Node_{node}_Crash[%]"] = node_score["crash_perc"].item()
+                            reported_dict[f"Eval/RA_Node_{node}_ReachAvoid[%]"] = node_score["reach_avoid_perc"].item()
+                        elif value_dag.node_types[pos] == 1:  # Avoid
+                            reported_dict[f"Eval/A_Node_{node}_Crash[%]"] = node_score["crash_perc"].item()
+                        elif value_dag.node_types[pos] == 2:  # G(...)
+                            reported_dict[f"Eval/RA_Node_{node}_ReachAvoid[%]"] = node_score["reach_avoid_perc"].item()
+                            reported_dict[f"Eval/RA_Node_{node}_ReachQty[mean%]"] = node_score["reach_qty_perc_mean"].item()
+                            reported_dict[f"Eval/RA_Node_{node}_ReachAvoidQty[mean%]"] = node_score["reach_avoid_qty_perc_mean"].item()
+
+            ## WRITE TO WANDB
+
             wandb.log(reported_dict, step=timestep)
 
         ## PLOTTING
 
         if plot_function is not None:
-            out_put_figs = plot_function(value_dag, config, result, scores, timestep, total_timesteps)
+            if config["EVAL"] and (timestep % config['EVAL_FREQ'] == 0 or timestep == total_timesteps - 1):
+                traj_batches_plot = traj_batches_eval
+            else:
+                traj_batches_plot = traj_batches
+            out_put_figs = plot_function(value_dag, config, traj_batches_plot, scores, timestep, total_timesteps)
             plt.close("all")
 
         ## PRINT REPORTED NODES TO CONSOLE
@@ -938,12 +991,10 @@ if __name__ == "__main__":
     if config['EXP_NAME'] == 'WindField':
         env_params = env_params.replace(index=config['SECTION'])
 
-    def plot_rraa(value_dag, config, result, scores, timestep, total_timesteps, idx=0):
+    def plot_rraa(value_dag, config, traj_batches, scores, timestep, total_timesteps, idx=0):
         pos_rraa, pos_raa1, pos_raa2, pos_a = 0, 1, 2, 3
 
         # MAKE DIAGNOSTIC PLOTS -- FIXME for GENERAL TASK LOGIC
-
-        traj_batches = tree_index1(result['traj_batches'], idx) # first scan step
 
         traj_batch_rraa = tree_index1(traj_batches, pos_rraa)
         traj_batch_raa1 = tree_index1(traj_batches, pos_raa1)
@@ -975,8 +1026,6 @@ if __name__ == "__main__":
             info_rraa['v_air'] = env_params.v_air
             info_rraa['obs'] = env_params.obstacle
 
-        # policy_decision_sample = traj_batch_rraa.policy_taken[:,idx]
-        reset_indices = result["reset_indices"]
         policy_decision_sample = traj_batch_rraa.current_value_node[:,idx] ## DEBUG FIXME
         fig = plot_contour_RRAA((info_rraa, info_raa1, info_raa2, info_a), timestep, config, policy_decision_sample=policy_decision_sample)
         fig2 = plot_policy_decision(policy_decision_sample, timestep, config)

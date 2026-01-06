@@ -208,12 +208,10 @@ def main():
 
 ## PLOT FUNCTIONS
 
-def plot_multipoint_raa_loop(value_dag, config, result, scores, timestep, total_timesteps, idx=0):
+def plot_multipoint_raa_loop(value_dag, config, traj_batches, scores, timestep, total_timesteps, idx=0):
     pos_raa, pos_a = 0, 1
 
     # MAKE DIAGNOSTIC PLOTS -- TODO GENERAL TASK LOGIC PLOTTING
-
-    traj_batches = tree_index1(result['traj_batches'], idx) # first scan step
 
     traj_batch_raa = tree_index1(traj_batches, pos_raa)
     traj_batch_a   = tree_index1(traj_batches, pos_a)
@@ -230,7 +228,6 @@ def plot_multipoint_raa_loop(value_dag, config, result, scores, timestep, total_
     info_raa['crash_index'] = scores_raa["crash_idx"][idx]
     info_a['crash_index'] = scores_a["crash_idx"][idx]
 
-    reset_indices = result["reset_indices"]
     policy_decision_sample = traj_batch_raa.current_value_node[:,idx]
     fig = plot_contour_multipoint((info_raa, info_a), timestep, config, policy_decision_sample=policy_decision_sample)
     # fig2 = plot_policy_decision(policy_decision_sample, timestep, config)

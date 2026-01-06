@@ -148,12 +148,10 @@ if config['EXP_NAME'] == 'WindField':
 
 ## PLOT FUNCTION
 
-def plot_rraa(value_dag, config, result, scores, timestep, total_timesteps, idx=0):
+def plot_rraa(value_dag, config, traj_batches, scores, timestep, total_timesteps, idx=0):
     pos_rraa, pos_raa1, pos_raa2, pos_a = 0, 1, 2, 3
 
     # MAKE DIAGNOSTIC PLOTS -- TODO GENERAL TASK LOGIC PLOTTING
-
-    traj_batches = tree_index1(result['traj_batches'], idx) # first scan step
 
     traj_batch_rraa = tree_index1(traj_batches, pos_rraa)
     traj_batch_raa1 = tree_index1(traj_batches, pos_raa1)
@@ -184,7 +182,6 @@ def plot_rraa(value_dag, config, result, scores, timestep, total_timesteps, idx=
         info_rraa['v_air'] = env_params.v_air
         info_rraa['obs'] = env_params.obstacle
 
-    reset_indices = result["reset_indices"]
     policy_decision_sample = traj_batch_rraa.current_value_node[:,idx]
     fig = plot_contour_RRAA((info_rraa, info_raa1, info_raa2, info_a), timestep, config, policy_decision_sample=policy_decision_sample)
     fig2 = plot_policy_decision(policy_decision_sample, timestep, config)
