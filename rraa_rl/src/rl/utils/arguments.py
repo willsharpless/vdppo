@@ -138,6 +138,15 @@ def get_args(args):
     parser.add_argument(
         '--REACH_AVOID_LOOP_GAP', default=1, type=int, help='Gap size for reach-avoid loop'
     )
+    parser.add_argument(
+        '--REACH3_DYNAMIC_PRED_TYPE', default="const", type=str, help='Dynamic predicate type for reach3'
+    )
+    parser.add_argument(
+        '--FIXED_VELOCITY', default=-1., type=float, help='Sets a fixed velocity for the agent (negative turns off)'
+    )
+    parser.add_argument(
+        '--DEBUG_JUST_RAA', action='store_true', default=False, help='whether to use RAA instead of GU'
+    )
 
     args = parser.parse_args(args) if args is not None else parser.parse_args()
 
