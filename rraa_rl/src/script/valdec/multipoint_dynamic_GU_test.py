@@ -18,7 +18,7 @@ from functools import partial
 from rraa_rl.src.rl.utils.utils import optimizer, get_BuRd, tree_index1, tree_index2
 
 from rraa_rl.src.env.general_task.multi_safety_gym import MultiPointGeneralTask
-from rraa_rl.src.env.general_task.multi_safety_gym_dynamic_pred import MultiPointDynamicGeneralTask, static_dummy_dynamics, constant_dynamics_with_random_reset, circular_motion_dynamics, obstacle_edge_dynamics
+from rraa_rl.src.env.general_task.multi_safety_gym_dynamic_pred import MultiPointDynamicGeneralTask, static_dummy_dynamics, constant_dynamics_with_random_reset, circular_motion_dynamics, obstacle_weave_dynamics
 from rraa_rl.src.env.wrappers import TransformObservation
 from jax import jit
 
@@ -44,21 +44,29 @@ from time import time
 config = vars(get_args(sys.argv[1:]))
 
 config["N_AGENTS"] = 1
-# config["REACH_AVOID_LOOP_GAP"] = 2
-config["DEBUG_JUST_RAA"] = True # DEBUG FIXME
+config["REACH_AVOID_LOOP_GAP"] = 3
+# config["DEBUG_JUST_RAA"] = True # DEBUG FIXME
+# config["REACH3_DYNAMIC_PRED_TYPE"] = "obsweave" # "const", "conrand", "circ", "obsweave"
+# config["FIXED_VELOCITY"] = 0.05
+config["FIXED_VELOCITY"] = None if config["FIXED_VELOCITY"] < 0. else config["FIXED_VELOCITY"]
+fxd_vel_tag = '' if not config["FIXED_VELOCITY"] else f"_fxdvel"
+pred_tag = 'RAA' if config["DEBUG_JUST_RAA"] else 'RALoop'
 
 config["TASK_SOURCE"] = "G(F reach3_static) && G !obstacles" # DEBUG FIXME not used
 
 # config["EXP_NAME"]="GUtest_MultiPointValDec_GapTest"
 config["EXP_NAME"]="GUtest_MultiPointValDec_DynamicPredicate"
 config["MODEL_DIR"] = 'model_valdec'
-config["NAME"]=config["DIR"]=f"GU_multi_point_dynpred_circ_{config['N_AGENTS']}ag_RAAbaseline_fxdvel_augnorm"
+# config["NAME"]=config["DIR"]=f"GU_multi_point_dynpred_constrandreset_{config['N_AGENTS']}ag_RAAbaseline_fxdvel_augnorm"
+# config["NAME"]=config["DIR"]=f"GU_multi_point_dynpred_circ_{config['N_AGENTS']}ag_RAAbaseline_fxdvel_augnorm_longeval"
+config["NAME"]=config["DIR"]=f"GU_multi_point{fxd_vel_tag}_dynpred_{config['REACH3_DYNAMIC_PRED_TYPE']}_{config['N_AGENTS']}ag_{pred_tag}"
 # config["NAME"]=config["DIR"]="GU_multi_point_{}ag_RAALoop_fxdvel_gap{}_expval_sd{}".format(config["N_AGENTS"], config["REACH_AVOID_LOOP_GAP"], config["SEED"])
 config["LR"]=3e-4
 config["NUM_ENVS"]=128
 config["NUM_STEPS"]=400
-config["TOTAL_TIMESTEPS"]=50_000_000
-config["STEP_SCAN"]=4
+config["NUM_EPISODE"]=2000 # DEBUG FIXME not used other than in long eval
+config["TOTAL_TIMESTEPS"]=200_000_000
+config["STEP_SCAN"]=16
 config["UPDATE_EPOCHS"]=10
 config["NUM_MINIBATCHES"]=32
 config["GAMMA_ENERGY"]=1.0
@@ -77,12 +85,16 @@ config['VIDEO_FREQ'] = 25
 config["LOAD_DECOMPOSED"] = False
 config["NUM_UPDATES"] = int(config["TOTAL_TIMESTEPS"] // config["NUM_STEPS"] // config["NUM_ENVS"])
 config["MINIBATCH_SIZE"] = int(config["NUM_ENVS"] * config["NUM_STEPS"] // config["NUM_MINIBATCHES"])
-config["FIXED_VELOCITY"] = 0.05
 
+config["EVAL"] = True
+config['EVAL_FREQ'] = 25
+config["EVAL_HORIZON"] = 2000
+assert config["EVAL_HORIZON"] >= config["NUM_EPISODE"], "EVAL_HORIZON must be greater than or equal NUM_EPISODE"
+    
 os.environ["XLA_PYTHON_CLIENT_PREALLOCATE"] = "false"
 os.environ["CUDA_VISIBLE_DEVICES"] = config['CUDA_USE']
 
-config["USE_WANDB"] = False
+config["USE_WANDB"] = True
 if config["USE_WANDB"]:
     wandb.init(project='valdec-{}-{}'.format(config["EXP_NAME"], config["WANDB_GROUP"]), name=config["NAME"], config=config, entity='valdec')
 
@@ -164,12 +176,18 @@ def main():
 
     #########################################################################################################################################
 
-    ## MAKE MULTI POINT ENV WITH DYNAMIC PREDICATES
+    ## MAKE MULTI POINT ENV WITH DYNAMIC PREDICATE
 
-    reach3_update_fn, reach3_reset_fn, reach3_stats = static_dummy_dynamics()
-    # reach3_update_fn, reach3_reset_fn, reach3_stats = constant_dynamics_with_random_reset()
-    # reach3_update_fn, reach3_reset_fn, reach3_stats = circular_motion_dynamics()
-    # reach3_update_fn, reach3_reset_fn, reach3_stats = obstacle_edge_dynamics()
+    if config["REACH3_DYNAMIC_PRED_TYPE"] == "const":  # "const", "conrand", "circ", "obsweave"
+        reach3_update_fn, reach3_reset_fn, reach3_stats = static_dummy_dynamics()
+    elif config["REACH3_DYNAMIC_PRED_TYPE"] == "conrand":
+        reach3_update_fn, reach3_reset_fn, reach3_stats = constant_dynamics_with_random_reset()
+    elif config["REACH3_DYNAMIC_PRED_TYPE"] == "circ":
+        reach3_update_fn, reach3_reset_fn, reach3_stats = circular_motion_dynamics()
+    elif config["REACH3_DYNAMIC_PRED_TYPE"] == "obsweave":
+        reach3_update_fn, reach3_reset_fn, reach3_stats = obstacle_weave_dynamics()
+    else:
+        raise ValueError(f"Unknown REACH3_DYNAMIC_PRED_TYPE: {config['REACH3_DYNAMIC_PRED_TYPE']}")
 
     env = MultiPointDynamicGeneralTask(
         active_predicates=value_dag.predicates, 
@@ -178,7 +196,8 @@ def main():
         fixed_velocity=config["FIXED_VELOCITY"],
         dynamic_predicate_names=["reach3_any"],
         dynamic_predicate_updates = {"reach3_any": reach3_update_fn},
-        dynamic_predicate_resets = {"reach3_any": reach3_reset_fn}
+        dynamic_predicate_resets = {"reach3_any": reach3_reset_fn},
+        episode_length=config["NUM_EPISODE"],
     )
 
     ## Define transformation vectors
@@ -225,12 +244,10 @@ def main():
 
 ## PLOT FUNCTIONS
 
-def plot_multipoint_raa_loop(value_dag, config, result, scores, timestep, total_timesteps, idx=0):
+def plot_multipoint_raa_loop(value_dag, config, traj_batches, scores, timestep, total_timesteps, idx=0):
     pos_raa, pos_a = 0, 1
 
     # MAKE DIAGNOSTIC PLOTS -- TODO GENERAL TASK LOGIC PLOTTING
-
-    traj_batches = tree_index1(result['traj_batches'], idx) # first scan step
 
     traj_batch_raa = tree_index1(traj_batches, pos_raa)
     traj_batch_a   = tree_index1(traj_batches, pos_a)
@@ -247,7 +264,6 @@ def plot_multipoint_raa_loop(value_dag, config, result, scores, timestep, total_
     info_raa['crash_index'] = scores_raa["crash_idx"][idx]
     info_a['crash_index'] = scores_a["crash_idx"][idx]
 
-    reset_indices = result["reset_indices"]
     policy_decision_sample = traj_batch_raa.current_value_node[:,idx]
     fig = plot_contour_multipoint((info_raa, info_a), timestep, config, policy_decision_sample=policy_decision_sample)
     # fig2 = plot_policy_decision(policy_decision_sample, timestep, config)
@@ -618,9 +634,9 @@ def plot_video_contour_raa_loop(multi_info, epoch, config, save_video=False, pre
     if not agent_keys:
         agent_keys = [('x', 'y')]
     full_len = info_raa[agent_keys[0][0]].shape[0]
-    
-    # LIMIT number of frames to avoid hanging - max 100 frames
-    num_frames = min(full_len // 2, 100)
+
+    # LIMIT number of frames to avoid hanging - max 200 frames
+    num_frames = min(full_len // 2, 200)
     indices = np.linspace(0, full_len - 1, num_frames, dtype=int)
     
     # Create predicate functions once and reuse across all frames

@@ -38,6 +38,7 @@ class MultiPointDynamicGeneralTask:
                  active_predicates=["reach3_any", "obstacles"], 
                  negated_predicate_mask=jnp.array([1, 1, 0]),
                  add_ag_vals_to_obs=False,
+                 episode_length=1000,
                  backend="mjx",
                  fixed_velocity=None,
                  dynamic_predicate_names=["reach3_any"],  # List of predicate names to track locations for
@@ -60,7 +61,7 @@ class MultiPointDynamicGeneralTask:
             # dynamic_predicate_init_locs: Dict mapping dynamic predicate name to default location [shape (2,)]
         """
         env = MultiPointRandom(n_agents=n_agents, backend=backend, fixed_velocity=fixed_velocity)
-        env = EpisodeWrapper(env, episode_length=1000, action_repeat=1)
+        env = EpisodeWrapper(env, episode_length=episode_length, action_repeat=1)
         env = AutoResetWrapper(env)
         self._env = env
         self.n_agents = n_agents
@@ -438,7 +439,7 @@ class MultiPointDynamicGeneralTask:
 
 def static_dummy_dynamics(center=jnp.array(SAFETYGYM_TARGET_3)):
     def dynamics_fn(key, state, loc):
-        return center
+        return loc
     def reset_fn(key):
         return center
     pred_stats = {"mean_x": center[0], "mean_y": center[1], "std_x": 1., "std_y": 1.}
@@ -446,12 +447,13 @@ def static_dummy_dynamics(center=jnp.array(SAFETYGYM_TARGET_3)):
 
 def constant_dynamics_with_random_reset(center=jnp.array([0., 0.]), bd=2., reset_distribution="uniform"):
     def dynamics_fn(key, state, loc):
-        return center
+        return loc
     def in_box_reset(key):
+        key, subkey = jax.random.split(key)
         if reset_distribution == "uniform":
-            return jax.random.uniform(key, shape=(2,), minval=-bd, maxval=bd)
+            return jax.random.uniform(subkey, shape=(2,), minval=-bd, maxval=bd)
         elif reset_distribution == "truncated_normal":
-            return jax.random.truncated_normal(key, mean=center, stddev=bd, minval=-bd, maxval=bd)
+            return jax.random.truncated_normal(subkey, lower=-bd, upper=bd) * bd + center
         else:
             raise ValueError("Unknown reset distribution")
 
@@ -489,17 +491,15 @@ def circular_motion_dynamics(center=jnp.array([-0.5, -0.5]), radius=0.5, angular
 
     # sample random spot on circle
     def reset_on_circle(key):
-        subkey = jax.random.split(key)
+        key, subkey = jax.random.split(key)
         angle = jax.random.uniform(subkey, minval=0, maxval=2 * jnp.pi)
         return center + radius * jnp.array([jnp.cos(angle), jnp.sin(angle)])
 
     pred_stats = {"mean_x": center[0], "mean_y": center[1], "std_x": radius, "std_y": radius}
     return dynamics_fn, reset_on_circle, pred_stats
 
-def obstacle_edge_dynamics(speed=0.05):
-    """Create a dynamics function that moves location around obstacle edges.
-    
-    Moves around the 6 obstacles that lie above y=0 in a connected path.
+def obstacle_weave_dynamics(speed=0.005):
+    """Create a dynamics function that moves the location between 10 preset points
     
     Args:
         speed: Speed of movement along obstacle edges
@@ -507,43 +507,86 @@ def obstacle_edge_dynamics(speed=0.05):
     Returns:
         Dynamics function (key, state, loc) -> new_loc
     """
+
+    PATH_POINTS = jnp.array([
+        [-0.7, -1.5], 
+        [-0.7, 1.2],
+        [0., 1.2],
+        [0., 1.5],
+        [0.9, 1.5],
+        [0.9, 0.7],
+        [0.2, 0.7],
+        [0.2, -0.5],
+        [0.6, -0.5],
+        [0.6, -1.5],
+    ])
     
     def dynamics_fn(key, state, loc):
-        # Find closest obstacle
-        distances = jnp.linalg.norm(SAFETYGYM_OBSTACLE_SET - loc, axis=1)
-        closest_idx = jnp.argmin(distances)
+        # Find closest segment and move along it
+        n_points = len(PATH_POINTS)
         
-        # Get current and next obstacle
-        current_obs = SAFETYGYM_OBSTACLE_SET[closest_idx]
-        next_obs = SAFETYGYM_OBSTACLE_SET[(closest_idx + 1) % len(SAFETYGYM_OBSTACLE_SET)]
+        # For each segment, compute distance from loc to that segment and parametric position
+        distances = []
+        t_values = []
+        for i in range(n_points):
+            next_i = (i + 1) % n_points
+            segment_start = PATH_POINTS[i]
+            segment_end = PATH_POINTS[next_i]
+            
+            # Compute parametric position along segment
+            segment_vec = segment_end - segment_start
+            segment_len_sq = jnp.sum(segment_vec ** 2)
+            t = jnp.clip(jnp.sum((loc - segment_start) * segment_vec) / (segment_len_sq + 1e-8), 0., 1.)
+            t_values.append(t)
+            
+            # Closest point on segment
+            closest_point = segment_start + t * segment_vec
+            dist = jnp.sum((loc - closest_point) ** 2)
+            distances.append(dist)
         
-        # Direction to next obstacle
-        direction = next_obs - current_obs
-        direction_norm = jnp.linalg.norm(direction)
-        direction_unit = direction / (direction_norm + 1e-8)
+        distances = jnp.array(distances)
+        t_values = jnp.array(t_values)
         
-        # Move towards next obstacle
-        # If close to current obstacle, move toward next
-        dist_to_current = jnp.linalg.norm(loc - current_obs)
+        # When at a waypoint, prefer the forward segment (t=0) over backward segment (t=1)
+        # Add a small bias to prefer segments where t < 0.9
+        bias = jnp.where(t_values > 0.95, 0.001, 0.0)  # Small penalty for being at end of segment
+        closest_segment_idx = jnp.argmin(distances + bias)
         
-        # Linear interpolation: move along line from current to next obstacle
-        new_loc = jnp.where(
-            dist_to_current / (direction_norm + 1e-8) < 1.0,
-            loc + speed * direction_unit,  # Move toward next
-            next_obs + speed * direction_unit  # Wrap to next segment
-        )
+        # Get the t value for closest segment
+        t_on_segment = t_values[closest_segment_idx]
+        
+        # Get current segment endpoints
+        segment_start = PATH_POINTS[closest_segment_idx]
+        next_idx = (closest_segment_idx + 1) % n_points
+        segment_end = PATH_POINTS[next_idx]
+        segment_vec = segment_end - segment_start
+        segment_len = jnp.linalg.norm(segment_vec) + 1e-8
+        
+        # Move along the segment: advance by speed distance along the segment
+        # We advance from the current t value on the segment
+        new_t = t_on_segment + speed / segment_len
+        
+        # Clamp to [0, 1] to stay on segment
+        new_t = jnp.clip(new_t, 0.0, 1.0)
+        
+        # Compute new location on the segment
+        new_loc = segment_start + new_t * segment_vec
         
         return new_loc
 
-    # Reset inside the box near obs
-    def reset_near_obs(key):
-        return jax.random.uniform(key, shape=(2,), minval=-2, maxval=2)
+    def reset_on_path(key):
+        key, subkey = jax.random.split(key)
+        point_idx = jax.random.randint(subkey, (), 0, len(PATH_POINTS))  # Scalar instead of (1,)
+        key, subkey = jax.random.split(key)
+        a = jax.random.uniform(subkey, (), minval=0., maxval=1.)  # Scalar instead of (1,)
+        next_idx = (point_idx + 1) % len(PATH_POINTS)
+        return (1 - a) * PATH_POINTS[point_idx] + a * PATH_POINTS[next_idx]
 
     # pred stats will be mean of obstacles
-    mean_x = jnp.mean(SAFETYGYM_OBSTACLE_SET[:, 0])
-    mean_y = jnp.mean(SAFETYGYM_OBSTACLE_SET[:, 1])
-    std_x = jnp.std(SAFETYGYM_OBSTACLE_SET[:, 0])
-    std_y = jnp.std(SAFETYGYM_OBSTACLE_SET[:, 1])
+    mean_x = jnp.mean(PATH_POINTS[:, 0])
+    mean_y = jnp.mean(PATH_POINTS[:, 1])
+    std_x = jnp.std(PATH_POINTS[:, 0])
+    std_y = jnp.std(PATH_POINTS[:, 1])
     pred_stats = {"mean_x": mean_x, "mean_y": mean_y, "std_x": std_x, "std_y": std_y}
 
-    return dynamics_fn, reset_near_obs, pred_stats
+    return dynamics_fn, reset_on_path, pred_stats
