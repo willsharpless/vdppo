@@ -43,7 +43,7 @@ from time import time
 
 config = vars(get_args(sys.argv[1:]))
 
-config["N_AGENTS"] = 1
+# config["N_AGENTS"] = 1
 config["REACH_AVOID_LOOP_GAP"] = 3
 # config["DEBUG_JUST_RAA"] = True # DEBUG FIXME
 # config["REACH3_DYNAMIC_PRED_TYPE"] = "obsweave" # "const", "conrand", "circ", "obsweave"
@@ -59,28 +59,45 @@ config["EXP_NAME"]="GUtest_MultiPointValDec_DynamicPredicate"
 config["MODEL_DIR"] = 'model_valdec'
 # config["NAME"]=config["DIR"]=f"GU_multi_point_dynpred_constrandreset_{config['N_AGENTS']}ag_RAAbaseline_fxdvel_augnorm"
 # config["NAME"]=config["DIR"]=f"GU_multi_point_dynpred_circ_{config['N_AGENTS']}ag_RAAbaseline_fxdvel_augnorm_longeval"
-config["NAME"]=config["DIR"]=f"GU_multi_point{fxd_vel_tag}_dynpred_{config['REACH3_DYNAMIC_PRED_TYPE']}_{config['N_AGENTS']}ag_{pred_tag}"
+# config["NAME"]=config["DIR"]=f"GU_multi_point{fxd_vel_tag}_dynpred_{config['REACH3_DYNAMIC_PRED_TYPE']}_{config['N_AGENTS']}ag_{pred_tag}"
 # config["NAME"]=config["DIR"]="GU_multi_point_{}ag_RAALoop_fxdvel_gap{}_expval_sd{}".format(config["N_AGENTS"], config["REACH_AVOID_LOOP_GAP"], config["SEED"])
 config["LR"]=3e-4
-config["NUM_ENVS"]=128
 config["NUM_STEPS"]=400
 config["NUM_EPISODE"]=2000 # DEBUG FIXME not used other than in long eval
-config["TOTAL_TIMESTEPS"]=200_000_000
-config["STEP_SCAN"]=16
-config["UPDATE_EPOCHS"]=10
-config["NUM_MINIBATCHES"]=32
-config["GAMMA_ENERGY"]=1.0
-config["GAMMA_REACH_INIT"]=0.995
-config["GAMMA_REACH_FINAL"]=0.9995
-config["GAE_LAMBDA"]=0.95
-config["CLIP_EPS"]=0.2
-config["ENT_COEF"]=0.005
-config["VF_COEF"]=2.0
-config["MAX_GRAD_NORM"]=0.5
+
+if config["N_AGENTS"] == 1:
+    config["NUM_ENVS"]=128
+    config["TOTAL_TIMESTEPS"]=200_000_000
+    config["STEP_SCAN"]=16
+    config["UPDATE_EPOCHS"]=10
+    config["NUM_MINIBATCHES"]=32
+    config["GAMMA_REACH_INIT"]=0.995
+    config["GAMMA_REACH_FINAL"]=0.9995
+    config["GAE_LAMBDA"]=0.95
+    config["CLIP_EPS"]=0.2
+    config["ENT_COEF"]=0.005
+    config["VF_COEF"]=2.0
+    config["MAX_GRAD_NORM"]=0.5
+    config["ANNEAL_ENT"]=True
+else:
+    config["NUM_ENVS"]=256
+    config["TOTAL_TIMESTEPS"]=1_000_000_000
+    # config["STEP_SCAN"]=40 # making it a dynamic parameter
+    config["UPDATE_EPOCHS"]=10
+    config["NUM_MINIBATCHES"]=64
+    config["GAMMA_REACH_INIT"]=0.995
+    config["GAMMA_REACH_FINAL"]=0.9975
+    config["GAE_LAMBDA"]=0.95
+    config["CLIP_EPS"]=0.2
+    config["ENT_COEF"]=0.0001
+    config["VF_COEF"]=2.0
+    config["MAX_GRAD_NORM"]=0.5
+
+config["NAME"]=config["DIR"]=f"GU_mp{fxd_vel_tag}_dpred_{config['REACH3_DYNAMIC_PRED_TYPE']}_{config['N_AGENTS']}ag_{pred_tag}_{config['ENT_COEF']}_annent{config['ANNEAL_ENT']}"
+
 config["ACTIVATION"]="tanh"
 config["CUDA_USE"]="0"
 config["ANNEAL_LR"]=True
-config["ANNEAL_ENT"]=True
 config['VIDEO_FREQ'] = 25
 config["LOAD_DECOMPOSED"] = False
 config["NUM_UPDATES"] = int(config["TOTAL_TIMESTEPS"] // config["NUM_STEPS"] // config["NUM_ENVS"])

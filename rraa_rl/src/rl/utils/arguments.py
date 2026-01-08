@@ -147,6 +147,9 @@ def get_args(args):
     parser.add_argument(
         '--DEBUG_JUST_RAA', action='store_true', default=False, help='whether to use RAA instead of GU'
     )
+    parser.add_argument(
+        '--N_AGENTS', default=1, type=int, help='Number of agents'
+    )
 
     args = parser.parse_args(args) if args is not None else parser.parse_args()
 
