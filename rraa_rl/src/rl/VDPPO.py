@@ -812,6 +812,7 @@ def train(env, env_params, value_dag, config, rng, plot_function=None):
                 # Store losses
                 reported_dict[f"Loss/Node_{node}_actor_loss"] = jnp.mean(tree_index1(loss_infos, pos)["actor_loss"])
                 reported_dict[f"Loss/Node_{node}_value_loss"] = jnp.mean(tree_index1(loss_infos, pos)["value_loss"])
+                reported_dict[f"Loss/Node_{node}_entropy"] = jnp.mean(tree_index1(loss_infos, pos)["entropy_loss"])
 
                 # Store predicate stats
                 traj_batch = tree_index1(traj_batches, pos)
