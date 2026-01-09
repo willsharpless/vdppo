@@ -13,15 +13,17 @@ python ./rraa_rl/src/script/valdec/multipoint_dynamic_GU_test.py \
 --REACH3_DYNAMIC_PRED_TYPE=${REACH3_DYNAMIC_PRED_TYPE} \
 --N_AGENTS=2 \
 --STEP_SCAN=40 \
---ENT_COEF=0.0001 \
+--ENT_COEF=0.005 \
+--TOTAL_TIMESTEPS=1_000_000_000 \
 --ANNEAL_ENT
 
 python ./rraa_rl/src/script/valdec/multipoint_dynamic_GU_test.py \
 --SEED=${SEED} \
 --REACH3_DYNAMIC_PRED_TYPE=${REACH3_DYNAMIC_PRED_TYPE} \
 --N_AGENTS=2 \
---STEP_SCAN=40 \
---ENT_COEF=0.005 \
+--STEP_SCAN=20 \
+--TOTAL_TIMESTEPS=500_000_000 \
+--ENT_COEF=0.0001 \
 --ANNEAL_ENT
 "
 
@@ -34,14 +36,16 @@ python ./rraa_rl/src/script/valdec/multipoint_dynamic_GU_test.py \
 --REACH3_DYNAMIC_PRED_TYPE=${REACH3_DYNAMIC_PRED_TYPE} \
 --N_AGENTS=2 \
 --STEP_SCAN=40 \
---ENT_COEF=0.0001 \
+--TOTAL_TIMESTEPS=1_000_000_000 \
+--ENT_COEF=0.005 \
 
 python ./rraa_rl/src/script/valdec/multipoint_dynamic_GU_test.py \
 --SEED=${SEED} \
 --REACH3_DYNAMIC_PRED_TYPE=${REACH3_DYNAMIC_PRED_TYPE} \
 --N_AGENTS=2 \
---STEP_SCAN=40 \
---ENT_COEF=0.005 \
+--STEP_SCAN=20 \
+--TOTAL_TIMESTEPS=500_000_000 \
+--ENT_COEF=0.0001 \
 "
 
 echo "Jobs started in screen sessions 'gpu0_jobs' and 'gpu1_jobs'"

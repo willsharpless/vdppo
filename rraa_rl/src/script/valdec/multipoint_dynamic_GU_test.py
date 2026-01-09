@@ -81,7 +81,7 @@ if config["N_AGENTS"] == 1:
     config["ANNEAL_ENT"]=True
 else:
     config["NUM_ENVS"]=256
-    config["TOTAL_TIMESTEPS"]=1_000_000_000
+    # config["TOTAL_TIMESTEPS"]=1_000_000_000
     # config["STEP_SCAN"]=40 # making it a dynamic parameter
     config["UPDATE_EPOCHS"]=10
     config["NUM_MINIBATCHES"]=64
@@ -89,7 +89,7 @@ else:
     config["GAMMA_REACH_FINAL"]=0.9975
     config["GAE_LAMBDA"]=0.95
     config["CLIP_EPS"]=0.2
-    config["ENT_COEF"]=0.0001
+    # config["ENT_COEF"]=0.0001
     config["VF_COEF"]=2.0
     config["MAX_GRAD_NORM"]=0.5
 
