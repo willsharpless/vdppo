@@ -43,7 +43,7 @@ class HerdEnv:
                  active_predicates=["reach3_any", "obstacles"], 
                  negated_predicate_mask=jnp.array([1, 0]),
                  add_ag_vals_to_obs=False,
-                 episode_length=1000,
+                 episode_length=2000,
                  backend="mjx",
                  fixed_velocity=None,
                  dynamic_predicate_names=["reach3_any"],  # List of predicate names to track locations for
@@ -51,7 +51,7 @@ class HerdEnv:
                  dynamic_predicate_updates={"reach3_any": lambda k, s, l: l},  # Dict mapping dynamic predicate name to dynamics function (key, state, loc) -> new_loc
                 #  dynamic_predicate_init_locs={"reach3_any": jnp.array(SAFETYGYM_TARGET_3)}  # Dict mapping tracked predicate name to default location
                 dynamics_type="double_integrator",
-                max_speed=[0.5, 1.5, 1., 1., 1.],
+                rel_acel=[0.5, 1.5, 1., 1., 1.],
                 evaders=[2, 3, 4],
                 fixed_policy_fn=None, # will default to herding policy in MultiPointDoubleIntegrator
         ):
@@ -72,7 +72,7 @@ class HerdEnv:
         if dynamics_type == "double_integrator":
             env = MultiPointDoubleIntegrator(n_agents=n_agents, 
                                              backend=backend, 
-                                             max_speed=max_speed if not fixed_velocity else fixed_velocity,
+                                             rel_acel=rel_acel if not fixed_velocity else fixed_velocity,
                                              fixed_policy_agents=evaders,
                                              fixed_policy_fn=fixed_policy_fn)
             self.obs_size_per_agent = 6

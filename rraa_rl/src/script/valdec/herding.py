@@ -42,6 +42,10 @@ from time import time
 
 ## ARGS (FIXED)
 
+N_AGENTS = 5
+REL_ACEL = [0.25, 1.5, 0.075, 0.075, 0.075]  # relative acceleration limits for each agent
+EVADERS = [2, 3, 4]  # agent index of evaders
+
 config = vars(get_args(sys.argv[1:]))
 
 config["REACH_AVOID_LOOP_GAP"] = 3
@@ -195,9 +199,9 @@ def main():
     env = HerdEnv(
         active_predicates=value_dag.predicates, 
         negated_predicate_mask=value_dag.negated_predicate_mask,
-        n_agents=5,
-        max_speed=[0.5, 1.5, 1., 1., 1.],
-        evaders=[2, 3, 4],
+        n_agents=N_AGENTS,
+        rel_acel=REL_ACEL,
+        evaders=EVADERS,
         dynamic_predicate_names=None,
     )
 
@@ -331,7 +335,7 @@ def _check_collision(info, step_idx):
     dummy_state = State(dummy_pipeline_state, dummy_obs, reward, done, metrics)
     
     # Check collisions for each pursuer
-    evaders = [2, 3, 4]  # Hard-coded from config
+    evaders = EVADERS  # Hard-coded from config
     collision_status = []
     
     for i in range(n_agents):
@@ -365,7 +369,7 @@ def _draw_evader_connections(ax, info, step_idx):
     """
     from rraa_rl.src.env.general_task.gym_herding import HERD_TARGET_RADIUS
     
-    evaders = [2, 3, 4]  # Hard-coded from config
+    evaders = EVADERS  # Hard-coded from config # DEBUG FIXME
     agent_keys = _get_agent_keys(info)
     
     # Get evader positions
@@ -412,7 +416,7 @@ def _draw_agents(ax, info, step_idx, alpha):
     
     Evaders (agents 2, 3, 4) are drawn with gray fill.
     """
-    evaders = [2, 3, 4]  # Hard-coded from config
+    evaders = EVADERS  # Hard-coded from config
     pursuers = [0, 1]
     agent_colors = ['yellow', 'magenta', 'cyan', 'orange', 'purple', 'brown']
     

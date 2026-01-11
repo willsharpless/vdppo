@@ -20,8 +20,9 @@ SAFETYGYM_OBSTACLE_SET = jnp.array([[1.403247, 0.6281236], [0.42943087, 1.170593
                                     [-0.33115742, 0.83026827], [-1.33470321, -1.3259373]])
 
 
-def default_evader_policy_real(obs_all_agents, agent_idx, n_agents, obs_size_per_agent=6, 
-                          alpha=10.0, n_samples=16, max_accel=1.0):
+def default_evader_policy(obs_all_agents, agent_idx, n_agents, obs_size_per_agent=6, 
+                          alpha=10.0, n_samples=16, max_accel=1.0, controllable_agents=None,
+                          wall_weight=0.6, evader_weight=0.3, pursuer_weight=1.3, attenuation_radius=0.7):
     """Default safety policy that maximizes soft minimum distance to other agents and walls.
     
     Args:
@@ -53,7 +54,29 @@ def default_evader_policy_real(obs_all_agents, agent_idx, n_agents, obs_size_per
         next_vel = agent_vel + action * dt
         next_pos = agent_pos + next_vel * dt
         
-        distances = []
+        weighted_distances = []
+
+        # Apply attenuation: distance -> effective_distance
+        def attenuate_distance(dist, weight, mode="none"):
+            
+            # Hard cutoff: within use weighted, else large value
+            if mode == "hard":
+                effective_dist = jnp.where(
+                    dist < attenuation_radius,
+                    dist / weight,  # Smaller weight = more emphasis (smaller effective distance)
+                    1e6  # Large value = no effect
+                )
+
+            # Smooth: apply Gaussian kernel
+            elif mode == "smooth":
+                effective_dist = (1 - jnp.exp(-dist**2 / (2 * (attenuation_radius / weight)**2))) * dist
+                # effective_dist = jnp.exp(-dist**2 / (2 * (attenuation_radius / weight)**2))
+
+            # No attenuation
+            else:
+                effective_dist = dist / weight
+
+            return effective_dist
         
         # Distance to walls
         dist_to_north_wall = SAFETYGYM_RAA_BOX_RADIUS - next_pos[1]
@@ -61,8 +84,12 @@ def default_evader_policy_real(obs_all_agents, agent_idx, n_agents, obs_size_per
         dist_to_east_wall = SAFETYGYM_RAA_BOX_RADIUS - next_pos[0]
         dist_to_west_wall = SAFETYGYM_RAA_BOX_RADIUS + next_pos[0]
         
-        distances.extend([dist_to_north_wall, dist_to_south_wall, 
-                         dist_to_east_wall, dist_to_west_wall])
+        weighted_distances.extend([
+            attenuate_distance(dist_to_north_wall, wall_weight),
+            attenuate_distance(dist_to_south_wall, wall_weight),
+            attenuate_distance(dist_to_east_wall, wall_weight),
+            attenuate_distance(dist_to_west_wall, wall_weight)
+        ])
         
         # Distance to other agents
         for i in range(n_agents):
@@ -74,27 +101,37 @@ def default_evader_policy_real(obs_all_agents, agent_idx, n_agents, obs_size_per
             # Only add distance if not the same agent
             is_same = (i == agent_idx)
             dist = jnp.linalg.norm(next_pos - other_pos)
-            # Use a large distance for the same agent to not affect soft_min
-            dist = jnp.where(is_same, 1e6, dist)
-            distances.append(dist)
-        
-        distances = jnp.array(distances)
+            
+            # Apply attenuation and weighting
+            is_controllable = jnp.any(controllable_agents == i)
+            agent_weight = jnp.where(is_controllable, pursuer_weight, evader_weight)
+            effective_dist = jnp.where(
+                is_same,
+                1e6,  # Same agent = no effect
+                attenuate_distance(dist, agent_weight)
+            )
+            weighted_distances.append(effective_dist)
+
+        weighted_distances = jnp.array(weighted_distances)
         
         # Compute soft minimum using log-sum-exp trick
         # soft_min(x) ≈ -log(sum(exp(-alpha * x))) / alpha
-        soft_min = -jnp.log(jnp.sum(jnp.exp(-alpha * distances))) / alpha
-        
-        return soft_min
-    
+        soft_min = -jnp.log(jnp.sum(jnp.exp(-alpha * weighted_distances))) / alpha
+
+        return soft_min, jnp.min(weighted_distances)
+
     # Evaluate all actions
-    scores = jax.vmap(evaluate_action)(actions)
+    scores, min_dists = jax.vmap(evaluate_action)(actions)
     
     # Return action with highest score (maximum soft minimum distance)
     best_idx = jnp.argmax(scores)
-    return actions[best_idx]
+    best_action = actions[best_idx]
+    min_dist = min_dists[best_idx]
+    return best_action * jnp.exp(-min_dist**2 / (2 * (attenuation_radius)**2))
+
 
 # for testing
-def default_evader_policy(obs_all_agents, agent_idx, n_agents, obs_size_per_agent=6, 
+def default_evader_policy2(obs_all_agents, agent_idx, n_agents, obs_size_per_agent=6, 
                           alpha=10.0, n_samples=16, max_accel=1.0):
     
     # Sample candidate actions uniformly in a circle
@@ -111,7 +148,7 @@ class MultiPointDoubleIntegrator(PipelineEnv):
             reset_noise_scale=1e-2,
             qd_noise_std=0.0,
             max_acceleration=1.0,  # Maximum acceleration in m/s^2
-            max_speed=None,  # Maximum speed in m/s (scalar or array of length n_agents)
+            rel_acel=None,  # Relative Accelerations
             fixed_policy_agents=None,  # List of agent indices (0-based) with fixed policies
             fixed_policy_fn=None,  # Function that takes (obs, agent_idx) and returns action
             add_obstacles=False,
@@ -125,24 +162,13 @@ class MultiPointDoubleIntegrator(PipelineEnv):
             reset_noise_scale: Scale of noise for reset
             qd_noise_std: Standard deviation of velocity noise
             max_acceleration: Maximum acceleration magnitude (controls are scaled to this)
-            max_speed: Maximum speed in m/s. Can be a scalar (same for all) or array of length n_agents.
-                       If None, no speed limit is applied.
+            rel_acel: Relative accelerations for each agent. Can be a scalar (same for all) or array of length n_agents.
+                       If None, no acceleration limit is applied.
             fixed_policy_agents: List of agent indices with fixed policies (e.g., [0, 2] for agents 0 and 2)
             fixed_policy_fn: Callable that takes (obs, agent_idx) and returns action [ax, ay] for that agent
             add_obstacles: Whether to add obstacles to the environment
         """
         assert n_agents >= 1, "n_agents must be at least 1"
-        
-        # Setup max speed per agent
-        if max_speed is None:
-            self.max_speed = None
-        elif jnp.isscalar(max_speed) or (isinstance(max_speed, (int, float))):
-            # Same max speed for all agents
-            self.max_speed = jnp.full(n_agents, float(max_speed))
-        else:
-            # Different max speed per agent
-            self.max_speed = jnp.array(max_speed)
-            assert len(self.max_speed) == n_agents, f"max_speed array must have length {n_agents}"
         
         # Setup fixed policy agents
         if fixed_policy_agents is None:
@@ -186,7 +212,21 @@ class MultiPointDoubleIntegrator(PipelineEnv):
         self.n_agents = n_agents
         self.obs_size_per_agent = 6  # x, y, vx, vy, ax, ay
         self.max_acceleration = max_acceleration
-        
+
+        # Setup relative acceleration per agent
+        if rel_acel is None:
+            self.rel_acel = None
+        else: 
+            if jnp.isscalar(rel_acel) or (isinstance(rel_acel, (int, float))):
+                # Same relative acceleration for all agents
+                rel_acel_full = jnp.full(n_agents, float(rel_acel))
+            else:
+                # Different relative acceleration per agent
+                rel_acel_full = jnp.array(rel_acel)
+                assert len(rel_acel_full) == n_agents, f"rel_acel array must have length {n_agents}"
+            rel_acel_full_norm = max_acceleration * (rel_acel_full / rel_acel_full.max())
+            self.rel_acel = jnp.repeat(rel_acel_full_norm, 2)
+
         # Store timestep for acceleration computation (can't use self.dt as it's a property)
         self._dt = sys.opt.timestep * kwargs.get('n_frames', n_frames)
 
@@ -442,7 +482,7 @@ class MultiPointDoubleIntegrator(PipelineEnv):
         
         # Clip and scale action to acceleration limits
         full_action = jnp.clip(full_action, -1.0, 1.0)
-        scaled_action = full_action * self.max_acceleration
+        scaled_action = full_action * self.rel_acel
         
         pipeline_state = self.pipeline_step(state.pipeline_state, scaled_action)
 
@@ -471,8 +511,8 @@ class MultiPointDoubleIntegrator(PipelineEnv):
         
         # pipeline_state = pipeline_state.replace(q=qpos, qd=qvel)
 
-        # # Apply maximum speed constraints per agent if specified
-        # if self.max_speed is not None:
+        # # Apply relative acceleration constraints per agent if specified
+        # if self.rel_acel is not None:
         #     qd = pipeline_state.qd
         #     for i in range(self.n_agents):
         #         vx = qd[2*i]
@@ -544,5 +584,6 @@ class MultiPointDoubleIntegrator(PipelineEnv):
             obs_size_per_agent=self.obs_size_per_agent,
             alpha=10.0,
             n_samples=16,
-            max_accel=1.0
+            max_accel=1.0,
+            controllable_agents=self.controllable_agents
         )
