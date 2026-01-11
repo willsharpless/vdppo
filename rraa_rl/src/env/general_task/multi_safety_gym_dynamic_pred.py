@@ -5,6 +5,7 @@ Multi-agent version where:
 - Obstacle avoidance uses min over all agents (all must avoid)
 - Reach targets use max over all agents (any agent can reach)
 - Centralized planning with concatenated observations
+- Predicates can be associated with auxiliary dynamic states
 """
 
 import jax
