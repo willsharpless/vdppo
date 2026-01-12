@@ -805,6 +805,7 @@ def train(env, env_params, value_dag, config, rng, plot_function=None):
                 elif value_dag.node_types[pos] == 1:  # Avoid
                     reported_dict[f"Score/A_Node_{node}_Crash[%]"] = node_score["crash_perc"].item()
                 elif value_dag.node_types[pos] == 2:  # G(...)
+                    reported_dict[f"Score/RA_Node_{node}_Reach[%]"] = node_score["reach_perc"].item()
                     reported_dict[f"Score/RA_Node_{node}_ReachAvoid[%]"] = node_score["reach_avoid_perc"].item()
                     reported_dict[f"Score/RA_Node_{node}_ReachQty[mean%]"] = node_score["reach_qty_perc_mean"].item()
                     reported_dict[f"Score/RA_Node_{node}_ReachAvoidQty[mean%]"] = node_score["reach_avoid_qty_perc_mean"].item()
@@ -819,6 +820,13 @@ def train(env, env_params, value_dag, config, rng, plot_function=None):
                 for pred_id, pred in zip(value_dag.predicate_ids, value_dag.predicates):
                     reported_dict[f"Predicates/Node_{node}_[{pred}]_mean"] = jnp.mean(traj_batch.predicate_values[pred_id])
                     reported_dict[f"Predicates/Node_{node}_[{pred}]_var"] = jnp.var(traj_batch.predicate_values[pred_id])
+
+                # Store obs stats
+                if pos == 0:
+                    traj_batch = tree_index1(traj_batches, pos)
+                    for obs_id in range(traj_batch.obs.shape[-1]):
+                        reported_dict[f"Observations/Node_{node}_[obs{obs_id}]_mean"] = jnp.mean(traj_batch.obs[..., obs_id])
+                        reported_dict[f"Observations/Node_{node}_[obs{obs_id}]_var"] = jnp.var(traj_batch.obs[..., obs_id])
 
             ## SCORE EVAL
             
@@ -841,6 +849,8 @@ def train(env, env_params, value_dag, config, rng, plot_function=None):
                         elif value_dag.node_types[pos] == 1:  # Avoid
                             reported_dict[f"Eval/A_Node_{node}_Crash[%]"] = node_score["crash_perc"].item()
                         elif value_dag.node_types[pos] == 2:  # G(...)
+                            reported_dict[f"Eval/RA_Node_{node}_Reach[%]"] = node_score["reach_perc"].item() # DEBUG FIXME
+                            reported_dict[f"Eval/A_Node_{node}_Crash[%]"] = node_score["crash_perc"].item() # DEBUG FIXME
                             reported_dict[f"Eval/RA_Node_{node}_ReachAvoid[%]"] = node_score["reach_avoid_perc"].item()
                             reported_dict[f"Eval/RA_Node_{node}_ReachQty[mean%]"] = node_score["reach_qty_perc_mean"].item()
                             reported_dict[f"Eval/RA_Node_{node}_ReachAvoidQty[mean%]"] = node_score["reach_avoid_qty_perc_mean"].item()
