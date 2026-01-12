@@ -97,7 +97,7 @@ else:
     config["VF_COEF"]=2.0
     config["MAX_GRAD_NORM"]=0.5
 
-config["NAME"]=config["DIR"]=f"herd_GU_5ag_1f1s_v4_fast_ent{config['ENT_COEF']}_anneal{config['ANNEAL_ENT']}"
+config["NAME"]=config["DIR"]=f"herd_GU_center_5ag_1f1s_v4_fast_ent{config['ENT_COEF']}_anneal{config['ANNEAL_ENT']}"
 
 config["ACTIVATION"]="tanh"
 config["CUDA_USE"]="0"
@@ -186,7 +186,7 @@ def main():
                 0, 
                 1
             ])
-            self.predicates = ["together", "collisions"]
+            self.predicates = ["together_center", "collisions"]
             self.predicate_ids = jnp.array([0, 1])
             self.negated_predicate_mask=jnp.array([1, 0])
             self.node_index = {0: 0, 1: 1}
@@ -236,8 +236,8 @@ def main():
 
     obs_mean = obs_mean.at[env._env.observation_size].set(60)  # together mean # DEBUG FIXME track and check!
     obs_mean = obs_mean.at[env._env.observation_size+1].set(-20)  # obst
-    obs_std = obs_std.at[env._env.observation_size].set(5000)  # together std
-    obs_std = obs_std.at[env._env.observation_size+1].set(15000)  # obst
+    # obs_std = obs_std.at[env._env.observation_size].set(5000)  # together std
+    # obs_std = obs_std.at[env._env.observation_size+1].set(15000)  # obst
 
     # # Lower accel var (v4 onward)
     # i = 0 # slow agent
@@ -252,8 +252,8 @@ def main():
 
     # obs_mean = obs_mean.at[env._env.observation_size].set(100)  # together mean # DEBUG FIXME track and check!
     # obs_mean = obs_mean.at[env._env.observation_size+1].set(-10)  # obst
-    # obs_std = obs_std.at[env._env.observation_size].set(2500)  # together std
-    # obs_std = obs_std.at[env._env.observation_size+1].set(5000)  # obst
+    obs_std = obs_std.at[env._env.observation_size].set(2500)  # together std
+    obs_std = obs_std.at[env._env.observation_size+1].set(5000)  # obst
 
     trans = partial(transform_observation, obs_mean, obs_std)
     untrans = partial(untransform_observation, obs_mean, obs_std)
@@ -397,8 +397,9 @@ def _draw_evader_connections(ax, info, step_idx):
     """Draw lines between evader agents, colored based on distance.
     
     Blue if distance < HERD_TARGET_RADIUS, gray otherwise.
+    Also draws the centroid of evaders and a circle of radius HERD_CENTER_RADIUS.
     """
-    from rraa_rl.src.env.general_task.gym_herding import HERD_TARGET_RADIUS
+    from rraa_rl.src.env.general_task.gym_herding import HERD_TARGET_RADIUS, HERD_CENTER_RADIUS
     
     evaders = EVADERS
     agent_keys = _get_agent_keys(info)
@@ -437,6 +438,31 @@ def _draw_evader_connections(ax, info, step_idx):
             
             ax.plot([pos_i[0], pos_j[0]], [pos_i[1], pos_j[1]], 
                    color=color, linewidth=linewidth, alpha=alpha)
+    
+    # Draw centroid of evaders
+    if len(evader_positions) > 0:
+        centroid_x = np.mean([pos[0] for pos in evader_positions])
+        centroid_y = np.mean([pos[1] for pos in evader_positions])
+        
+        # Check if centroid is within HERD_CENTER_RADIUS of origin
+        dist_from_center = np.sqrt(centroid_x**2 + centroid_y**2)
+        if dist_from_center <= HERD_CENTER_RADIUS:
+            centroid_color = 'blue'
+            centroid_alpha = 1.0
+        else:
+            centroid_color = 'black'
+            centroid_alpha = 0.6
+        
+        # Draw centroid as a small dot
+        ax.plot(centroid_x, centroid_y, 'o', markersize=3, 
+               markerfacecolor=centroid_color, 
+               markeredgecolor=centroid_color,
+               alpha=centroid_alpha)
+    
+    # Draw circle of radius HERD_CENTER_RADIUS at origin
+    circle = plt.Circle((0, 0), HERD_CENTER_RADIUS, color='green', fill=False, 
+                       linestyle='--', linewidth=1.5, alpha=0.5)
+    ax.add_patch(circle)
 
 def _draw_agents(ax, info, step_idx, alpha):
     """Draw all agents at a given step with appropriate coloring for herding task.
