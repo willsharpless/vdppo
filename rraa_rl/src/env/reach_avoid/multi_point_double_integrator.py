@@ -22,7 +22,8 @@ SAFETYGYM_OBSTACLE_SET = jnp.array([[1.403247, 0.6281236], [0.42943087, 1.170593
 
 def default_evader_policy(obs_all_agents, agent_idx, n_agents, obs_size_per_agent=6, 
                           alpha=10.0, n_samples=16, max_accel=1.0, controllable_agents=None,
-                          wall_weight=0.6, evader_weight=0.3, pursuer_weight=1.3, attenuation_radius=0.7):
+                          wall_weight=0.6, evader_weight=0.3, pursuer_weight=1.3, 
+                          atten_radius_wall=0.8, atten_radius_evader=0.5, atten_radius_pursuer=1.5):
     """Default safety policy that maximizes soft minimum distance to other agents and walls.
     
     Args:
@@ -54,7 +55,7 @@ def default_evader_policy(obs_all_agents, agent_idx, n_agents, obs_size_per_agen
         next_vel = agent_vel + action * dt
         next_pos = agent_pos + next_vel * dt
         
-        weighted_distances = []
+        weighted_distances, dist_type_int = [], []
 
         # Apply attenuation: distance -> effective_distance
         def attenuate_distance(dist, weight, mode="none"):
@@ -90,7 +91,9 @@ def default_evader_policy(obs_all_agents, agent_idx, n_agents, obs_size_per_agen
             attenuate_distance(dist_to_east_wall, wall_weight),
             attenuate_distance(dist_to_west_wall, wall_weight)
         ])
-        
+
+        dist_type_int.extend([0, 0, 0, 0])
+
         # Distance to other agents
         for i in range(n_agents):
             # Use dynamic slice for JAX compatibility
@@ -111,22 +114,39 @@ def default_evader_policy(obs_all_agents, agent_idx, n_agents, obs_size_per_agen
                 attenuate_distance(dist, agent_weight)
             )
             weighted_distances.append(effective_dist)
+            dist_type_int.append(jnp.where(is_controllable, 1, 2))
 
         weighted_distances = jnp.array(weighted_distances)
-        
+        dist_type_int = jnp.array(dist_type_int)
+
         # Compute soft minimum using log-sum-exp trick
         # soft_min(x) ≈ -log(sum(exp(-alpha * x))) / alpha
         soft_min = -jnp.log(jnp.sum(jnp.exp(-alpha * weighted_distances))) / alpha
 
-        return soft_min, jnp.min(weighted_distances)
+        min_effective, argmin = jnp.min(weighted_distances), jnp.argmin(weighted_distances)
+
+        # use dynamic slice to get min_type
+        min_type = jax.lax.dynamic_slice(dist_type_int, (argmin,), (1,))
+
+        return soft_min, min_effective, min_type
 
     # Evaluate all actions
-    scores, min_dists = jax.vmap(evaluate_action)(actions)
+    scores, min_dists, min_types = jax.vmap(evaluate_action)(actions)
     
     # Return action with highest score (maximum soft minimum distance)
     best_idx = jnp.argmax(scores)
     best_action = actions[best_idx]
     min_dist = min_dists[best_idx]
+    min_type = min_types[best_idx]
+
+    attenuation_radius = jnp.where(
+        min_type == 0, 
+        atten_radius_wall, 
+        jnp.where(
+            min_type == 1, 
+            atten_radius_evader, 
+            atten_radius_pursuer)
+    )
     return best_action * jnp.exp(-min_dist**2 / (2 * (attenuation_radius)**2))
 
 
@@ -330,18 +350,20 @@ class MultiPointDoubleIntegrator(PipelineEnv):
         
         # Initialize each agent with collision-free positions
         for i in range(self.n_agents):
-            rng, rng_agent = jax.random.split(rng)
-            
+
+            # split rng three times
+            rng, rng_agent, rng_agent_1, rng_agent_2 = jax.random.split(rng, 4)
+
             # Sample position in walls
-            x_final = jax.random.uniform(rng_agent, minval=-SAFETYGYM_RAA_BOX_CUSHION_RADIUS, maxval=SAFETYGYM_RAA_BOX_CUSHION_RADIUS)
-            y_final = jax.random.uniform(rng_agent, minval=-SAFETYGYM_RAA_BOX_CUSHION_RADIUS, maxval=SAFETYGYM_RAA_BOX_CUSHION_RADIUS)
+            x_final = jax.random.uniform(rng_agent, minval=-SAFETYGYM_RAA_BOX_CUSHION_RADIUS/1.1, maxval=SAFETYGYM_RAA_BOX_CUSHION_RADIUS/1.1)
+            y_final = jax.random.uniform(rng_agent_1, minval=-SAFETYGYM_RAA_BOX_CUSHION_RADIUS/1.1, maxval=SAFETYGYM_RAA_BOX_CUSHION_RADIUS/1.1)
 
             # Set position for agent i (only x, y - no theta)
             qpos = qpos.at[2*i].set(x_final)
             qpos = qpos.at[2*i+1].set(y_final)
 
             # Set velocity
-            qvel_agent = jax.random.uniform(rng_agent, (2,), minval=low, maxval=hi)
+            qvel_agent = jax.random.uniform(rng_agent_2, (2,), minval=low, maxval=hi)
             qvel_list.append(qvel_agent)
         
         qvel = jnp.concatenate(qvel_list)
