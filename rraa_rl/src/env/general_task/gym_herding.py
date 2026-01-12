@@ -23,8 +23,9 @@ from ..reach_avoid.multi_point_double_integrator import MultiPointDoubleIntegrat
 SAFETYGYM_TARGET_1, SAFETYGYM_TARGET_2, SAFETYGYM_TARGET_3, SAFETYGYM_TARGET_4 = [2., 2.], [-2., -2.], [0.25, 0.7], [0.0, 0.0]
 SAFETYGYM_TARGET_RADIUS = 0.3
 
-HERD_TARGET_RADIUS = 0.1
+HERD_TARGET_RADIUS = 1.
 HERDING_COLLISION_RADIUS = 0.2
+HERD_CENTER_RADIUS = 1.5
 
 @struct.dataclass
 class EnvStateHerd:
@@ -43,7 +44,7 @@ class HerdEnv:
                  active_predicates=["reach3_any", "obstacles"], 
                  negated_predicate_mask=jnp.array([1, 0]),
                  add_ag_vals_to_obs=False,
-                 episode_length=2000,
+                 episode_length=3000,
                  backend="mjx",
                  fixed_velocity=None,
                  dynamic_predicate_names=["reach3_any"],  # List of predicate names to track locations for
@@ -52,6 +53,7 @@ class HerdEnv:
                 #  dynamic_predicate_init_locs={"reach3_any": jnp.array(SAFETYGYM_TARGET_3)}  # Dict mapping tracked predicate name to default location
                 dynamics_type="double_integrator",
                 rel_acel=[0.5, 1.5, 1., 1., 1.],
+                max_acceleration = 1.,
                 evaders=[2, 3, 4],
                 fixed_policy_fn=None, # will default to herding policy in MultiPointDoubleIntegrator
         ):
@@ -74,7 +76,8 @@ class HerdEnv:
                                              backend=backend, 
                                              rel_acel=rel_acel if not fixed_velocity else fixed_velocity,
                                              fixed_policy_agents=evaders,
-                                             fixed_policy_fn=fixed_policy_fn)
+                                             fixed_policy_fn=fixed_policy_fn,
+                                             max_acceleration=max_acceleration,)
             self.obs_size_per_agent = 6
         # elif dynamics_type == "dubins":
         #     env = MultiPointRandom(n_agents=n_agents, backend=backend, fixed_velocity=fixed_velocity)
@@ -268,9 +271,29 @@ class HerdEnv:
                 if ei != ej:
                     distances.append(jnp.linalg.norm(positions[ei] - positions[ej]))
         distances = jnp.array(distances)
-        reach = jnp.min(distances) - radius
+        reach = jnp.max(distances) - radius
         value = jnp.where(reach < 0., -3., reach)
-        agent_values = jnp.zeros(self._env.env.env.n_controllable)
+        agent_values = jnp.zeros(self.n_agents)
+        return value * 100., agent_values * 100.
+
+    @partial(jax.jit, static_argnums=(0,))
+    def is_together_center(self, state, target_center):
+        """Reach target where the maximum distance between all evaders is minimized."""
+        positions = self._get_agent_positions(state)
+        radius = HERD_TARGET_RADIUS
+        radius_center = HERD_CENTER_RADIUS
+
+        evaders_array = jnp.array(self.evaders)
+        centroid = jnp.mean(positions[evaders_array], axis=0)
+        reach_together = jnp.max(jnp.linalg.norm(positions[evaders_array] - centroid, axis=1)) - radius
+
+        # Dist centroid to center
+        reach_center = jnp.linalg.norm(centroid) - radius_center
+
+        reach = jnp.maximum(reach_together, reach_center)
+
+        value = jnp.where(reach < 0., -3., reach)
+        agent_values = jnp.zeros(self.n_agents)
         return value * 100., agent_values * 100.
 
     @partial(jax.jit, static_argnums=(0,))
@@ -334,15 +357,12 @@ class HerdEnv:
         agent_avoids = []
 
         # Check all pursuers for collision with one another, evaders and walls
-        for i in range(self.n_agents):
-            if i in self.evaders:
-                continue  # We do not care about evaders colliding with each other DEBUG FIXME?
-            
-            agent_avoid_collision = []
+        for i in range(self.n_agents):            
+            agent_avoid_collision = [-jnp.inf]
             for j in range(self.n_agents):
-                if i == j:
-                    continue
-                avoid_collision = (-jnp.linalg.norm(positions[i] - positions[j]) - radius)
+                if i == j or i in self.evaders:
+                    continue # We do not care about evaders colliding with each other DEBUG FIXME?
+                avoid_collision = -(jnp.linalg.norm(positions[i] - positions[j]) - radius)
                 agent_avoid_collision.append(avoid_collision)
             avoid_collision = jnp.max(jnp.array(agent_avoid_collision))
 
@@ -350,6 +370,11 @@ class HerdEnv:
 
             agent_avoid = jnp.maximum(5. * avoid_collision, 0.5 * avoid_wall_obstacles) # DEBUG FIXME what if we used soft-max?
             agent_avoids.append(agent_avoid)
+
+            # We do not care about evaders colliding at all DEBUG FIXME?
+            if i in self.evaders:
+                continue  
+
             worst_avoid = jnp.maximum(worst_avoid, agent_avoid)
 
         agent_avoids = jnp.array(agent_avoids)
