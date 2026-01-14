@@ -2,41 +2,24 @@
 Multi Point GU (RA-Loop) File for General Task PPO training by Value Decomposition (VDPPO).
 """
 
-import sys
 import os
-import wandb
+import sys
+from functools import partial
+from time import time
+
+import imageio
 import jax
 import jax.numpy as jnp
-import numpy as np
-import pdb
 import matplotlib.pyplot as plt
-import matplotlib.patches as mpatches
+import numpy as np
+import wandb
+from PIL import Image
 
-from rraa_rl.src.rl.utils.arguments import get_args
-from functools import partial
-
-from rraa_rl.src.rl.utils.utils import optimizer, get_BuRd, tree_index1, tree_index2
-
-from rraa_rl.src.env.general_task.multi_safety_gym import MultiPointGeneralTask
-from rraa_rl.src.env.general_task.multi_safety_gym_dynamic_pred import MultiPointDynamicGeneralTask, static_dummy_dynamics, constant_dynamics_with_random_reset, circular_motion_dynamics, obstacle_weave_dynamics
 from rraa_rl.src.env.general_task.gym_herding import HerdEnv
 from rraa_rl.src.env.wrappers import TransformObservation
-from jax import jit
-
-from rraa_rl.src.rl.VDPPO import process_dag, train
-
-from valtr.dag_graphviz import visualize_dag
-from valtr.dag_passes import PassFoldConstBool, PassDuplicateMixedPolarity, PassDuplicateMixedRole
-from valtr.ir_builder import IRBuilder
-from valtr.ir_pass import PassCombineGloballySegments, PassFinallyToUntil
-from valtr.lowering import Lowerer
-from valtr.reachability import dag_to_str, lower_ir_to_dag
-from valtr.tl_lexer import TLLexer
-from valtr.tl_parser import TLParser
-
-from PIL import Image
-import imageio
-from time import time 
+from rraa_rl.src.rl.VDPPO import train
+from rraa_rl.src.rl.utils.arguments import get_args
+from rraa_rl.src.rl.utils.utils import tree_index1, tree_index2
 
 #########################################################################################################################################
 
@@ -125,36 +108,6 @@ if config["USE_WANDB"]:
 def main():
 
     rng = jax.random.PRNGKey(config["SEED"])
-
-    ## MAKE THE VALUE DAG # DEBUG FIXME, expand valtr
-
-    # # TL source -> AST
-    # lexer = TLLexer()
-    # tokens = list(lexer.tokenize(config["TASK_SOURCE"]))
-    # ast = TLParser(tokens).parse()
-
-    # # AST -> IR
-    # ir = IRBuilder()
-    # lowerer = Lowerer(builder=ir)
-    # ir_root_id = lowerer.lower(ast)
-
-    # # IR passes
-    # passes = [PassFinallyToUntil, PassCombineGloballySegments]
-    # for p_cls in passes:
-    #     p = p_cls(ir)
-    #     ir_root_id, ir = p.run(ir_root_id)
-
-    # # IR -> DAG
-    # value_dag, dag_root = lower_ir_to_dag(ir, ir_root_id)
-
-    # # DAG passes
-    # passes = [PassDuplicateMixedPolarity, PassDuplicateMixedRole, PassFoldConstBool]
-    # for p_cls in passes:
-    #     p = p_cls(value_dag)
-    #     dag_root, value_dag, changed = p.run(dag_root)
-
-    # # Visualize DAG
-    # dot_dag = visualize_dag(value_dag, dag_root, filename="dags/value_dag", view=False)
 
     #########################################################################################################################################
 
@@ -332,7 +285,7 @@ def _check_collision(info, step_idx):
     Returns:
         Array of booleans indicating which agents are in collision
     """
-    from rraa_rl.src.env.general_task.gym_herding import HerdEnv, HERDING_COLLISION_RADIUS, SAFETYGYM_RAA_BOX_CUSHION_RADIUS
+    from rraa_rl.src.env.general_task.gym_herding import HERDING_COLLISION_RADIUS, SAFETYGYM_RAA_BOX_CUSHION_RADIUS
     from brax.envs.base import State
     
     # Extract positions for all agents
