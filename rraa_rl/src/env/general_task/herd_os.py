@@ -1,47 +1,36 @@
 import functools as ft
-from typing import NamedTuple
+from typing import Any, NamedTuple
 
 import jax
+import jax.nn as jnn
 import jax.numpy as jnp
 import jax.random as jr
 import numpy as np
 from attrs import define
 from flax import struct
+from jaxtyping import PRNGKeyArray
+from valtr.reachability import (DAGId, DAGNode, collect_predicate_info, extract_trigger_predicate_map,
+                                temporal_nodes_topological)
+from valtr.valtr import to_dag
 
 from rraa_rl.jax_utils import softminimum
-from rraa_rl.src.env.general_task.env import EnvStep
+from rraa_rl.src.env.general_task.env import Env, EnvStep
+from rraa_rl.src.env.general_task.herd_base import HerdBase, HerdBaseCfg, HerdBaseState
 
 
 class HerdOsState(NamedTuple):
-    # (n_herd, 2) [px, py]
-    herd_state: jnp.ndarray
-    # (n_herd, 4) [px, py, vx, vy]
-    herder_state: jnp.ndarray
-
-    steps: int = 0
+    temporal_node_idx: int
+    base: HerdBaseState
 
 
 @define
 class HerdOsCfg:
-    n_herders: int = 2
-    n_herd: int = 2
-
-    herd_vel: float = 0.2
-
-    dt: float = 0.2
-    acc_maxs: list[float] = [1.0, 2.0]
-    vel_maxs: list[float] = [0.5, 1.0]
-
-    agent_radius: float = 0.2
-    # Half size.
-    halfsize: tuple[float, float] = (5.0, 5.0)
-
-    trunc_steps: int = 500
-
-    herded_radius: float = 1.0  # Radius within which herd agents are considered herded.
+    base: HerdBaseCfg = HerdBaseCfg()
+    # What fraction of the batch is which temporal node at reset. This is in reverse topological order.
+    temporal_node_fracs: list[float] = [0.6, 0.4]
 
 
-class HerdOs:
+class HerdOs(Env):
     """Herding environment with one or more herders and a herd of agents. The herd moves according to some fixed policy.
     The herders can influence the herd by moving around them.
 
@@ -56,192 +45,81 @@ class HerdOs:
 
     def __init__(self, cfg: HerdOsCfg = HerdOsCfg()):
         self.cfg = cfg
-        assert len(cfg.acc_maxs) == len(cfg.vel_maxs) == cfg.n_herders
+        self.base = HerdBase(cfg.base)
+
+        dag_builder, dag_root = to_dag(self.specification)
+        self.dag_nodes = dag_builder.nodes
+        self.dag_root = dag_root
+        self.pred_info = collect_predicate_info(self.dag_nodes, self.dag_root)
+        # self.dag_info = extract_trigger_predicate_map(self.dag_nodes, self.dag_root)
+
+        # root first.
+        self.temporal_nodes = temporal_nodes_topological(self.dag_nodes, self.dag_root)[::-1]
+
+    @property
+    def n_agents(self) -> int:
+        return self.base.n_agents
+
+    @property
+    def n_actions_per_agent(self) -> list[list[int]]:
+        return self.base.n_actions_per_agent
+
+    @property
+    def n_temporal_nodes(self):
+        return len(self.temporal_nodes)
 
     @property
     def specification(self):
-        return "F(G(herd_herded)) && G( !herder_collide ) && G( !herder_oob )"
+        # return "F(G(herd_herded)) && G( !herder_collide ) && G( !herder_oob )"
+        return "( !herder_collide && ! herder_oob ) U ( G(herd_herded && !herder_collide && ! herder_oob) )"
 
-    def action_to_controls(self, action: jnp.ndarray):
-        """Convert discrete action to continuous accelerations."""
-        n_herders = self.cfg.n_herders
-        accs = []
-        for i in range(n_herders):
-            acc_max = self.cfg.acc_maxs[i]
-            acc = jnp.where(action[i] == 0, -acc_max, jnp.where(action[i] == 2, acc_max, 0.0))
-            accs.append(acc)
-        controls = jnp.stack(accs, axis=0)
-        return controls
+    def _temporal_node_idx_to_node_type(self):
+        """Map from temporal node idx to node type (as index)"""
+        temporal_node_types = DAGNode.get_temporal_classes_sorted()
+        temporal_node_type_list = []
+        for idx, node_id in enumerate(self.temporal_nodes):
+            node = self.dag_nodes[node_id]
+            node_fullname = f"{type(node).__module__}.{type(node).__qualname__}"
+            node_type = temporal_node_types.index(node_fullname)
+            temporal_node_type_list.append(node_type)
 
-    def dist_to_wall(self, pos: jnp.ndarray):
-        """Compute distance to walls given positions."""
-        halfsize = self.cfg.halfsize
-        px, py = pos[..., 0], pos[..., 1]
-        left_dists = px + halfsize[0]
-        right_dists = halfsize[0] - px
-        bottom_dists = py + halfsize[1]
-        top_dists = halfsize[1] - py
-        dists = jnp.stack([left_dists, right_dists, bottom_dists, top_dists], axis=-1)  # (n_agents, 4)
-        return dists
+        return jnp.array(temporal_node_type_list)
 
-    def compute_herd_vel(self, n_herd_pos: jnp.ndarray, m_herder_pos: jnp.ndarray):
-        def get_weighted_dist(ii: int, herd_pos_new: jnp.ndarray):
-            # Compute the minimum distance to the other herd agents.
+    def _augment_obs(self, state: HerdOsState, base_obs: jnp.ndarray):
+        """Augment the base observation with the (one hot) temporal node idx and (one hot) node type."""
+        obs_node_idx = jnn.one_hot(state.temporal_node_idx, self.n_temporal_nodes)
 
-            n_herd_dist = jnp.linalg.norm(n_herd_pos - herd_pos_new, axis=-1)
-            # Ignore self-distance
-            n_herd_dist = n_herd_dist.at[ii].set(jnp.inf)
-            herd_softmin = softminimum(n_herd_dist)
-            herd_min = jnp.min(n_herd_dist)
+        temporal_node_idx_to_node_type = self._temporal_node_idx_to_node_type()
+        node_type = temporal_node_idx_to_node_type[state.temporal_node_idx]
 
-            # Compute the minimum distance to the herders.
-            # (n_herd, 1, 2) - (1, n_herders, 2) -> (n_herd, n_herders, 2) -> (n_herd, n_herders)
-            m_herder_dist = jnp.linalg.norm(m_herder_pos - herd_pos_new, axis=-1)
-            herder_softmin = softminimum(m_herder_dist)
-            herder_min = jnp.min(m_herder_dist)
+        obs_node_type = jnn.one_hot(node_type, DAGNode.n_temporal_classes())
+        obs = jnp.concatenate([base_obs, obs_node_idx, obs_node_type], axis=-1)
 
-            # Compute the minimum distance to the walls.
-            herd_wall_dists = self.dist_to_wall(herd_pos_new)
-            herd_wall_softmin = softminimum(herd_wall_dists, axis=-1)
-            herd_wall_min = jnp.min(herd_wall_dists)
-
-            herd_max_dist = 15 * self.cfg.agent_radius
-            herder_max_dist = 15 * self.cfg.agent_radius
-            wall_max_dist = 15 * self.cfg.agent_radius
-            dist_thresh = jnp.array([herd_max_dist, herder_max_dist, wall_max_dist])
-            apply_action_herd = jnp.any(jnp.array([herd_min, herder_min, herd_wall_min]) <= dist_thresh)
-
-            w_herd = 0.5
-            w_herder = 2.0
-            w_wall = 2.0
-            vals = jnp.array([herd_softmin, herder_softmin, herd_wall_softmin])
-            weights = jnp.array([w_herd, w_herder, w_wall])
-            weighted_dist = softminimum(vals * weights)
-            return weighted_dist, apply_action_herd
-
-        def get_vel_single(ii: int):
-            herd_pos = n_herd_pos[ii]
-
-            # Generate candidate actions uniformly in a circle.
-            angles = jnp.linspace(0, 2 * jnp.pi, num=16, endpoint=False)
-            deltas = self.cfg.herd_vel * jnp.stack([jnp.cos(angles), jnp.sin(angles)], axis=-1)  # (num_actions, 2)
-            herd_pos_new = herd_pos + deltas  # (num_actions, 2)
-
-            _, apply_action = get_weighted_dist(ii, herd_pos)
-            weighted_dists, _ = jax.vmap(ft.partial(get_weighted_dist, ii))(herd_pos_new)  # (num_actions,)
-            # Select the action that maximizes the weighted distance.
-            best_idx = jnp.argmax(weighted_dists)
-            best_delta = deltas[best_idx]
-            best_delta = best_delta * jnp.where(apply_action, 1.0, 0.0)
-            return best_delta
-
-        n_idxs = jnp.arange(self.cfg.n_herd)
-        n_herd_vel = jax.vmap(get_vel_single)(n_idxs)
-
-        return n_herd_vel
-
-    def next_state(self, state: HerdOsState, control: jnp.ndarray):
-        """Compute next state given current state and control inputs."""
-        dt = self.cfg.dt
-
-        # Update herder states
-        herder_pos = state.herder_state[:, 0:2]
-        herder_vel = state.herder_state[:, 2:4]
-        herder_acc = control
-
-        # Take velocity limit into account.
-        time_till_vmax = jnp.where(
-            herder_acc > 0,
-            (jnp.array(self.cfg.vel_maxs) - herder_vel) / herder_acc,
-            jnp.where(herder_acc < 0, -herder_vel / herder_acc, jnp.inf),
-        )
-        time_till_vmax = jnp.maximum(time_till_vmax, 0.0)
-        acc_dt = jnp.minimum(dt, time_till_vmax)
-        noaccel_dt = dt - acc_dt
-        # Accelerate for effective_dt, then zero acceleration for the rest of dt.
-        herder_vel_new = herder_vel + herder_acc * acc_dt
-        herder_pos_mid = herder_pos + herder_vel * acc_dt + 0.5 * herder_acc * acc_dt**2
-        herder_pos_new = herder_pos_mid + herder_vel_new * noaccel_dt
-        herder_state_new = jnp.concatenate([herder_pos_new, herder_vel_new], axis=-1)
-
-        # Update herd states (simple dynamics: herd agents move towards the average position of the herders)
-        herd_pos = state.herd_state
-        herd_vel = self.compute_herd_vel(herd_pos, herder_pos)
-        herd_state_new = herd_pos + herd_vel * dt
-
-        return HerdOsState(herd_state=herd_state_new, herder_state=herder_state_new, steps=state.steps + 1)
-
-    def is_herder_collide(self, state: HerdOsState):
-        herder_pos = state.herder_state[:, 0:2]
-        n_herders = herder_pos.shape[0]
-
-        def check_pair(i: int, j: int):
-            dist = jnp.linalg.norm(herder_pos[i] - herder_pos[j])
-            collide = dist < 2 * self.cfg.agent_radius
-            return collide
-
-        collide = False
-        for i in range(n_herders):
-            for j in range(i + 1, n_herders):
-                collide = collide | check_pair(i, j)
-        return collide
-
-    def is_herder_oob(self, state: HerdOsState):
-        herder_pos = state.herder_state[:, 0:2]
-        dists = self.dist_to_wall(herder_pos)
-        min_dists = jnp.min(dists, axis=-1)
-        oob = jnp.any(min_dists < self.cfg.agent_radius)
-        return oob
-
-    def is_herd_herded(self, state: HerdOsState):
-        """All herd agents are fully within a circle in the center."""
-        herd_pos = state.herd_state
-        dists = jnp.linalg.norm(herd_pos, axis=-1)
-        herded = jnp.all((dists + self.cfg.agent_radius) < self.cfg.herded_radius)
-        return herded
-
-    def get_predicates_bool(self, state: HerdOsState):
-        predicates = {
-            "herder_collide": self.is_herder_collide(state),
-            "herder_oob": self.is_herder_oob(state),
-            "herd_herded": self.is_herd_herded(state),
-        }
-        return predicates
+        return obs
 
     def step(self, state: HerdOsState, action: jnp.ndarray):
-        controls = self.action_to_controls(action)
-        state_new = self.next_state(state, controls)
+        base_step: EnvStep = self.base.step(state.base, action)
+        state_new = state._replace(base=base_step.envstate)
+        obs = self._augment_obs(state_new, base_step.obs)
+        step = base_step._replace(envstate=state_new, obs=obs)
 
-        predicates = self.get_predicates_bool(state_new)
-        term = predicates["herder_collide"] | predicates["herder_oob"]
-        trunc = state_new.steps >= self.cfg.trunc_steps
+        return step
 
-        # Make it +1 if true, -1 if false.
-        predicates_float = {k: jnp.where(v, 1, -1) for k, v in predicates.items()}
+    def get_obs(self, state: Any) -> Any:
+        base_obs = self.base.get_obs(state.base)
+        obs = self._augment_obs(state, base_obs)
+        return obs
 
-        info = {}
-        return EnvStep(state_new, predicates_float, term, trunc, info)
+    def reset(self, key: PRNGKeyArray) -> HerdOsState:
+        key_base, key_node = jr.split(key)
+        base_state = self.base.reset(key_base)
 
-    def reset(self, key: jr.PRNGKey):
-        n_herd = self.cfg.n_herd
-        n_herders = self.cfg.n_herders
-        key_herd, key_herders = jr.split(key)
-
-        # Uniformly sample herd positions.
-        halfsize_x, halfsize_y = self.cfg.halfsize
-        maxpos = np.array([halfsize_x, halfsize_y]) - self.cfg.agent_radius
-        minpos = -maxpos
-        herd_pos = jr.uniform(key_herd, shape=(n_herd, 2), minval=minpos, maxval=maxpos)
-
-        # Uniformly sample herder positions and velocities.
-        # (n_herders, 4)
-        maxstate = np.zeros((n_herders, 4))
-        maxstate[:, 0] = halfsize_x - self.cfg.agent_radius
-        maxstate[:, 1] = halfsize_y - self.cfg.agent_radius
-        maxstate[:, 2] = np.array(self.cfg.vel_maxs)
-        maxstate[:, 3] = np.array(self.cfg.vel_maxs)
-        minstate = -maxstate
-
-        herder_state = jr.uniform(key_herders, shape=(n_herders, 4), minval=minstate, maxval=maxstate)
-
-        return HerdOsState(herd_state=herd_pos, herder_state=herder_state, steps=0)
+        # Sample temporal node idx according to configured fractions.
+        node_fracs = jnp.array(self.cfg.temporal_node_fracs)
+        node_fracs = node_fracs / jnp.sum(node_fracs)
+        temporal_node_idx = jr.choice(key_node, a=self.n_temporal_nodes, p=node_fracs)
+        state = HerdOsState(
+            temporal_node_idx=temporal_node_idx,
+            base=base_state,
+        )
+        return state

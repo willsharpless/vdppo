@@ -1,4 +1,6 @@
 import jax.numpy as jnp
+import jax.tree_util as jtu
+import numpy as np
 
 
 def softminimum(x, axis=-1, temperature=1.0):
@@ -16,3 +18,18 @@ def softminimum(x, axis=-1, temperature=1.0):
     log_sum_exp = jnp.log(jnp.sum(jnp.exp(scaled_x), axis=axis, keepdims=True))
     softmin = -temperature * log_sum_exp
     return jnp.squeeze(softmin, axis=axis)
+
+
+def tree_where_dim0(cond, x_tree, y_tree, which=jnp):
+    def tree_where_inner(x, y):
+        # x: (b, ...)
+        # y: (b, ...)
+        # cond: (b, )
+
+        # Get the full shape by broadcasting x and y.
+        full_shape = np.broadcast_shapes(x.shape, y.shape)
+
+        cond_reshaped = which.reshape(cond, (cond.shape[0],) + (1,) * (len(full_shape) - 1))
+        return which.where(cond_reshaped, x, y)
+
+    return jtu.tree_map(tree_where_inner, x_tree, y_tree)

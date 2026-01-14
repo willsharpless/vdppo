@@ -3,27 +3,33 @@ import tqdm
 from valtr.valtr import to_dag
 
 import wandb
+
+from rraa_rl.collector import Collector
 from rraa_rl.src.env.general_task.herd_os import HerdOs
+from rraa_rl.vd_mappo import VDMAPPOAgent
 
 
 class Trainer:
     def __init__(self):
         pass
 
-    def train(self, agent: VDPPO2, env: HerdOs):
+    def train(self, agent: VDMAPPOAgent, env: HerdOs):
         # > Process the temporal logic specifications.
         spec = env.specification
 
         dag_builder, dag_root = to_dag(spec, ir_filename="herd_os_ir.pdf", dag_filename="herd_os_dag.pdf")
         dag_nodes = dag_builder.nodes
+        exit(0)
 
         key_base = jr.PRNGKey(124521)
         key_base, key_collector = jr.split(key_base, 2)
 
+        n_envs_train = 1024
+
         collector = Collector.create(
             key=key_collector,
             env=env,
-            cfg=Collector.Cfg(n_envs=n_env_train),
+            cfg=Collector.Cfg(n_envs=n_envs_train),
         )
 
         n_train_steps = 1_000

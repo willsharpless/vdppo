@@ -1,8 +1,11 @@
 import cyclopts
 import ipdb
+import jax.random as jr
 
+from rraa_rl.distribution import tfd
 from rraa_rl.src.env.general_task.herd_os import HerdOs
 from rraa_rl.trainer import Trainer
+from rraa_rl.vd_mappo import VDMAPPOAgent
 
 app = cyclopts.App()
 
@@ -10,9 +13,22 @@ app = cyclopts.App()
 @app.default()
 def main():
     env = HerdOs()
-    trainer = Trainer()
-    trainer.train(env)
+    seed = 123
+    cfg = VDMAPPOAgent.Cfg()
+    agent = VDMAPPOAgent.create(seed, cfg, env)
 
+    dummy_obs = env.get_dummy_obs()
+    dist: tfd.JointDistributionSequential = agent.network.select("actor")(dummy_obs)
+
+    action = dist.sample(seed=jr.PRNGKey(1234))
+    print(action)
+
+    log_probs = dist.log_prob_parts(action)
+    print(log_probs)
+    return
+
+    trainer = Trainer()
+    trainer.train(agent, env)
 
 
 if __name__ == "__main__":

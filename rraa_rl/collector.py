@@ -9,38 +9,46 @@ import jax.random as jr
 import jax.tree_util as jtu
 import jax_dataclasses as jdc
 import numpy as np
+from attrs import define
 from flax import struct
 from jaxtyping import Bool, Float, PRNGKeyArray
 from loguru import logger
 
+from rraa_rl.jax_utils import tree_where_dim0
+from rraa_rl.src.env.general_task.env import EnvStep
 from rraa_rl.src.env.general_task.herd_os import HerdOs
 
 
 class SampleActionFn(Protocol):
-    def __call__(self, state: Any, key: PRNGKeyArray) -> Any: ...
+    def __call__(self, obs: Any, key: PRNGKeyArray) -> Any: ...
 
 
 @struct.dataclass
 class RolloutOutput:
-    T_state_now: Any
-    T_state_next: Any
-    T_obs_now: Any
-    T_obs_next: Any
-    T_action: jnp.ndarray
+    state_now: Any
+    state_next: Any
+    obs_now: Any
+    obs_next: Any
+    act: jnp.ndarray
 
-    T_predicates: dict
+    predicates: dict
 
-    T_term: jnp.ndarray
+    term: jnp.ndarray
     """Termination flags after taking action."""
 
-    T_trunc: jnp.ndarray
+    trunc: jnp.ndarray
     """Truncation flags after taking action."""
 
-    T_logprob: jnp.ndarray
+    logprob: jnp.ndarray
     """Log probabilities of the actions taken."""
 
-    T_info: dict
+    info: dict
     """Additional info from the environment."""
+
+    @property
+    def shape(self) -> tuple[int, ...]:
+        """Get n_envs and n_steps."""
+        return self.term.shape
 
 
 @struct.dataclass
@@ -49,12 +57,14 @@ class CollectorState:
     b_obs: Any
 
 
-@struct.dataclass
+@define
 class CollectorCfg:
     n_envs: int
 
 
 class Collector(struct.PyTreeNode):
+    Cfg = CollectorCfg
+
     collect_idx: int
     key: PRNGKeyArray
     collect_state: CollectorState
@@ -65,7 +75,7 @@ class Collector(struct.PyTreeNode):
     def create(cls, key: PRNGKeyArray, env: HerdOs, cfg: CollectorCfg):
         key, key_init = jr.split(key)
         b_key_init = jr.split(key_init, cfg.n_envs)
-        b_reset_result = jax.vmap(env.reset)(b_key_init)
+        b_reset_result = env.reset_batch(b_key_init)
         b_state = b_reset_result.state
 
         collector_state = CollectorState(b_state=b_state)
@@ -77,32 +87,52 @@ class Collector(struct.PyTreeNode):
             cfg=cfg,
         )
 
-    def collect_batch(self, sample_action: SampleActionFn, batch_size: int) -> tuple[Self, RolloutOutput, dict]:
-        def loop(carry, args):
+    def step_single_fn(self, sample_action: SampleActionFn, key: PRNGKeyArray, state: Any, obs: Any):
+        action, logprob = sample_action(obs, key)
+        step_result = self.env.step(state, action)
+        return step_result, action, logprob
+
+    def collect_batch(self, sample_action: SampleActionFn, reset_fn, T: int) -> tuple[Self, RolloutOutput, dict]:
+        def loop(carry: tuple[CollectorState], args):
             b_key = args
-            b_colstate, = carry
+            (colstate,) = carry
             b2_key = jax.vmap(jr.split)(b_key)
             b_key_pol, b_key_reset = b2_key[:, 0], b2_key[:, 1]
 
+            step_single_fn = ft.partial(self.step_single_fn, sample_action)
+            b_step_result: EnvStep
+            b_step_result, b_act, b_logprob = jax.vmap(step_single_fn)(b_key_pol, colstate.b_state, colstate.b_obs)
+
             # Sample new states from the environments for resets
+            b_state_reset = reset_fn(b_key_reset, colstate.b_state)
+            b_obs_reset = jax.vmap(self.env.get_obs)(b_state_reset)
+
+            b_should_reset = b_step_result.term | b_step_result.trunc
+            b_state_new = tree_where_dim0(b_should_reset, b_state_reset, b_step_result.envstate, which=jnp)
+            b_obs_new = tree_where_dim0(b_should_reset, b_obs_reset, b_step_result.obs, which=jnp)
 
             # Create the updated collector state
-            b_colstate_new = jdc.replace(b_colstate, b_state=b_state_new)
-            carry_new = (b_colstate_new,)
+            colstate_new = jdc.replace(colstate, b_state=b_state_new, b_obs=b_obs_new)
+            carry_new = (colstate_new,)
             out = RolloutOutput(
-                T_reset_id=b_colstate.b_reset_id,
-                T_state_now=b_state_now,
-                T_state_next=b_state_next,
-                T_obs_now=step_result.b_obs_now,
-                T_obs_next=b_obs_next,
-                T_act=b_act,
-                T_rew=b_rew,
-                TM_cost=b_cost,
-                TM_h_now=b_h_now,
-                TM_h_next=b_h_next,
-                T_term=b_term,
-                T_trunc=b_trunc,
-                T_logprob=b_logprob,
-                T_info=b_info,
+                state_now=colstate.b_state,
+                state_next=b_obs_new,
+                obs_now=colstate.b_obs,
+                obs_next=b_obs_new,
+                act=b_act,
+                predicates=b_step_result.predicates,
+                term=b_step_result.term,
+                trunc=b_step_result.trunc,
+                logprob=b_logprob,
+                info=b_step_result.info,
             )
             return carry_new, out
+
+        carry0 = (self.collect_state,)
+        key = jr.fold_in(self.key, self.collect_idx)
+        Tb_keys = jr.split(key, T * self.cfg.n_envs).reshape(T, self.cfg.n_envs, 2)
+        (colstate_new,), T_rollout = lax.scan(loop, carry0, Tb_keys, length=T)
+
+        self_new = self.replace(collect_idx=self.collect_idx + 1, collect_state=colstate_new)
+        collect_info = {}
+        return self_new, T_rollout, collect_info
