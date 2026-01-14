@@ -23,6 +23,10 @@ class SampleActionFn(Protocol):
     def __call__(self, obs: Any, key: PRNGKeyArray) -> Any: ...
 
 
+class BatchResetFn(Protocol):
+    def __call__(self, env: HerdOs, b_key: PRNGKeyArray, b_state: Any) -> Any: ...
+
+
 @struct.dataclass
 class RolloutOutput:
     state_now: Any
@@ -74,11 +78,10 @@ class Collector(struct.PyTreeNode):
     @classmethod
     def create(cls, key: PRNGKeyArray, env: HerdOs, cfg: CollectorCfg):
         key, key_init = jr.split(key)
-        b_key_init = jr.split(key_init, cfg.n_envs)
-        b_reset_result = env.reset_batch(b_key_init)
-        b_state = b_reset_result.state
+        b_state = env.reset_batch(key_init, cfg.n_envs)
+        b_obs = jax.vmap(env.get_obs)(b_state)
 
-        collector_state = CollectorState(b_state=b_state)
+        collector_state = CollectorState(b_state=b_state, b_obs=b_obs)
         return Collector(
             collect_idx=0,
             key=key,
@@ -92,7 +95,12 @@ class Collector(struct.PyTreeNode):
         step_result = self.env.step(state, action)
         return step_result, action, logprob
 
-    def collect_batch(self, sample_action: SampleActionFn, reset_fn, T: int) -> tuple[Self, RolloutOutput, dict]:
+    def collect_batch(
+        self, sample_action: SampleActionFn, T: int, reset_fn: BatchResetFn = None
+    ) -> tuple[Self, RolloutOutput, dict]:
+        if reset_fn is None:
+            reset_fn = _default_reset_fn
+
         def loop(carry: tuple[CollectorState], args):
             b_key = args
             (colstate,) = carry
@@ -104,7 +112,7 @@ class Collector(struct.PyTreeNode):
             b_step_result, b_act, b_logprob = jax.vmap(step_single_fn)(b_key_pol, colstate.b_state, colstate.b_obs)
 
             # Sample new states from the environments for resets
-            b_state_reset = reset_fn(b_key_reset, colstate.b_state)
+            b_state_reset = reset_fn(self.env, b_key_reset, colstate.b_state)
             b_obs_reset = jax.vmap(self.env.get_obs)(b_state_reset)
 
             b_should_reset = b_step_result.term | b_step_result.trunc
@@ -131,8 +139,37 @@ class Collector(struct.PyTreeNode):
         carry0 = (self.collect_state,)
         key = jr.fold_in(self.key, self.collect_idx)
         Tb_keys = jr.split(key, T * self.cfg.n_envs).reshape(T, self.cfg.n_envs, 2)
-        (colstate_new,), T_rollout = lax.scan(loop, carry0, Tb_keys, length=T)
+        (colstate_new,), Tb_rollout = lax.scan(loop, carry0, Tb_keys, length=T)
 
         self_new = self.replace(collect_idx=self.collect_idx + 1, collect_state=colstate_new)
         collect_info = {}
-        return self_new, T_rollout, collect_info
+        return self_new, Tb_rollout, collect_info
+
+
+def _default_reset_fn(env: HerdOs, b_key: PRNGKeyArray, b_state: Any) -> Any:
+    batch_size = len(b_key)
+    return env.reset_batch(b_key[0], batch_size)
+
+
+def extract_info_from_rollout(Tb_rollout: RolloutOutput) -> dict:
+    """Extract easy-to-log info from the rollout."""
+    T, b = Tb_rollout.shape
+
+    Tb_term = jax.device_get(Tb_rollout.term)
+    Tb_trunc = jax.device_get(Tb_rollout.trunc)
+    Tb_info = jax.device_get(Tb_rollout.info)
+    Tb_age = Tb_info["age"]
+
+    info_out = {}
+
+    # Average episode length at termination or truncation.
+    Tb_done = Tb_term | Tb_trunc
+    if np.any(Tb_done):
+        info_out["avg_episode_length"] = np.mean(Tb_age.flatten()[Tb_done.flatten()])
+
+    # Fraction of episodes terminated vs truncated.
+    if Tb_term.sum() > 0 and Tb_trunc.sum() > 0:
+        n_done = Tb_term.sum() + Tb_trunc.sum()
+        info_out["frac_term"] = Tb_term.sum() / n_done
+
+    return info_out

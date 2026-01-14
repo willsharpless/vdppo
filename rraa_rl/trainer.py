@@ -1,10 +1,9 @@
 import jax.random as jr
 import tqdm
+import wandb
 from valtr.valtr import to_dag
 
-import wandb
-
-from rraa_rl.collector import Collector
+from rraa_rl.collector import Collector, extract_info_from_rollout
 from rraa_rl.src.env.general_task.herd_os import HerdOs
 from rraa_rl.vd_mappo import VDMAPPOAgent
 
@@ -15,12 +14,6 @@ class Trainer:
 
     def train(self, agent: VDMAPPOAgent, env: HerdOs):
         # > Process the temporal logic specifications.
-        spec = env.specification
-
-        dag_builder, dag_root = to_dag(spec, ir_filename="herd_os_ir.pdf", dag_filename="herd_os_dag.pdf")
-        dag_nodes = dag_builder.nodes
-        exit(0)
-
         key_base = jr.PRNGKey(124521)
         key_base, key_collector = jr.split(key_base, 2)
 
@@ -35,6 +28,7 @@ class Trainer:
         n_train_steps = 1_000
 
         eval_every = 100
+        log_every = 10
 
         pbar = tqdm.trange(n_train_steps)
         for train_step in pbar:
@@ -42,18 +36,24 @@ class Trainer:
                 pbar.set_description(f"Eval at step {train_step}")
 
             # Collect rollout data
-            collector, b_rollout, col_info = agent.collect_batch(collector)
+            collector, Tb_rollout, info_collect = agent.collect_batch(collector, agent.cfg.rollout_T)
+
+            info_collect2 = {}
+            if train_step % log_every == 0:
+                # Extract easy-to-log info from the rollouts, e.g., average reset age
+                info_collect2 = extract_info_from_rollout(Tb_rollout)
 
             # Update agent using the collected rollout.
             key_base, key_update = jr.split(key_base, 2)
-            agent.update(b_rollout, key_update)
+            agent, info_update = agent.update(Tb_rollout, key_update)
 
             # Update progress bar.
             pbar.update(1)
 
             # Log info to wandb
             if train_step % log_every == 0:
-                col_info = {f"col_train/{k}": float(v) for k, v in col_info.items()}
+                info_collect2 = {f"collect/{k}": v for k, v in info_collect2.items()}
+                info_collect = {f"collect/{k}": float(v) for k, v in info_collect.items()}
                 log_dict = {"step": train_step}
-                log_dict = log_dict | col_info
-                wandb.log(log_dict, step=train_step)
+                log_dict = log_dict | info_collect | info_collect2 | info_update
+                # wandb.log(log_dict, step=train_step)

@@ -12,14 +12,15 @@ from attrs import define
 from cyclopts import Parameter
 from flax import struct
 from jaxtyping import PRNGKeyArray
+from loguru import logger
 from optax.tree_utils import tree_where
 from valtr.reachability import (DAGGU, DAGAvoid, DAGConst, DAGId, DAGMaxN, DAGMinN, DAGNegate, DAGReach, DAGReachAvoid,
                                 DAGVar)
 
-from rraa_rl.collector import RolloutOutput
+from rraa_rl.collector import Collector, RolloutOutput
 from rraa_rl.distribution import tfd
 from rraa_rl.gae import BellmanMax, BellmanMaxMin, BellmanMin, gae_generalized
-from rraa_rl.jax_types import bFloat
+from rraa_rl.jax_types import FloatScalar, bFloat
 from rraa_rl.nn_modules import MAMultiDiscretePolicy, VDValue
 from rraa_rl.src.env.general_task.herd_os import HerdOs
 from rraa_rl.train_state import ModuleDict, Params, TrainState
@@ -57,6 +58,8 @@ class VDMAPPOAgentCfg:
 
     n_epochs: int = 2
     n_minibatches: int = 4
+
+    rollout_T: int = 30
 
     norm_adv: bool = True
 
@@ -173,15 +176,20 @@ class VDMAPPOAgent:
         scratch[node_idx] = out
         return out
 
-    def compute_A_Q(self, bT_rollout: RolloutOutput):
+    def compute_A_Q(self, Tb_rollout: RolloutOutput):
         """Compute GAE advantages and Q-values from rollout."""
-        b, T = bT_rollout.shape
+        T, b = Tb_rollout.shape
 
         # (batch, T, n_temporal)
-        bTt_V = self.network.select("critic")(bT_rollout.obs_now, params=self.network.params)
-        bTt_V = jax.lax.stop_gradient(bTt_V)
-        bTt_V_next = self.network.select("critic")(bT_rollout.obs_next, params=self.network.params)
-        bTt_V_next = jax.lax.stop_gradient(bTt_V_next)
+        Tbt_V = self.network.select("critic")(Tb_rollout.obs_now, params=self.network.params)
+        Tbt_V = jax.lax.stop_gradient(Tbt_V)
+        bTt_V = ei.rearrange(Tbt_V, "T b t -> b T t")
+
+        Tbt_V_next = self.network.select("critic")(Tb_rollout.obs_next, params=self.network.params)
+        Tbt_V_next = jax.lax.stop_gradient(Tbt_V_next)
+        bTt_V_next = ei.rearrange(Tbt_V_next, "T b t -> b T t")
+
+        bT_term = Tb_rollout.term.T
 
         bT_A_list = []
         bT_Q_list = []
@@ -194,16 +202,16 @@ class VDMAPPOAgent:
             end_idx = start_idx + n_node
             cTt_V = bTt_V[start_idx:end_idx]
             cTt_V_next = bTt_V_next[start_idx:end_idx]
-            cT_predicates = jtu.tree_map(lambda bT_arr: bT_arr[start_idx:end_idx], bT_rollout.predicates)
+            cT_predicates = jtu.tree_map(lambda Tb_arr: Tb_arr.T[start_idx:end_idx], Tb_rollout.predicates)
+
+            cT_term = bT_term[start_idx:end_idx]
+
             start_idx = end_idx
 
-            cT_temporal_idx = jnp.full((n_node,), temporal_node_idx, dtype=jnp.int32)
+            cT_temporal_idx = jnp.full((n_node, T), temporal_node_idx, dtype=jnp.int32)
 
             cT_V = cTt_V[:, :, temporal_node_idx]
             cT_V_next = cTt_V_next[:, :, temporal_node_idx]
-
-            bT_term = bT_rollout.term
-            cT_term = bT_term[start_idx:end_idx]
 
             # Use the DAG to compute the correct arguments.
             dag_node_idx = self.env.temporal_nodes[temporal_node_idx]
@@ -242,7 +250,7 @@ class VDMAPPOAgent:
         gamma, lam = self.cfg.gamma, self.cfg.gae_lambda
         gae_fn = ft.partial(gae_generalized, gamma=gamma, lam=lam)
         b_bellman = BellmanMin(T_q=bT_q)
-        bT_Q_gae = jax.vmap(gae_fn)(bT_q, bT_V, bT_V_next, bT_term, b_bellman)
+        bT_Q_gae = jax.vmap(gae_fn)(bT_V, bT_V_next, bT_term, b_bellman)
         bT_A_gae = bT_Q_gae - bT_V
         return bT_A_gae, bT_Q_gae
 
@@ -252,7 +260,7 @@ class VDMAPPOAgent:
         gamma, lam = self.cfg.gamma, self.cfg.gae_lambda
         gae_fn = ft.partial(gae_generalized, gamma=gamma, lam=lam)
         b_bellman = BellmanMax(T_r=bT_r)
-        bT_Q_gae = jax.vmap(gae_fn)(bT_r, bT_V, bT_V_next, bT_term, b_bellman)
+        bT_Q_gae = jax.vmap(gae_fn)(bT_V, bT_V_next, bT_term, b_bellman)
         bT_A_gae = bT_Q_gae - bT_V
         return bT_A_gae, bT_Q_gae
 
@@ -262,33 +270,33 @@ class VDMAPPOAgent:
         gamma, lam = self.cfg.gamma, self.cfg.gae_lambda
         gae_fn = ft.partial(gae_generalized, gamma=gamma, lam=lam)
         b_bellman = BellmanMaxMin(T_r=bT_r, T_q=bT_q)
-        bT_Q_gae = jax.vmap(gae_fn)(bT_r, bT_V, bT_V_next, bT_term, b_bellman)
+        bT_Q_gae = jax.vmap(gae_fn)(bT_V, bT_V_next, bT_term, b_bellman)
         bT_A_gae = bT_Q_gae - bT_V
         return bT_A_gae, bT_Q_gae
 
-    def construct_flattened_rollout(self, bT_rollout: RolloutOutput) -> PPOData:
+    def construct_flattened_rollout(self, Tb_rollout: RolloutOutput) -> PPOData:
         """Construct flattened PPO rollout with advantages and Q-values."""
-        bT_A, bT_Q, bT_temporal_idx = self.compute_A_Q(bT_rollout)
-        bT_data = PPOData(
-            act=bT_rollout.act,
-            obs=bT_rollout.obs_now,
-            logp=bT_rollout.logprob,
-            A=bT_A,
-            Q=bT_Q,
-            temporal_idx=bT_temporal_idx,
+        bT_A, bT_Q, bT_temporal_idx = self.compute_A_Q(Tb_rollout)
+        Tb_data = PPOData(
+            act=Tb_rollout.act,
+            obs=Tb_rollout.obs_now,
+            logp=Tb_rollout.logprob,
+            A=bT_A.T,
+            Q=bT_Q.T,
+            temporal_idx=bT_temporal_idx.T,
         )
 
         # Flatten batch and time dimensions
-        b, T = bT_rollout.shape
-        b_data = jtu.tree_map(lambda x: x.reshape((b * T,) + x.shape[2:]), bT_data)
+        T, b = Tb_rollout.shape
+        b_data = jtu.tree_map(lambda x: x.reshape((b * T,) + x.shape[2:]), Tb_data)
 
         return b_data
 
-    def update(self, bT_rollout: RolloutOutput, key: PRNGKeyArray) -> tuple[Self, dict]:
+    def update(self, Tb_rollout: RolloutOutput, key: PRNGKeyArray) -> tuple[Self, dict]:
         # Assumption: temporal_node_idx is ascending in the batch dimension.
         # Move the temporal node information into the static field, since our update function depends on it.
-        bT_state_now: HerdOs.State = bT_rollout.state_now
-        b_temporal_node_idx = jax.device_get(bT_state_now.temporal_node_idx[:, 0])
+        Tb_state_now: HerdOs.State = Tb_rollout.state_now
+        b_temporal_node_idx = jax.device_get(Tb_state_now.temporal_node_idx[0])
         # Count how many of each temporal node we have in the batch.
         temporal_node_alloc = []
         for idx in range(self.env.n_temporal_nodes):
@@ -314,7 +322,7 @@ class VDMAPPOAgent:
                 f"was {self.static.temporal_node_alloc}, now {temporal_node_alloc}"
             )
 
-        return self._update(bT_rollout, key)
+        return self._update(Tb_rollout, key)
 
     def permute_for_minibatch(self, b_data: PPOData):
         (batch_size,) = b_data.shape
@@ -327,8 +335,8 @@ class VDMAPPOAgent:
         return mb_data
 
     @ft.partial(jax.jit, donate_argnums=0)
-    def _update(self, bT_rollout: RolloutOutput, key: PRNGKeyArray) -> tuple[Self, dict]:
-        b_data = self.construct_flattened_rollout(bT_rollout)
+    def _update(self, Tb_rollout: RolloutOutput, key: PRNGKeyArray) -> tuple[Self, dict]:
+        b_data = self.construct_flattened_rollout(Tb_rollout)
 
         def loop(carry, inps):
             network: TrainState
@@ -349,15 +357,17 @@ class VDMAPPOAgent:
             network_new_, infos_ = jax.lax.scan(update, carry0_, inp0_)
 
             # Take the last
-            grad_norms_ = infos_["total/grad_norm"]
-            grad_bads_ = infos_["total/grad_bad"]
-
             info_ = jtu.tree_map(lambda x: x[-1], infos_)
 
             # We want to compute the max for these infos
             info_max_ = {
-                "total/grad_norm max": jnp.max(grad_norms_),
-                "total/grad bad": jnp.max(grad_bads_.astype(jnp.float32)),
+                "critic/clipped_grad_norm max": jnp.max(infos_["critic/clipped_grad_norm"]),
+                "critic/grad_norm max": jnp.max(infos_["critic/grad_norm"]),
+                "critic/grad bad": jnp.max(infos_["critic/grad_bad"]),
+                #
+                "actor/clipped_grad_norm max": jnp.max(infos_["actor/clipped_grad_norm"]),
+                "actor/grad_norm max": jnp.max(infos_["actor/grad_norm"]),
+                "actor/grad bad": jnp.max(infos_["actor/grad_bad"]),
             }
 
             return (network_new_,), (info_, info_max_)
@@ -405,9 +415,8 @@ class VDMAPPOAgent:
         b_act = b_data.act
         batch_size = len(b_data.Q)
 
-        assert isinstance(b_data.logp, list)
         # (batch, n_agents)
-        bn_logp_old = jnp.stack(b_data.logp, axis=1)
+        bn_logp_old = b_data.logp
 
         # Compute logprob and entropies.
         b_key = jr.split(key, batch_size)
@@ -482,3 +491,21 @@ class VDMAPPOAgent:
         entropies_list = [dist.entropy() for dist in act_dist.model]
         n_entropy = jnp.stack(entropies_list, axis=0)
         return n_logp, n_entropy
+
+    def sample_action(self, obs: Any, key: PRNGKeyArray) -> tuple[Any, FloatScalar]:
+        """Sample a stochastic action from the policy given an observation."""
+        act_dist = self.network.select("actor")(obs)
+        act = act_dist.sample(seed=key)
+        logp_list = act_dist.log_prob_parts(act)
+        assert isinstance(logp_list, list)
+        logp = jnp.stack(logp_list, axis=0)
+        assert logp.shape == (self.env.n_agents,)
+        return act, logp
+
+    @ft.partial(jax.jit, static_argnums=(2,))
+    def collect_batch(self, collector: Collector, rollout_T: int) -> tuple[Collector, RolloutOutput, dict]:
+        """Collect a batch of data using stochastic policy."""
+        logger.debug("jitting collect_batch...")
+        out = collector.collect_batch(self.sample_action, rollout_T, reset_fn=None)
+        logger.debug("done jitting collect_batch.")
+        return out

@@ -42,6 +42,7 @@ class HerdOs(Env):
 
     action: (n_herders, 2): int, {0, 1, 2} for each axis, where 0 = -accel, 1 = no accel, 2 = accel
     """
+
     State = HerdOsState
 
     def __init__(self, cfg: HerdOsCfg = HerdOsCfg()):
@@ -121,6 +122,20 @@ class HerdOs(Env):
         temporal_node_idx = jr.choice(key_node, a=self.n_temporal_nodes, p=node_fracs)
         state = HerdOsState(
             temporal_node_idx=temporal_node_idx,
+            base=base_state,
+        )
+        return state
+
+    def reset_batch(self, key: PRNGKeyArray, batch_size: int) -> Any:
+        # Instead of randomly sampling temporal nodes, we assign fixed fractions of the batch to each temporal node.
+        base_state = self.base.reset_batch(key, batch_size)
+
+        n_per_temporal_node = np.round(np.array(self.cfg.temporal_node_fracs) * batch_size).astype(int)
+        n_per_temporal_node[-1] = batch_size - n_per_temporal_node[:-1].sum()
+
+        temporal_node_idxs = jnp.concatenate([jnp.full((n,), idx) for idx, n in enumerate(n_per_temporal_node)], axis=0)
+        state = HerdOsState(
+            temporal_node_idx=temporal_node_idxs,
             base=base_state,
         )
         return state

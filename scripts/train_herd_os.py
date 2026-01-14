@@ -17,16 +17,6 @@ def main():
     cfg = VDMAPPOAgent.Cfg()
     agent = VDMAPPOAgent.create(seed, cfg, env)
 
-    dummy_obs = env.get_dummy_obs()
-    dist: tfd.JointDistributionSequential = agent.network.select("actor")(dummy_obs)
-
-    action = dist.sample(seed=jr.PRNGKey(1234))
-    print(action)
-
-    log_probs = dist.log_prob_parts(action)
-    print(log_probs)
-    return
-
     trainer = Trainer()
     trainer.train(agent, env)
 
