@@ -1,31 +1,47 @@
 import functools as ft
-from typing import Self, Tuple
+from typing import Any, Self
 
+import einops as ei
 import jax
 import jax.numpy as jnp
 import jax.random as jr
 import jax.tree_util as jtu
+import numpy as np
 import optax
 from attrs import define
 from cyclopts import Parameter
 from flax import struct
 from jaxtyping import PRNGKeyArray
 from optax.tree_utils import tree_where
+from valtr.reachability import (DAGGU, DAGAvoid, DAGConst, DAGId, DAGMaxN, DAGMinN, DAGNegate, DAGReach, DAGReachAvoid,
+                                DAGVar)
 
 from rraa_rl.collector import RolloutOutput
+from rraa_rl.distribution import tfd
+from rraa_rl.gae import BellmanMax, BellmanMaxMin, BellmanMin, gae_generalized
 from rraa_rl.jax_types import bFloat
 from rraa_rl.nn_modules import MAMultiDiscretePolicy, VDValue
 from rraa_rl.src.env.general_task.herd_os import HerdOs
-from rraa_rl.train_utils import ModuleDict, TrainState
+from rraa_rl.train_state import ModuleDict, Params, TrainState
+from rraa_rl.train_utils import compute_norm_and_clip, has_any_nan_or_inf
 
 
 @struct.dataclass
-class PPORolloutOutput:
-    rollout: RolloutOutput
+class PPOData:
+    act: Any
+    obs: jnp.ndarray
+    logp: jnp.ndarray
 
     # Rollout advantages and Q-values (GAE'd)
-    T_A: bFloat
-    T_Q: bFloat
+    A: bFloat
+    Q: bFloat
+
+    # Which temporal node this sample corresponds to.
+    temporal_idx: jnp.ndarray
+
+    @property
+    def shape(self):
+        return self.Q.shape
 
 
 @Parameter("*", group="AgentConfig")
@@ -38,18 +54,30 @@ class VDMAPPOAgentCfg:
     gae_lambda: float = 0.95
     entropy_coef: float = 1e-3
     clip_eps: float = 0.1
-    updates_per_step: int = 10
+
+    n_epochs: int = 2
+    n_minibatches: int = 4
+
+    norm_adv: bool = True
 
     # Network parameters.
     actor_hids: tuple[int, ...] = (128, 128, 128)
     critic_hids: tuple[int, ...] = (128, 128, 128)
 
 
-@struct.dataclass
+class VDMAPPOStatic:
+    def __init__(self, temporal_node_alloc: np.ndarray | None = None):
+        self.temporal_node_alloc = temporal_node_alloc
+
+
+@ft.partial(struct.dataclass, frozen=False)
 class VDMAPPOAgent:
     Cfg = VDMAPPOAgentCfg
 
     network: TrainState
+    env: HerdOs = struct.field(pytree_node=False)
+    # Class containing static (non-pytree) data.
+    static: VDMAPPOStatic = struct.field(pytree_node=False)
     cfg: VDMAPPOAgentCfg = struct.field(pytree_node=False)
 
     @classmethod
@@ -58,7 +86,6 @@ class VDMAPPOAgent:
         seed: int,
         cfg: VDMAPPOAgentCfg,
         env: HerdOs,
-        **kwargs,
     ):
         """Initialize the PPO agent."""
         key, init_key = jr.split(jr.key(seed))
@@ -97,8 +124,54 @@ class VDMAPPOAgent:
         network_def = ModuleDict(networks)
         network_params = network_def.init(init_key, **network_args)["params"]
         network = TrainState.create(network_def, network_params, tx=network_tx)
+        static = VDMAPPOStatic()
+        return cls(network=network, env=env, static=static, cfg=cfg)
 
-        return cls(network=network, cfg=cfg)
+    def evaluate_dag(
+        self,
+        node_idx: DAGId,
+        bTt_V: jnp.ndarray,
+        bT_predicates: dict[str, jnp.ndarray],
+        scratch: dict[DAGId, jnp.ndarray] | None = None,
+    ) -> jnp.ndarray:
+        if scratch is None:
+            scratch: dict[DAGId, jnp.ndarray] = {}
+            # Fill in the scratch dict with the predicate values.
+            for predicate_name, node_idx in self.env.pred_info.predicate_to_idx.items():
+                scratch[node_idx] = bT_predicates[predicate_name]
+
+        # Check if already computed.
+        if node_idx in scratch:
+            return scratch[node_idx]
+
+        dag_node = self.env.dag_nodes[node_idx]
+        match dag_node:
+            case DAGConst(value=value):
+                raise ValueError("Const nodes should have been removed")
+            case DAGVar(name=name):
+                raise ValueError("Var nodes should have been handled above")
+            case DAGNegate(arg=arg):
+                out = -self.evaluate_dag(arg, bTt_V, bT_predicates, scratch)
+            case DAGMinN(args=args):
+                args_vals = jnp.stack(
+                    [self.evaluate_dag(arg, bTt_V, bT_predicates, scratch) for arg in args],
+                    axis=0,
+                )
+                out = jnp.min(args_vals, axis=0)
+            case DAGMaxN(args=args):
+                args_vals = jnp.stack(
+                    [self.evaluate_dag(arg, bTt_V, bT_predicates, scratch) for arg in args],
+                    axis=0,
+                )
+                out = jnp.max(args_vals, axis=0)
+            case _:
+                # Temporal nodes. Use the value function.
+                temporal_idx = self.env.temporal_nodes.index(node_idx)
+                bT_V = bTt_V[:, :, temporal_idx]
+                out = bT_V
+
+        scratch[node_idx] = out
+        return out
 
     def compute_A_Q(self, bT_rollout: RolloutOutput):
         """Compute GAE advantages and Q-values from rollout."""
@@ -110,60 +183,302 @@ class VDMAPPOAgent:
         bTt_V_next = self.network.select("critic")(bT_rollout.obs_next, params=self.network.params)
         bTt_V_next = jax.lax.stop_gradient(bTt_V_next)
 
-        bT_term = bT_rollout.term
+        bT_A_list = []
+        bT_Q_list = []
+        bT_temporal_list = []
 
-    def construct_flattened_rollout(self, bT_rollout: RolloutOutput) -> PPORolloutOutput:
+        # Use self.static.temporal_node_alloc to index into the correct V-values.
+        assert self.static.temporal_node_alloc is not None, "temporal_node_alloc must be set before computing A and Q."
+        start_idx = 0
+        for temporal_node_idx, n_node in enumerate(self.static.temporal_node_alloc):
+            end_idx = start_idx + n_node
+            cTt_V = bTt_V[start_idx:end_idx]
+            cTt_V_next = bTt_V_next[start_idx:end_idx]
+            cT_predicates = jtu.tree_map(lambda bT_arr: bT_arr[start_idx:end_idx], bT_rollout.predicates)
+            start_idx = end_idx
+
+            cT_temporal_idx = jnp.full((n_node,), temporal_node_idx, dtype=jnp.int32)
+
+            cT_V = cTt_V[:, :, temporal_node_idx]
+            cT_V_next = cTt_V_next[:, :, temporal_node_idx]
+
+            bT_term = bT_rollout.term
+            cT_term = bT_term[start_idx:end_idx]
+
+            # Use the DAG to compute the correct arguments.
+            dag_node_idx = self.env.temporal_nodes[temporal_node_idx]
+            dag_node = self.env.dag_nodes[dag_node_idx]
+
+            match dag_node:
+                case DAGAvoid(avoid=stay_idx):
+                    cT_q = self.evaluate_dag(stay_idx, cTt_V, cT_predicates)
+                    cT_A, cT_Q = self.compute_A_Q_avoid(cT_q, cT_V, cT_V_next, cT_term)
+                case DAGReach(reach=reach_idx):
+                    cT_r = self.evaluate_dag(reach_idx, cTt_V, cT_predicates)
+                    cT_A, cT_Q = self.compute_A_Q_reach(cT_r, cT_V, cT_V_next, cT_term)
+                case DAGReachAvoid(reach=reach_idx, avoid=stay_idx):
+                    cT_r = self.evaluate_dag(reach_idx, cTt_V, cT_predicates)
+                    cT_q = self.evaluate_dag(stay_idx, cTt_V, cT_predicates)
+                    cT_A, cT_Q = self.compute_A_Q_reachavoid(cT_q, cT_r, cT_V, cT_V_next, cT_term)
+                case DAGGU(args=args_idx):
+                    raise NotImplementedError("GU not implemented yet")
+                case _:
+                    raise ValueError(f"Unknown temporal node type: {type(dag_node)}")
+
+            bT_A_list.append(cT_A)
+            bT_Q_list.append(cT_Q)
+            bT_temporal_list.append(cT_temporal_idx)
+
+        bT_A = jnp.concatenate(bT_A_list, axis=0)
+        bT_Q = jnp.concatenate(bT_Q_list, axis=0)
+        bT_temporal_idx = jnp.concatenate(bT_temporal_list, axis=0)
+
+        assert bT_A.shape == bT_Q.shape == (b, T)
+        return bT_A, bT_Q, bT_temporal_idx
+
+    def compute_A_Q_avoid(
+        self, bT_q: jnp.ndarray, bT_V: jnp.ndarray, bT_V_next: jnp.ndarray, bT_term: jnp.ndarray
+    ) -> tuple[bFloat, bFloat]:
+        gamma, lam = self.cfg.gamma, self.cfg.gae_lambda
+        gae_fn = ft.partial(gae_generalized, gamma=gamma, lam=lam)
+        b_bellman = BellmanMin(T_q=bT_q)
+        bT_Q_gae = jax.vmap(gae_fn)(bT_q, bT_V, bT_V_next, bT_term, b_bellman)
+        bT_A_gae = bT_Q_gae - bT_V
+        return bT_A_gae, bT_Q_gae
+
+    def compute_A_Q_reach(
+        self, bT_r: jnp.ndarray, bT_V: jnp.ndarray, bT_V_next: jnp.ndarray, bT_term: jnp.ndarray
+    ) -> tuple[bFloat, bFloat]:
+        gamma, lam = self.cfg.gamma, self.cfg.gae_lambda
+        gae_fn = ft.partial(gae_generalized, gamma=gamma, lam=lam)
+        b_bellman = BellmanMax(T_r=bT_r)
+        bT_Q_gae = jax.vmap(gae_fn)(bT_r, bT_V, bT_V_next, bT_term, b_bellman)
+        bT_A_gae = bT_Q_gae - bT_V
+        return bT_A_gae, bT_Q_gae
+
+    def compute_A_Q_reachavoid(
+        self, bT_q: jnp.ndarray, bT_r: jnp.ndarray, bT_V: jnp.ndarray, bT_V_next: jnp.ndarray, bT_term: jnp.ndarray
+    ) -> tuple[bFloat, bFloat]:
+        gamma, lam = self.cfg.gamma, self.cfg.gae_lambda
+        gae_fn = ft.partial(gae_generalized, gamma=gamma, lam=lam)
+        b_bellman = BellmanMaxMin(T_r=bT_r, T_q=bT_q)
+        bT_Q_gae = jax.vmap(gae_fn)(bT_r, bT_V, bT_V_next, bT_term, b_bellman)
+        bT_A_gae = bT_Q_gae - bT_V
+        return bT_A_gae, bT_Q_gae
+
+    def construct_flattened_rollout(self, bT_rollout: RolloutOutput) -> PPOData:
         """Construct flattened PPO rollout with advantages and Q-values."""
-        bT_A, bT_Q = self.compute_A_Q(bT_rollout)
-        bT_rollout_ppo = PPORolloutOutput(
-            rollout=bT_rollout,
-            T_A=bT_A,
-            T_Q=bT_Q,
+        bT_A, bT_Q, bT_temporal_idx = self.compute_A_Q(bT_rollout)
+        bT_data = PPOData(
+            act=bT_rollout.act,
+            obs=bT_rollout.obs_now,
+            logp=bT_rollout.logprob,
+            A=bT_A,
+            Q=bT_Q,
+            temporal_idx=bT_temporal_idx,
         )
 
         # Flatten batch and time dimensions
-        b, T = bT_rollout.T_rew.shape
-        bT_flat_rollout_ppo = jtu.tree_map(lambda x: x.reshape((b * T,) + x.shape[2:]), bT_rollout_ppo)
+        b, T = bT_rollout.shape
+        b_data = jtu.tree_map(lambda x: x.reshape((b * T,) + x.shape[2:]), bT_data)
 
-        return bT_flat_rollout_ppo
+        return b_data
+
+    def update(self, bT_rollout: RolloutOutput, key: PRNGKeyArray) -> tuple[Self, dict]:
+        # Assumption: temporal_node_idx is ascending in the batch dimension.
+        # Move the temporal node information into the static field, since our update function depends on it.
+        bT_state_now: HerdOs.State = bT_rollout.state_now
+        b_temporal_node_idx = jax.device_get(bT_state_now.temporal_node_idx[:, 0])
+        # Count how many of each temporal node we have in the batch.
+        temporal_node_alloc = []
+        for idx in range(self.env.n_temporal_nodes):
+            n_idx = np.sum(b_temporal_node_idx == idx)
+
+            # Make sure that it is ascending:
+            start_idx = sum(temporal_node_alloc)
+            end_idx = start_idx + n_idx
+            assert np.all(b_temporal_node_idx[start_idx:end_idx] == idx), (
+                f"Temporal node indices are not ascending in batch dimension. "
+                f"Node {idx} has {n_idx} samples, but they are not all in a contiguous block."
+            )
+
+            temporal_node_alloc.append(n_idx)
+        temporal_node_alloc = np.array(temporal_node_alloc)
+
+        if self.static.temporal_node_alloc is None:
+            # Set the temporal_node_alloc in static data so that the _update function can use it.
+            self.static.temporal_node_alloc = temporal_node_alloc
+        else:
+            assert np.array_equal(self.static.temporal_node_alloc, temporal_node_alloc), (
+                f"Temporal node allocation changed between updates: "
+                f"was {self.static.temporal_node_alloc}, now {temporal_node_alloc}"
+            )
+
+        return self._update(bT_rollout, key)
+
+    def permute_for_minibatch(self, b_data: PPOData):
+        (batch_size,) = b_data.shape
+        assert (
+            batch_size % self.cfg.n_minibatches == 0
+        ), f"Batch size {batch_size} not divisible by n_minibatches {self.cfg.n_minibatches}"
+        mb_size = batch_size // self.cfg.n_minibatches
+
+        mb_data = jtu.tree_map(lambda b_arr: ei.rearrange(b_arr, "(m mb) ... -> m mb ...", mb=mb_size), b_data)
+        return mb_data
 
     @ft.partial(jax.jit, donate_argnums=0)
-    def update(self, bT_rollout: RolloutOutput, key: PRNGKeyArray) -> tuple[Self, dict]:
-        bT_flat_rollout_ppo = self.construct_flattened_rollout(bT_rollout)
-
-        def loss_fn_(params, loss_key):
-            total_loss_, info_ = self.total_loss(bT_flat_rollout_ppo, params, loss_key)
-            return total_loss_, info_
+    def _update(self, bT_rollout: RolloutOutput, key: PRNGKeyArray) -> tuple[Self, dict]:
+        b_data = self.construct_flattened_rollout(bT_rollout)
 
         def loop(carry, inps):
+            network: TrainState
             (network,) = carry
-            (_, update_key) = inps
-            # loss_fn = ft.partial(loss_fn_, loss_key=loss_key)
-            grad, info = jax.grad(loss_fn_, has_aux=True)(network.params, update_key)
-            grad_ill = has_any_nan_or_inf(grad)
-            grad, grad_norm, clipped_grad_norm = compute_norm_and_clip(grad, self.cfg.max_grad_norm)
-            grad = tree_where(grad_ill, jtu.tree_map(jnp.zeros_like, grad), grad)
-            new_network = network.apply_gradients(grads=grad)
-            return (new_network,), (grad_norm, clipped_grad_norm, grad_ill, info)
+            (key_,) = inps
 
-        update_idxs = jnp.arange(self.cfg.updates_per_step)
-        key, skey = jax.random.split(key)
-        update_keys = jr.split(skey, self.cfg.updates_per_step)
-        (new_network,), (grad_norm, clipped_grad_norm, grad_ill, info) = jax.lax.scan(
+            permute_key, update_key = jr.split(key_, 2)
+            m_update_keys = jr.split(update_key, self.cfg.n_minibatches)
+            # Permute data to form minibatches.
+            mb_data = self.permute_for_minibatch(b_data)
+
+            def update(network_: TrainState, inp_):
+                b_data_, update_key_ = inp_
+                return self._update_network(network_, b_data_, update_key_)
+
+            carry0_ = network
+            inp0_ = mb_data, m_update_keys
+            network_new_, infos_ = jax.lax.scan(update, carry0_, inp0_)
+
+            # Take the last
+            grad_norms_ = infos_["total/grad_norm"]
+            grad_bads_ = infos_["total/grad_bad"]
+
+            info_ = jtu.tree_map(lambda x: x[-1], infos_)
+
+            # We want to compute the max for these infos
+            info_max_ = {
+                "total/grad_norm max": jnp.max(grad_norms_),
+                "total/grad bad": jnp.max(grad_bads_.astype(jnp.float32)),
+            }
+
+            return (network_new_,), (info_, info_max_)
+
+        e_keys = jr.split(key, self.cfg.n_epochs)
+        carry0 = (self.network,)
+        (new_network,), (infos, infos_max) = jax.lax.scan(
             loop,
-            (self.network,),
-            (update_idxs, update_keys),
+            carry0,
+            (e_keys,),
         )
 
         # Only keep last step info
-        clipped_grad_norm = clipped_grad_norm[-1]
-        grad_norm = grad_norm[-1]
-        grad_ill = grad_ill[-1]
-        info = jtu.tree_map(lambda x: x[-1], info)
-        info = info | {
-            "total/clipped_grad_norm": clipped_grad_norm,
-            "total/grad_norm": grad_norm,
-            "total/grad_ill": grad_ill,
-        }
+        info = jtu.tree_map(lambda x: x[-1], infos)
+        info_max = jtu.tree_map(lambda x: jnp.max(x, axis=0), infos_max)
+        info = info | info_max
 
         return self.replace(network=new_network), info
+
+    def _update_network(self, network: TrainState, b_data: PPOData, key: PRNGKeyArray) -> tuple[TrainState, dict]:
+        network, info_critic = self._update_critic(network, b_data)
+        network, info_actor = self._update_actor(network, b_data, key)
+        info_critic = {f"critic/{k}": v for k, v in info_critic.items()}
+        info_actor = {f"actor/{k}": v for k, v in info_actor.items()}
+        info = info_critic | info_actor
+        return network, info
+
+    def _critic_loss(self, b_data: PPOData, params: Params):
+        """Compute MSE loss for the value function."""
+        bt_V = self.network.select("critic")(b_data.obs, params=params)
+        b_temporal_idx = b_data.temporal_idx
+        batch_size = len(b_temporal_idx)
+        b_arange = jnp.arange(batch_size)
+
+        b_V = bt_V[b_arange, b_temporal_idx]
+        assert b_V.shape == (batch_size,)
+
+        loss = jnp.mean((b_data.Q - b_V) ** 2)
+        info = {"Loss": loss, "V_mean": jnp.mean(b_V), "Q_mean": jnp.mean(b_data.Q)}
+        return loss, info
+
+    def _actor_loss(self, b_data: PPOData, params: Params, key: PRNGKeyArray):
+        """Compute the actor loss. We are trying to maximize reward."""
+        b_obs = b_data.obs
+        b_act = b_data.act
+        batch_size = len(b_data.Q)
+
+        assert isinstance(b_data.logp, list)
+        # (batch, n_agents)
+        bn_logp_old = jnp.stack(b_data.logp, axis=1)
+
+        # Compute logprob and entropies.
+        b_key = jr.split(key, batch_size)
+        bn_logp, bn_entropy = jax.vmap(ft.partial(self.pol_logp_entropy, params=params))(b_obs, b_act, b_key)
+
+        # Compute ratios.
+        bn_logratio = bn_logp - bn_logp_old
+        bn_is_ratio = jnp.exp(bn_logratio)
+        approx_kl = ((bn_is_ratio - 1) - bn_logratio).mean()
+
+        b_A = b_data.A
+        if self.cfg.norm_adv:
+            A_mean = jnp.mean(b_A)
+            A_std = jnp.std(b_A)
+            b_A = (b_A - A_mean) / (A_std + 1e-8)
+
+        bn_is_ratio_clip = jnp.clip(bn_is_ratio, 1 - self.cfg.clip_eps, 1 + self.cfg.clip_eps)
+
+        # Negative sign because we are trying to maximize reward => minimize negative reward.
+        bn_loss1 = -bn_is_ratio * b_A[:, None]
+        bn_loss2 = -bn_is_ratio_clip * b_A[:, None]
+        loss_pg = jnp.maximum(bn_loss1, bn_loss2).mean()
+
+        entropy_mean = jnp.mean(bn_entropy)
+        loss_entropy = -entropy_mean
+
+        loss = loss_pg + self.cfg.entropy_coef * loss_entropy
+
+        info = {
+            "Loss": loss,
+            "Loss_pg": loss_pg,
+            "Entropy": entropy_mean,
+            "Approx KL": approx_kl,
+        }
+
+        return loss, info
+
+    def _update_critic(self, network: TrainState, b_data: PPOData) -> tuple[TrainState, dict]:
+        critic_loss = ft.partial(self._critic_loss, b_data)
+        grad, info = jax.grad(critic_loss, has_aux=True)(network.params)
+
+        grad_bad = has_any_nan_or_inf(grad)
+        grad, grad_norm, clipped_grad_norm = compute_norm_and_clip(grad, self.cfg.max_grad_norm)
+        grad = tree_where(grad_bad, jtu.tree_map(jnp.zeros_like, grad), grad)
+
+        info["clipped_grad_norm"] = clipped_grad_norm
+        info["grad_norm"] = grad_norm
+        info["grad_bad"] = grad_bad
+
+        network_new = network.apply_gradients(grads=grad)
+        return network_new, info
+
+    def _update_actor(self, network: TrainState, b_data: PPOData, key: PRNGKeyArray) -> tuple[TrainState, dict]:
+        actor_loss = ft.partial(self._actor_loss, b_data)
+        grad, info = jax.grad(actor_loss, has_aux=True)(network.params, key)
+
+        grad_bad = has_any_nan_or_inf(grad)
+        grad, grad_norm, clipped_grad_norm = compute_norm_and_clip(grad, self.cfg.max_grad_norm)
+        grad = tree_where(grad_bad, jtu.tree_map(jnp.zeros_like, grad), grad)
+
+        info["clipped_grad_norm"] = clipped_grad_norm
+        info["grad_norm"] = grad_norm
+        info["grad_bad"] = grad_bad
+
+        network_new = network.apply_gradients(grads=grad)
+        return network_new, info
+
+    def pol_logp_entropy(self, obs: jnp.ndarray, act: Any, key: PRNGKeyArray, params: Params):
+        act_dist: tfd.JointDistributionSequential = self.network.select("actor")(obs, params=params)
+        logp_list = act_dist.log_prob_parts(act)
+        n_logp = jnp.stack(logp_list, axis=0)
+        entropies_list = [dist.entropy() for dist in act_dist.model]
+        n_entropy = jnp.stack(entropies_list, axis=0)
+        return n_logp, n_entropy

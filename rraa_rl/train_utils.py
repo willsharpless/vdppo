@@ -1,127 +1,162 @@
-import functools as ft
-from typing import Any, Callable, Dict, Mapping, Sequence
+import glob
+import os
+import pickle
+import socket
+from typing import List, Tuple, TypeVar
 
-import flax.linen as nn
-import optax
-from flax import struct
-from flax.core import FrozenDict
+import flax
+import jax.numpy as jnp
+import jax.random as jr
+import jax.tree_util as jtu
+import jax_dataclasses as jdc
+import numpy as np
 
-# Neural network types.
-Params = dict[str, Any] | FrozenDict[str, Any]
+
+def internet(host="8.8.8.8", port=53, timeout=3) -> bool:
+    """
+    Host: 8.8.8.8 (google-public-dns-a.google.com)
+    OpenPort: 53/tcp
+    Service: domain (DNS/TCP)
+    """
+    try:
+        socket.setdefaulttimeout(timeout)
+        socket.socket(socket.AF_INET, socket.SOCK_STREAM).connect((host, port))
+        return True
+    except socket.error as ex:
+        print(ex)
+        return False
 
 
-class ModuleDict(nn.Module):
-    """A dictionary of modules.
+def is_connected() -> bool:
+    return internet()
 
-    This allows sharing parameters between modules and provides a convenient way to access them.
 
-    Attributes:
-        modules: Dictionary of modules.
+def has_nan(x) -> jnp.ndarray:
+    return jtu.tree_map(lambda y: jnp.isnan(y).any(), x)
+
+
+def has_any_nan(x) -> jnp.ndarray:
+    return jnp.array(jtu.tree_flatten(has_nan(x))[0]).any()
+
+
+def has_inf(x) -> jnp.ndarray:
+    return jtu.tree_map(lambda y: jnp.isinf(y).any(), x)
+
+
+def has_any_inf(x) -> jnp.ndarray:
+    return jnp.array(jtu.tree_flatten(has_inf(x))[0]).any()
+
+
+def has_any_nan_or_inf(x) -> jnp.ndarray:
+    return has_any_nan(x) | has_any_inf(x)
+
+
+def compute_norm(grad) -> jnp.ndarray:
+    return jnp.sqrt(sum(jnp.sum(jnp.square(x)) for x in jtu.tree_leaves(grad)))
+
+
+def compute_norm_and_clip(grad, max_norm: float) -> Tuple[jtu.PyTreeDef, jnp.ndarray, jnp.ndarray]:
+    g_norm = compute_norm(grad)
+    clipped_g_norm = jnp.maximum(max_norm, g_norm)
+    clipped_grad = jtu.tree_map(lambda t: (t / clipped_g_norm) * max_norm, grad)
+    clipped_g_norm = compute_norm(clipped_grad)
+
+    return clipped_grad, g_norm, clipped_g_norm
+
+
+def save_agent(agent, save_dir, epoch) -> None:
+    """Save the agent to a file.
+
+    Args:
+        agent: Agent.
+        save_dir: Directory to save the agent.
+        epoch: Epoch number.
     """
 
-    modules: Dict[str, nn.Module]
-
-    @nn.compact
-    def __call__(self, *args, name=None, **kwargs):
-        """Forward pass.
-
-        For initialization, call with `name=None` and provide the arguments for each module in `kwargs`.
-        Otherwise, call with `name=<module_name>` and provide the arguments for that module.
-        """
-        if name is None:
-            if kwargs.keys() != self.modules.keys():
-                raise ValueError(
-                    f"When `name` is not specified, kwargs must contain the arguments for each module. "
-                    f"Got kwargs keys {kwargs.keys()} but module keys {self.modules.keys()}"
-                )
-            out = {}
-            for key, value in kwargs.items():
-                if isinstance(value, Mapping):
-                    out[key] = self.modules[key](**value)
-                elif isinstance(value, Sequence):
-                    out[key] = self.modules[key](*value)
-                else:
-                    out[key] = self.modules[key](value)
-            return out
-
-        return self.modules[name](*args, **kwargs)
+    save_dict = dict(
+        agent=agent.to_state_dict(),
+    )
+    save_path = os.path.join(save_dir, f"params_{epoch}.pkl")
+    with open(save_path, "wb") as f:
+        pickle.dump(save_dict, f)
 
 
-class TrainState(struct.PyTreeNode):
-    """Custom train state for models.
+def restore_agent(agent, restore_path, restore_epoch) -> jtu.PyTreeDef:
+    """Restore the agent from a file.
 
-    Attributes:
-        step: Counter to keep track of the training steps. It is incremented by 1 after each `apply_gradients` call.
-        apply_fn: Apply function of the model.
-        model_def: Model definition.
-        params: Parameters of the model.
-        tx: optax optimizer.
-        opt_state: Optimizer state.
+    Args:
+        agent: Agent.
+        restore_path: Path to the directory containing the saved agent.
+        restore_epoch: Epoch number.
     """
+    candidates = glob.glob(restore_path)
 
-    step: int
-    apply_fn: Callable = struct.field(pytree_node=False)
-    model_def: ModuleDict = struct.field(pytree_node=False)
-    params: Params = struct.field(pytree_node=True)
-    tx: optax.GradientTransformation = struct.field(pytree_node=False)
-    opt_state: optax.OptState = struct.field(pytree_node=True)
+    assert len(candidates) == 1, f"Found {len(candidates)} candidates: {candidates}"
 
-    @classmethod
-    def create(cls, model_def, params, tx=None, **kwargs):
-        """Create a new train state."""
-        if tx is not None:
-            opt_state = tx.init(params)
-        else:
-            opt_state = None
+    restore_path = candidates[0] + f"/params_{restore_epoch}.pkl"
 
-        return cls(
-            step=1,
-            apply_fn=model_def.apply,
-            model_def=model_def,
-            params=params,
-            tx=tx,
-            opt_state=opt_state,
-            **kwargs,
-        )
+    with open(restore_path, "rb") as f:
+        load_dict = pickle.load(f)
 
-    def __call__(self, *args, params=None, method=None, **kwargs):
-        """Forward pass.
+    agent = flax.serialization.from_state_dict(agent, load_dict["agent"])
 
-        When `params` is not provided, it uses the stored parameters.
+    print(f"Restored from {restore_path}")
 
-        The typical use case is to set `params` to `None` when you want to *stop* the gradients, and to pass the current
-        traced parameters when you want to flow the gradients. In other words, the default behavior is to stop the
-        gradients, and you need to explicitly provide the parameters to flow the gradients.
+    return agent
 
-        Args:
-            *args: Arguments to pass to the model.
-            params: Parameters to use for the forward pass. If `None`, it uses the stored parameters, without flowing
-                the gradients.
-            method: Method to call in the model. If `None`, it uses the default `apply` method.
-            **kwargs: Keyword arguments to pass to the model.
-        """
-        if params is None:
-            params = self.params
-        variables = {"params": params}
-        if method is not None:
-            method_name = getattr(self.model_def, method)
-        else:
-            method_name = None
 
-        return self.apply_fn(variables, *args, method=method_name, **kwargs)
+def fmt_desc(s, desc_width=30) -> str:
+    """Format description for tqdm progress bar"""
+    return f"{s:<{desc_width}}"[:desc_width]
 
-    def select(self, name):
-        """Helper function to select a module from a `ModuleDict`."""
-        return ft.partial(self, name=name)
 
-    def apply_gradients(self, grads, **kwargs):
-        """Apply the gradients and return the updated state."""
-        updates, new_opt_state = self.tx.update(grads, self.opt_state, self.params)
-        new_params = optax.apply_updates(self.params, updates)
+# def extract_rollouts_eval(b_rollout: RolloutOutput) -> List[RolloutOutput]:
+#     """Extract eval rollouts into a python list of episodic rollouts."""
+#     extracted_rollouts = []
+#     b, _ = b_rollout.shape
+#     for traj_idx in range(b):
+#         rollout = jtu.tree_map(lambda x: x[traj_idx], b_rollout)
+#
+#         # Save only up to the index of the first term or trunc
+#         dones = rollout.T_term | rollout.T_trunc
+#         assert jnp.any(dones), "No done signal found in the rollout!"
+#
+#         # Get the index of the first done
+#         first_done_idx = jnp.argmax(dones.astype(jnp.int32))
+#         rollout = jtu.tree_map(lambda x: x[: first_done_idx + 1], rollout)
+#         extracted_rollouts.append(rollout)
+#     return extracted_rollouts
 
-        return self.replace(
-            step=self.step + 1,
-            params=new_params,
-            opt_state=new_opt_state,
-            **kwargs,
-        )
+
+_pytree = TypeVar("_pytree")
+
+
+def jax2np(pytree: _pytree) -> _pytree:
+    return jtu.tree_map(np.array, pytree)
+
+
+def np2jax(pytree: _pytree) -> _pytree:
+    return jtu.tree_map(jnp.array, pytree)
+
+
+# def convert_rollout_states_to_minstates(rollout: RolloutOutput, env: SingleAgentEnv) -> RolloutOutput:
+#     """Convert rollout states to minstates using env.get_minstate()."""
+#     return jdc.replace(
+#         rollout,
+#         T_state_now=env.convert_state_to_minstate(rollout.T_state_now),
+#         T_state_next=env.convert_state_to_minstate(rollout.T_state_next),
+#     )
+
+
+def hash_key(key: jnp.ndarray) -> jnp.uint32:
+    k = jr.key_data(key)  # shape (2,), dtype=uint32
+    return k[0] * jnp.uint32(0x9E3779B1) + k[1]
+
+
+def tree_where_dim0(mask, a, b):
+    """
+    mask: (b,) boolean
+    a, b: PyTrees with leading dim b
+    """
+    mask = np.asarray(mask)
+    return jtu.tree_map(lambda x, y: np.where(mask[:, None], x, y), a, b)
