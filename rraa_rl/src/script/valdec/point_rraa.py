@@ -62,6 +62,9 @@ config["ANNEAL_ENT"]=True
 config["LOAD_DECOMPOSED"] = False
 config['VIDEO_FREQ'] = 25
 config["NAME"]="point_raa_debug_stage3_auto"
+config["EVAL"]=True
+config["EVAL_FREQ"] = 100_000
+config["EVAL_HORIZON"] = 400
 
 config["NUM_UPDATES"] = int(config["TOTAL_TIMESTEPS"] // config["NUM_STEPS"] // config["NUM_ENVS"])
 config["MINIBATCH_SIZE"] = int(config["NUM_ENVS"] * config["NUM_STEPS"] // config["NUM_MINIBATCHES"])

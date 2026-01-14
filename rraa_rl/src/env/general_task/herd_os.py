@@ -28,17 +28,17 @@ class HerdOsCfg:
 
     herd_vel: float = 0.2
 
-    dt: float = 0.1
+    dt: float = 0.2
     acc_maxs: list[float] = [1.0, 2.0]
     vel_maxs: list[float] = [0.5, 1.0]
 
     agent_radius: float = 0.2
     # Half size.
-    halfsize: tuple[float, float] = (10.0, 10.0)
+    halfsize: tuple[float, float] = (5.0, 5.0)
 
     trunc_steps: int = 500
 
-    herded_radius: float = 2.0  # Radius within which herd agents are considered herded.
+    herded_radius: float = 1.0  # Radius within which herd agents are considered herded.
 
 
 class HerdOs:
@@ -54,9 +54,13 @@ class HerdOs:
     action: (n_herders, 2): int, {0, 1, 2} for each axis, where 0 = -accel, 1 = no accel, 2 = accel
     """
 
-    def __init__(self, cfg: HerdOsCfg):
+    def __init__(self, cfg: HerdOsCfg = HerdOsCfg()):
         self.cfg = cfg
         assert len(cfg.acc_maxs) == len(cfg.vel_maxs) == cfg.n_herders
+
+    @property
+    def specification(self):
+        return "F(G(herd_herded)) && G( !herder_collide ) && G( !herder_oob )"
 
     def action_to_controls(self, action: jnp.ndarray):
         """Convert discrete action to continuous accelerations."""
@@ -101,11 +105,11 @@ class HerdOs:
             herd_wall_softmin = softminimum(herd_wall_dists, axis=-1)
             herd_wall_min = jnp.min(herd_wall_dists)
 
-            herd_max_dist = 6 * self.cfg.agent_radius
-            herder_max_dist = 5 * self.cfg.agent_radius
-            wall_max_dist = 3 * self.cfg.agent_radius
+            herd_max_dist = 15 * self.cfg.agent_radius
+            herder_max_dist = 15 * self.cfg.agent_radius
+            wall_max_dist = 15 * self.cfg.agent_radius
             dist_thresh = jnp.array([herd_max_dist, herder_max_dist, wall_max_dist])
-            apply_action_herd = jnp.all(jnp.array([herd_min, herder_min, herd_wall_min]) > dist_thresh)
+            apply_action_herd = jnp.any(jnp.array([herd_min, herder_min, herd_wall_min]) <= dist_thresh)
 
             w_herd = 0.5
             w_herder = 2.0
@@ -196,21 +200,27 @@ class HerdOs:
         herded = jnp.all((dists + self.cfg.agent_radius) < self.cfg.herded_radius)
         return herded
 
+    def get_predicates_bool(self, state: HerdOsState):
+        predicates = {
+            "herder_collide": self.is_herder_collide(state),
+            "herder_oob": self.is_herder_oob(state),
+            "herd_herded": self.is_herd_herded(state),
+        }
+        return predicates
+
     def step(self, state: HerdOsState, action: jnp.ndarray):
         controls = self.action_to_controls(action)
         state_new = self.next_state(state, controls)
 
-        predicates = {
-            "herder_collide": self.is_herder_collide(state_new),
-            "herder_oob": self.is_herder_oob(state_new),
-            "herd_herded": self.is_herd_herded(state_new),
-        }
-
+        predicates = self.get_predicates_bool(state_new)
         term = predicates["herder_collide"] | predicates["herder_oob"]
         trunc = state_new.steps >= self.cfg.trunc_steps
 
+        # Make it +1 if true, -1 if false.
+        predicates_float = {k: jnp.where(v, 1, -1) for k, v in predicates.items()}
+
         info = {}
-        return EnvStep(state_new, predicates, term, trunc, info)
+        return EnvStep(state_new, predicates_float, term, trunc, info)
 
     def reset(self, key: jr.PRNGKey):
         n_herd = self.cfg.n_herd

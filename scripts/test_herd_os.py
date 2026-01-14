@@ -15,10 +15,13 @@ def main():
     key = jr.PRNGKey(12345)
     state = env.reset(key)
 
+    herd_state = jnp.array([[-1.5 * cfg.agent_radius, 0.0], [1.5 * cfg.agent_radius, 0.0]])
+    state = state._replace(herd_state=herd_state)
+
     action = jnp.array([1, 1])
 
     env_states = [state]
-    for kk in range(10):
+    for kk in range(50):
         step = env.step(state, action)
         state = step.envstate
         env_states.append(step.envstate)
@@ -39,8 +42,15 @@ def main():
         bbox=dict(facecolor="black", alpha=0.5, pad=2),
     )
 
-    ax.set_xlim(-cfg.halfsize[0], cfg.halfsize[0])
-    ax.set_ylim(-cfg.halfsize[1], cfg.halfsize[1])
+    ax.set_xlim(-1.05 * cfg.halfsize[0], 1.05 * cfg.halfsize[0])
+    ax.set_ylim(-1.05 * cfg.halfsize[1], 1.05 * cfg.halfsize[1])
+
+    # axvspan and axhspan to mark the boundaries.
+    opts = dict(color="black", alpha=0.9)
+    ax.axvspan(cfg.halfsize[0], cfg.halfsize[0] + 1.0, **opts)
+    ax.axvspan(-cfg.halfsize[0] - 1.0, -cfg.halfsize[0], **opts)
+    ax.axhspan(cfg.halfsize[1], cfg.halfsize[1] + 1.0, **opts)
+    ax.axhspan(-cfg.halfsize[1] - 1.0, -cfg.halfsize[1], **opts)
 
     # Plot the herd circle.
     herd_circle = plt.Circle((0, 0), cfg.herded_radius, color="lightgray", alpha=0.5)

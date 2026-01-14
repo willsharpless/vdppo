@@ -25,8 +25,8 @@ from .baseline.half_cheetah_RR_baseline import HalfCheetahReachReachBaseline_aug
 from .baseline.safety_gym_RAA_baseline import PointReachAlwaysAvoidBaseline_augmented
 from .baseline.safety_gym_RR_baseline import PointReachReachBaseline_augmented
 
-from .baseline.F16_RAA_baseline import F16ReachAvoidBaseline
-from .baseline.F16_RR_baseline import F16ReachReachBaseline
+# from .baseline.F16_RAA_baseline import F16ReachAvoidBaseline
+# from .baseline.F16_RR_baseline import F16ReachReachBaseline
 
 from .wrappers import TransformObservation
 
@@ -525,29 +525,29 @@ def get_env(config):
         # env_avoid.set_untransform_obs(untrans)
         return (env, env_avoid)
     
-    elif config["EXP_NAME"] == "F16ReachAlwaysAvoid_CPPO" \
-        or config["EXP_NAME"] == "F16ReachAlwaysAvoid_RCPPO" \
-            or config["EXP_NAME"] == "F16ReachAlwaysAvoid_RESPO" \
-                or config["EXP_NAME"] == "F16ReachAlwaysAvoidBaseline_MORL" \
-                    or config["EXP_NAME"] == "F16ReachAlwaysAvoidBaseline_Sparse" \
-                        or config["EXP_NAME"] == "F16ReachAlwaysAvoidBaseline_P2BPO":
-        
-        from .reach_avoid.F16_RAA import F16ReachAvoid, F16AvoidOnly
-
-        obs_dim = 26 - 2 + 1
-
-        vec1 = jnp.zeros(obs_dim, dtype=jnp.float32)
-        vec1 = vec1.at[-1].set(400.)
-        vec2 = jnp.ones(obs_dim, dtype=jnp.float32)
-        vec2 = vec2.at[-1].set(400.)
-        trans = partial(transform_observation, vec1, vec2)
-
-        env = F16ReachAvoidBaseline(noise_perc=config["NOISE_PERCENT"], noisy_states=config["NOISY_STATES"])
-
-        env = TransformObservation(env, trans)
-
-        # env.set_untransform_obs(untrans) # Not implemented
-        return env
+    # elif config["EXP_NAME"] == "F16ReachAlwaysAvoid_CPPO" \
+    #     or config["EXP_NAME"] == "F16ReachAlwaysAvoid_RCPPO" \
+    #         or config["EXP_NAME"] == "F16ReachAlwaysAvoid_RESPO" \
+    #             or config["EXP_NAME"] == "F16ReachAlwaysAvoidBaseline_MORL" \
+    #                 or config["EXP_NAME"] == "F16ReachAlwaysAvoidBaseline_Sparse" \
+    #                     or config["EXP_NAME"] == "F16ReachAlwaysAvoidBaseline_P2BPO":
+    #
+    #     from .reach_avoid.F16_RAA import F16ReachAvoid, F16AvoidOnly
+    #
+    #     obs_dim = 26 - 2 + 1
+    #
+    #     vec1 = jnp.zeros(obs_dim, dtype=jnp.float32)
+    #     vec1 = vec1.at[-1].set(400.)
+    #     vec2 = jnp.ones(obs_dim, dtype=jnp.float32)
+    #     vec2 = vec2.at[-1].set(400.)
+    #     trans = partial(transform_observation, vec1, vec2)
+    #
+    #     env = F16ReachAvoidBaseline(noise_perc=config["NOISE_PERCENT"], noisy_states=config["NOISY_STATES"])
+    #
+    #     env = TransformObservation(env, trans)
+    #
+    #     # env.set_untransform_obs(untrans) # Not implemented
+    #     return env
     
     elif config["EXP_NAME"] == 'F16ReachReach':
         from .reach_avoid.F16_RR import F16ReachReach, F16Reach1, F16Reach2
