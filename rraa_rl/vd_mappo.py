@@ -50,12 +50,12 @@ class PPOData:
 @Parameter("*", group="AgentConfig")
 @define
 class VDMAPPOAgentCfg:
-    actor_lr: float = 3e-4
+    actor_lr: float = 1e-3
     critic_lr: float = 1e-3
     max_grad_norm: float = 0.5
     gamma: float = 0.99
     gae_lambda: float = 0.95
-    entropy_coef: float = 1.5e-3
+    entropy_coef: float = 1e-2
     clip_eps: float = 0.1
 
     n_epochs: int = 2
