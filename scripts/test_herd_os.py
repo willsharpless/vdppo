@@ -1,6 +1,7 @@
 import ipdb
 import jax.numpy as jnp
 import jax.random as jr
+import jax_dataclasses as jdc
 import matplotlib.pyplot as plt
 import numpy as np
 from matplotlib.animation import FuncAnimation
@@ -9,14 +10,20 @@ from rraa_rl.src.env.general_task.herd_os import HerdOs, HerdOsCfg, HerdOsState
 
 
 def main():
-    cfg = HerdOsCfg()
-    env = HerdOs(cfg)
+    cfg_os = HerdOsCfg()
+    env = HerdOs(cfg_os)
+
+    cfg = cfg_os.base
 
     key = jr.PRNGKey(12345)
     state = env.reset(key)
 
-    herd_state = jnp.array([[-1.5 * cfg.agent_radius, 0.0], [1.5 * cfg.agent_radius, 0.0]])
-    state = state._replace(herd_state=herd_state)
+    # herd_state = jnp.array([[-1.5 * cfg.agent_radius, 0.0], [1.5 * cfg.agent_radius, 0.0]])
+    herd_state = jnp.array([[-1.5 * cfg.agent_radius, 0.0]])
+    with jdc.copy_and_mutate(state) as state_new:
+        state_new.base.herd_state = herd_state
+    # state = state._replace(herd_state=herd_state)
+    state = state_new
 
     action = jnp.array([1, 1])
 
@@ -42,19 +49,7 @@ def main():
         bbox=dict(facecolor="black", alpha=0.5, pad=2),
     )
 
-    ax.set_xlim(-1.05 * cfg.halfsize[0], 1.05 * cfg.halfsize[0])
-    ax.set_ylim(-1.05 * cfg.halfsize[1], 1.05 * cfg.halfsize[1])
-
-    # axvspan and axhspan to mark the boundaries.
-    opts = dict(color="black", alpha=0.9)
-    ax.axvspan(cfg.halfsize[0], cfg.halfsize[0] + 1.0, **opts)
-    ax.axvspan(-cfg.halfsize[0] - 1.0, -cfg.halfsize[0], **opts)
-    ax.axhspan(cfg.halfsize[1], cfg.halfsize[1] + 1.0, **opts)
-    ax.axhspan(-cfg.halfsize[1] - 1.0, -cfg.halfsize[1], **opts)
-
-    # Plot the herd circle.
-    herd_circle = plt.Circle((0, 0), cfg.herded_radius, color="lightgray", alpha=0.5)
-    ax.add_patch(herd_circle)
+    env.base.setup_ax(ax)
 
     # Plot the herd agents.
     herd_circs = []
@@ -76,10 +71,10 @@ def main():
     def update(kk: int):
         envstate = env_states[kk]
         for ii in range(cfg.n_herd):
-            herd_pos = envstate.herd_state[ii, :2]
+            herd_pos = envstate.base.herd_state[ii, :2]
             herd_circs[ii].center = (herd_pos[0], herd_pos[1])
         for jj in range(cfg.n_herders):
-            herder_pos = envstate.herder_state[jj, :2]
+            herder_pos = envstate.base.herder_state[jj, :2]
             herder_circs[jj].center = (herder_pos[0], herder_pos[1])
         kk_text.set_text(f"Step: {kk}")
         return herd_circs + herder_circs + [kk_text]

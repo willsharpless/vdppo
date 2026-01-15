@@ -1,3 +1,4 @@
+import einops as ei
 import jax.numpy as jnp
 import jax.tree_util as jtu
 import numpy as np
@@ -33,3 +34,16 @@ def tree_where_dim0(cond, x_tree, y_tree, which=jnp):
         return which.where(cond_reshaped, x, y)
 
     return jtu.tree_map(tree_where_inner, x_tree, y_tree)
+
+
+def tree_cat(trees, axis=0, which=jnp):
+    def tree_cat_inner(*args):
+        return which.concatenate(args, axis=axis)
+
+    return jtu.tree_map(tree_cat_inner, *trees)
+
+
+def switch01(arr: jnp.ndarray):
+    # Switch the first two axes of an array.
+    assert arr.ndim >= 2
+    return ei.rearrange(arr, "b0 b1 ... -> b1 b0 ...")

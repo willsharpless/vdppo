@@ -4,6 +4,8 @@ from typing import NamedTuple
 import jax
 import jax.numpy as jnp
 import jax.random as jr
+import jax_dataclasses as jdc
+import matplotlib.pyplot as plt
 import numpy as np
 from attrs import define
 from flax import struct
@@ -11,11 +13,17 @@ from jaxtyping import PRNGKeyArray
 from valtr.reachability import collect_predicate_info, extract_trigger_predicate_map
 from valtr.valtr import to_dag
 
+from rraa_rl.jax_types import BoolScalar
 from rraa_rl.jax_utils import softminimum
 from rraa_rl.src.env.general_task.env import Env, EnvStep
 
 
-class HerdBaseState(NamedTuple):
+class ShouldTermFn:
+    def __call__(self, predicates: dict[str, BoolScalar]) -> BoolScalar: ...
+
+
+@jdc.pytree_dataclass
+class HerdBaseState:
     # (n_herd, 2) [px, py]
     herd_state: jnp.ndarray
     # (n_herd, 4) [px, py, vx, vy]
@@ -26,14 +34,17 @@ class HerdBaseState(NamedTuple):
 
 @define
 class HerdBaseCfg:
-    n_herders: int = 2
-    n_herd: int = 2
-
     herd_vel: float = 0.2
-
     dt: float = 0.2
-    acc_maxs: list[float] = [1.0, 2.0]
-    vel_maxs: list[float] = [0.5, 1.0]
+
+    # n_herders: int = 2
+    # n_herd: int = 2
+    # acc_maxs: list[float] = [1.0, 2.0]
+    # vel_maxs: list[float] = [0.5, 1.0]
+    n_herders: int = 1
+    n_herd: int = 1
+    acc_maxs: list[float] = [1.0]
+    vel_maxs: list[float] = [0.5]
 
     agent_radius: float = 0.2
     # Half size.
@@ -57,9 +68,18 @@ class HerdBase(Env):
     action: (n_herders, 2): int, {0, 1, 2} for each axis, where 0 = -accel, 1 = no accel, 2 = accel
     """
 
-    def __init__(self, cfg: HerdBaseCfg = HerdBaseCfg()):
+    def __init__(self, cfg: HerdBaseCfg = HerdBaseCfg(), should_term_fn: ShouldTermFn = None):
         self.cfg = cfg
         assert len(cfg.acc_maxs) == len(cfg.vel_maxs) == cfg.n_herders
+
+        # self.centers = np.array([[-3.0, -3.0], [3.0, 3.0]])
+        # self.radiuses = np.array([1.0, 1.0])
+        self.centers = np.array([[-3.0, -3.0]])
+        self.radiuses = np.array([1.0])
+
+        if should_term_fn is None:
+            should_term_fn = self._should_term
+        self.should_term_fn = should_term_fn
 
     @property
     def n_agents(self) -> int:
@@ -72,6 +92,18 @@ class HerdBase(Env):
         for _ in range(self.cfg.n_herders):
             n_actions_per_agent.append([3, 3])
         return n_actions_per_agent
+
+    @property
+    def max_entropy(self) -> float:
+        # Sum of log of number of actions, per dimension, per agent.
+        n_actions_per_agent = self.n_actions_per_agent
+        agent_entropies = []
+        for actions_per_agent in n_actions_per_agent:
+            actions_per_agent = np.array(actions_per_agent)
+            agent_entropy = np.log(actions_per_agent).sum()
+            agent_entropies.append(agent_entropy)
+
+        return np.sum(np.array(agent_entropies))
 
     def _action_to_controls(self, action: jnp.ndarray):
         """Convert discrete action to continuous accelerations."""
@@ -211,11 +243,24 @@ class HerdBase(Env):
         herded = jnp.all((dists + self.cfg.agent_radius) < self.cfg.herded_radius)
         return herded
 
+    def is_herder_circs(self, state: HerdBaseState):
+        h_pos = state.herder_state[:, 0:2]
+        c_pos = jnp.array(self.centers)
+        # (n_circs, n_herders, 2) -> (n_circs, n_herders)
+        ch_dists = jnp.linalg.norm(h_pos[None, :, :] - c_pos[:, None, :], axis=-1)
+        # (n_circs, )
+        c_dists = jnp.min(ch_dists, axis=-1)
+        c_is_herder_inside = c_dists < (jnp.array(self.radiuses) - self.cfg.agent_radius)
+        return c_is_herder_inside
+
     def get_predicates_bool(self, state: HerdBaseState):
+        is_herder_circs = self.is_herder_circs(state)
         predicates = {
             "herder_collide": self.is_herder_collide(state),
             "herder_oob": self.is_herder_oob(state),
             "herd_herded": self.is_herd_herded(state),
+            "herder_c1": is_herder_circs[0],
+            # "herder_c2": is_herder_circs[1],
         }
         return predicates
 
@@ -225,13 +270,13 @@ class HerdBase(Env):
         obs_new = self.get_obs(state_new)
 
         predicates = self.get_predicates_bool(state_new)
-        term = predicates["herder_collide"] | predicates["herder_oob"]
+        term = self.should_term_fn(predicates)
         trunc = state_new.steps >= self.cfg.trunc_steps
 
         # Make it +1 if true, -1 if false.
         predicates_float = {k: jnp.where(v, 1, -1) for k, v in predicates.items()}
 
-        info = {}
+        info = {"age": state_new.steps}
         return EnvStep(state_new, obs_new, predicates_float, term, trunc, info)
 
     def get_obs(self, state: HerdBaseState):
@@ -302,3 +347,30 @@ class HerdBase(Env):
         herder_state = jr.uniform(key_herders, shape=(n_herders, 4), minval=minstate, maxval=maxstate)
 
         return HerdBaseState(herd_state=herd_pos, herder_state=herder_state, steps=0)
+
+    @property
+    def eval_T(self) -> int:
+        return self.cfg.trunc_steps
+
+    def setup_ax(self, ax: plt.Axes):
+        cfg = self.cfg
+        ax.set_xlim(-1.05 * cfg.halfsize[0], 1.05 * cfg.halfsize[0])
+        ax.set_ylim(-1.05 * cfg.halfsize[1], 1.05 * cfg.halfsize[1])
+        ax.set_aspect("equal")
+
+        # axvspan and axhspan to mark the boundaries.
+        opts = dict(color="black", alpha=0.9)
+        ax.axvspan(cfg.halfsize[0], cfg.halfsize[0] + 1.0, **opts)
+        ax.axvspan(-cfg.halfsize[0] - 1.0, -cfg.halfsize[0], **opts)
+        ax.axhspan(cfg.halfsize[1], cfg.halfsize[1] + 1.0, **opts)
+        ax.axhspan(-cfg.halfsize[1] - 1.0, -cfg.halfsize[1], **opts)
+
+        # Plot the herd circle.
+        herd_circle = plt.Circle((0, 0), cfg.herded_radius, color="lightgray", alpha=0.5)
+        ax.add_patch(herd_circle)
+
+        # Plot the circles.
+        for ii, center in enumerate(self.centers):
+            radius = self.radiuses[ii]
+            circ = plt.Circle((center[0], center[1]), radius, color="C5", alpha=0.3)
+            ax.add_patch(circ)

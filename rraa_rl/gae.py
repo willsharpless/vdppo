@@ -82,8 +82,15 @@ def gae_generalized(
         T_step_size = jnp.where(T_weight_sum_new > 0, T_coef / T_weight_sum_new, 0.0)
         T_Q_avg_new = T_Q_avg + T_step_size * (T_Q_curr - T_Q_avg)
 
-        # 3. Shift for next depth.
-        T_V_next_k_shift = jnp.concatenate([T_Q_curr[1:], jnp.array([jnp.inf])], axis=0)
+        # jax.debug.print("----------------------", ordered=True)
+        # jax.debug.print("T_V_next_k: {}", T_V_next_k, ordered=True)
+        # jax.debug.print("T_Q_cur: {}", T_Q_curr, ordered=True)
+        # jax.debug.print("T_coef: {}", T_coef, ordered=True)
+        # jax.debug.print("T_step_size: {}", T_step_size, ordered=True)
+        # jax.debug.print("T_Q_avg: {}", T_Q_avg, ordered=True)
+
+        # 3. Shift for next depth. Can't use inf, since 0 * inf = nan.
+        T_V_next_k_shift = jnp.concatenate([T_Q_curr[1:], jnp.array([1.337e8])], axis=0)
         T_isvalid_shift = jnp.concatenate([T_isvalid[1:], jnp.array([0.0])], axis=0)
 
         carry_new = (T_Q_avg_new, T_weight_sum_new, T_V_next_k_shift, T_isvalid_shift, coef * lam)

@@ -53,7 +53,7 @@ class VDMAPPOAgentCfg:
     max_grad_norm: float = 0.5
     gamma: float = 0.99
     gae_lambda: float = 0.95
-    entropy_coef: float = 1e-3
+    entropy_coef: float = 4e-3
     clip_eps: float = 0.1
 
     n_epochs: int = 2
@@ -406,7 +406,15 @@ class VDMAPPOAgent:
         assert b_V.shape == (batch_size,)
 
         loss = jnp.mean((b_data.Q - b_V) ** 2)
-        info = {"Loss": loss, "V_mean": jnp.mean(b_V), "Q_mean": jnp.mean(b_data.Q)}
+
+        explained_variance = 1 - jnp.var(b_data.Q - b_V) / (jnp.var(b_data.Q) + 1e-8)
+
+        info = {
+            "Loss": loss,
+            "V_mean": jnp.mean(b_V),
+            "Q_mean": jnp.mean(b_data.Q),
+            "Explained Variance": explained_variance,
+        }
         return loss, info
 
     def _actor_loss(self, b_data: PPOData, params: Params, key: PRNGKeyArray):
@@ -435,6 +443,9 @@ class VDMAPPOAgent:
 
         bn_is_ratio_clip = jnp.clip(bn_is_ratio, 1 - self.cfg.clip_eps, 1 + self.cfg.clip_eps)
 
+        bn_clip_fraction = (bn_is_ratio < (1 - self.cfg.clip_eps)) | (bn_is_ratio > (1 + self.cfg.clip_eps))
+        clip_fraction = jnp.mean(bn_clip_fraction)
+
         # Negative sign because we are trying to maximize reward => minimize negative reward.
         bn_loss1 = -bn_is_ratio * b_A[:, None]
         bn_loss2 = -bn_is_ratio_clip * b_A[:, None]
@@ -450,7 +461,13 @@ class VDMAPPOAgent:
             "Loss_pg": loss_pg,
             "Entropy": entropy_mean,
             "Approx KL": approx_kl,
+            "Clip Frac": clip_fraction,
         }
+
+        # Compute the fraction of maximum entropy, if available, to make it easier to interpret.
+        max_entropy = self.env.max_entropy
+        if max_entropy is not None:
+            info["Entropy Frac"] = entropy_mean / max_entropy
 
         return loss, info
 
@@ -502,6 +519,12 @@ class VDMAPPOAgent:
         assert logp.shape == (self.env.n_agents,)
         return act, logp
 
+    def det_action(self, obs: Any) -> Any:
+        """Get the deterministic action (mode) from the policy given an observation."""
+        act_dist = self.network.select("actor")(obs)
+        act = act_dist.mode()
+        return act
+
     @ft.partial(jax.jit, static_argnums=(2,))
     def collect_batch(self, collector: Collector, rollout_T: int) -> tuple[Collector, RolloutOutput, dict]:
         """Collect a batch of data using stochastic policy."""
@@ -509,3 +532,15 @@ class VDMAPPOAgent:
         out = collector.collect_batch(self.sample_action, rollout_T, reset_fn=None)
         logger.debug("done jitting collect_batch.")
         return out
+
+    @ft.partial(jax.jit, static_argnames=("rollout_T",))
+    def collect_eval_with_states(
+        self, collector: Collector, b_state0: Any, rollout_T: int
+    ) -> tuple[RolloutOutput, dict]:
+        """Collect full eval trajectories using deterministic policy given eval keys."""
+        logger.debug("jitting collect_eval_with_states...")
+        # Reset all envs before eval
+        new_collector = collector.reset_with_state(b_state0)
+        _, Tb_rollout, collect_info = new_collector.collect_full_traj_det(self.det_action, rollout_T)
+        logger.debug("done jitting collect_eval_with_states.")
+        return Tb_rollout, collect_info

@@ -2,9 +2,10 @@ from typing import Sequence
 
 import flax.linen as nn
 
-from rraa_rl.distribution import tfd
+from rraa_rl.distribution import tfd, BlockwiseWithMode
 from rraa_rl.mlp import MLP
 from rraa_rl.nn_utils import default_nn_init, scaled_init
+
 
 
 class MAMultiDiscretePolicy(nn.Module):
@@ -41,7 +42,7 @@ class MAMultiDiscretePolicy(nn.Module):
                 start_idx = end_idx
 
             # Combine distributions for each action dimension, for this action.
-            agent_multi_dist = tfd.Blockwise(agent_dists)
+            agent_multi_dist = BlockwiseWithMode(agent_dists)
             dists.append(agent_multi_dist)
 
         # When sampled, this returns a list of actions, one per agent.
