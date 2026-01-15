@@ -127,7 +127,6 @@ class VizValues(struct.PyTreeNode):
             fig.savefig(fig_path, bbox_inches="tight")
             plt.close(fig)
 
-        exit(0)
 
 def plot_eval_trajs(p: CallbackProps):
     plots_dir = p.run.plots_dir

@@ -264,9 +264,7 @@ class HerdBase(Env):
         """
         Inside the circle is +1.
         Outside the circle is negative.
-        - Scale from -1 at infinity to -eps at the boundary.
-        - Use tanh to smooth it out.
-        - Make it -0.999 when distance is 2 * halfsize - radius away.
+        - Linearly scale from -1 when distance=edge to -eps when distance=0
         """
 
         h_pos = state.herder_state[..., :, 0:2]
@@ -279,11 +277,11 @@ class HerdBase(Env):
         c_dist_to_circ = c_dists - c_radiuses + self.cfg.agent_radius
         eps = 0.1
 
-        val_at_edge = -0.999
+        val_at_edge = -1.0
         edge = 2 * which.array(self.cfg.halfsize).max() - c_radiuses.max()
-        coef = which.arctanh(-eps - val_at_edge * (1 + eps)) / edge
-        scaled_dist = coef * c_dist_to_circ
-        pred = jnp.where(c_dist_to_circ <= 0, 1.0, (-eps - which.tanh(scaled_dist)) / (1 + eps))
+        coef = (val_at_edge + eps) / edge
+        pred = jnp.where(c_dist_to_circ <= 0, 1.0, -eps + coef * c_dist_to_circ)
+        pred = jnp.clip(pred, -1.0, 1.0)
         return pred
 
     def get_predicates_bool(self, state: HerdBaseState):
