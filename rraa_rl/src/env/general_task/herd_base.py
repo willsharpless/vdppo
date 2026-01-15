@@ -17,7 +17,7 @@ from rraa_rl.jax_types import BoolScalar
 from rraa_rl.jax_utils import softminimum
 from rraa_rl.src.env.general_task.env import Env, EnvStep
 
-VEL_ZERO = False
+VEL_ZERO = True
 HERD_ZERO = True
 
 
@@ -195,21 +195,25 @@ class HerdBase(Env):
         herder_vel = state.herder_state[:, 2:4]
         herder_acc = control
 
-        # Take velocity limit into account.
-        time_till_vmax = jnp.where(
-            herder_acc > 0,
-            (jnp.array(self.cfg.vel_maxs) - herder_vel) / herder_acc,
-            jnp.where(herder_acc < 0, -herder_vel / herder_acc, jnp.inf),
-        )
-        time_till_vmax = jnp.maximum(time_till_vmax, 0.0)
-        acc_dt = jnp.minimum(dt, time_till_vmax)
-        noaccel_dt = dt - acc_dt
-        # Accelerate for effective_dt, then zero acceleration for the rest of dt.
-        herder_vel_new = herder_vel + herder_acc * acc_dt
-        herder_pos_mid = herder_pos + herder_vel * acc_dt + 0.5 * herder_acc * acc_dt**2
-        herder_pos_new = herder_pos_mid + herder_vel_new * noaccel_dt
         if VEL_ZERO:
+            vel_inp = control
+            herder_pos_new = herder_pos + vel_inp * dt
             herder_vel_new = herder_vel
+        else:
+            # Take velocity limit into account.
+            time_till_vmax = jnp.where(
+                herder_acc > 0,
+                (jnp.array(self.cfg.vel_maxs) - herder_vel) / herder_acc,
+                jnp.where(herder_acc < 0, -herder_vel / herder_acc, jnp.inf),
+            )
+            time_till_vmax = jnp.maximum(time_till_vmax, 0.0)
+            acc_dt = jnp.minimum(dt, time_till_vmax)
+            noaccel_dt = dt - acc_dt
+            # Accelerate for effective_dt, then zero acceleration for the rest of dt.
+            herder_vel_new = herder_vel + herder_acc * acc_dt
+            herder_pos_mid = herder_pos + herder_vel * acc_dt + 0.5 * herder_acc * acc_dt ** 2
+            herder_pos_new = herder_pos_mid + herder_vel_new * noaccel_dt
+
         herder_state_new = jnp.concatenate([herder_pos_new, herder_vel_new], axis=-1)
 
         # Update herd states (simple dynamics: herd agents move towards the average position of the herders)
