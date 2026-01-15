@@ -2,6 +2,7 @@ import functools as ft
 from typing import Any, Self
 
 import einops as ei
+import ipdb
 import jax
 import jax.numpy as jnp
 import jax.random as jr
@@ -29,6 +30,7 @@ from rraa_rl.train_utils import compute_norm_and_clip, has_any_nan_or_inf
 
 @struct.dataclass
 class PPOData:
+    state: Any
     act: Any
     obs: jnp.ndarray
     logp: jnp.ndarray
@@ -53,19 +55,20 @@ class VDMAPPOAgentCfg:
     max_grad_norm: float = 0.5
     gamma: float = 0.99
     gae_lambda: float = 0.95
-    entropy_coef: float = 4e-3
+    entropy_coef: float = 1.5e-3
     clip_eps: float = 0.1
 
     n_epochs: int = 2
     n_minibatches: int = 4
 
     rollout_T: int = 30
+    # rollout_T: int = 2
 
     norm_adv: bool = True
 
     # Network parameters.
-    actor_hids: tuple[int, ...] = (128, 128, 128)
-    critic_hids: tuple[int, ...] = (128, 128, 128)
+    actor_hids: tuple[int, ...] = (128, 128)
+    critic_hids: tuple[int, ...] = (128, 128)
 
 
 class VDMAPPOStatic:
@@ -115,8 +118,8 @@ class VDMAPPOAgent:
         # For the shared optimizer
         network_tx = optax.multi_transform(
             {
-                "actor": optax.adamw(cfg.actor_lr, weight_decay=1e-6),
-                "critic": optax.adamw(cfg.critic_lr, weight_decay=1e-6),
+                "actor": optax.adamw(cfg.actor_lr),
+                "critic": optax.adamw(cfg.critic_lr),
             },
             {
                 "modules_actor": "actor",
@@ -137,13 +140,10 @@ class VDMAPPOAgent:
         bT_predicates: dict[str, jnp.ndarray],
         scratch: dict[DAGId, jnp.ndarray] | None = None,
     ) -> jnp.ndarray:
-        if scratch is None:
-            scratch: dict[DAGId, jnp.ndarray] = {}
-            # Fill in the scratch dict with the predicate values.
-            for predicate_name, node_idx in self.env.pred_info.predicate_to_idx.items():
-                scratch[node_idx] = bT_predicates[predicate_name]
-
         # Check if already computed.
+        if scratch is None:
+            scratch = {}
+
         if node_idx in scratch:
             return scratch[node_idx]
 
@@ -152,9 +152,11 @@ class VDMAPPOAgent:
             case DAGConst(value=value):
                 raise ValueError("Const nodes should have been removed")
             case DAGVar(name=name):
-                raise ValueError("Var nodes should have been handled above")
+                out = bT_predicates[name]
+                # logger.debug("Var(%{}) = {}".format(node_idx, out))
             case DAGNegate(arg=arg):
                 out = -self.evaluate_dag(arg, bTt_V, bT_predicates, scratch)
+                # logger.debug("Negate(%{}) = {}".format(node_idx, out))
             case DAGMinN(args=args):
                 args_vals = jnp.stack(
                     [self.evaluate_dag(arg, bTt_V, bT_predicates, scratch) for arg in args],
@@ -170,13 +172,13 @@ class VDMAPPOAgent:
             case _:
                 # Temporal nodes. Use the value function.
                 temporal_idx = self.env.temporal_nodes.index(node_idx)
-                bT_V = bTt_V[:, :, temporal_idx]
+                bT_V = bTt_V[..., temporal_idx]
                 out = bT_V
 
         scratch[node_idx] = out
         return out
 
-    def compute_A_Q(self, Tb_rollout: RolloutOutput):
+    def compute_A_Q(self, Tb_rollout: RolloutOutput, debug: bool = False):
         """Compute GAE advantages and Q-values from rollout."""
         T, b = Tb_rollout.shape
 
@@ -206,8 +208,6 @@ class VDMAPPOAgent:
 
             cT_term = bT_term[start_idx:end_idx]
 
-            start_idx = end_idx
-
             cT_temporal_idx = jnp.full((n_node, T), temporal_node_idx, dtype=jnp.int32)
 
             cT_V = cTt_V[:, :, temporal_node_idx]
@@ -219,15 +219,22 @@ class VDMAPPOAgent:
 
             match dag_node:
                 case DAGAvoid(avoid=stay_idx):
+                    logger.info("temporal_idx={} | Avoid for {}:{}".format(temporal_node_idx, start_idx, end_idx))
                     cT_q = self.evaluate_dag(stay_idx, cTt_V, cT_predicates)
                     cT_A, cT_Q = self.compute_A_Q_avoid(cT_q, cT_V, cT_V_next, cT_term)
                 case DAGReach(reach=reach_idx):
+                    logger.info("temporal_idx={} | Reach for {}:{}".format(temporal_node_idx, start_idx, end_idx))
                     cT_r = self.evaluate_dag(reach_idx, cTt_V, cT_predicates)
                     cT_A, cT_Q = self.compute_A_Q_reach(cT_r, cT_V, cT_V_next, cT_term)
                 case DAGReachAvoid(reach=reach_idx, avoid=stay_idx):
+                    logger.info("temporal_idx={} | ReachAvoid for {}:{}".format(temporal_node_idx, start_idx, end_idx))
                     cT_r = self.evaluate_dag(reach_idx, cTt_V, cT_predicates)
                     cT_q = self.evaluate_dag(stay_idx, cTt_V, cT_predicates)
-                    cT_A, cT_Q = self.compute_A_Q_reachavoid(cT_q, cT_r, cT_V, cT_V_next, cT_term)
+                    cT_A, cT_Q = self.compute_A_Q_reachavoid(cT_q, cT_r, cT_V, cT_V_next, cT_term, debug)
+
+                    if debug:
+                        logger.debug("!!??!?!")
+                        ipdb.set_trace()
                 case DAGGU(args=args_idx):
                     raise NotImplementedError("GU not implemented yet")
                 case _:
@@ -236,6 +243,8 @@ class VDMAPPOAgent:
             bT_A_list.append(cT_A)
             bT_Q_list.append(cT_Q)
             bT_temporal_list.append(cT_temporal_idx)
+
+            start_idx = end_idx
 
         bT_A = jnp.concatenate(bT_A_list, axis=0)
         bT_Q = jnp.concatenate(bT_Q_list, axis=0)
@@ -265,19 +274,40 @@ class VDMAPPOAgent:
         return bT_A_gae, bT_Q_gae
 
     def compute_A_Q_reachavoid(
-        self, bT_q: jnp.ndarray, bT_r: jnp.ndarray, bT_V: jnp.ndarray, bT_V_next: jnp.ndarray, bT_term: jnp.ndarray
+        self,
+        bT_q: jnp.ndarray,
+        bT_r: jnp.ndarray,
+        bT_V: jnp.ndarray,
+        bT_V_next: jnp.ndarray,
+        bT_term: jnp.ndarray,
+        debug: bool = False,
     ) -> tuple[bFloat, bFloat]:
         gamma, lam = self.cfg.gamma, self.cfg.gae_lambda
         gae_fn = ft.partial(gae_generalized, gamma=gamma, lam=lam)
         b_bellman = BellmanMaxMin(T_r=bT_r, T_q=bT_q)
         bT_Q_gae = jax.vmap(gae_fn)(bT_V, bT_V_next, bT_term, b_bellman)
         bT_A_gae = bT_Q_gae - bT_V
+
+        if debug:
+            idx = 987
+            logger.debug("T_q   : {}".format(bT_q[idx]))
+            logger.debug("T_r   : {}".format(bT_r[idx]))
+            logger.debug("T_V   : {}".format(bT_V[idx]))
+            logger.debug("T_Vnxt: {}".format(bT_V_next[idx]))
+            logger.debug("T_term: {}".format(bT_term[idx]))
+            logger.debug("T_Q_g : {}".format(bT_Q_gae[idx]))
+
+            bellman = BellmanMaxMin(T_r=bT_r[idx], T_q=bT_q[idx], debug=True)
+            T_Q_gae = gae_generalized(bT_V[idx], bT_V_next[idx], bT_term[idx], bellman, gamma, lam)
+            logger.debug("T_Q_g : {}".format(T_Q_gae))
+            ipdb.set_trace()
+
         return bT_A_gae, bT_Q_gae
 
-    def construct_flattened_rollout(self, Tb_rollout: RolloutOutput) -> PPOData:
-        """Construct flattened PPO rollout with advantages and Q-values."""
+    def get_Tb_data(self, Tb_rollout: RolloutOutput) -> PPOData:
         bT_A, bT_Q, bT_temporal_idx = self.compute_A_Q(Tb_rollout)
         Tb_data = PPOData(
+            state=Tb_rollout.state_now,
             act=Tb_rollout.act,
             obs=Tb_rollout.obs_now,
             logp=Tb_rollout.logprob,
@@ -285,6 +315,11 @@ class VDMAPPOAgent:
             Q=bT_Q.T,
             temporal_idx=bT_temporal_idx.T,
         )
+        return Tb_data
+
+    def construct_flattened_rollout(self, Tb_rollout: RolloutOutput) -> PPOData:
+        """Construct flattened PPO rollout with advantages and Q-values."""
+        Tb_data = self.get_Tb_data(Tb_rollout)
 
         # Flatten batch and time dimensions
         T, b = Tb_rollout.shape
@@ -322,7 +357,8 @@ class VDMAPPOAgent:
                 f"was {self.static.temporal_node_alloc}, now {temporal_node_alloc}"
             )
 
-        return self._update(Tb_rollout, key)
+        self_new, info = self._update(Tb_rollout, key)
+        return self_new, info
 
     def permute_for_minibatch(self, b_data: PPOData):
         (batch_size,) = b_data.shape
@@ -384,6 +420,7 @@ class VDMAPPOAgent:
         info = jtu.tree_map(lambda x: x[-1], infos)
         info_max = jtu.tree_map(lambda x: jnp.max(x, axis=0), infos_max)
         info = info | info_max
+        info["debug/b_data"] = b_data
 
         return self.replace(network=new_network), info
 

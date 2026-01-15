@@ -14,7 +14,7 @@ from flax import struct
 from jaxtyping import Bool, Float, PRNGKeyArray
 from loguru import logger
 
-from rraa_rl.jax_utils import tree_where_dim0, switch01
+from rraa_rl.jax_utils import switch01, tree_where_dim0
 from rraa_rl.src.env.general_task.env import EnvStep
 from rraa_rl.src.env.general_task.herd_os import HerdOs
 
@@ -70,16 +70,15 @@ class RolloutOutput:
     @staticmethod
     def from_rollout(
         colstate: CollectorState,
-        colstate_new: CollectorState,
         b_step_result: EnvStep,
         b_act: jnp.ndarray,
         b_logprob: jnp.ndarray,
     ) -> "RolloutOutput":
         return RolloutOutput(
             state_now=colstate.b_state,
-            state_next=colstate_new.b_state,
+            state_next=b_step_result.envstate,
             obs_now=colstate.b_obs,
-            obs_next=colstate_new.b_obs,
+            obs_next=b_step_result.obs,
             act=b_act,
             predicates=b_step_result.predicates,
             term=b_step_result.term,
@@ -153,6 +152,8 @@ class Collector(struct.PyTreeNode):
             step_single_fn = ft.partial(self.step_single_fn, sample_action)
             b_step_result: EnvStep
             b_step_result, b_act, b_logprob = jax.vmap(step_single_fn)(b_key_pol, colstate.b_state, colstate.b_obs)
+            # NOTE: Reset DOESN'T change the step, only the colstate.
+            out = RolloutOutput.from_rollout(colstate, b_step_result, b_act, b_logprob)
 
             # Sample new states from the environments for resets
             if self.cfg.auto_reset:
@@ -169,7 +170,6 @@ class Collector(struct.PyTreeNode):
             # Create the updated collector state
             colstate_new_ = jdc.replace(colstate, b_state=b_state_new, b_obs=b_obs_new)
             carry_new = (colstate_new_,)
-            out = RolloutOutput.from_rollout(colstate, colstate_new_, b_step_result, b_act, b_logprob)
             return carry_new, out
 
         carry0 = (self.collect_state,)
@@ -194,6 +194,9 @@ class Collector(struct.PyTreeNode):
             step_single_fn = ft.partial(self.step_single_fn_det, get_action)
             b_step_result: EnvStep
             b_step_result, b_act = jax.vmap(step_single_fn)(colstate.b_state, colstate.b_obs)
+            b_logprob = jnp.zeros(self.cfg.n_envs)
+            # NOTE: Reset DOESN'T change the step, only the colstate.
+            out = RolloutOutput.from_rollout(colstate, b_step_result, b_act, b_logprob)
 
             # Sample new states from the environments for resets
             if self.cfg.auto_reset:
@@ -207,12 +210,9 @@ class Collector(struct.PyTreeNode):
                 b_state_new = b_step_result.envstate
                 b_obs_new = b_step_result.obs
 
-            b_logprob = jnp.zeros(self.cfg.n_envs)
-
             # Create the updated collector state
             colstate_new_ = jdc.replace(colstate, b_state=b_state_new, b_obs=b_obs_new)
             carry_new = (colstate_new_,)
-            out = RolloutOutput.from_rollout(colstate, colstate_new_, b_step_result, b_act, b_logprob)
             return carry_new, out
 
         carry0 = (self.collect_state,)

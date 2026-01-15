@@ -18,7 +18,9 @@ def main():
 
     bellman_update = BellmanMax(T_r)
     T_Q_avg = gae_generalized(T_V, T_V_next, T_term, bellman_update, gamma, lam)
-    print(T_Q_avg)
+
+    T_Q_avg_expected = np.array([gamma**2 * lam**2 / (1 + lam + lam**2), gamma * lam / (1 + lam), 1.0])
+    np.testing.assert_allclose(T_Q_avg, T_Q_avg_expected, rtol=1e-5)
 
 
 if __name__ == "__main__":

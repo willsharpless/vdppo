@@ -1,5 +1,6 @@
 from typing import Protocol
 
+import attrs
 import ipdb
 import jax
 import jax.random as jr
@@ -28,6 +29,8 @@ class CallbackProps:
     test_trigger_dict: dict[tuple[str, str], np.ndarray]
 
     collector_train: Collector
+    Tb_rollout: RolloutOutput
+    info_update: dict
 
     @property
     def env(self):
@@ -45,7 +48,14 @@ class Trainer:
         self.agent = agent
         self.b_state0 = None
 
-    def train(self, run: Run, env: HerdOs, eval_cbs: list[Callback] = None, debug: bool = False):
+    def train(
+        self,
+        run: Run,
+        env: HerdOs,
+        eval_cbs: list[Callback] = None,
+        collect_cbs: list[Callback] = None,
+        debug: bool = False,
+    ):
         eval_cbs = eval_cbs if eval_cbs is not None else []
 
         key_base = jr.PRNGKey(124521)
@@ -67,11 +77,13 @@ class Trainer:
 
         n_train_steps = 100_000
 
-        eval_every = 1_000
-        log_every = 10
+        eval_every = 10_000
+        log_every = 100
 
         if not debug:
             wandb.init(project="vd_mappo", name=run.wandb_name)
+
+        cb_props = CallbackProps(run, -1, self.agent, None, None, collector, None, None)
 
         pbar = tqdm.trange(n_train_steps)
         for train_step in pbar:
@@ -79,7 +91,11 @@ class Trainer:
                 pbar.set_description(f"Eval at step {train_step}")
                 trajs, trigger_dict, info_eval = self.eval(collector_eval, key_eval)
 
-                cb_props = CallbackProps(run, train_step, self.agent, trajs, trigger_dict, collector)
+                cb_props.train_step = train_step
+                cb_props.agent = self.agent
+                cb_props.bT_test_rollouts = trajs
+                cb_props.test_trigger_dict = trigger_dict
+                cb_props.collector_train = collector
 
                 for cb in eval_cbs:
                     cb_name = cb.__name__ if hasattr(cb, "__name__") else str(type(cb))
@@ -100,15 +116,29 @@ class Trainer:
             pbar.set_description(f"Updating {type(self.agent).__name__}...")
             self.agent, info_update = self.agent.update(Tb_rollout, key_update)
 
+            if len(collect_cbs) > 0:
+                cb_props.train_step = train_step
+                cb_props.agent = self.agent
+                cb_props.Tb_rollout = Tb_rollout
+                cb_props.info_update = info_update
+
+                for cb in collect_cbs:
+                    cb_name = cb.__name__ if hasattr(cb, "__name__") else str(type(cb))
+                    pbar.set_description(f"Running eval callback {cb_name}")
+                    cb(cb_props)
+
             # Update progress bar.
             pbar.update(1)
 
             # Log info to wandb
             if train_step % log_every == 0:
+                # Remove any keys that start with debug/
+                info_update_log = {k: v for k, v in info_update.items() if not k.startswith("debug/")}
+
                 info_collect2 = {f"collect/{k}": v for k, v in info_collect2.items()}
                 info_collect = {f"collect/{k}": float(v) for k, v in info_collect.items()}
                 log_dict = {"step": train_step}
-                log_dict = log_dict | info_collect | info_collect2 | info_update
+                log_dict = log_dict | info_collect | info_collect2 | info_update_log
 
                 if not debug:
                     wandb.log(log_dict, step=train_step)

@@ -4,6 +4,7 @@ import jax.random as jr
 
 from rraa_rl import herd_os_cbs
 from rraa_rl.distribution import tfd
+from rraa_rl.herd_os_cbs import VizValues
 from rraa_rl.run import Run
 from rraa_rl.src.env.general_task.herd_os import HerdOs
 from rraa_rl.trainer import Trainer
@@ -19,11 +20,13 @@ def main(debug: bool = False):
     cfg = VDMAPPOAgent.Cfg()
     agent = VDMAPPOAgent.create(seed, cfg, env)
 
-    eval_cbs = [herd_os_cbs.plot_eval_trajs, herd_os_cbs.animate_eval_trajs]
+    eval_cbs = [herd_os_cbs.plot_eval_trajs, VizValues.create(), herd_os_cbs.animate_eval_trajs]
+    # eval_cbs = [herd_os_cbs.plot_eval_trajs, VizValues.create()]
+    collect_cbs = [herd_os_cbs.viz_collect_data]
 
     run = Run.create("HerdOs")
     trainer = Trainer(agent)
-    trainer.train(run, env, eval_cbs, debug=debug)
+    trainer.train(run, env, eval_cbs=eval_cbs, collect_cbs=collect_cbs, debug=debug)
 
 
 if __name__ == "__main__":

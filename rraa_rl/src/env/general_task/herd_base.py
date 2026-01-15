@@ -17,6 +17,9 @@ from rraa_rl.jax_types import BoolScalar
 from rraa_rl.jax_utils import softminimum
 from rraa_rl.src.env.general_task.env import Env, EnvStep
 
+VEL_ZERO = False
+HERD_ZERO = True
+
 
 class ShouldTermFn:
     def __call__(self, predicates: dict[str, BoolScalar]) -> BoolScalar: ...
@@ -50,7 +53,7 @@ class HerdBaseCfg:
     # Half size.
     halfsize: tuple[float, float] = (5.0, 5.0)
 
-    trunc_steps: int = 500
+    trunc_steps: int = 100
 
     herded_radius: float = 1.0  # Radius within which herd agents are considered herded.
 
@@ -205,11 +208,15 @@ class HerdBase(Env):
         herder_vel_new = herder_vel + herder_acc * acc_dt
         herder_pos_mid = herder_pos + herder_vel * acc_dt + 0.5 * herder_acc * acc_dt**2
         herder_pos_new = herder_pos_mid + herder_vel_new * noaccel_dt
+        if VEL_ZERO:
+            herder_vel_new = herder_vel
         herder_state_new = jnp.concatenate([herder_pos_new, herder_vel_new], axis=-1)
 
         # Update herd states (simple dynamics: herd agents move towards the average position of the herders)
         herd_pos = state.herd_state
         herd_vel = self.compute_herd_vel(herd_pos, herder_pos)
+        if HERD_ZERO:
+            herd_vel = 0
         herd_state_new = herd_pos + herd_vel * dt
 
         return HerdBaseState(herd_state=herd_state_new, herder_state=herder_state_new, steps=state.steps + 1)
@@ -243,15 +250,41 @@ class HerdBase(Env):
         herded = jnp.all((dists + self.cfg.agent_radius) < self.cfg.herded_radius)
         return herded
 
-    def is_herder_circs(self, state: HerdBaseState):
-        h_pos = state.herder_state[:, 0:2]
-        c_pos = jnp.array(self.centers)
+    def is_herder_circs(self, state: HerdBaseState, which=jnp):
+        h_pos = state.herder_state[..., :, 0:2]
+        c_pos = which.array(self.centers)
         # (n_circs, n_herders, 2) -> (n_circs, n_herders)
-        ch_dists = jnp.linalg.norm(h_pos[None, :, :] - c_pos[:, None, :], axis=-1)
+        ch_dists = which.linalg.norm(h_pos[..., None, :, :] - c_pos[..., :, None, :], axis=-1)
         # (n_circs, )
-        c_dists = jnp.min(ch_dists, axis=-1)
-        c_is_herder_inside = c_dists < (jnp.array(self.radiuses) - self.cfg.agent_radius)
+        c_dists = which.min(ch_dists, axis=-1)
+        c_is_herder_inside = c_dists < (which.array(self.radiuses) - self.cfg.agent_radius)
         return c_is_herder_inside
+
+    def pred_herder_circs(self, state: HerdBaseState, which=jnp):
+        """
+        Inside the circle is +1.
+        Outside the circle is negative.
+        - Scale from -1 at infinity to -eps at the boundary.
+        - Use tanh to smooth it out.
+        - Make it -0.999 when distance is 2 * halfsize - radius away.
+        """
+
+        h_pos = state.herder_state[..., :, 0:2]
+        c_pos = which.array(self.centers)
+        # (n_circs, n_herders, 2) -> (n_circs, n_herders)
+        ch_dists = which.linalg.norm(h_pos[..., None, :, :] - c_pos[..., :, None, :], axis=-1)
+        # (n_circs, )
+        c_dists = which.min(ch_dists, axis=-1)
+        c_radiuses = which.array(self.radiuses)
+        c_dist_to_circ = c_dists - c_radiuses + self.cfg.agent_radius
+        eps = 0.1
+
+        val_at_edge = -0.999
+        edge = 2 * which.array(self.cfg.halfsize).max() - c_radiuses.max()
+        coef = which.arctanh(-eps - val_at_edge * (1 + eps)) / edge
+        scaled_dist = coef * c_dist_to_circ
+        pred = jnp.where(c_dist_to_circ <= 0, 1.0, (-eps - which.tanh(scaled_dist)) / (1 + eps))
+        return pred
 
     def get_predicates_bool(self, state: HerdBaseState):
         is_herder_circs = self.is_herder_circs(state)
@@ -259,9 +292,22 @@ class HerdBase(Env):
             "herder_collide": self.is_herder_collide(state),
             "herder_oob": self.is_herder_oob(state),
             "herd_herded": self.is_herd_herded(state),
-            "herder_c1": is_herder_circs[0],
+            # "herder_c1": is_herder_circs[0],
             # "herder_c2": is_herder_circs[1],
         }
+        return predicates
+
+    def get_predicates_float(self, state: HerdBaseState):
+        pred_herder_circs = self.pred_herder_circs(state)
+        return {"herder_c1": pred_herder_circs[0]}
+
+    def get_predicates(self, state: HerdBaseState):
+        predicates_bool = self.get_predicates_bool(state)
+        predicates = {k: jnp.where(v, 1.0, -1.0) for k, v in predicates_bool.items()}
+
+        predicates_float = self.get_predicates_float(state)
+        predicates = predicates | predicates_float
+
         return predicates
 
     def step(self, state: HerdBaseState, action: jnp.ndarray):
@@ -269,15 +315,12 @@ class HerdBase(Env):
         state_new = self.next_state(state, controls)
         obs_new = self.get_obs(state_new)
 
-        predicates = self.get_predicates_bool(state_new)
+        predicates = self.get_predicates(state_new)
         term = self.should_term_fn(predicates)
         trunc = state_new.steps >= self.cfg.trunc_steps
 
-        # Make it +1 if true, -1 if false.
-        predicates_float = {k: jnp.where(v, 1, -1) for k, v in predicates.items()}
-
         info = {"age": state_new.steps}
-        return EnvStep(state_new, obs_new, predicates_float, term, trunc, info)
+        return EnvStep(state_new, obs_new, predicates, term, trunc, info)
 
     def get_obs(self, state: HerdBaseState):
         # ---------------------------------------------------------------------
@@ -289,18 +332,24 @@ class HerdBase(Env):
         obs_herder_pos = herder_pos / jnp.array(self.cfg.halfsize)
 
         herder_vel = state.herder_state[:, 2:4]  # (n_herders, 2)
+        assert herder_vel.shape == (self.cfg.n_herders, 2)
         obs_herder_vel = herder_vel / jnp.array(self.cfg.vel_maxs)[:, None]
 
         # ---------------------------------------------------------------------
         # 2: Relative positions, break it down into unit vectors and distances.
-        n_agents = self.cfg.n_herd + self.cfg.n_herders
 
-        all_pos = jnp.concatenate([herd_pos, herder_pos], axis=0)  # (n_herd + n_herders, 2)
+        if HERD_ZERO:
+            n_pos = self.cfg.n_herders + len(self.centers)
+            all_pos = jnp.concatenate([herder_pos, self.centers], axis=0)  # (n_herd + n_herders, 2)
+        else:
+            n_pos = self.cfg.n_herd + self.cfg.n_herders + len(self.centers)
+            all_pos = jnp.concatenate([herd_pos, herder_pos, self.centers], axis=0)  # (n_herd + n_herders, 2)
+
         # Distance from each herd agent to each other agent.
         # (n_agents, n_agents, 2)
         rel_pos = all_pos[None, :, :] - all_pos[:, None, :]
         # Take the upper triangle only to avoid duplicates and self-distances.
-        triu_indices = jnp.triu_indices(n_agents, k=1)
+        triu_indices = jnp.triu_indices(n_pos, k=1)
         # (n_edges, 2)
         rel_pos_triu = rel_pos[triu_indices]
         # Compute unit vectors and distances.
@@ -311,17 +360,27 @@ class HerdBase(Env):
 
         # Normalize distances. Mean ~ half the env size, Std ~ quarter the env size.
         halfsize = 0.5 * sum(self.cfg.halfsize)
-        obs_dists = (rel_dists - halfsize) / (0.25 * halfsize)
+        obs_dists = (rel_dists - halfsize) / (0.5 * halfsize)
         # ---------------------------------------------------------------------
-        obs = jnp.concatenate(
-            [
-                obs_herd_pos.flatten(),
-                obs_herder_pos.flatten(),
-                obs_herder_vel.flatten(),
-                obs_rel_unit_vecs.flatten(),
-                obs_dists.flatten(),
-            ]
-        )
+        if HERD_ZERO:
+            obs = jnp.concatenate(
+                [
+                    obs_herder_pos.flatten(),
+                    obs_herder_vel.flatten(),
+                    obs_rel_unit_vecs.flatten(),
+                    obs_dists.flatten(),
+                ]
+            )
+        else:
+            obs = jnp.concatenate(
+                [
+                    obs_herd_pos.flatten(),
+                    obs_herder_pos.flatten(),
+                    obs_herder_vel.flatten(),
+                    obs_rel_unit_vecs.flatten(),
+                    obs_dists.flatten(),
+                ]
+            )
         return obs
 
     def reset(self, key: PRNGKeyArray):
@@ -332,6 +391,8 @@ class HerdBase(Env):
         # Uniformly sample herd positions.
         halfsize_x, halfsize_y = self.cfg.halfsize
         maxpos = np.array([halfsize_x, halfsize_y]) - self.cfg.agent_radius
+        if HERD_ZERO:
+            maxpos = np.zeros(2)
         minpos = -maxpos
         herd_pos = jr.uniform(key_herd, shape=(n_herd, 2), minval=minpos, maxval=maxpos)
 
@@ -342,6 +403,11 @@ class HerdBase(Env):
         maxstate[:, 1] = halfsize_y - self.cfg.agent_radius
         maxstate[:, 2] = np.array(self.cfg.vel_maxs)
         maxstate[:, 3] = np.array(self.cfg.vel_maxs)
+
+        if VEL_ZERO:
+            maxstate[:, 2] = 0.0
+            maxstate[:, 3] = 0.0
+
         minstate = -maxstate
 
         herder_state = jr.uniform(key_herders, shape=(n_herders, 4), minval=minstate, maxval=maxstate)

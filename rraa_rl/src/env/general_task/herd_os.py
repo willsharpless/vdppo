@@ -98,8 +98,8 @@ class HerdOs(Env):
         # return "F(G(herd_herded)) && G( !herder_collide ) && G( !herder_oob )"
         # return "( !herder_collide && ! herder_oob ) U ( G(herd_herded && !herder_collide && ! herder_oob) )"
         # return "F herder_c1 && F herder_c2"
-        # return "F herder_c1"
-        return "!herder_collide U herder_c1"
+        return "F herder_c1"
+        # return "!herder_collide U herder_c1"
 
     def _temporal_node_idx_to_node_type(self):
         """Map from temporal node idx to node type (as index)"""
@@ -115,20 +115,27 @@ class HerdOs(Env):
 
     def _augment_obs(self, state: HerdOsState, base_obs: jnp.ndarray):
         """Augment the base observation with the (one hot) temporal node idx and (one hot) node type."""
-        obs_node_idx = jnn.one_hot(state.temporal_node_idx, self.n_temporal_nodes)
+        if self.n_temporal_nodes > 1:
+            obs_node_idx = jnn.one_hot(state.temporal_node_idx, self.n_temporal_nodes)
 
-        temporal_node_idx_to_node_type = self._temporal_node_idx_to_node_type()
-        node_type = temporal_node_idx_to_node_type[state.temporal_node_idx]
+            temporal_node_idx_to_node_type = self._temporal_node_idx_to_node_type()
+            node_type = temporal_node_idx_to_node_type[state.temporal_node_idx]
 
-        obs_node_type = jnn.one_hot(node_type, DAGNode.n_temporal_classes())
-        obs = jnp.concatenate([base_obs, obs_node_idx, obs_node_type], axis=-1)
+            obs_node_type = jnn.one_hot(node_type, DAGNode.n_temporal_classes())
+
+            obs_aug = jnp.concatenate([obs_node_idx, obs_node_type], axis=-1)
+        else:
+            obs_aug = jnp.array([], dtype=jnp.float32)
+
+        obs = jnp.concatenate([base_obs, obs_aug], axis=-1)
 
         return obs
 
     def should_terminate(self, predicates: dict[str, jnp.ndarray]) -> BoolScalar:
         # Terminate when reaching the goal, or leaving the allowed area.
-        is_goal = predicates["herder_c1"]
-        is_oob = predicates["herder_oob"]
+        eps = 0.1
+        is_goal = predicates["herder_c1"] > eps
+        is_oob = predicates["herder_oob"] > eps
         should_term = is_goal | is_oob
         return should_term
 
@@ -168,6 +175,9 @@ class HerdOs(Env):
         base_obs = self.base.get_obs(state.base)
         obs = self._augment_obs(state, base_obs)
         return obs
+
+    def get_predicates(self, state: HerdOsState) -> dict[str, jnp.ndarray]:
+        return self.base.get_predicates(state.base)
 
     def reset(self, key: PRNGKeyArray) -> HerdOsState:
         key_base, key_node = jr.split(key)

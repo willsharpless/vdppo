@@ -2,6 +2,7 @@ from typing import Callable, NamedTuple, Protocol
 
 import jax
 import jax.numpy as jnp
+from loguru import logger
 
 
 class BellmanUpdate(Protocol):
@@ -46,8 +47,7 @@ class BellmanMaxMin(NamedTuple):
         T_q, T_r = self.T_q, self.T_r
         assert len(T_q) == len(T_r) == len(T_term)
 
-        #    V_next = inf is identity for min.
-        T_V_next_k_masked = jnp.where(T_term, jnp.inf, T_V_next_k)
+        T_V_next_k_masked = jnp.where(T_term, -jnp.inf, T_V_next_k)
         T_Q_curr = (1 - gamma) * jnp.minimum(T_q, T_r) + gamma * jnp.maximum(T_r, jnp.minimum(T_q, T_V_next_k_masked))
         return T_Q_curr
 

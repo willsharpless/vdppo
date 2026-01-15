@@ -1,7 +1,9 @@
+import functools as ft
 from typing import Any, Callable, Generator, Iterable, Literal, Sequence, TypeVar
 
 import flax.linen as nn
 import jax.numpy as jnp
+import numpy as np
 from jaxtyping import Array, Float
 
 ActFn = Callable[[Array], Array]
@@ -15,7 +17,7 @@ HidSizes = Sequence[int]
 _Elem = TypeVar("_Elem")
 
 
-default_nn_init = nn.initializers.orthogonal
+default_nn_init = ft.partial(nn.initializers.orthogonal, scale=np.sqrt(2))
 
 
 def scaled_init(initializer: nn.initializers.Initializer, scale: float) -> nn.initializers.Initializer:

@@ -1,7 +1,12 @@
+from typing import Any, Callable, Sequence, TypeVar
+
 import einops as ei
+import jax
 import jax.numpy as jnp
 import jax.tree_util as jtu
 import numpy as np
+
+_F = TypeVar("_F", bound=Callable)
 
 
 def softminimum(x, axis=-1, temperature=1.0):
@@ -47,3 +52,16 @@ def switch01(arr: jnp.ndarray):
     # Switch the first two axes of an array.
     assert arr.ndim >= 2
     return ei.rearrange(arr, "b0 b1 ... -> b1 b0 ...")
+
+
+def rep_vmap(fn: _F, rep: int, in_axes: int | Sequence[Any] = 0, **kwargs) -> _F:
+    for ii in range(rep):
+        fn = jax.vmap(fn, in_axes=in_axes, **kwargs)
+    return fn
+
+
+def jax_vmap(fn: _F, in_axes: int | Sequence[Any] = 0, out_axes: Any = 0, rep: int = None) -> _F:
+    if rep is not None:
+        return rep_vmap(fn, rep=rep, in_axes=in_axes, out_axes=out_axes)
+
+    return jax.vmap(fn, in_axes, out_axes)
