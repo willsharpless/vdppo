@@ -87,6 +87,11 @@ class RolloutOutput:
             info=b_step_result.info,
         )
 
+    @property
+    def temporal_node_idx(self):
+        assert hasattr(self.state_now, "temporal_node_idx")
+        return self.state_now.temporal_node_idx
+
 
 @define
 class CollectorCfg:

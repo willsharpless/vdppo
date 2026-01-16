@@ -12,7 +12,7 @@ from valtr.valtr import to_dag
 
 import wandb
 from rraa_rl.collector import Collector, RolloutOutput, extract_info_from_rollout
-from rraa_rl.rollout_temporal_analysis import evaluate_triggers
+from rraa_rl.rollout_temporal_analysis import evaluate_ltl_finite, evaluate_triggers
 from rraa_rl.rollout_utils import extract_rollouts_eval
 from rraa_rl.run import Run
 from rraa_rl.src.env.general_task.herd_os import HerdOs
@@ -156,10 +156,30 @@ class Trainer:
         # Extract each rollout
         trajs = extract_rollouts_eval(bT_rollout)
 
+        # Evaluate the LTL satisfaction over each trajectory.
+        dag_values_dict: dict[int, list[float]] = {}
+        for traj in trajs:
+            T_temporal_node_idx: np.ndarray = traj.temporal_node_idx
+            temporal_node_idx = T_temporal_node_idx[0]
+            dag_node_idx = env.temporal_nodes[temporal_node_idx]
+            dag_value = evaluate_ltl_finite(env, traj.predicates, which=np)[dag_node_idx]
+
+            dag_values = dag_values_dict.get(temporal_node_idx, [])
+            dag_values.append(dag_value)
+            dag_values_dict[temporal_node_idx] = dag_values
+        dag_values_dict: dict[int, np.ndarray] = {k: np.array(v) for k, v in dag_values_dict.items()}
+
+        # Compute the average satisfaction rate for each temporal node
+        info_satisfaction = {}
+        for temporal_node_idx, dag_values in dag_values_dict.items():
+            node_name = env.temporal_node_names[temporal_node_idx]
+            # Satisfy if positive.
+            info_satisfaction[f"Eval/Satisfy/{node_name}"] = float(np.mean(dag_values > 0.1))
+
         # Evaluate the satisfaction of each temporal node.
         trigger_dict = evaluate_triggers(env, trajs)
         # Compute the average satisfaction rate for each trigger
         info_trigger = {f"Eval/Triggers/{k[0]}->{k[1]}": float(np.mean(v)) for k, v in trigger_dict.items()}
 
-        info = info_trigger
+        info = info_trigger | info_satisfaction
         return trajs, trigger_dict, info

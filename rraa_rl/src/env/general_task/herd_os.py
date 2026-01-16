@@ -78,6 +78,15 @@ class HerdOs(Env):
         assert len(self.cfg.temporal_node_fracs) == len(self.temporal_nodes)
 
     @property
+    def temporal_node_names(self) -> list[str]:
+        names = []
+        for node_id in self.temporal_nodes:
+            node = self.dag_nodes[node_id]
+            name = f"{type(node).__name__} (%{node_id})"
+            names.append(name)
+        return names
+
+    @property
     def n_agents(self) -> int:
         return self.base.n_agents
 
