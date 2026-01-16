@@ -106,8 +106,8 @@ class HerdOs(Env):
     def specification(self):
         # return "F(G(herd_herded)) && G( !herder_collide ) && G( !herder_oob )"
         # return "( !herder_collide && ! herder_oob ) U ( G(herd_herded && !herder_collide && ! herder_oob) )"
-        # return "F herder_c1 && F herder_c2"
-        return "F herder_c1"
+        return "F herder_c1 && F herder_c2"
+        # return "F herder_c1"
         # return "!herder_collide U herder_c1"
 
     def _temporal_node_idx_to_node_type(self):

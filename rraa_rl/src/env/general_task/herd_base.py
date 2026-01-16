@@ -201,7 +201,7 @@ class HerdBase(Env):
             # Take velocity limit into account.
             #     Max acceleration when cmd=vel_max and current_vel = 0.
             #     =>  acc_max = kp_vel * vel_max   => kp_vel = acc_max / vel_max
-            kp_vel = jnp.array(self.cfg.acc_maxs) / jnp.array(self.cfg.vel_maxs)
+            kp_vel = 0.5 * jnp.array(self.cfg.acc_maxs) / jnp.array(self.cfg.vel_maxs)
             herder_acc = kp_vel * (herder_vel_cmd - herder_vel)
             acc_max = jnp.array(self.cfg.acc_maxs)
             herder_acc = jnp.clip(herder_acc, -acc_max[:, None], acc_max[:, None])
