@@ -27,6 +27,7 @@ class CallbackProps:
     agent: VDMAPPOAgent
     bT_test_rollouts: list[RolloutOutput]
     test_trigger_dict: dict[tuple[str, str], np.ndarray]
+    temporal_values_dict: dict[int, np.ndarray]
 
     collector_train: Collector
     Tb_rollout: RolloutOutput
@@ -83,7 +84,7 @@ class Trainer:
         if not debug:
             wandb.init(project="vd_mappo", name=run.wandb_name)
 
-        cb_props = CallbackProps(run, -1, self.agent, None, None, collector, None, None)
+        cb_props = CallbackProps(run, -1, self.agent, None, None, None, collector, None, None)
 
         pbar = tqdm.trange(n_train_steps)
         for train_step in pbar:
@@ -91,16 +92,24 @@ class Trainer:
                 pbar.set_description(f"Eval at step {train_step}")
                 trajs, trigger_dict, info_eval = self.eval(collector_eval, key_eval)
 
+                temporal_values_dict = info_eval.pop("debug/temporal_values_dict")
+
                 cb_props.train_step = train_step
                 cb_props.agent = self.agent
                 cb_props.bT_test_rollouts = trajs
                 cb_props.test_trigger_dict = trigger_dict
+                cb_props.temporal_values_dict = temporal_values_dict
                 cb_props.collector_train = collector
 
                 for cb in eval_cbs:
                     cb_name = cb.__name__ if hasattr(cb, "__name__") else str(type(cb))
                     pbar.set_description(f"Running eval callback {cb_name}")
                     cb(cb_props)
+
+                # Log
+                log_dict = {"step": train_step}
+                log_dict = log_dict | info_eval
+                wandb.log(log_dict, step=train_step)
 
             # Collect rollout data
             pbar.set_description(f"Collecting rollouts")
@@ -157,24 +166,24 @@ class Trainer:
         trajs = extract_rollouts_eval(bT_rollout)
 
         # Evaluate the LTL satisfaction over each trajectory.
-        dag_values_dict: dict[int, list[float]] = {}
+        temporal_node_values_l: dict[int, list[float]] = {}
         for traj in trajs:
             T_temporal_node_idx: np.ndarray = traj.temporal_node_idx
             temporal_node_idx = T_temporal_node_idx[0]
             dag_node_idx = env.temporal_nodes[temporal_node_idx]
             dag_value = evaluate_ltl_finite(env, traj.predicates, which=np)[dag_node_idx]
 
-            dag_values = dag_values_dict.get(temporal_node_idx, [])
-            dag_values.append(dag_value)
-            dag_values_dict[temporal_node_idx] = dag_values
-        dag_values_dict: dict[int, np.ndarray] = {k: np.array(v) for k, v in dag_values_dict.items()}
+            temporal_node_value = temporal_node_values_l.get(temporal_node_idx, [])
+            temporal_node_value.append(dag_value)
+            temporal_node_values_l[temporal_node_idx] = temporal_node_value
+        temporal_node_values: dict[int, np.ndarray] = {k: np.array(v) for k, v in temporal_node_values_l.items()}
 
         # Compute the average satisfaction rate for each temporal node
         info_satisfaction = {}
-        for temporal_node_idx, dag_values in dag_values_dict.items():
+        for temporal_node_idx, temporal_node_value in temporal_node_values.items():
             node_name = env.temporal_node_names[temporal_node_idx]
             # Satisfy if positive.
-            info_satisfaction[f"Eval/Satisfy/{node_name}"] = float(np.mean(dag_values > 0.1))
+            info_satisfaction[f"Eval/Satisfy/{node_name}"] = float(np.mean(temporal_node_value > 0.1))
 
         # Evaluate the satisfaction of each temporal node.
         trigger_dict = evaluate_triggers(env, trajs)
@@ -182,4 +191,7 @@ class Trainer:
         info_trigger = {f"Eval/Triggers/{k[0]}->{k[1]}": float(np.mean(v)) for k, v in trigger_dict.items()}
 
         info = info_trigger | info_satisfaction
+
+        info["debug/temporal_values_dict"] = temporal_node_values
+
         return trajs, trigger_dict, info

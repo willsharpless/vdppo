@@ -36,7 +36,9 @@ def evaluate_ltl_finite(env: HerdOs, T_pred: dict[str, np.ndarray], which=jnp):
 
     # 1. Obtain the final value.
     pred_final = {k: v[-1] for k, v in T_pred.items()}
-    dag_values = get_values(dag_nodes, dag_root, pred_final, next_values=None, which=which)
+    dag_values = {}
+    get_values(dag_nodes, dag_root, pred_final, next_values=None, which=which, values=dag_values)
+    assert len(dag_values) == len(dag_nodes)
     dag_values_curr = dag_values
 
     if which is np:
@@ -45,11 +47,13 @@ def evaluate_ltl_finite(env: HerdOs, T_pred: dict[str, np.ndarray], which=jnp):
             pred = {k: v[kk] for k, v in T_pred.items()}
 
             dag_values_next = dag_values_curr
-            dag_values_curr = get_values(dag_nodes, dag_root, pred, next_values=dag_values_next, which=np)
+            dag_values_curr = {}
+            get_values(dag_nodes, dag_root, pred, next_values=dag_values_next, which=np, values=dag_values_curr)
     else:
         # 2. Move backwards using scan.
         def step(dag_values_next, pred):
-            dag_values_curr_ = get_values(dag_nodes, dag_root, pred, next_values=dag_values_next, which=which)
+            dag_values_curr_ = {}
+            get_values(dag_nodes, dag_root, pred, next_values=dag_values_next, which=which, values=dag_values_curr_)
             return dag_values_curr_, None
 
         T_pred_prefix_reversed = {k: v[:-1][::-1] for k, v in T_pred.items()}

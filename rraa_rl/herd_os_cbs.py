@@ -132,6 +132,8 @@ def plot_eval_trajs(p: CallbackProps):
     plots_dir = p.run.plots_dir
     env = p.env
 
+    temporal_values_dict = p.temporal_values_dict
+
     n_temporal_nodes = env.n_temporal_nodes
     ncol = n_temporal_nodes
 
@@ -155,8 +157,17 @@ def plot_eval_trajs(p: CallbackProps):
 
         node_idx = env.temporal_nodes[ii]
         node = env.dag_nodes[node_idx]
+
+        temporal_node_value = temporal_values_dict[ii]
+        n_satisfy = np.sum(temporal_node_value >= 0.1)
+        n_total = len(temporal_node_value)
+
         node_name = type(node).__name__
-        ax.set_title(f"Node {ii} ({node_name}) | {n_temporal_nodes[ii]} trajs")
+        ax.set_title(
+            f"Node {ii} ({node_name}) | {n_temporal_nodes[ii]} trajs | "
+            f"{n_satisfy}/{n_total} ({n_satisfy / n_total:.1%})",
+            fontsize="small",
+        )
 
         for traj in p.bT_test_rollouts[start_idx:end_idx]:
             (T,) = traj.shape
