@@ -14,7 +14,7 @@ app = cyclopts.App()
 
 
 @app.default()
-def main(debug: bool = False):
+def main(name: str | None = None, debug: bool = False):
     env = HerdOs()
     seed = 123
     cfg = VDMAPPOAgent.Cfg()
@@ -24,7 +24,7 @@ def main(debug: bool = False):
     # eval_cbs = [herd_os_cbs.plot_eval_trajs, VizValues.create()]
     collect_cbs = [herd_os_cbs.viz_collect_data]
 
-    run = Run.create("HerdOs")
+    run = Run.create(env_name="HerdOs", name=name)
     trainer = Trainer(agent)
     trainer.train(run, env, eval_cbs=eval_cbs, collect_cbs=collect_cbs, debug=debug)
 

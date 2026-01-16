@@ -1,5 +1,4 @@
 import functools as ft
-from typing import NamedTuple
 
 import jax
 import jax.numpy as jnp
@@ -8,16 +7,13 @@ import jax_dataclasses as jdc
 import matplotlib.pyplot as plt
 import numpy as np
 from attrs import define
-from flax import struct
 from jaxtyping import PRNGKeyArray
-from valtr.reachability import collect_predicate_info, extract_trigger_predicate_map
-from valtr.valtr import to_dag
 
 from rraa_rl.jax_types import BoolScalar
 from rraa_rl.jax_utils import softminimum
 from rraa_rl.src.env.general_task.env import Env, EnvStep
 
-VEL_ZERO = True
+VEL_ZERO = False
 HERD_ZERO = True
 
 
@@ -193,7 +189,9 @@ class HerdBase(Env):
         # Update herder states
         herder_pos = state.herder_state[:, 0:2]
         herder_vel = state.herder_state[:, 2:4]
-        herder_acc = control
+
+        # Desired velocity.
+        herder_vel_cmd = control
 
         if VEL_ZERO:
             vel_inp = control
@@ -201,18 +199,18 @@ class HerdBase(Env):
             herder_vel_new = herder_vel
         else:
             # Take velocity limit into account.
-            time_till_vmax = jnp.where(
-                herder_acc > 0,
-                (jnp.array(self.cfg.vel_maxs) - herder_vel) / herder_acc,
-                jnp.where(herder_acc < 0, -herder_vel / herder_acc, jnp.inf),
-            )
-            time_till_vmax = jnp.maximum(time_till_vmax, 0.0)
-            acc_dt = jnp.minimum(dt, time_till_vmax)
-            noaccel_dt = dt - acc_dt
-            # Accelerate for effective_dt, then zero acceleration for the rest of dt.
-            herder_vel_new = herder_vel + herder_acc * acc_dt
-            herder_pos_mid = herder_pos + herder_vel * acc_dt + 0.5 * herder_acc * acc_dt ** 2
-            herder_pos_new = herder_pos_mid + herder_vel_new * noaccel_dt
+            #     Max acceleration when cmd=vel_max and current_vel = 0.
+            #     =>  acc_max = kp_vel * vel_max   => kp_vel = acc_max / vel_max
+            kp_vel = jnp.array(self.cfg.acc_maxs) / jnp.array(self.cfg.vel_maxs)
+            herder_acc = kp_vel * (herder_vel_cmd - herder_vel)
+            acc_max = jnp.array(self.cfg.acc_maxs)
+            herder_acc = jnp.clip(herder_acc, -acc_max[:, None], acc_max[:, None])
+
+            herder_vel_new = herder_vel + herder_acc * dt
+            herder_pos_new = herder_pos + herder_vel * dt + 0.5 * herder_acc * dt**2
+
+            vel_max = jnp.array(self.cfg.vel_maxs)
+            herder_vel_new = jnp.clip(herder_vel_new, -vel_max[:, None], vel_max[:, None])
 
         herder_state_new = jnp.concatenate([herder_pos_new, herder_vel_new], axis=-1)
 
