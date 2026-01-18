@@ -23,6 +23,7 @@ from rraa_rl.distribution import tfd
 from rraa_rl.gae import BellmanMax, BellmanMaxMin, BellmanMin, gae_generalized
 from rraa_rl.jax_types import FloatScalar, bFloat
 from rraa_rl.nn_modules import BaseObsOnly, BothObs, MAMultiDiscretePolicy, VDValue
+from rraa_rl.src.env.general_task.env import EnvStep
 from rraa_rl.src.env.general_task.herd_os import HerdOs
 from rraa_rl.train_state import ModuleDict, Params, TrainState
 from rraa_rl.train_utils import compute_norm_and_clip, has_any_nan_or_inf
@@ -598,3 +599,13 @@ class VDMAPPOAgent:
         _, Tb_rollout, collect_info = new_collector.collect_full_traj_det(self.det_action, rollout_T)
         logger.debug("done jitting collect_eval_with_states.")
         return Tb_rollout, collect_info
+
+    def should_truncate(self, env: HerdOs, b_key: PRNGKeyArray, b_step: EnvStep) -> EnvStep:
+        """For all reach or reach-avoid nodes, truncate if we reach the goal."""
+
+        # The returned obs is for the next state.
+        b_obs_next = b_step.obs
+        bt_V_next = self.network.select("critic")(b_obs_next, params=self.network.params)
+        b_pred_next = b_step.predicates
+
+        # Compute the satisfaction of all temporal predicates, including the value function.

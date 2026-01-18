@@ -30,6 +30,10 @@ class GetActionFn(Protocol):
 class BatchResetFn(Protocol):
     def __call__(self, env: HerdOs, b_key: PRNGKeyArray, b_state: Any) -> Any: ...
 
+class TruncateFn(Protocol):
+    """Function that can be passed to the collector to truncate episodes early."""
+    def __call__(self, env: HerdOs, b_key: PRNGKeyArray, b_step: EnvStep) -> EnvStep: ...
+
 
 @jdc.pytree_dataclass
 class CollectorState:
@@ -143,7 +147,7 @@ class Collector(struct.PyTreeNode):
         return step_result, action
 
     def collect_batch(
-        self, sample_action: SampleActionFn, T: int, reset_fn: BatchResetFn = None
+        self, sample_action: SampleActionFn, T: int, reset_fn: BatchResetFn = None, truncate_fn: TruncateFn = None,
     ) -> tuple[Self, RolloutOutput, dict]:
         if reset_fn is None:
             reset_fn = _default_reset_fn
@@ -151,12 +155,17 @@ class Collector(struct.PyTreeNode):
         def loop(carry: tuple[CollectorState], args):
             b_key = args
             (colstate,) = carry
-            b2_key = jax.vmap(jr.split)(b_key)
-            b_key_pol, b_key_reset = b2_key[:, 0], b2_key[:, 1]
+            b3_key = jax.vmap(ft.partial(jr.split, num=3))(b_key)
+            b_key_pol, b_key_reset, b_key_truncate = b3_key[:, 0], b3_key[:, 1], b3_key[:, 2]
 
             step_single_fn = ft.partial(self.step_single_fn, sample_action)
             b_step_result: EnvStep
             b_step_result, b_act, b_logprob = jax.vmap(step_single_fn)(b_key_pol, colstate.b_state, colstate.b_obs)
+
+            if truncate_fn is not None:
+                # Additional function to truncate episodes early (potentially using extra info)
+                b_step_result = truncate_fn(self.env, b_key_truncate, b_step_result)
+
             # NOTE: Reset DOESN'T change the step, only the colstate.
             out = RolloutOutput.from_rollout(colstate, b_step_result, b_act, b_logprob)
 

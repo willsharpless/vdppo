@@ -164,13 +164,17 @@ class HerdOs(Env):
     def _augment_obs(self, state: HerdOsState, obs: jnp.ndarray):
         obs_aug = self._get_augment_obs(state)
         return AugObs(base=obs, temporal=obs_aug)
-
     def should_terminate(self, predicates: dict[str, jnp.ndarray]) -> BoolScalar:
-        # Terminate when reaching the goal, or leaving the allowed area.
         eps = 0.1
-        is_goal = predicates["herder_c1"] > eps
+
+        # Terminate when leaving the allowed area.
         is_oob = predicates["herder_oob"] > eps
-        should_term = is_goal | is_oob
+        should_term = is_oob
+
+        # Terminate when reaching the goal, or leaving the allowed area.
+        # is_goal = predicates["herder_c1"] > eps
+        # should_term = is_goal | is_oob
+
         return should_term
 
     def step(self, state: HerdOsState, action: jnp.ndarray):
