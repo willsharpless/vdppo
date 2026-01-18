@@ -22,7 +22,7 @@ from rraa_rl.collector import Collector, RolloutOutput
 from rraa_rl.distribution import tfd
 from rraa_rl.gae import BellmanMax, BellmanMaxMin, BellmanMin, gae_generalized
 from rraa_rl.jax_types import FloatScalar, bFloat
-from rraa_rl.nn_modules import MAMultiDiscretePolicy, VDValue, BaseObsOnly, BothObs
+from rraa_rl.nn_modules import BaseObsOnly, BothObs, MAMultiDiscretePolicy, VDValue
 from rraa_rl.src.env.general_task.herd_os import HerdOs
 from rraa_rl.train_state import ModuleDict, Params, TrainState
 from rraa_rl.train_utils import compute_norm_and_clip, has_any_nan_or_inf
@@ -194,6 +194,9 @@ class VDMAPPOAgent:
         bTt_V_next = ei.rearrange(Tbt_V_next, "T b t -> b T t")
 
         bT_term = Tb_rollout.term.T
+        bT_trunc = Tb_rollout.trunc.T
+        # Next step is from a different episode (due to reset) if either terminate or truncate
+        bT_next_diff = bT_term | bT_trunc
 
         bT_A_list = []
         bT_Q_list = []
@@ -209,6 +212,7 @@ class VDMAPPOAgent:
             cT_predicates = jtu.tree_map(lambda Tb_arr: Tb_arr.T[start_idx:end_idx], Tb_rollout.predicates)
 
             cT_term = bT_term[start_idx:end_idx]
+            cT_next_diff = bT_next_diff[start_idx:end_idx]
 
             cT_temporal_idx = jnp.full((n_node, T), temporal_node_idx, dtype=jnp.int32)
 
@@ -223,16 +227,16 @@ class VDMAPPOAgent:
                 case DAGAvoid(avoid=stay_idx):
                     logger.info("temporal_idx={} | Avoid for {}:{}".format(temporal_node_idx, start_idx, end_idx))
                     cT_q = self.evaluate_dag(stay_idx, cTt_V, cT_predicates)
-                    cT_A, cT_Q = self.compute_A_Q_avoid(cT_q, cT_V, cT_V_next, cT_term)
+                    cT_A, cT_Q = self.compute_A_Q_avoid(cT_q, cT_V, cT_V_next, cT_term, cT_next_diff)
                 case DAGReach(reach=reach_idx):
                     logger.info("temporal_idx={} | Reach for {}:{}".format(temporal_node_idx, start_idx, end_idx))
                     cT_r = self.evaluate_dag(reach_idx, cTt_V, cT_predicates)
-                    cT_A, cT_Q = self.compute_A_Q_reach(cT_r, cT_V, cT_V_next, cT_term)
+                    cT_A, cT_Q = self.compute_A_Q_reach(cT_r, cT_V, cT_V_next, cT_term, cT_next_diff)
                 case DAGReachAvoid(reach=reach_idx, avoid=stay_idx):
                     logger.info("temporal_idx={} | ReachAvoid for {}:{}".format(temporal_node_idx, start_idx, end_idx))
                     cT_r = self.evaluate_dag(reach_idx, cTt_V, cT_predicates)
                     cT_q = self.evaluate_dag(stay_idx, cTt_V, cT_predicates)
-                    cT_A, cT_Q = self.compute_A_Q_reachavoid(cT_q, cT_r, cT_V, cT_V_next, cT_term, debug)
+                    cT_A, cT_Q = self.compute_A_Q_reachavoid(cT_q, cT_r, cT_V, cT_V_next, cT_term, cT_next_diff, debug)
 
                     if debug:
                         logger.debug("!!??!?!")
@@ -256,22 +260,32 @@ class VDMAPPOAgent:
         return bT_A, bT_Q, bT_temporal_idx
 
     def compute_A_Q_avoid(
-        self, bT_q: jnp.ndarray, bT_V: jnp.ndarray, bT_V_next: jnp.ndarray, bT_term: jnp.ndarray
+        self,
+        bT_q: jnp.ndarray,
+        bT_V: jnp.ndarray,
+        bT_V_next: jnp.ndarray,
+        bT_term: jnp.ndarray,
+        bT_next_diff: jnp.ndarray,
     ) -> tuple[bFloat, bFloat]:
         gamma, lam = self.cfg.gamma, self.cfg.gae_lambda
         gae_fn = ft.partial(gae_generalized, gamma=gamma, lam=lam)
         b_bellman = BellmanMin(T_q=bT_q)
-        bT_Q_gae = jax.vmap(gae_fn)(bT_V, bT_V_next, bT_term, b_bellman)
+        bT_Q_gae = jax.vmap(gae_fn)(bT_V, bT_V_next, bT_term, bT_next_diff, b_bellman)
         bT_A_gae = bT_Q_gae - bT_V
         return bT_A_gae, bT_Q_gae
 
     def compute_A_Q_reach(
-        self, bT_r: jnp.ndarray, bT_V: jnp.ndarray, bT_V_next: jnp.ndarray, bT_term: jnp.ndarray
+        self,
+        bT_r: jnp.ndarray,
+        bT_V: jnp.ndarray,
+        bT_V_next: jnp.ndarray,
+        bT_term: jnp.ndarray,
+        bT_next_diff: jnp.ndarray,
     ) -> tuple[bFloat, bFloat]:
         gamma, lam = self.cfg.gamma, self.cfg.gae_lambda
         gae_fn = ft.partial(gae_generalized, gamma=gamma, lam=lam)
         b_bellman = BellmanMax(T_r=bT_r)
-        bT_Q_gae = jax.vmap(gae_fn)(bT_V, bT_V_next, bT_term, b_bellman)
+        bT_Q_gae = jax.vmap(gae_fn)(bT_V, bT_V_next, bT_term, bT_next_diff, b_bellman)
         bT_A_gae = bT_Q_gae - bT_V
         return bT_A_gae, bT_Q_gae
 
@@ -282,12 +296,13 @@ class VDMAPPOAgent:
         bT_V: jnp.ndarray,
         bT_V_next: jnp.ndarray,
         bT_term: jnp.ndarray,
+        bT_nextvalid: jnp.ndarray,
         debug: bool = False,
     ) -> tuple[bFloat, bFloat]:
         gamma, lam = self.cfg.gamma, self.cfg.gae_lambda
         gae_fn = ft.partial(gae_generalized, gamma=gamma, lam=lam)
         b_bellman = BellmanMaxMin(T_r=bT_r, T_q=bT_q)
-        bT_Q_gae = jax.vmap(gae_fn)(bT_V, bT_V_next, bT_term, b_bellman)
+        bT_Q_gae = jax.vmap(gae_fn)(bT_V, bT_V_next, bT_term, bT_nextvalid, b_bellman)
         bT_A_gae = bT_Q_gae - bT_V
 
         if debug:
@@ -300,7 +315,7 @@ class VDMAPPOAgent:
             logger.debug("T_Q_g : {}".format(bT_Q_gae[idx]))
 
             bellman = BellmanMaxMin(T_r=bT_r[idx], T_q=bT_q[idx], debug=True)
-            T_Q_gae = gae_generalized(bT_V[idx], bT_V_next[idx], bT_term[idx], bellman, gamma, lam)
+            T_Q_gae = gae_generalized(bT_V[idx], bT_V_next[idx], bT_term[idx], bT_nextvalid[idx], bellman, gamma, lam)
             logger.debug("T_Q_g : {}".format(T_Q_gae))
             ipdb.set_trace()
 

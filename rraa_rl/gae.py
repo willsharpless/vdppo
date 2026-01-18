@@ -55,10 +55,23 @@ class BellmanMaxMin(NamedTuple):
 def gae_generalized(
     T_V_next: jnp.ndarray,
     T_term: jnp.ndarray,
+    T_next_different: jnp.ndarray,
     bellman_update: BellmanUpdate,
     gamma: float,
     lam: float,
 ):
+    """
+    Args:
+        T_V_next:
+        T_term: True if the episode terminated after taking the action at time t.
+        T_next_different: True if the next state is from a different rollout (i.e., env reset). term | trunc
+        bellman_update:
+        gamma:
+        lam:
+
+    Returns:
+
+    """
     T = len(T_V_next)
     assert len(T_V_next) == len(T_term) == T
 
@@ -83,7 +96,16 @@ def gae_generalized(
         T_V_next_k_shift = jnp.concatenate([T_Q_curr[1:], jnp.array([1.337e8])], axis=0)
         T_isvalid_shift = jnp.concatenate([T_isvalid[1:], jnp.array([0.0])], axis=0)
 
-        carry_new = (T_Q_avg_new, T_weight_sum_new, T_V_next_k_shift, T_isvalid_shift, coef * lam)
+        # 4. If next state is from a different rollout, then isvalid=0. Don't propagate from a different episode.
+        T_isvalid_shift = jnp.where(T_next_different, 0.0, T_isvalid_shift)
+
+        carry_new = (
+            T_Q_avg_new,
+            T_weight_sum_new,
+            T_V_next_k_shift,
+            T_isvalid_shift,
+            coef * lam,
+        )
         return carry_new, None
 
     T_Q_avg0 = jnp.zeros(T)
