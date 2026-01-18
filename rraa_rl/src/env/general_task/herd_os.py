@@ -41,10 +41,20 @@ class HerdOsCfg:
     # What fraction of the batch is which temporal node at reset. This is in reverse topological order.
     # temporal_node_fracs: list[float] = [0.6, 0.4]
     # temporal_node_fracs: list[float] = [0.4, 0.3, 0.3]
-    temporal_node_fracs: list[float] = [1.0]
+    temporal_node_fracs: list[float] | None = None
 
     do_temporal_transition: bool = False
     """If true (e.g., eval), then change the temporal node according to the DAG transitions."""
+
+
+class AugObs(NamedTuple):
+    """Separate the "base" observation and the observation of the temporal node."""
+
+    base: jnp.ndarray
+    temporal: jnp.ndarray
+
+    def combine(self, which=jnp):
+        return which.concatenate([self.base, self.temporal], axis=-1)
 
 
 class HerdOs(Env):
@@ -75,7 +85,12 @@ class HerdOs(Env):
         # root first.
         self.temporal_nodes = temporal_nodes_topological(self.dag_nodes, self.dag_root)[::-1]
 
+        if self.cfg.temporal_node_fracs is None:
+            # Split it evenly.
+            self.cfg.temporal_node_fracs = np.full(self.n_temporal_nodes, 1.0 / self.n_temporal_nodes).tolist()
+
         assert len(self.cfg.temporal_node_fracs) == len(self.temporal_nodes)
+        self._augment_obs_names = None
 
     @property
     def temporal_node_names(self) -> list[str]:
@@ -122,23 +137,33 @@ class HerdOs(Env):
 
         return jnp.array(temporal_node_type_list)
 
-    def _augment_obs(self, state: HerdOsState, base_obs: jnp.ndarray):
+    def _augment_obs_and_names(self, state: HerdOsState):
         """Augment the base observation with the (one hot) temporal node idx and (one hot) node type."""
         if self.n_temporal_nodes > 1:
             obs_node_idx = jnn.one_hot(state.temporal_node_idx, self.n_temporal_nodes)
+            obs_node_idx_names = [f"nodeidx1h_{ii}" for ii in range(self.n_temporal_nodes)]
 
             temporal_node_idx_to_node_type = self._temporal_node_idx_to_node_type()
             node_type = temporal_node_idx_to_node_type[state.temporal_node_idx]
 
             obs_node_type = jnn.one_hot(node_type, DAGNode.n_temporal_classes())
+            obs_node_type_names = [f"nodetype1h_{ii}" for ii in range(DAGNode.n_temporal_classes())]
 
             obs_aug = jnp.concatenate([obs_node_idx, obs_node_type], axis=-1)
+            obs_names = [*obs_node_idx_names, *obs_node_type_names]
         else:
             obs_aug = jnp.array([], dtype=jnp.float32)
+            obs_names = []
 
-        obs = jnp.concatenate([base_obs, obs_aug], axis=-1)
+        return obs_aug, obs_names
 
+    def _get_augment_obs(self, state: HerdOsState):
+        obs, _ = self._augment_obs_and_names(state)
         return obs
+
+    def _augment_obs(self, state: HerdOsState, obs: jnp.ndarray):
+        obs_aug = self._get_augment_obs(state)
+        return AugObs(base=obs, temporal=obs_aug)
 
     def should_terminate(self, predicates: dict[str, jnp.ndarray]) -> BoolScalar:
         # Terminate when reaching the goal, or leaving the allowed area.
@@ -182,8 +207,17 @@ class HerdOs(Env):
 
     def get_obs(self, state: Any) -> Any:
         base_obs = self.base.get_obs(state.base)
-        obs = self._augment_obs(state, base_obs)
-        return obs
+        return self._augment_obs(state, base_obs)
+
+    def get_obs_names(self) -> list[str]:
+        return self.base.get_obs_names() + self.augment_obs_names()
+
+    def augment_obs_names(self) -> list[str]:
+        if self._augment_obs_names is None:
+            dummy_state = self.reset(jr.PRNGKey(0))
+            _, obs_names = self._augment_obs_and_names(dummy_state)
+            self._augment_obs_names = obs_names
+        return self._augment_obs_names
 
     def get_predicates(self, state: HerdOsState) -> dict[str, jnp.ndarray]:
         return self.base.get_predicates(state.base)
@@ -321,7 +355,13 @@ def get_triggers(
     # -       min_j (..., temporal)
 
     if isinstance(node, DAGMaxN):
-        raise NotImplementedError("")
+        min_nodes = []
+        for child_id in node.args:
+            child = dag_nodes[child_id]
+            if isinstance(child, DAGMinN):
+                min_nodes.append(child)
+            else:
+                raise ValueError("Expected max to have min children")
     elif isinstance(node, DAGMinN):
         min_nodes = [node]
     elif not has_temporal_children(node_idx, dag_nodes):

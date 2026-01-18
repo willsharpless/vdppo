@@ -17,7 +17,7 @@ def evaluate_triggers(env: HerdOs, trajs: list[RolloutOutput]) -> dict:
 
         for trigger in triggers:
             key = (trigger.parent, trigger.child)
-            triggers_dict.get(key, [])
+            triggers_dict[key] = triggers_dict.get(key, [])
             triggers_dict[key].append(np.any(trigger.condition))
 
     triggers_dict = {k: np.array(v) for k, v in triggers_dict.items()}

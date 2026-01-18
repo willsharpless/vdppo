@@ -22,7 +22,7 @@ from rraa_rl.collector import Collector, RolloutOutput
 from rraa_rl.distribution import tfd
 from rraa_rl.gae import BellmanMax, BellmanMaxMin, BellmanMin, gae_generalized
 from rraa_rl.jax_types import FloatScalar, bFloat
-from rraa_rl.nn_modules import MAMultiDiscretePolicy, VDValue
+from rraa_rl.nn_modules import MAMultiDiscretePolicy, VDValue, BaseObsOnly, BothObs
 from rraa_rl.src.env.general_task.herd_os import HerdOs
 from rraa_rl.train_state import ModuleDict, Params, TrainState
 from rraa_rl.train_utils import compute_norm_and_clip, has_any_nan_or_inf
@@ -104,10 +104,12 @@ class VDMAPPOAgent:
             hidden_dims=cfg.critic_hids,
             n_out=env.n_temporal_nodes,
         )
+        critic_def = BaseObsOnly(critic_def)
         actor_def = MAMultiDiscretePolicy(
             hidden_dims=cfg.actor_hids,
             n_actions_per_agent=env.n_actions_per_agent,
         )
+        actor_def = BothObs(actor_def)
         network_info = dict(
             critic=(critic_def, (dummy_obs,)),
             actor=(actor_def, (dummy_obs,)),

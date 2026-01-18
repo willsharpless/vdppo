@@ -1,11 +1,12 @@
 from typing import Sequence
 
 import flax.linen as nn
+import jax.numpy as jnp
 
-from rraa_rl.distribution import tfd, BlockwiseWithMode
+from rraa_rl.distribution import BlockwiseWithMode, tfd
 from rraa_rl.mlp import MLP
 from rraa_rl.nn_utils import default_nn_init, scaled_init
-
+from rraa_rl.src.env.general_task.herd_os import AugObs
 
 
 class MAMultiDiscretePolicy(nn.Module):
@@ -59,3 +60,20 @@ class VDValue(nn.Module):
         x = MLP(hid_sizes=self.hidden_dims, act=nn.tanh, act_final=True)(obs)
         v = nn.Dense(self.n_out, kernel_init=default_nn_init(), name="ValueHead")(x)
         return v
+
+
+class BaseObsOnly(nn.Module):
+    nn: nn.Module
+
+    @nn.compact
+    def __call__(self, obs: AugObs):
+        return self.nn(obs.base)
+
+
+class BothObs(nn.Module):
+    nn: nn.Module
+
+    @nn.compact
+    def __call__(self, obs: AugObs):
+        combined_obs = obs.combine()
+        return self.nn(combined_obs)

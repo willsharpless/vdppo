@@ -1,4 +1,5 @@
 import functools as ft
+from typing import Any
 
 import jax
 import jax.numpy as jnp
@@ -71,14 +72,16 @@ class HerdBase(Env):
         self.cfg = cfg
         assert len(cfg.acc_maxs) == len(cfg.vel_maxs) == cfg.n_herders
 
-        # self.centers = np.array([[-3.0, -3.0], [3.0, 3.0]])
-        # self.radiuses = np.array([1.0, 1.0])
-        self.centers = np.array([[-3.0, -3.0]])
-        self.radiuses = np.array([1.0])
+        self.centers = np.array([[-3.0, -3.0], [3.0, 3.0]])
+        self.radiuses = np.array([1.0, 1.0])
+        # self.centers = np.array([[-3.0, -3.0]])
+        # self.radiuses = np.array([1.0])
 
         if should_term_fn is None:
             should_term_fn = self._should_term
         self.should_term_fn = should_term_fn
+
+        self._obs_names = None
 
     @property
     def n_agents(self) -> int:
@@ -299,7 +302,7 @@ class HerdBase(Env):
 
     def get_predicates_float(self, state: HerdBaseState):
         pred_herder_circs = self.pred_herder_circs(state)
-        return {"herder_c1": pred_herder_circs[0]}
+        return {"herder_c1": pred_herder_circs[0], "herder_c2": pred_herder_circs[1]}
 
     def get_predicates(self, state: HerdBaseState):
         predicates_bool = self.get_predicates_bool(state)
@@ -322,18 +325,31 @@ class HerdBase(Env):
         info = {"age": state_new.steps}
         return EnvStep(state_new, obs_new, predicates, term, trunc, info)
 
-    def get_obs(self, state: HerdBaseState):
+    def get_obs_names(self):
+        if self._obs_names is None:
+            dummy_state = self.reset(jr.PRNGKey(0))
+            _, obs_names = self.get_obs_and_names(dummy_state)
+            self._obs_names = obs_names
+        return self._obs_names
+
+    def get_obs_and_names(self, state: HerdBaseState):
+        def fl(lst: list[list[str]]) -> list[str]:
+            return [item for sublist in lst for item in sublist]
+
         # ---------------------------------------------------------------------
         # 1: State
         herd_pos = state.herd_state  # (n_herd, 2)
         obs_herd_pos = herd_pos / jnp.array(self.cfg.halfsize)
+        obs_herd_pos_names = [[f"herd{ii}_px", f"herd{ii}_py"] for ii in range(self.cfg.n_herd)]
 
         herder_pos = state.herder_state[:, 0:2]  # (n_herders, 2)
         obs_herder_pos = herder_pos / jnp.array(self.cfg.halfsize)
+        obs_herder_pos_names = [[f"herder{ii}_px", f"herder{ii}_py"] for ii in range(self.cfg.n_herders)]
 
         herder_vel = state.herder_state[:, 2:4]  # (n_herders, 2)
         assert herder_vel.shape == (self.cfg.n_herders, 2)
         obs_herder_vel = herder_vel / jnp.array(self.cfg.vel_maxs)[:, None]
+        obs_herder_vel_names = [[f"herder{ii}_vx", f"herder{ii}_vy"] for ii in range(self.cfg.n_herders)]
 
         # ---------------------------------------------------------------------
         # 2: Relative positions, break it down into unit vectors and distances.
@@ -352,15 +368,19 @@ class HerdBase(Env):
         triu_indices = jnp.triu_indices(n_pos, k=1)
         # (n_edges, 2)
         rel_pos_triu = rel_pos[triu_indices]
+        assert rel_pos_triu.shape == (n_pos * (n_pos - 1) // 2, 2)
         # Compute unit vectors and distances.
         rel_dists = jnp.linalg.norm(rel_pos_triu, axis=-1, keepdims=True) + 1e-6
         rel_unit_vecs = rel_pos_triu / rel_dists
         # (n_edges, 2)
         obs_rel_unit_vecs = rel_unit_vecs
+        obs_rel_unit_vecs_names = [[f"rel_unitvec{ii}_x", f"rel_unitvec{ii}_y"] for ii, _ in enumerate(rel_unit_vecs)]
 
         # Normalize distances. Mean ~ half the env size, Std ~ quarter the env size.
         halfsize = 0.5 * sum(self.cfg.halfsize)
         obs_dists = (rel_dists - halfsize) / (0.5 * halfsize)
+        obs_dist_names = [f"rel_dist{ii}" for ii, _ in enumerate(rel_dists)]
+
         # ---------------------------------------------------------------------
         if HERD_ZERO:
             obs = jnp.concatenate(
@@ -371,6 +391,12 @@ class HerdBase(Env):
                     obs_dists.flatten(),
                 ]
             )
+            obs_names = [
+                *fl(obs_herder_pos_names),
+                *fl(obs_herder_vel_names),
+                *fl(obs_rel_unit_vecs_names),
+                *obs_dist_names,
+            ]
         else:
             obs = jnp.concatenate(
                 [
@@ -381,6 +407,17 @@ class HerdBase(Env):
                     obs_dists.flatten(),
                 ]
             )
+            obs_names = [
+                *fl(obs_herd_pos_names),
+                *fl(obs_herder_pos_names),
+                *fl(obs_herder_vel_names),
+                *fl(obs_rel_unit_vecs_names),
+                *obs_dist_names,
+            ]
+        return obs, obs_names
+
+    def get_obs(self, state: HerdBaseState):
+        obs, _ = self.get_obs_and_names(state)
         return obs
 
     def reset(self, key: PRNGKeyArray):

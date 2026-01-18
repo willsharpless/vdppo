@@ -53,25 +53,22 @@ class BellmanMaxMin(NamedTuple):
 
 
 def gae_generalized(
-    T_V: jnp.ndarray,
     T_V_next: jnp.ndarray,
     T_term: jnp.ndarray,
     bellman_update: BellmanUpdate,
     gamma: float,
     lam: float,
 ):
-    T = len(T_V)
-    assert len(T_V) == len(T_V_next) == len(T_term) == T
+    T = len(T_V_next)
+    assert len(T_V_next) == len(T_term) == T
 
     def body(carry, _):
         T_Q_avg, T_weight_sum, T_V_next_k, T_isvalid, coef = carry
 
         # 1: Apply Bellman.
-        T_Q_curr = bellman_update(T_term, T_V_next_k, gamma=gamma)
-        # #    (1-gamma) * q + gamma * min(q, V_next)
-        # #    V_next = inf is identity for min.
         # T_V_next_k_masked = jnp.where(T_term, jnp.inf, T_V_next_k)
         # T_Q_curr = (1 - gamma) * T_q + gamma * jnp.minimum(T_q, T_V_next_k_masked)
+        T_Q_curr = bellman_update(T_term, T_V_next_k, gamma=gamma)
 
         # 2: Stable weighted update.
         T_coef = coef * T_isvalid
@@ -81,13 +78,6 @@ def gae_generalized(
         # Use jnp.where to prevent division by zero for masked indices
         T_step_size = jnp.where(T_weight_sum_new > 0, T_coef / T_weight_sum_new, 0.0)
         T_Q_avg_new = T_Q_avg + T_step_size * (T_Q_curr - T_Q_avg)
-
-        # jax.debug.print("----------------------", ordered=True)
-        # jax.debug.print("T_V_next_k: {}", T_V_next_k, ordered=True)
-        # jax.debug.print("T_Q_cur: {}", T_Q_curr, ordered=True)
-        # jax.debug.print("T_coef: {}", T_coef, ordered=True)
-        # jax.debug.print("T_step_size: {}", T_step_size, ordered=True)
-        # jax.debug.print("T_Q_avg: {}", T_Q_avg, ordered=True)
 
         # 3. Shift for next depth. Can't use inf, since 0 * inf = nan.
         T_V_next_k_shift = jnp.concatenate([T_Q_curr[1:], jnp.array([1.337e8])], axis=0)

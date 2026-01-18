@@ -20,7 +20,7 @@ from valtr.reachability import DAGReachAvoid
 from rraa_rl.collector import RolloutOutput
 from rraa_rl.gae import BellmanMax, BellmanMaxMin, BellmanMin, gae_generalized
 from rraa_rl.jax_utils import jax_vmap
-from rraa_rl.src.env.general_task.herd_os import HerdOs
+from rraa_rl.src.env.general_task.herd_os import AugObs, HerdOs
 from rraa_rl.src.rl.utils.utils import get_BuRd, get_BuRd_smooth, get_BuRd_trunc
 from rraa_rl.trainer import CallbackProps
 from rraa_rl.vd_mappo import PPOData, VDMAPPOAgent
@@ -52,13 +52,14 @@ class VizValues(struct.PyTreeNode):
         with jdc.copy_and_mutate(bb_state) as bb_state:
             bb_state.base.herder_state = bb_state.base.herder_state.at[:, :, 0, :2].set(bb_pos)
             bb_state.base.herder_state = bb_state.base.herder_state.at[:, :, 0, 2:4].set(0.0)
+            bb_state.temporal_node_idx = bb_state.temporal_node_idx.at[:].set(0)
 
         bb_predicates = jax_vmap(env.get_predicates, rep=2)(bb_state)
 
-        bb_obs = jax_vmap(env.get_obs, rep=2)(bb_state)
-
+        bb_obs: AugObs = jax_vmap(env.get_obs, rep=2)(bb_state)
         bbt_V = agent.network.select("critic")(bb_obs)
-        return bb_X, bb_Y, bbt_V, bb_predicates, bb_obs
+
+        return bb_X, bb_Y, bbt_V, bb_predicates, bb_obs.combine()
 
     def __call__(self, p: CallbackProps):
         bb_X, bb_Y, bbt_V, bb_predicates, bb_obs = jax.device_get(self.get_value(p.agent))
@@ -108,6 +109,8 @@ class VizValues(struct.PyTreeNode):
 
         if p.train_step == 0:
             # Only plot a contourf of the observations on the first step.
+            obs_names = env.get_obs_names()
+
             n_obs = bb_obs.shape[-1]
             ncol = 6
             nrow = int(np.ceil(n_obs / ncol))
@@ -117,7 +120,7 @@ class VizValues(struct.PyTreeNode):
             for ii, ax in enumerate(axes[:n_obs]):
                 ax: plt.Axes
                 env.base.setup_ax(ax)
-                ax.set_title(f"Obs dim {ii}")
+                ax.set_title(f"{ii:02}: {obs_names[ii]}")
 
                 im = ax.contourf(bb_X, bb_Y, bb_obs[:, :, ii], levels=50)
                 fig.colorbar(im, ax=ax)
@@ -459,7 +462,8 @@ def viz_collect_data(p: CallbackProps):
     plt.close(fig)
     # -------------------------------------------------------------------------
     # Visualize the observation distribution on a histogram.
-    b_obs = b_data.obs
+    b_obs_: AugObs = b_data.obs
+    b_obs = b_obs_.combine(which=np)
 
     batch_size, n_obs = b_obs.shape
     nrow = n_obs
