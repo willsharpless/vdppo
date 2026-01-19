@@ -14,7 +14,8 @@ app = cyclopts.App()
 
 @app.default()
 def main(name: str | None = None, debug: bool = False):
-    env = HerdOs()
+    env_cfg = HerdOs.Cfg()
+    env = HerdOs(env_cfg=env_cfg)
     seed = 123
     cfg = VDMAPPOAgent.Cfg()
     agent = VDMAPPOAgent.create(seed, cfg, env)

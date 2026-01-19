@@ -52,6 +52,7 @@ class HerdOs(Env):
     action: (n_herders, 2): int, {0, 1, 2} for each axis, where 0 = -accel, 1 = no accel, 2 = accel
     """
 
+    Cfg = HerdOsCfg
     State = HerdOsState
 
     def __init__(self, cfg: HerdOsCfg = HerdOsCfg()):
