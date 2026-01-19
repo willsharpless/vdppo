@@ -65,6 +65,8 @@ class VDMAPPOAgentCfg:
     rollout_T: int = 30
     # rollout_T: int = 2
 
+    truncate_reach_thresh: float = 0.5
+
     norm_adv: bool = True
 
     # Network parameters.
@@ -271,7 +273,7 @@ class VDMAPPOAgent:
         gamma, lam = self.cfg.gamma, self.cfg.gae_lambda
         gae_fn = ft.partial(gae_generalized, gamma=gamma, lam=lam)
         b_bellman = BellmanMin(T_q=bT_q)
-        bT_Q_gae = jax.vmap(gae_fn)(bT_V, bT_V_next, bT_term, bT_next_diff, b_bellman)
+        bT_Q_gae = jax.vmap(gae_fn)(bT_V_next, bT_term, bT_next_diff, b_bellman)
         bT_A_gae = bT_Q_gae - bT_V
         return bT_A_gae, bT_Q_gae
 
@@ -286,7 +288,7 @@ class VDMAPPOAgent:
         gamma, lam = self.cfg.gamma, self.cfg.gae_lambda
         gae_fn = ft.partial(gae_generalized, gamma=gamma, lam=lam)
         b_bellman = BellmanMax(T_r=bT_r)
-        bT_Q_gae = jax.vmap(gae_fn)(bT_V, bT_V_next, bT_term, bT_next_diff, b_bellman)
+        bT_Q_gae = jax.vmap(gae_fn)(bT_V_next, bT_term, bT_next_diff, b_bellman)
         bT_A_gae = bT_Q_gae - bT_V
         return bT_A_gae, bT_Q_gae
 
@@ -303,22 +305,22 @@ class VDMAPPOAgent:
         gamma, lam = self.cfg.gamma, self.cfg.gae_lambda
         gae_fn = ft.partial(gae_generalized, gamma=gamma, lam=lam)
         b_bellman = BellmanMaxMin(T_r=bT_r, T_q=bT_q)
-        bT_Q_gae = jax.vmap(gae_fn)(bT_V, bT_V_next, bT_term, bT_nextvalid, b_bellman)
+        bT_Q_gae = jax.vmap(gae_fn)(bT_V_next, bT_term, bT_nextvalid, b_bellman)
         bT_A_gae = bT_Q_gae - bT_V
 
-        if debug:
-            idx = 987
-            logger.debug("T_q   : {}".format(bT_q[idx]))
-            logger.debug("T_r   : {}".format(bT_r[idx]))
-            logger.debug("T_V   : {}".format(bT_V[idx]))
-            logger.debug("T_Vnxt: {}".format(bT_V_next[idx]))
-            logger.debug("T_term: {}".format(bT_term[idx]))
-            logger.debug("T_Q_g : {}".format(bT_Q_gae[idx]))
-
-            bellman = BellmanMaxMin(T_r=bT_r[idx], T_q=bT_q[idx], debug=True)
-            T_Q_gae = gae_generalized(bT_V[idx], bT_V_next[idx], bT_term[idx], bT_nextvalid[idx], bellman, gamma, lam)
-            logger.debug("T_Q_g : {}".format(T_Q_gae))
-            ipdb.set_trace()
+        # if debug:
+        #     idx = 987
+        #     logger.debug("T_q   : {}".format(bT_q[idx]))
+        #     logger.debug("T_r   : {}".format(bT_r[idx]))
+        #     logger.debug("T_V   : {}".format(bT_V[idx]))
+        #     logger.debug("T_Vnxt: {}".format(bT_V_next[idx]))
+        #     logger.debug("T_term: {}".format(bT_term[idx]))
+        #     logger.debug("T_Q_g : {}".format(bT_Q_gae[idx]))
+        #
+        #     bellman = BellmanMaxMin(T_r=bT_r[idx], T_q=bT_q[idx], debug=True)
+        #     T_Q_gae = gae_generalized(bT_V[idx], bT_V_next[idx], bT_term[idx], bT_nextvalid[idx], bellman, gamma, lam)
+        #     logger.debug("T_Q_g : {}".format(T_Q_gae))
+        #     ipdb.set_trace()
 
         return bT_A_gae, bT_Q_gae
 
@@ -584,7 +586,7 @@ class VDMAPPOAgent:
     def collect_batch(self, collector: Collector, rollout_T: int) -> tuple[Collector, RolloutOutput, dict]:
         """Collect a batch of data using stochastic policy."""
         logger.debug("jitting collect_batch...")
-        out = collector.collect_batch(self.sample_action, rollout_T, reset_fn=None)
+        out = collector.collect_batch(self.sample_action, rollout_T, reset_fn=None, truncate_fn=self.should_truncate)
         logger.debug("done jitting collect_batch.")
         return out
 
@@ -608,4 +610,36 @@ class VDMAPPOAgent:
         bt_V_next = self.network.select("critic")(b_obs_next, params=self.network.params)
         b_pred_next = b_step.predicates
 
+        batch_size = len(b_step.term)
+
         # Compute the satisfaction of all temporal predicates, including the value function.
+        bt_reach_val = []
+        for temporal_node_idx, dag_node_idx in enumerate(env.temporal_nodes):
+            node = env.dag_nodes[dag_node_idx]
+            match node:
+                case DAGReach(reach=reach_idx):
+                    b_reach_val = self.evaluate_dag(reach_idx, bt_V_next, b_pred_next)
+                case DAGReachAvoid(reach=reach_idx, avoid=stay_idx):
+                    b_reach_val = self.evaluate_dag(reach_idx, bt_V_next, b_pred_next)
+                case DAGAvoid(avoid=stay_idx):
+                    b_reach_val = np.full(batch_size, -np.inf)
+                case DAGGU(args=args_idx):
+                    # TODO: We should probably have one temporal node for each arg inside GU...
+                    b_reach_val = np.full(batch_size, -np.inf)
+                    # raise NotImplementedError("GU not implemented yet")
+                case _:
+                    raise ValueError(f"Unknown temporal node type: {type(node)}")
+
+            bt_reach_val.append(b_reach_val)
+        bt_reach_val = jnp.stack(bt_reach_val, axis=-1)
+        b_state: HerdOs.State = b_step.envstate
+        b_temporal_node_idx = b_state.temporal_node_idx
+        assert b_temporal_node_idx.shape == (batch_size,)
+
+        b_reach_val = bt_reach_val[jnp.arange(batch_size), b_temporal_node_idx]
+        assert b_reach_val.shape == (batch_size,)
+
+        # Additionally truncate if reach_val >= threshold.
+        b_trunc = b_reach_val >= self.cfg.truncate_reach_thresh
+        b_step = b_step._replace(trunc=b_trunc | b_step.trunc)
+        return b_step
