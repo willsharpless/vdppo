@@ -1,5 +1,7 @@
 import functools as ft
-from typing import Any, Callable, Protocol, Self, Tuple
+# from typing import Any, Callable, Protocol, Self, Tuple
+from typing import Any, Callable, Protocol, Tuple
+from typing_extensions import Self
 
 import einops as ei
 import jax

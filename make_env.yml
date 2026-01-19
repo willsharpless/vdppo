@@ -1,10 +1,13 @@
-name: jax_sbx
+# name: jax_sbx
+name: jaxrl
 channels:
   - conda-forge
   - defaults
 dependencies:
-  - python=3.10
+  - python=3.11
   - pip
+  # - scipy
+  # - control
   - pip:
       - jax[cuda12_pip]==0.4.26
       - --find-links https://storage.googleapis.com/jax-releases/jax_cuda_releases.html
@@ -14,18 +17,24 @@ dependencies:
       - gymnax
       - chex
       - gymnasium
-      - sbx-rl
+      # - sbx-rl
       - mujoco
       # - dm_control, adds pytorch 2.7 and bad cuda utils for jax
-      - numpy<2
+      - numpy
       - wandb
       - shimmy
       - imageio
       - imageio-ffmpeg
       - einops
-      - control
       - distrax
       - colour
       # - jax-f16, uses incompatible jnp, use my fork
       - git+https://github.com/willsharpless/jax-f16.git
       - git+https://github.com/willsharpless/valtr.git
+      - cyclopts
+      - git+https://github.com/oswinso/lovely_histogram.git
+      - jax_dataclasses
+      - loguru
+      - nltk
+      - wordfreq
+
