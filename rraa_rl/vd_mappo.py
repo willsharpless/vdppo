@@ -28,7 +28,7 @@ from rraa_rl.distribution import tfd
 from rraa_rl.gae import BellmanGUSingle, BellmanMax, BellmanMaxMin, BellmanMin, gae_generalized
 from rraa_rl.jax_types import FloatScalar, bFloat
 from rraa_rl.nn_modules import BaseObsOnly, BothObs, MAMultiDiscretePolicy, VDValue
-from rraa_rl.src.env.general_task.env import EnvStep
+from rraa_rl.src.env.general_task.env import EnvStep, Env
 from rraa_rl.src.env.general_task.herd_os import HerdOs
 from rraa_rl.train_state import ModuleDict, Params, TrainState
 from rraa_rl.train_utils import compute_norm_and_clip, has_any_nan_or_inf
@@ -89,7 +89,7 @@ class VDMAPPOAgent:
     Cfg = VDMAPPOAgentCfg
 
     network: TrainState
-    env: HerdOs = struct.field(pytree_node=False)
+    env: Env = struct.field(pytree_node=False)
     # Class containing static (non-pytree) data.
     static: VDMAPPOStatic = struct.field(pytree_node=False)
     cfg: VDMAPPOAgentCfg = struct.field(pytree_node=False)
@@ -103,7 +103,7 @@ class VDMAPPOAgent:
         cls,
         seed: int,
         cfg: VDMAPPOAgentCfg,
-        env: HerdOs,
+        env: Env,
     ):
         """Initialize the PPO agent."""
         key, init_key = jr.split(jr.key(seed))

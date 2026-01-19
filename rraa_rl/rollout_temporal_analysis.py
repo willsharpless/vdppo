@@ -6,13 +6,14 @@ from valtr.reachability import (DAGAvoid, DAGConst, DAGGUMinN, DAGGUSingle, DAGI
                                 DAGReach, DAGReachAvoid, DAGVar)
 
 from rraa_rl.collector import RolloutOutput
-from rraa_rl.src.env.general_task.herd_os import DAGTransition, HerdOs
+from rraa_rl.src.env.general_task.herd_os import HerdOs
+from rraa_rl.src.env.general_task.env import DAGTransition, get_rules
 
 
 def evaluate_triggers(env: HerdOs, trajs: list[RolloutOutput]) -> dict:
     triggers_dict = {}
     for ii, traj in enumerate(trajs):
-        triggers = env.get_rules(traj.predicates_next)
+        triggers = get_rules(env.temporal_nodes, env.dag_nodes, traj.predicates_next)
         # triggers = [DAGTransition(trigger.parent, trigger.child, np.any(trigger.condition)) for trigger in triggers]
 
         for trigger in triggers:

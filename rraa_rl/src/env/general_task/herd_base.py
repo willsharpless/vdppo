@@ -12,7 +12,7 @@ from jaxtyping import PRNGKeyArray
 
 from rraa_rl.jax_types import BoolScalar
 from rraa_rl.jax_utils import softminimum
-from rraa_rl.src.env.general_task.env import Env, EnvStep
+from rraa_rl.src.env.general_task.env import BaseEnv, Env, EnvStep
 
 VEL_ZERO = False
 HERD_ZERO = True
@@ -58,7 +58,7 @@ class HerdBaseCfg:
     herded_radius: float = 1.0  # Radius within which herd agents are considered herded.
 
 
-class HerdBase(Env):
+class HerdBase(BaseEnv):
     """Herding environment with one or more herders and a herd of agents. The herd moves according to some fixed policy.
     The herders can influence the herd by moving around them.
 

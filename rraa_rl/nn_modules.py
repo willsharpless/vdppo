@@ -6,7 +6,7 @@ import jax.numpy as jnp
 from rraa_rl.distribution import BlockwiseWithMode, tfd
 from rraa_rl.mlp import MLP
 from rraa_rl.nn_utils import default_nn_init, scaled_init
-from rraa_rl.src.env.general_task.herd_os import AugObs
+from rraa_rl.src.env.general_task.env import AugObs
 
 
 class MAMultiDiscretePolicy(nn.Module):
