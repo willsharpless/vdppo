@@ -51,14 +51,33 @@ class MAMultiDiscretePolicy(nn.Module):
         return dist
 
 
+class ScalarValue(nn.Module):
+    hidden_dims: Sequence[int]
+
+    @nn.compact
+    def __call__(self, obs):
+        x = MLP(hid_sizes=self.hidden_dims, act=nn.tanh, act_final=True)(obs)
+        v = nn.Dense(1, kernel_init=default_nn_init(), name="ValueHead")(x)
+        return jnp.squeeze(v, axis=-1)
+
+
 class VDValue(nn.Module):
     hidden_dims: Sequence[int]
     n_out: int
 
     @nn.compact
     def __call__(self, obs):
-        x = MLP(hid_sizes=self.hidden_dims, act=nn.tanh, act_final=True)(obs)
-        v = nn.Dense(self.n_out, kernel_init=default_nn_init(), name="ValueHead")(x)
+        BatchValue = nn.vmap(
+            ScalarValue,
+            in_axes=None,
+            out_axes=-1,
+            variable_axes={"params": 0},
+            split_rngs={"params": True},
+            axis_size=self.n_out,
+        )
+        v = BatchValue(self.hidden_dims)(obs)
+        assert v.shape[-1] == self.n_out
+
         return v
 
 

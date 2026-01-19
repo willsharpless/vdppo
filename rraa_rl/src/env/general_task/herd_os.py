@@ -55,6 +55,8 @@ class HerdOsCfg:
     do_temporal_transition: bool = False
     """If true (e.g., eval), then change the temporal node according to the DAG transitions."""
 
+    eval_T: int = 200
+
     @property
     def root_only(self):
         return self.temporal_node_fracs[0] == 1.0
@@ -119,6 +121,10 @@ class HerdOs(Env):
     @property
     def n_agents(self) -> int:
         return self.base.n_agents
+
+    @property
+    def value_lims(self):
+        return self.base.value_lims
 
     @property
     def n_actions_per_agent(self) -> list[list[int]]:
@@ -263,10 +269,7 @@ class HerdOs(Env):
         node_fracs = jnp.array(self.cfg.temporal_node_fracs)
         node_fracs = node_fracs / jnp.sum(node_fracs)
         temporal_node_idx = jr.choice(key_node, a=self.n_temporal_nodes, p=node_fracs)
-        state = HerdOsState(
-            temporal_node_idx=temporal_node_idx,
-            base=base_state,
-        )
+        state = HerdOsState(temporal_node_idx=temporal_node_idx, base=base_state)
         return state
 
     def reset_batch(self, key: PRNGKeyArray, batch_size: int) -> Any:
@@ -369,7 +372,7 @@ class HerdOs(Env):
 
     @property
     def eval_T(self) -> int:
-        return self.base.eval_T
+        return self.cfg.eval_T
 
     def with_temporal_transitions(self) -> "HerdOs":
         """Return a copy of this environment that does temporal transitions on step."""

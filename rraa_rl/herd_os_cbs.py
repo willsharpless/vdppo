@@ -419,15 +419,10 @@ def viz_collect_data(p: CallbackProps):
     cfg_base = env_base.cfg
     cfg_agent = agent.cfg
 
-    # Find rollouts where the herder starts inside circle c1.
+    # Find rollouts where the target is larger than 2, figure out why...
     Tb_state: HerdOs.State = Tb_rollout.state_now
-    # b_state0 = jtu.tree_map()
-    b_pos0 = Tb_state.base.herder_state[0, :, 0, :2]
-    c_pos = np.array(env_base.centers)
-    c_radii = np.array(env_base.radiuses)
-    b_in_c1 = np.linalg.norm(b_pos0 - c_pos[0], axis=-1) < c_radii[0]
+    bT_A, bT_Q, bT_temporal_idx = agent.compute_A_Q(Tb_rollout, debug=True)
 
-    batch_size = len(b_pos0)
     b_Q = b_data.Q
     n_temporal_nodes = env.n_temporal_nodes
     # ---------------------------------------------------------------
@@ -457,7 +452,8 @@ def viz_collect_data(p: CallbackProps):
         c_Q = b_Q[b_isthis]
 
         # Visualize the herder positions colored by Q-values
-        sc = ax.scatter(c_pos[:, 0], c_pos[:, 1], c=c_Q, cmap=cmap, s=5, vmin=-1, vmax=1)
+        norm = CenteredNorm()
+        sc = ax.scatter(c_pos[:, 0], c_pos[:, 1], c=c_Q, cmap=cmap, s=5, norm=norm)
         ax.set_title(
             "{} %{} | Q∈[{:.2f}, {:.2f}] | mean={:.2f}".format(node_name, dag_id, np.min(c_Q), np.max(c_Q), c_Q.mean()),
             fontsize="small",

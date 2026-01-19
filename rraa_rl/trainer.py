@@ -168,7 +168,9 @@ class Trainer:
         if self.b_state0 is None:
             self.b_state0 = env.get_eval_states(collector.cfg.n_envs)
 
-        Tb_rollout, info_collect = self.agent.collect_eval_with_states(collector, self.b_state0, env.eval_T, temporal_transitions=True)
+        Tb_rollout, info_collect = self.agent.collect_eval_with_states(
+            collector, self.b_state0, env.eval_T, temporal_transitions=True
+        )
         Tb_rollout = jax.device_get(Tb_rollout)
         bT_rollout = Tb_rollout.switch01()
 

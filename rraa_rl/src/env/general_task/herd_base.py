@@ -94,6 +94,10 @@ class HerdBase(Env):
         return self.cfg.n_herd
 
     @property
+    def value_lims(self):
+        return -1, 1
+
+    @property
     def n_actions_per_agent(self) -> list[list[int]]:
         # Each herder has 3 actions per axis.
         n_actions_per_agent = []

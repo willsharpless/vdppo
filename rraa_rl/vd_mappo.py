@@ -213,6 +213,10 @@ class VDMAPPOAgent:
         Tbt_V_next = jax.lax.stop_gradient(Tbt_V_next)
         bTt_V_next = ei.rearrange(Tbt_V_next, "T b t -> b T t")
 
+        value_lo, value_hi = self.env.value_lims
+        bTt_V = jnp.clip(bTt_V, value_lo, value_hi)
+        bTt_V_next = jnp.clip(bTt_V_next, value_lo, value_hi)
+
         bT_term = Tb_rollout.term.T
         bT_trunc = Tb_rollout.trunc.T
         # Next step is from a different episode (due to reset) if either terminate or truncate
@@ -257,72 +261,106 @@ class VDMAPPOAgent:
                     cT_r = self.evaluate_dag(reach_idx, cTt_V, cT_predicates)
                     cT_q = self.evaluate_dag(stay_idx, cTt_V, cT_predicates)
                     cT_A, cT_Q = self.compute_A_Q_reachavoid(cT_q, cT_r, cT_V, cT_V_next, cT_term, cT_next_diff)
-
-                    if debug:
-                        logger.debug("!!??!?!")
-                        ipdb.set_trace()
                 case DAGGUSingle(reach=reach_idx, avoid=stay_idx):
-                    parent_dag_node_idx = self.env.node_parent_dict[dag_node_idx]
-                    parent_node = self.env.dag_nodes[parent_dag_node_idx]
-                    assert isinstance(parent_node, DAGGUMinN)
-                    gu_singles = parent_node.args
-
-                    gu_idx: int = gu_singles.index(dag_node_idx)
-
-                    logger.info("temporal_idx={} | GUSingle for {}:{}".format(temporal_node_idx, start_idx, end_idx))
-                    cT_r = self.evaluate_dag(reach_idx, cTt_V, cT_predicates)
-
-                    # GU is the only place where we allow const nodes (for the q part).
-                    cT_q = self.evaluate_dag(stay_idx, cTt_V, cT_predicates, allow_const=True)
-
-                    if len(gu_singles) == 1:
-                        # No other (r OR q) we need to satisfy.
-                        cT_q_tilde = cT_q
+                    AS_REACH = False
+                    if AS_REACH:
+                        cT_r = self.evaluate_dag(reach_idx, cTt_V, cT_predicates)
+                        cT_q = self.evaluate_dag(stay_idx, cTt_V, cT_predicates, allow_const=True)
+                        cT_A, cT_Q = self.compute_A_Q_reachavoid(cT_q, cT_r, cT_V, cT_V_next, cT_term, cT_next_diff)
                     else:
-                        # We also need to respect (r OR q) for all the other GUSingles.
-                        cT_q_mins = []
-                        for other_gu_idx, other_dag_node_idx in enumerate(gu_singles):
-                            if other_gu_idx == gu_idx:
-                                continue
+                        parent_dag_node_idx = self.env.node_parent_dict[dag_node_idx]
+                        parent_node = self.env.dag_nodes[parent_dag_node_idx]
+                        assert isinstance(parent_node, DAGGUMinN)
+                        gu_singles = parent_node.args
 
-                            other_node = self.env.dag_nodes[other_dag_node_idx]
-                            assert isinstance(other_node, DAGGUSingle)
+                        gu_idx: int = gu_singles.index(dag_node_idx)
 
-                            cT_r_other = self.evaluate_dag(other_node.reach, cTt_V, cT_predicates)
-                            cT_q_other = self.evaluate_dag(other_node.avoid, cTt_V, cT_predicates, allow_const=True)
-
-                            cT_r_or_q = jnp.maximum(cT_r_other, cT_q_other)
-                            cT_q_mins.append(cT_r_or_q)
-
-                        cT_q_tilde = jnp.stack(cT_q_mins, axis=-1).min(axis=-1)
-
-                    # Get the temporal_node_idx corresponding to the "next" GUSingle we need to achieve.
-                    # Could be the same node if there is only one GU.
-                    gu_idx_nextGU = (gu_idx + 1) % len(gu_singles)
-                    dag_idx_nextGU = gu_singles[gu_idx_nextGU]
-                    temporal_node_idx_nextGU = self.env.temporal_nodes.index(dag_idx_nextGU)
-
-                    logger.debug(
-                        "[GUSingle] temporal_idx={}, next temporal_idx={}".format(
-                            temporal_node_idx, temporal_node_idx_nextGU
+                        logger.info(
+                            "temporal_idx={} | GUSingle for {}:{}".format(temporal_node_idx, start_idx, end_idx)
                         )
-                    )
+                        cT_r = self.evaluate_dag(reach_idx, cTt_V, cT_predicates)
 
-                    cT_V_nextGU = cTt_V[:, :, temporal_node_idx_nextGU]
-                    cT_V_nextGU_next = cTt_V_next[:, :, temporal_node_idx_nextGU]
-                    assert cT_V_nextGU.shape == cT_V_nextGU_next.shape == cT_r.shape
+                        # GU is the only place where we allow const nodes (for the q part).
+                        cT_q = self.evaluate_dag(stay_idx, cTt_V, cT_predicates, allow_const=True)
 
-                    # ------
-                    gamma, lam = self.cfg.gamma, self.cfg.gae_lambda
+                        if len(gu_singles) == 1:
+                            # No other (r OR q) we need to satisfy.
+                            cT_q_tilde = cT_q
+                        else:
+                            # We also need to respect (r OR q) for all the other GUSingles.
+                            cT_q_mins = []
+                            for other_gu_idx, other_dag_node_idx in enumerate(gu_singles):
+                                if other_gu_idx == gu_idx:
+                                    continue
 
-                    gae_fn = ft.partial(gae_generalized, gamma=gamma, lam=lam)
-                    c_bellman = BellmanGUSingle(
-                        T_r=cT_r, T_q=cT_q_tilde, T_V_nextGU=cT_V_nextGU, T_V_nextGU_next=cT_V_nextGU_next
-                    )
-                    cT_Q_gae = jax.vmap(gae_fn)(cT_V_next, cT_term, cT_next_diff, c_bellman)
-                    cT_A_gae = cT_Q_gae - cT_V
+                                other_node = self.env.dag_nodes[other_dag_node_idx]
+                                assert isinstance(other_node, DAGGUSingle)
 
-                    cT_A, cT_Q = cT_A_gae, cT_Q_gae
+                                cT_r_other = self.evaluate_dag(other_node.reach, cTt_V, cT_predicates)
+                                cT_q_other = self.evaluate_dag(other_node.avoid, cTt_V, cT_predicates, allow_const=True)
+
+                                cT_r_or_q = jnp.maximum(cT_r_other, cT_q_other)
+                                cT_q_mins.append(cT_r_or_q)
+
+                            cT_q_tilde = jnp.stack(cT_q_mins, axis=-1).min(axis=-1)
+
+                        # Get the temporal_node_idx corresponding to the "next" GUSingle we need to achieve.
+                        # Could be the same node if there is only one GU.
+                        gu_idx_nextGU = (gu_idx + 1) % len(gu_singles)
+                        dag_idx_nextGU = gu_singles[gu_idx_nextGU]
+                        temporal_node_idx_nextGU = self.env.temporal_nodes.index(dag_idx_nextGU)
+
+                        logger.debug(
+                            "[GUSingle] temporal_idx={}, next temporal_idx={}".format(
+                                temporal_node_idx, temporal_node_idx_nextGU
+                            )
+                        )
+
+                        cT_V_nextGU = cTt_V[:, :, temporal_node_idx_nextGU]
+                        cT_V_nextGU_next = cTt_V_next[:, :, temporal_node_idx_nextGU]
+                        assert cT_V_nextGU.shape == cT_V_nextGU_next.shape == cT_r.shape
+
+                        # ------
+                        gamma, lam = self.cfg.gamma, self.cfg.gae_lambda
+
+                        gae_fn = ft.partial(gae_generalized, gamma=gamma, lam=lam)
+                        c_bellman = BellmanGUSingle(
+                            T_r=cT_r, T_q=cT_q_tilde, T_V_nextGU=cT_V_nextGU, T_V_nextGU_next=cT_V_nextGU_next
+                        )
+                        cT_Q_gae = jax.vmap(gae_fn)(cT_V_next, cT_term, cT_next_diff, c_bellman)
+                        cT_A_gae = cT_Q_gae - cT_V
+
+                        cT_A, cT_Q = cT_A_gae, cT_Q_gae
+
+                        if debug:
+                            c_Q_max = jnp.max(cT_Q, axis=1)
+                            Q_max = c_Q_max.max()
+                            logger.debug("In GUSingle. Q_max: {}".format(Q_max))
+
+                            if Q_max >= 1.5:
+                                # find an index where T_Q >= T_V
+                                n_higher = jnp.sum(cT_Q > cT_V, axis=1)
+                                idx = jnp.argmax(n_higher)
+
+                                T_r = cT_r[idx]
+                                T_q = cT_q[idx]
+                                T_V_nextGU = cT_V_nextGU[idx]
+                                T_V_nextGU_next = cT_V_nextGU_next[idx]
+                                T_V_next = cT_V_next[idx]
+                                T_term = cT_term[idx]
+                                T_next_diff = cT_next_diff[idx]
+
+                                bellman = BellmanGUSingle(
+                                    T_r=T_r, T_q=T_q, T_V_nextGU=T_V_nextGU, T_V_nextGU_next=T_V_nextGU_next
+                                )
+                                T_Q_gae = gae_fn(T_V_next, T_term, T_next_diff, bellman)
+
+                                T_V = cT_V[idx]
+
+                                logger.debug("T_V: {}".format(T_V))
+                                logger.debug("T_Q: {}".format(T_V))
+
+                                ipdb.set_trace()
                 case _:
                     raise ValueError(f"Unknown temporal node type: {type(dag_node)}")
 
@@ -716,6 +754,10 @@ class VDMAPPOAgent:
         return b_step
 
     def temporal_switch_fn(self, env: HerdOs, key: PRNGKeyArray, step: EnvStep):
+        if len(env.temporal_nodes) == 1:
+            # No need to switch if only one temporal node.
+            return step
+
         state_next: HerdOs.State = step.envstate
         temporal_node_idx = state_next.temporal_node_idx
         predicates_next = step.predicates

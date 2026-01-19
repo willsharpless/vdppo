@@ -64,7 +64,8 @@ class BellmanGUSingle(NamedTuple):
         assert len(T_q) == len(T_r) == len(T_term)
 
         # Reach r AND be able to reach the next GU.
-        T_r_tilde = jnp.minimum(T_r, T_V_nextGU)
+        # T_r_tilde = jnp.minimum(T_r, T_V_nextGU)
+        T_r_tilde = T_r
 
         T_V_next_k_masked = jnp.where(T_term, -jnp.inf, T_V_next_k)
         T_disc_term = jnp.minimum(T_q, T_r)
