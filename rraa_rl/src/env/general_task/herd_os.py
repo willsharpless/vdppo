@@ -1,9 +1,10 @@
-import functools as ft
 import copy
+import functools as ft
 from typing import Any, NamedTuple
 
 import ipdb
 import jax
+import jax.debug as jd
 import jax.nn as jnn
 import jax.numpy as jnp
 import jax.random as jr
@@ -13,6 +14,7 @@ import numpy as np
 from attrs import define
 from flax import struct
 from jaxtyping import PRNGKeyArray
+from loguru import logger
 from valtr.reachability import (DAGGU, DAGAvoid, DAGConst, DAGId, DAGMaxN, DAGMinN, DAGNegate, DAGNode, DAGReach,
                                 DAGReachAvoid, DAGVar, collect_predicate_info, extract_trigger_predicate_map,
                                 has_temporal_children, temporal_nodes_topological)
@@ -27,6 +29,12 @@ from rraa_rl.src.env.general_task.herd_base import HerdBase, HerdBaseCfg, HerdBa
 class DAGTransition(NamedTuple):
     parent: DAGId
     child: DAGId
+    condition: jnp.ndarray
+
+
+class TemporalNodeTransition(NamedTuple):
+    parent: int
+    child: int
     condition: jnp.ndarray
 
 
@@ -188,6 +196,7 @@ class HerdOs(Env):
 
         temporal_node_idx = state.temporal_node_idx
         if self.cfg.do_temporal_transition:
+            logger.debug("Doing temporal transition")
             predicates = base_step.predicates
             temporal_node_idx = self.transition_temporal_node(predicates, temporal_node_idx)
 
@@ -213,6 +222,13 @@ class HerdOs(Env):
         transition_idx = jnp.argmax(t_conditions_masked)
 
         temporal_node_idx_new = jnp.where(t_has_valid, t_children[transition_idx], temporal_node_idx)
+
+        # jd.print("-----------", ordered=True)
+        # jd.print("t_parents: {}", t_parents, ordered=True)
+        # jd.print("t_conditions: {}", t_conditions, ordered=True)
+        # jd.print("t_children: {}", t_children, ordered=True)
+        # jd.print("{} -> {}", temporal_node_idx, temporal_node_idx_new, ordered=True)
+
         return temporal_node_idx_new
 
     def get_obs(self, state: Any) -> Any:
@@ -263,23 +279,30 @@ class HerdOs(Env):
     def get_rules(self, predicates: dict[str, jnp.ndarray], which=jnp):
         scratch: dict[DAGId, jnp.ndarray] = {}
 
-        all_triggers: list[DAGTransition] = []
+        all_dag_triggers: list[DAGTransition] = []
         for temporal_node_idx, node_idx in enumerate(self.temporal_nodes):
             node = self.dag_nodes[node_idx]
             match node:
                 case DAGReach(reach=reach_id):
                     triggers = get_triggers(self.dag_nodes, node_idx, reach_id, predicates, scratch, which=which)
-                    all_triggers.extend(triggers)
+                    all_dag_triggers.extend(triggers)
                 case DAGAvoid(avoid=avoid_id):
                     # Avoid nodes are at the very bottom and don't transition to other temporal nodes.
                     pass
                 case DAGReachAvoid(reach=reach_id, avoid=avoid_id):
                     triggers = get_triggers(self.dag_nodes, node_idx, reach_id, predicates, scratch, which=which)
-                    all_triggers.extend(triggers)
+                    all_dag_triggers.extend(triggers)
                 case DAGGU(args=args):
                     raise NotImplementedError("GU not implemented yet")
                 case _:
                     raise ValueError(f"Unexpected temporal node type: {type(node)}")
+
+        # Convert to TemporalNodeTransition by converting from DAGId to temporal node idx.
+        all_triggers: list[TemporalNodeTransition] = []
+        for trigger in all_dag_triggers:
+            parent_idx = self.temporal_nodes.index(trigger.parent)
+            child_idx = self.temporal_nodes.index(trigger.child)
+            all_triggers.append(TemporalNodeTransition(parent_idx, child_idx, trigger.condition))
 
         return all_triggers
 

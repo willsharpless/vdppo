@@ -1,7 +1,9 @@
 import functools as ft
+import pathlib
 from typing import Any, Self
 
 import einops as ei
+import flax
 import ipdb
 import jax
 import jax.numpy as jnp
@@ -88,6 +90,10 @@ class VDMAPPOAgent:
     # Class containing static (non-pytree) data.
     static: VDMAPPOStatic = struct.field(pytree_node=False)
     cfg: VDMAPPOAgentCfg = struct.field(pytree_node=False)
+
+    def to_state_dict(self):
+        """For saving to disk."""
+        return flax.serialization.to_state_dict(self)
 
     @classmethod
     def create(

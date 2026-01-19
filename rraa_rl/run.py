@@ -54,6 +54,12 @@ class Run:
         d.mkdir(parents=True, exist_ok=True)
         return d
 
+    @property
+    def ckpts_dir(self) -> pathlib.Path:
+        d = self.run_dir / "ckpts"
+        d.mkdir(parents=True, exist_ok=True)
+        return d
+
 
 def get_random_noun(n_letters: int = 5) -> str:
     nltk.download("averaged_perceptron_tagger_eng", quiet=True)

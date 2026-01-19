@@ -1,12 +1,13 @@
+import pickle
 from typing import Protocol
 
 import jax
 import jax.random as jr
 import numpy as np
 import tqdm
-import wandb
 from attrs import define
 
+import wandb
 from rraa_rl.collector import Collector, RolloutOutput, extract_info_from_rollout
 from rraa_rl.rollout_temporal_analysis import evaluate_ltl_finite, evaluate_triggers
 from rraa_rl.rollout_utils import extract_rollouts_eval
@@ -78,6 +79,7 @@ class Trainer:
 
         eval_every = 10_000
         log_every = 100
+        save_every = 10_000
 
         if not debug:
             wandb.init(project="vd_mappo", name=run.wandb_name)
@@ -109,6 +111,15 @@ class Trainer:
                 log_dict = {"step": train_step}
                 log_dict = log_dict | info_eval
                 wandb.log(log_dict, step=train_step)
+
+            if train_step % save_every == 0:
+                pbar.set_description(f"Saving at step {train_step}")
+
+                ckpts_dir = run.ckpts_dir
+                save_dict = dict(agent=self.agent.to_state_dict())
+                pkl_path = ckpts_dir / "params_{:09}.pkl".format(train_step)
+                with open(pkl_path, "wb") as f:
+                    pickle.dump(save_dict, f)
 
             # Collect rollout data
             pbar.set_description(f"Collecting rollouts")
