@@ -18,12 +18,12 @@ from flax import struct
 from jaxtyping import PRNGKeyArray
 from loguru import logger
 from optax.tree_utils import tree_where
-from valtr.reachability import (DAGGU, DAGAvoid, DAGConst, DAGId, DAGMaxN, DAGMinN, DAGNegate, DAGReach, DAGReachAvoid,
-                                DAGVar)
+from valtr.reachability import (DAGAvoid, DAGConst, DAGGUMinN, DAGGUSingle, DAGId, DAGMaxN, DAGMinN, DAGNegate,
+                                DAGReach, DAGReachAvoid, DAGVar)
 
 from rraa_rl.collector import Collector, RolloutOutput
 from rraa_rl.distribution import tfd
-from rraa_rl.gae import BellmanMax, BellmanMaxMin, BellmanMin, gae_generalized
+from rraa_rl.gae import BellmanGUSingle, BellmanMax, BellmanMaxMin, BellmanMin, gae_generalized
 from rraa_rl.jax_types import FloatScalar, bFloat
 from rraa_rl.nn_modules import BaseObsOnly, BothObs, MAMultiDiscretePolicy, VDValue
 from rraa_rl.src.env.general_task.env import EnvStep
@@ -148,10 +148,13 @@ class VDMAPPOAgent:
     def evaluate_dag(
         self,
         node_idx: DAGId,
-        bTt_V: jnp.ndarray,
-        bT_predicates: dict[str, jnp.ndarray],
+        t_V: jnp.ndarray,
+        predicates: dict[str, jnp.ndarray],
         scratch: dict[DAGId, jnp.ndarray] | None = None,
+        allow_const: bool = False,
     ) -> jnp.ndarray:
+        """Can be called with batch of data."""
+
         # Check if already computed.
         if scratch is None:
             scratch = {}
@@ -159,33 +162,40 @@ class VDMAPPOAgent:
         if node_idx in scratch:
             return scratch[node_idx]
 
+        batch_shape = t_V.shape[:-1]
+
         dag_node = self.env.dag_nodes[node_idx]
         match dag_node:
             case DAGConst(value=value):
-                raise ValueError("Const nodes should have been removed")
+                if allow_const:
+                    big_float = 6.969e7
+                    value_float = {True: big_float, False: -big_float}[value]
+                    out = jnp.full(batch_shape, value_float)
+                else:
+                    raise ValueError("Const nodes should have been removed")
             case DAGVar(name=name):
-                out = bT_predicates[name]
+                out = predicates[name]
                 # logger.debug("Var(%{}) = {}".format(node_idx, out))
             case DAGNegate(arg=arg):
-                out = -self.evaluate_dag(arg, bTt_V, bT_predicates, scratch)
+                out = -self.evaluate_dag(arg, t_V, predicates, scratch)
                 # logger.debug("Negate(%{}) = {}".format(node_idx, out))
             case DAGMinN(args=args):
                 args_vals = jnp.stack(
-                    [self.evaluate_dag(arg, bTt_V, bT_predicates, scratch) for arg in args],
+                    [self.evaluate_dag(arg, t_V, predicates, scratch) for arg in args],
                     axis=0,
                 )
                 out = jnp.min(args_vals, axis=0)
             case DAGMaxN(args=args):
                 args_vals = jnp.stack(
-                    [self.evaluate_dag(arg, bTt_V, bT_predicates, scratch) for arg in args],
+                    [self.evaluate_dag(arg, t_V, predicates, scratch) for arg in args],
                     axis=0,
                 )
                 out = jnp.max(args_vals, axis=0)
             case _:
                 # Temporal nodes. Use the value function.
                 temporal_idx = self.env.temporal_nodes.index(node_idx)
-                bT_V = bTt_V[..., temporal_idx]
-                out = bT_V
+                V = t_V[..., temporal_idx]
+                out = V
 
         scratch[node_idx] = out
         return out
@@ -246,13 +256,65 @@ class VDMAPPOAgent:
                     logger.info("temporal_idx={} | ReachAvoid for {}:{}".format(temporal_node_idx, start_idx, end_idx))
                     cT_r = self.evaluate_dag(reach_idx, cTt_V, cT_predicates)
                     cT_q = self.evaluate_dag(stay_idx, cTt_V, cT_predicates)
-                    cT_A, cT_Q = self.compute_A_Q_reachavoid(cT_q, cT_r, cT_V, cT_V_next, cT_term, cT_next_diff, debug)
+                    cT_A, cT_Q = self.compute_A_Q_reachavoid(cT_q, cT_r, cT_V, cT_V_next, cT_term, cT_next_diff)
 
                     if debug:
                         logger.debug("!!??!?!")
                         ipdb.set_trace()
-                case DAGGU(args=args_idx):
-                    raise NotImplementedError("GU not implemented yet")
+                case DAGGUSingle(reach=reach_idx, avoid=stay_idx):
+                    parent_dag_node_idx = self.env.node_parent_dict[dag_node_idx]
+                    parent_node = self.env.dag_nodes[parent_dag_node_idx]
+                    assert isinstance(parent_node, DAGGUMinN)
+                    gu_singles = parent_node.args
+
+                    gu_idx: int = gu_singles.index(dag_node_idx)
+
+                    logger.info("temporal_idx={} | GUSingle for {}:{}".format(temporal_node_idx, start_idx, end_idx))
+                    cT_r = self.evaluate_dag(reach_idx, cTt_V, cT_predicates)
+
+                    # GU is the only place where we allow const nodes (for the q part).
+                    cT_q = self.evaluate_dag(stay_idx, cTt_V, cT_predicates, allow_const=True)
+
+                    if len(gu_singles) == 1:
+                        # No other (r OR q) we need to satisfy.
+                        cT_q_tilde = cT_q
+                    else:
+                        # We also need to respect (r OR q) for all the other GUSingles.
+                        cT_q_mins = []
+                        for other_gu_idx, other_dag_node_idx in enumerate(gu_singles):
+                            if other_gu_idx == gu_idx:
+                                continue
+
+                            other_node = self.env.dag_nodes[other_dag_node_idx]
+                            assert isinstance(other_node, DAGGUSingle)
+
+                            cT_r_other = self.evaluate_dag(other_node.reach, cTt_V, cT_predicates)
+                            cT_q_other = self.evaluate_dag(other_node.avoid, cTt_V, cT_predicates, allow_const=True)
+
+                            cT_r_or_q = jnp.maximum(cT_r_other, cT_q_other)
+                            cT_q_mins.append(cT_r_or_q)
+
+                        cT_q_tilde = jnp.stack(cT_q_mins, axis=-1).min(axis=-1)
+
+                    # Get the temporal_node_idx corresponding to the "next" GUSingle we need to achieve.
+                    # Could be the same node if there is only one GU.
+                    gu_idx_nextGU = (gu_idx + 1) % len(gu_singles)
+                    dag_idx_nextGU = gu_singles[gu_idx_nextGU]
+                    temporal_node_idx_nextGU = self.env.temporal_nodes.index(dag_idx_nextGU)
+                    cT_V_nextGU = cTt_V[:, :, temporal_node_idx_nextGU]
+                    cT_V_nextGU_next = cTt_V_next[:, :, temporal_node_idx_nextGU]
+
+                    # ------
+                    gamma, lam = self.cfg.gamma, self.cfg.gae_lambda
+
+                    gae_fn = ft.partial(gae_generalized, gamma=gamma, lam=lam)
+                    c_bellman = BellmanGUSingle(
+                        T_r=cT_r, T_q=cT_q_tilde, T_V_nextGU=cT_V_nextGU, T_V_nextGU_next=cT_V_nextGU_next
+                    )
+                    cT_Q_gae = jax.vmap(gae_fn)(cT_V_next, cT_term, cT_next_diff, c_bellman)
+                    cT_A_gae = cT_Q_gae - cT_V
+
+                    cT_A, cT_Q = cT_A_gae, cT_Q_gae
                 case _:
                     raise ValueError(f"Unknown temporal node type: {type(dag_node)}")
 
@@ -306,29 +368,13 @@ class VDMAPPOAgent:
         bT_V: jnp.ndarray,
         bT_V_next: jnp.ndarray,
         bT_term: jnp.ndarray,
-        bT_nextvalid: jnp.ndarray,
-        debug: bool = False,
+        bT_next_diff: jnp.ndarray,
     ) -> tuple[bFloat, bFloat]:
         gamma, lam = self.cfg.gamma, self.cfg.gae_lambda
         gae_fn = ft.partial(gae_generalized, gamma=gamma, lam=lam)
         b_bellman = BellmanMaxMin(T_r=bT_r, T_q=bT_q)
-        bT_Q_gae = jax.vmap(gae_fn)(bT_V_next, bT_term, bT_nextvalid, b_bellman)
+        bT_Q_gae = jax.vmap(gae_fn)(bT_V_next, bT_term, bT_next_diff, b_bellman)
         bT_A_gae = bT_Q_gae - bT_V
-
-        # if debug:
-        #     idx = 987
-        #     logger.debug("T_q   : {}".format(bT_q[idx]))
-        #     logger.debug("T_r   : {}".format(bT_r[idx]))
-        #     logger.debug("T_V   : {}".format(bT_V[idx]))
-        #     logger.debug("T_Vnxt: {}".format(bT_V_next[idx]))
-        #     logger.debug("T_term: {}".format(bT_term[idx]))
-        #     logger.debug("T_Q_g : {}".format(bT_Q_gae[idx]))
-        #
-        #     bellman = BellmanMaxMin(T_r=bT_r[idx], T_q=bT_q[idx], debug=True)
-        #     T_Q_gae = gae_generalized(bT_V[idx], bT_V_next[idx], bT_term[idx], bT_nextvalid[idx], bellman, gamma, lam)
-        #     logger.debug("T_Q_g : {}".format(T_Q_gae))
-        #     ipdb.set_trace()
-
         return bT_A_gae, bT_Q_gae
 
     def get_Tb_data(self, Tb_rollout: RolloutOutput) -> PPOData:
@@ -613,6 +659,8 @@ class VDMAPPOAgent:
         return Tb_rollout, collect_info
 
     def get_t_reach_val(self, obs: Any, predicates: dict):
+        """Compute the temporal reach values for all temporal nodes. Used for truncation."""
+
         # The returned obs is for the next state.
         obs_next = obs
         t_V_next = self.network.select("critic")(obs_next, params=self.network.params)
@@ -628,11 +676,14 @@ class VDMAPPOAgent:
                 case DAGReachAvoid(reach=reach_idx, avoid=stay_idx):
                     reach_val = self.evaluate_dag(reach_idx, t_V_next, pred_next)
                 case DAGAvoid(avoid=stay_idx):
+                    # Avoid is not a reach, we never truncate.
                     reach_val = np.array(-np.inf)
-                case DAGGU(args=args_idx):
-                    # TODO: We should probably have one temporal node for each arg inside GU...
-                    reach_val = np.array(-np.inf)
-                    # raise NotImplementedError("GU not implemented yet")
+                case DAGGUSingle(reach=reach_idx, avoid=stay_idx):
+                    # Treat it as a reachavoid.
+                    reach_val = self.evaluate_dag(reach_idx, t_V_next, pred_next)
+                # case DAGGU(args=args_idx):
+                #     reach_val = np.array(-np.inf)
+                # raise NotImplementedError("GU not implemented yet")
                 case _:
                     raise ValueError(f"Unknown temporal node type: {type(node)}")
 

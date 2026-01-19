@@ -15,9 +15,9 @@ from attrs import define
 from flax import struct
 from jaxtyping import PRNGKeyArray
 from loguru import logger
-from valtr.reachability import (DAGGU, DAGAvoid, DAGConst, DAGId, DAGMaxN, DAGMinN, DAGNegate, DAGNode, DAGReach,
-                                DAGReachAvoid, DAGVar, collect_predicate_info, extract_trigger_predicate_map,
-                                has_temporal_children, temporal_nodes_topological)
+from valtr.reachability import (DAGAvoid, DAGConst, DAGGUMinN, DAGGUSingle, DAGId, DAGMaxN, DAGMinN, DAGNegate, DAGNode,
+                                DAGReach, DAGReachAvoid, DAGVar, collect_predicate_info, extract_trigger_predicate_map,
+                                get_node_parent_dict, has_temporal_children, temporal_nodes_topological)
 from valtr.valtr import to_dag
 
 from rraa_rl.jax_types import BoolScalar
@@ -105,6 +105,8 @@ class HerdOs(Env):
         assert len(self.cfg.temporal_node_fracs) == len(self.temporal_nodes)
         self._augment_obs_names = None
 
+        self.node_parent_dict: dict[DAGId, DAGId] = get_node_parent_dict(self.dag_nodes, self.dag_root)
+
     @property
     def temporal_node_names(self) -> list[str]:
         names = []
@@ -135,9 +137,10 @@ class HerdOs(Env):
         # return "F(G(herd_herded)) && G( !herder_collide ) && G( !herder_oob )"
         # return "( !herder_collide && ! herder_oob ) U ( G(herd_herded && !herder_collide && ! herder_oob) )"
         # return "F herder_c1 && F herder_c2"
-        return "F G (herder_c1 || herder_c2)"
+        # return "F G (herder_c1 || herder_c2)"
         # return "F herder_c1"
         # return "!herder_collide U herder_c1"
+        return "G F herder_c1 && G F herder_c2"
 
     def _temporal_node_idx_to_node_type(self):
         """Map from temporal node idx to node type (as index)"""
@@ -212,6 +215,7 @@ class HerdOs(Env):
     def transition_temporal_node(
         self, predicates: dict[str, jnp.ndarray], t_value: jnp.ndarray, temporal_node_idx: jnp.ndarray
     ) -> jnp.ndarray:
+        """Compute the new temporal node idx after applying the DAG transitions."""
         all_triggers = self.get_rules(predicates, t_value)
         t_parents = jnp.stack([trigger.parent for trigger in all_triggers])
         t_conditions = jnp.stack([trigger.condition for trigger in all_triggers])
@@ -280,6 +284,7 @@ class HerdOs(Env):
         return state
 
     def get_rules(self, predicates: dict[str, jnp.ndarray], t_value: jnp.ndarray, which=jnp):
+        """Get the temporal node transition rules."""
         scratch: dict[DAGId, jnp.ndarray] = {}
 
         all_dag_triggers: list[DAGTransition] = []
@@ -313,10 +318,24 @@ class HerdOs(Env):
                         which=which,
                     )
                     all_dag_triggers.extend(triggers)
-                case DAGGU(args=args):
-                    raise NotImplementedError("GU not implemented yet")
+                case DAGGUSingle():
+                    # Handle GU separately below
+                    pass
                 case _:
                     raise ValueError(f"Unexpected temporal node type: {type(node)}")
+
+        for node_idx, node in enumerate(self.dag_nodes):
+            if not isinstance(node, DAGGUMinN):
+                continue
+            triggers = get_gu_triggers(
+                self.dag_nodes,
+                DAGId(node_idx),
+                predicates,
+                t_value,
+                scratch,
+                which=which,
+            )
+            all_dag_triggers.extend(triggers)
 
         # Convert to TemporalNodeTransition by converting from DAGId to temporal node idx.
         all_triggers: list[TemporalNodeTransition] = []
@@ -455,6 +474,9 @@ def get_triggers(
             child = dag_nodes[child_id]
             if child.is_temporal():
                 temporal_children.append(child_id)
+            elif isinstance(child, DAGGUMinN):
+                # If we reach a GUminN, transition to the first temporal child.
+                temporal_children.append(child.args[0])
             else:
                 dag_value = evaluate_dag(dag_nodes, child_id, predicates, scratch, which=which)
                 nontemporal_children.append(dag_value)
@@ -467,5 +489,37 @@ def get_triggers(
         # Compute the min over the nontemporal children
         nontemporal_value = which.stack(nontemporal_children, axis=0).min(axis=0)
         triggers.append(DAGTransition(parent_idx, temporal_idx, nontemporal_value))
+
+    return triggers
+
+
+def get_gu_triggers(
+    dag_nodes: list[DAGNode],
+    GU_min_node_idx: DAGId,
+    predicates: dict[str, jnp.ndarray],
+    t_value: jnp.ndarray,
+    scratch: dict[DAGId, jnp.ndarray],
+    which=jnp,
+) -> list[DAGTransition]:
+    """Get triggers for GU."""
+    gu_min_node = dag_nodes[GU_min_node_idx]
+    assert isinstance(gu_min_node, DAGGUMinN)
+    gu_single_dag_ids: list[DAGId] = list(gu_min_node.args)
+    n_GU = len(gu_single_dag_ids)
+
+    triggers: list[DAGTransition] = []
+
+    # For each GUSingle, when triggered, move to the next GUSingle.
+    for gu_idx, gu_single_dag_id in enumerate(gu_single_dag_ids):
+        gu_single = dag_nodes[gu_single_dag_id]
+        if not isinstance(gu_single, DAGGUSingle):
+            raise ValueError(f"Expected GUminN to have only GUsingle children, found {type(gu_single)}")
+
+        gu_single_reach_dag_id = gu_single.reach
+        condition_val = evaluate_dag(dag_nodes, gu_single_reach_dag_id, predicates, scratch, which=which)
+
+        gu_idx_next = (gu_idx + 1) % n_GU
+        gu_single_next_dag_id = gu_single_dag_ids[gu_idx_next]
+        triggers.append(DAGTransition(gu_single_dag_id, gu_single_next_dag_id, condition_val))
 
     return triggers

@@ -2,8 +2,8 @@ import ipdb
 import jax
 import jax.numpy as jnp
 import numpy as np
-from valtr.reachability import (DAGGU, DAGAvoid, DAGConst, DAGId, DAGMaxN, DAGMinN, DAGNegate, DAGNode, DAGReach,
-                                DAGReachAvoid, DAGVar)
+from valtr.reachability import (DAGAvoid, DAGConst, DAGGUMinN, DAGGUSingle, DAGId, DAGMaxN, DAGMinN, DAGNegate, DAGNode,
+                                DAGReach, DAGReachAvoid, DAGVar)
 
 from rraa_rl.collector import RolloutOutput
 from rraa_rl.src.env.general_task.herd_os import DAGTransition, HerdOs
@@ -69,6 +69,7 @@ def get_values(
     next_values: dict[DAGId, np.ndarray] | None,
     which=jnp,
     values: dict[DAGId, np.ndarray] | None = None,
+    allow_const: bool = False,
 ):
     is_terminal = next_values is None
 
@@ -78,7 +79,10 @@ def get_values(
     node = dag_nodes[dag_root]
     match node:
         case DAGConst(value=value):
-            raise ValueError("Const should have been simplified away.")
+            if allow_const:
+                val = which.full((), value)
+            else:
+                raise ValueError("Const should have been simplified away.")
         case DAGVar(name=name):
             val = predicates[name]
         case DAGNegate(arg=arg_id):
@@ -115,8 +119,23 @@ def get_values(
             else:
                 # reach OR (stay AND next_values)
                 val = which.maximum(reach_val, which.minimum(stay_val, next_values[dag_root]))
-        case DAGGU(args=args_ids):
-            raise ValueError("How to handle GU... ?")
+
+        case DAGGUMinN(args=args_ids):
+            # Treat the GU Min as a normal Min
+            vals = [get_values(dag_nodes, arg_id, predicates, next_values, which, values) for arg_id in args_ids]
+            val = which.min(which.stack(vals, axis=0), axis=0)
+        case DAGGUSingle(reach=reach_id, avoid=stay_id):
+            # Treat a single GU as a normal ReachAvoid.
+            reach_val = get_values(dag_nodes, reach_id, predicates, next_values, which, values)
+            stay_val = get_values(dag_nodes, stay_id, predicates, next_values, which, values, allow_const=True)
+            if is_terminal:
+                # At the terminal step, ReachAvoid is just the value of the reach node.
+                val = reach_val
+            else:
+                # reach OR (stay AND next_values)
+                val = which.maximum(reach_val, which.minimum(stay_val, next_values[dag_root]))
+        # case DAGGU(args=args_ids):
+        #     raise ValueError("How to handle GU... ?")
         case _:
             raise NotImplementedError(f"Node type {type(node)} not implemented.")
 
