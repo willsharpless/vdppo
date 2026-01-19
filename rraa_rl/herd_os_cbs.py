@@ -229,10 +229,12 @@ def animate_eval_trajs(p: CallbackProps):
 
     cfg = env.base.cfg
 
-    color_alive = "C1"
-    color_dead = "C0"
-    color_alive = np.array(to_rgba(color_alive))
-    color_dead = np.array(to_rgba(color_dead))
+    # Use facecolor to indicate the current temporal node.
+    colors_temporal_node = [f"C{ii}" for ii in range(n_temporal_nodes)]
+
+    # Use edgecolor to indicate alive vs dead.
+    color_alive = to_rgba("C0", 0.0)
+    color_dead = np.array(to_rgba("C0"))
 
     circ_collections = []
     start_idxs, end_idxs = [], []
@@ -290,7 +292,8 @@ def animate_eval_trajs(p: CallbackProps):
             trajs = p.bT_test_rollouts[start_idx:end_idx]
             n_traj = end_idx - start_idx
 
-            colors = []
+            facecolors = []
+            edgecolors = []
 
             offsets = np.zeros((n_traj, 2))
             for jj, traj in enumerate(trajs):
@@ -301,13 +304,17 @@ def animate_eval_trajs(p: CallbackProps):
                 t_idx = min(kk, T - 1)
                 offsets[jj, :] = T_herder_pos[t_idx, :]
 
+                temporal_node_idx = T_state.temporal_node_idx[t_idx]
+                facecolors.append(colors_temporal_node[temporal_node_idx])
+
                 if kk < T:
-                    colors.append(color_alive)
+                    edgecolors.append(color_alive)
                 else:
-                    colors.append(color_dead)
+                    edgecolors.append(color_dead)
 
             circ_collections[ii].set_offsets(offsets)
-            circ_collections[ii].set_facecolor(colors)
+            circ_collections[ii].set_facecolor(facecolors)
+            circ_collections[ii].set_edgecolor(edgecolors)
         return circ_collections + [kk_text]
 
     pbar = tqdm.tqdm(total=T_max, unit="frame", desc="Generating eval trajs animation")
