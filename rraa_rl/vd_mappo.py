@@ -1,6 +1,8 @@
 import functools as ft
 import pathlib
-from typing import Any, Self
+# from typing import Any, Self
+from typing import Any
+from typing_extensions import Self
 
 import einops as ei
 import flax

@@ -1,31 +1,112 @@
-name: jax_sbx
+# name: jax_sbx
+name: jaxrl
 channels:
   - conda-forge
   - defaults
 dependencies:
-  - python=3.10
+  - python=3.12
   - pip
   - pip:
-      - jax[cuda12_pip]==0.4.26
-      - --find-links https://storage.googleapis.com/jax-releases/jax_cuda_releases.html
-      - nvidia-cudnn-cu12==8.9.2.26
-      - flax
-      - brax
-      - gymnax
-      - chex
-      - gymnasium
-      - sbx-rl
-      - mujoco
-      # - dm_control, adds pytorch 2.7 and bad cuda utils for jax
-      - numpy<2
-      - wandb
-      - shimmy
-      - imageio
-      - imageio-ffmpeg
-      - einops
-      - control
-      - distrax
-      - colour
-      # - jax-f16, uses incompatible jnp, use my fork
-      - git+https://github.com/willsharpless/jax-f16.git
-      - git+https://github.com/willsharpless/valtr.git
+      # Core JAX/ML packages
+      - jax==0.8.2
+      - jaxlib==0.8.2
+      - jax-cuda12-pjrt==0.8.2
+      - jax-cuda12-plugin==0.8.2
+      - flax==0.12.0
+      - optax==0.2.6
+      - chex==0.1.91
+      - jaxopt==0.8.5
+      - orbax-checkpoint==0.11.31
+      
+      # NVIDIA CUDA libraries
+      - nvidia-cudnn-cu12==9.10.2.21
+      - nvidia-cublas-cu12==12.8.4.1
+      - nvidia-cuda-cccl-cu12==12.9.27
+      - nvidia-cuda-cupti-cu12==12.8.90
+      - nvidia-cuda-nvcc-cu12==12.9.86
+      - nvidia-cuda-nvrtc-cu12==12.8.93
+      - nvidia-cuda-runtime-cu12==12.8.90
+      - nvidia-cufft-cu12==11.3.3.83
+      - nvidia-cufile-cu12==1.13.1.3
+      - nvidia-curand-cu12==10.3.9.90
+      - nvidia-cusolver-cu12==11.7.3.90
+      - nvidia-cusparse-cu12==12.5.8.93
+      - nvidia-cusparselt-cu12==0.7.1
+      - nvidia-nccl-cu12==2.27.5
+      - nvidia-nvjitlink-cu12==12.8.93
+      - nvidia-nvshmem-cu12==3.3.20
+      - nvidia-nvtx-cu12==12.8.90
+      
+      # RL/Gym environments
+      - brax==0.14.0
+      - gymnax==0.0.9
+      - gymnasium==1.2.3
+      - shimmy==2.0.0
+      - mujoco==3.4.0
+      - mujoco-mjx==3.4.0
+      - stable_baselines3==2.8.0a2
+      - sbx-rl==0.25.0
+      
+      # Scientific computing
+      - numpy==2.4.1
+      - scipy==1.17.0
+      - pandas==2.3.3
+      - control==0.10.2
+      
+      # Distributions and utilities
+      - distrax==0.1.7
+      - tfp-nightly==0.26.0.dev20260113
+      - einops==0.8.1
+      - jax_dataclasses==1.6.3
+      - jaxtyping==0.3.5
+      
+      # Visualization
+      - matplotlib==3.10.8
+      - seaborn==0.13.2
+      - imageio==2.37.2
+      - imageio-ffmpeg==0.6.0
+      - colour==0.1.5
+      - graphviz==0.21
+      - PyOpenGL==3.1.10
+      - glfw==2.10.0
+      - trimesh==4.11.0
+      - treescope==0.1.10
+      
+      # ML experiment tracking
+      - wandb==0.23.1
+      - tensorboardX==2.6.4
+      - sentry-sdk==2.49.0
+      
+      # CLI and utilities
+      - cyclopts==4.4.5
+      - loguru==0.7.3
+      - ipdb==0.13.13
+      - ipython==9.9.0
+      - rich==14.2.0
+      - tqdm==4.67.1
+      - click==8.3.1
+      
+      # Data structures and parsing
+      - attrs==25.4.0
+      - pydantic==2.12.5
+      - pydantic_core==2.41.5
+      - ml_collections==1.1.0
+      - msgpack==1.1.2
+      - PyYAML==6.0.3
+      
+      # NLP utilities
+      - nltk==3.9.2
+      - wordfreq==3.1.1
+      - ftfy==6.3.1
+      - langcodes==3.5.1
+      
+      # PyTorch (if needed, though primarily JAX-based)
+      - torch==2.9.1
+      - triton==3.5.1
+      
+      # Git repositories (install these last)
+      - git+https://github.com/oswinso/lovely_histogram.git@90d4e086121a09fb5df6560cc3ac695006540ed2
+      - git+https://github.com/willsharpless/valtr.git@c6f6550f156297c3bc30135e80da79f12aaccf51
+      # Note: jax-f16 not in pip freeze, uncomment if needed:
+      # - git+https://github.com/willsharpless/jax-f16.git
+
