@@ -30,8 +30,10 @@ class GetActionFn(Protocol):
 class BatchResetFn(Protocol):
     def __call__(self, env: HerdOs, b_key: PRNGKeyArray, b_state: Any) -> Any: ...
 
+
 class TruncateFn(Protocol):
     """Function that can be passed to the collector to truncate episodes early."""
+
     def __call__(self, env: HerdOs, b_key: PRNGKeyArray, b_step: EnvStep) -> EnvStep: ...
 
 
@@ -49,7 +51,7 @@ class RolloutOutput:
     obs_next: Any
     act: jnp.ndarray
 
-    predicates: dict
+    predicates_next: dict
 
     term: jnp.ndarray
     """Termination flags after taking action."""
@@ -84,7 +86,7 @@ class RolloutOutput:
             obs_now=colstate.b_obs,
             obs_next=b_step_result.obs,
             act=b_act,
-            predicates=b_step_result.predicates,
+            predicates_next=b_step_result.predicates,
             term=b_step_result.term,
             trunc=b_step_result.trunc,
             logprob=b_logprob,
@@ -147,7 +149,11 @@ class Collector(struct.PyTreeNode):
         return step_result, action
 
     def collect_batch(
-        self, sample_action: SampleActionFn, T: int, reset_fn: BatchResetFn = None, truncate_fn: TruncateFn = None,
+        self,
+        sample_action: SampleActionFn,
+        T: int,
+        reset_fn: BatchResetFn = None,
+        truncate_fn: TruncateFn = None,
     ) -> tuple[Self, RolloutOutput, dict]:
         if reset_fn is None:
             reset_fn = _default_reset_fn

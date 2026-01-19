@@ -132,7 +132,7 @@ def main():
     # env_params = env.default_params
 
     env = MultiPointGeneralTask(
-        active_predicates=value_dag.predicates, 
+        active_predicates=value_dag.predicates_next,
         negated_predicate_mask=value_dag.negated_predicate_mask,
         n_agents=config["N_AGENTS"],
         fixed_velocity=config["FIXED_VELOCITY"],

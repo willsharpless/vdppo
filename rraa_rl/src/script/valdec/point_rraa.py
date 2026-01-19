@@ -129,15 +129,15 @@ def transform_observation(mean, variance, obs):
 def untransform_observation(mean, variance, obs):
     return obs * variance + mean
 
-vec1 = jnp.zeros(7 + len(value_dag.predicates), dtype=jnp.float32)
-vec2 = jnp.ones(7 + len(value_dag.predicates), dtype=jnp.float32)
+vec1 = jnp.zeros(7 + len(value_dag.predicates_next), dtype=jnp.float32)
+vec2 = jnp.ones(7 + len(value_dag.predicates_next), dtype=jnp.float32)
 vec2 = vec2.at[0].set(2.)
 vec2 = vec2.at[1].set(2.)
 # TODO define mean/var for predicate values
 trans = partial(transform_observation, vec1, vec2)
 untrans = partial(untransform_observation, vec1, vec2)
 env = PointGeneralTask(
-    active_predicates=value_dag.predicates, 
+    active_predicates=value_dag.predicates_next,
     negated_predicate_mask=value_dag.negated_predicate_mask
 )
 env = TransformObservation(env, trans)

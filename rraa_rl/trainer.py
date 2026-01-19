@@ -1,16 +1,12 @@
 from typing import Protocol
 
-import attrs
-import ipdb
 import jax
 import jax.random as jr
-import jax_dataclasses as jdc
 import numpy as np
 import tqdm
-from attrs import define
-from valtr.valtr import to_dag
-
 import wandb
+from attrs import define
+
 from rraa_rl.collector import Collector, RolloutOutput, extract_info_from_rollout
 from rraa_rl.rollout_temporal_analysis import evaluate_ltl_finite, evaluate_triggers
 from rraa_rl.rollout_utils import extract_rollouts_eval
@@ -26,6 +22,7 @@ class CallbackProps:
     train_step: int
     agent: VDMAPPOAgent
     bT_test_rollouts: list[RolloutOutput]
+    bT_test_rollout: RolloutOutput
     test_trigger_dict: dict[tuple[str, str], np.ndarray]
     temporal_values_dict: dict[int, np.ndarray]
 
@@ -70,9 +67,10 @@ class Trainer:
             env=env,
             cfg=Collector.Cfg(n_envs=n_envs_train),
         )
+        env_eval_transition = env.with_temporal_transitions()
         collector_eval = Collector.create(
             key=key_collector,
-            env=env,
+            env=env_eval_transition,
             cfg=Collector.Cfg(n_envs=n_envs_test),
         )
 
@@ -84,19 +82,20 @@ class Trainer:
         if not debug:
             wandb.init(project="vd_mappo", name=run.wandb_name)
 
-        cb_props = CallbackProps(run, -1, self.agent, None, None, None, collector, None, None)
+        cb_props = CallbackProps(run, -1, self.agent, None, None, None, None, collector, None, None)
 
         pbar = tqdm.trange(n_train_steps)
         for train_step in pbar:
             if train_step % eval_every == 0:
                 pbar.set_description(f"Eval at step {train_step}")
-                trajs, trigger_dict, info_eval = self.eval(collector_eval, key_eval)
+                trajs, bT_rollout, trigger_dict, info_eval = self.eval(collector_eval, key_eval)
 
                 temporal_values_dict = info_eval.pop("debug/temporal_values_dict")
 
                 cb_props.train_step = train_step
                 cb_props.agent = self.agent
                 cb_props.bT_test_rollouts = trajs
+                cb_props.bT_test_rollout = bT_rollout
                 cb_props.test_trigger_dict = trigger_dict
                 cb_props.temporal_values_dict = temporal_values_dict
                 cb_props.collector_train = collector
@@ -171,7 +170,7 @@ class Trainer:
             T_temporal_node_idx: np.ndarray = traj.temporal_node_idx
             temporal_node_idx = T_temporal_node_idx[0]
             dag_node_idx = env.temporal_nodes[temporal_node_idx]
-            dag_value = evaluate_ltl_finite(env, traj.predicates, which=np)[dag_node_idx]
+            dag_value = evaluate_ltl_finite(env, traj.predicates_next, which=np)[dag_node_idx]
 
             temporal_node_value = temporal_node_values_l.get(temporal_node_idx, [])
             temporal_node_value.append(dag_value)
@@ -194,4 +193,4 @@ class Trainer:
 
         info["debug/temporal_values_dict"] = temporal_node_values
 
-        return trajs, trigger_dict, info
+        return trajs, bT_rollout, trigger_dict, info

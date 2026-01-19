@@ -69,7 +69,7 @@ def process_dag(value_dag, dag_root, reported_nodes="all", neg_reach_conv=True):
         if neg_reach_conv else jnp.array(negated_predicate_mask, dtype=jnp.int32)
 
     # Define Predicates and Predicate IDs
-    value_dag.predicates = predicates
+    value_dag.predicates_next = predicates
     value_dag.predicate_ids = predicate_ids
 
     # Define Parent Positions (padded with -1 for jax)
@@ -212,7 +212,7 @@ def train(env, env_params, value_dag, config, rng, plot_function=None):
         # Pre-allocate functional buffers to carry parent data across node rollouts
         num_nodes = value_dag.temporal_nodes.shape[0]
         obs_shape = env.observation_space(env_params).shape
-        num_predicates = len(value_dag.predicates)
+        num_predicates = len(value_dag.predicates_next)
         num_steps = config["NUM_STEPS"]
 
         # initialize buffers for parent-conditioned resets
@@ -740,7 +740,7 @@ def train(env, env_params, value_dag, config, rng, plot_function=None):
                 # Pre-allocate functional buffers to carry parent data across node rollouts
                 num_nodes = value_dag.temporal_nodes.shape[0]
                 obs_shape = env.observation_space(env_params).shape
-                num_predicates = len(value_dag.predicates)
+                num_predicates = len(value_dag.predicates_next)
 
                 # initialize buffers for parent-conditioned resets
                 obs_buffer_init = jnp.zeros((num_nodes, num_steps, config["NUM_ENVS"]) + tuple(obs_shape), dtype=jnp.float32)
@@ -817,7 +817,7 @@ def train(env, env_params, value_dag, config, rng, plot_function=None):
 
                 # Store predicate stats
                 traj_batch = tree_index1(traj_batches, pos)
-                for pred_id, pred in zip(value_dag.predicate_ids, value_dag.predicates):
+                for pred_id, pred in zip(value_dag.predicate_ids, value_dag.predicates_next):
                     reported_dict[f"Predicates/Node_{node}_[{pred}]_mean"] = jnp.mean(traj_batch.predicate_values[pred_id])
                     reported_dict[f"Predicates/Node_{node}_[{pred}]_var"] = jnp.var(traj_batch.predicate_values[pred_id])
 

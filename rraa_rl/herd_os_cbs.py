@@ -19,7 +19,8 @@ from valtr.reachability import DAGReachAvoid
 
 from rraa_rl.collector import RolloutOutput
 from rraa_rl.gae import BellmanMax, BellmanMaxMin, BellmanMin, gae_generalized
-from rraa_rl.jax_utils import jax_vmap
+from rraa_rl.jax_utils import jax_vmap, rep_vmap
+from rraa_rl.src.env.general_task.env import EnvStep
 from rraa_rl.src.env.general_task.herd_os import AugObs, HerdOs
 from rraa_rl.src.rl.utils.utils import get_BuRd, get_BuRd_smooth, get_BuRd_trunc
 from rraa_rl.trainer import CallbackProps
@@ -330,6 +331,69 @@ def animate_eval_trajs(p: CallbackProps):
 
     anim.save(anim_path, writer=writer, dpi=200, progress_callback=on_progress)
     plt.close(fig)
+
+
+class PlotRootTrajPreds(struct.PyTreeNode):
+    """At the top, plot the reach vals. At the bottom, plot the temporal_node_idx."""
+
+    @staticmethod
+    def create():
+        return PlotRootTrajPreds()
+
+    @jax.jit
+    def get_reach_values(self, agent: VDMAPPOAgent, bT_test_rollout: RolloutOutput):
+        bT_obs_next = bT_test_rollout.obs_next
+        bT_predicates_next = bT_test_rollout.predicates_next
+        bTt_reach_val = rep_vmap(agent.get_t_reach_val, rep=2)(bT_obs_next, bT_predicates_next)
+        return bTt_reach_val
+
+    def __call__(self, p: CallbackProps):
+        bT_test_rollout = p.bT_test_rollout
+        bTt_reach_vals = jax.device_get(self.get_reach_values(p.agent, bT_test_rollout))
+
+        trajs: list[RolloutOutput] = p.bT_test_rollouts
+        batch_size = len(trajs)
+
+        max_n_plot = 8
+        n_plot = min(batch_size, max_n_plot)
+
+        env = p.env
+        n_temporal_nodes = env.n_temporal_nodes
+
+        nrow = n_temporal_nodes + 1
+
+        figsize = np.array([10, 2 * nrow])
+        fig, axes = plt.subplots(nrow, figsize=figsize, layout="constrained")
+
+        for bb in range(n_plot):
+            # Don't plot invalid timesteps.
+            traj_len = len(trajs[bb].term)
+
+            for ii, ax in enumerate(axes[:n_temporal_nodes]):
+                T_reach_vals = bTt_reach_vals[bb, :traj_len, ii]
+                ax.plot(T_reach_vals)
+
+            T_state: HerdOs.State = trajs[bb].state_now
+            T_temporal_node_idx = T_state.temporal_node_idx
+
+            ax = axes[-1]
+            ax.plot(T_temporal_node_idx)
+
+        # Label.
+        for ii, ax in enumerate(axes[:n_temporal_nodes]):
+            node_idx = env.temporal_nodes[ii]
+            node = env.dag_nodes[node_idx]
+            node_name = type(node).__name__
+            ax.set_ylabel(f"Node {ii} ({node_name})")
+
+        axes[-1].set_ylabel("temporal_node_idx")
+        axes[-1].set_xlabel("Steps")
+        axes[-1].set_ylim(-0.5, n_temporal_nodes - 0.5)
+
+        plot_dir = p.run.plots_dir / "root_traj_preds"
+        plot_dir.mkdir(parents=True, exist_ok=True)
+        fig_path = plot_dir / f"root_traj_preds_step{p.train_step}.jpg"
+        fig.savefig(fig_path, bbox_inches="tight", dpi=500)
 
 
 def viz_collect_data(p: CallbackProps):

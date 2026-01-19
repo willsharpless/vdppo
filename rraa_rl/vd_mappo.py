@@ -212,7 +212,7 @@ class VDMAPPOAgent:
             end_idx = start_idx + n_node
             cTt_V = bTt_V[start_idx:end_idx]
             cTt_V_next = bTt_V_next[start_idx:end_idx]
-            cT_predicates = jtu.tree_map(lambda Tb_arr: Tb_arr.T[start_idx:end_idx], Tb_rollout.predicates)
+            cT_predicates = jtu.tree_map(lambda Tb_arr: Tb_arr.T[start_idx:end_idx], Tb_rollout.predicates_next)
 
             cT_term = bT_term[start_idx:end_idx]
             cT_next_diff = bT_next_diff[start_idx:end_idx]
@@ -602,36 +602,38 @@ class VDMAPPOAgent:
         logger.debug("done jitting collect_eval_with_states.")
         return Tb_rollout, collect_info
 
-    def should_truncate(self, env: HerdOs, b_key: PRNGKeyArray, b_step: EnvStep) -> EnvStep:
-        """For all reach or reach-avoid nodes, truncate if we reach the goal."""
-
+    def get_t_reach_val(self, obs: Any, predicates: dict):
         # The returned obs is for the next state.
-        b_obs_next = b_step.obs
-        bt_V_next = self.network.select("critic")(b_obs_next, params=self.network.params)
-        b_pred_next = b_step.predicates
-
-        batch_size = len(b_step.term)
+        obs_next = obs
+        t_V_next = self.network.select("critic")(obs_next, params=self.network.params)
+        pred_next = predicates
 
         # Compute the satisfaction of all temporal predicates, including the value function.
-        bt_reach_val = []
-        for temporal_node_idx, dag_node_idx in enumerate(env.temporal_nodes):
-            node = env.dag_nodes[dag_node_idx]
+        t_reach_val = []
+        for temporal_node_idx, dag_node_idx in enumerate(self.env.temporal_nodes):
+            node = self.env.dag_nodes[dag_node_idx]
             match node:
                 case DAGReach(reach=reach_idx):
-                    b_reach_val = self.evaluate_dag(reach_idx, bt_V_next, b_pred_next)
+                    reach_val = self.evaluate_dag(reach_idx, t_V_next, pred_next)
                 case DAGReachAvoid(reach=reach_idx, avoid=stay_idx):
-                    b_reach_val = self.evaluate_dag(reach_idx, bt_V_next, b_pred_next)
+                    reach_val = self.evaluate_dag(reach_idx, t_V_next, pred_next)
                 case DAGAvoid(avoid=stay_idx):
-                    b_reach_val = np.full(batch_size, -np.inf)
+                    reach_val = np.array(-np.inf)
                 case DAGGU(args=args_idx):
                     # TODO: We should probably have one temporal node for each arg inside GU...
-                    b_reach_val = np.full(batch_size, -np.inf)
+                    reach_val = np.array(-np.inf)
                     # raise NotImplementedError("GU not implemented yet")
                 case _:
                     raise ValueError(f"Unknown temporal node type: {type(node)}")
 
-            bt_reach_val.append(b_reach_val)
-        bt_reach_val = jnp.stack(bt_reach_val, axis=-1)
+            t_reach_val.append(reach_val)
+        t_reach_val = jnp.stack(t_reach_val, axis=-1)
+        return t_reach_val
+
+    def should_truncate(self, env: HerdOs, b_key: PRNGKeyArray, b_step: EnvStep) -> EnvStep:
+        """For all reach or reach-avoid nodes, truncate if we reach the goal."""
+        batch_size = len(b_step.term)
+        bt_reach_val = jax.vmap(self.get_t_reach_val)(b_step.obs, b_step.predicates)
         b_state: HerdOs.State = b_step.envstate
         b_temporal_node_idx = b_state.temporal_node_idx
         assert b_temporal_node_idx.shape == (batch_size,)

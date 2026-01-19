@@ -1,4 +1,5 @@
 import functools as ft
+import copy
 from typing import Any, NamedTuple
 
 import ipdb
@@ -45,6 +46,10 @@ class HerdOsCfg:
 
     do_temporal_transition: bool = False
     """If true (e.g., eval), then change the temporal node according to the DAG transitions."""
+
+    @property
+    def root_only(self):
+        return self.temporal_node_fracs[0] == 1.0
 
 
 class AugObs(NamedTuple):
@@ -164,6 +169,7 @@ class HerdOs(Env):
     def _augment_obs(self, state: HerdOsState, obs: jnp.ndarray):
         obs_aug = self._get_augment_obs(state)
         return AugObs(base=obs, temporal=obs_aug)
+
     def should_terminate(self, predicates: dict[str, jnp.ndarray]) -> BoolScalar:
         eps = 0.1
 
@@ -301,6 +307,12 @@ class HerdOs(Env):
     @property
     def eval_T(self) -> int:
         return self.base.eval_T
+
+    def with_temporal_transitions(self) -> "HerdOs":
+        """Return a copy of this environment that does temporal transitions on step."""
+        cfg_new = copy.deepcopy(self.cfg)
+        cfg_new.do_temporal_transition = True
+        return HerdOs(cfg_new)
 
 
 def evaluate_dag(
