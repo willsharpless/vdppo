@@ -9,6 +9,7 @@ import jax
 import jax.numpy as jnp
 import jax.random as jr
 import jax.tree_util as jtu
+import jax_dataclasses as jdc
 import numpy as np
 import optax
 from attrs import define
@@ -596,15 +597,18 @@ class VDMAPPOAgent:
         logger.debug("done jitting collect_batch.")
         return out
 
-    @ft.partial(jax.jit, static_argnames=("rollout_T",))
+    @ft.partial(jax.jit, static_argnames=("rollout_T", "temporal_transitions"))
     def collect_eval_with_states(
-        self, collector: Collector, b_state0: Any, rollout_T: int
+        self, collector: Collector, b_state0: Any, rollout_T: int, temporal_transitions: bool = True
     ) -> tuple[RolloutOutput, dict]:
         """Collect full eval trajectories using deterministic policy given eval keys."""
         logger.debug("jitting collect_eval_with_states...")
         # Reset all envs before eval
         new_collector = collector.reset_with_state(b_state0)
-        _, Tb_rollout, collect_info = new_collector.collect_full_traj_det(self.det_action, rollout_T)
+        switch_fn = self.temporal_switch_fn if temporal_transitions else None
+        _, Tb_rollout, collect_info = new_collector.collect_full_traj_det(
+            self.det_action, rollout_T, switch_fn=switch_fn
+        )
         logger.debug("done jitting collect_eval_with_states.")
         return Tb_rollout, collect_info
 
@@ -651,3 +655,16 @@ class VDMAPPOAgent:
         b_trunc = b_reach_val >= self.cfg.truncate_reach_thresh
         b_step = b_step._replace(trunc=b_trunc | b_step.trunc)
         return b_step
+
+    def temporal_switch_fn(self, env: HerdOs, key: PRNGKeyArray, step: EnvStep):
+        state_next: HerdOs.State = step.envstate
+        temporal_node_idx = state_next.temporal_node_idx
+        predicates_next = step.predicates
+        obs_next = step.obs
+        t_value_next = self.network.select("critic")(obs_next, params=self.network.params)
+        temporal_node_idx_new = env.transition_temporal_node(predicates_next, t_value_next, temporal_node_idx)
+
+        with jdc.copy_and_mutate(state_next) as envstate_new:
+            envstate_new.temporal_node_idx = temporal_node_idx_new
+        step_new = step._replace(envstate=envstate_new)
+        return step_new

@@ -17,6 +17,9 @@ from rraa_rl.src.env.general_task.env import Env, EnvStep
 VEL_ZERO = False
 HERD_ZERO = True
 
+# If True, one of the circles is not control invariant.
+TEST_INVARIANT = True
+
 
 class ShouldTermFn:
     def __call__(self, predicates: dict[str, BoolScalar]) -> BoolScalar: ...
@@ -74,6 +77,9 @@ class HerdBase(Env):
 
         self.centers = np.array([[-3.0, -3.0], [3.0, 3.0]])
         self.radiuses = np.array([1.0, 1.0])
+
+        self.centers_perturb = self.centers[0:1]
+        self.radiuses_perturb = self.radiuses[0:1] + 3 * cfg.agent_radius
         # self.centers = np.array([[-3.0, -3.0]])
         # self.radiuses = np.array([1.0])
 
@@ -209,7 +215,22 @@ class HerdBase(Env):
             acc_max = jnp.array(self.cfg.acc_maxs)
             herder_acc = jnp.clip(herder_acc, -acc_max[:, None], acc_max[:, None])
 
-            herder_vel_new = herder_vel + herder_acc * dt
+            if TEST_INVARIANT:
+                # Make the first circle not control invariant by adding a constant upwards acceleration
+                # larger than the max acceleration.
+                in_circ_perturb = jnp.any(self.is_herder_circ_perturb(state, which=jnp))
+
+                max_acc_max = max(self.cfg.acc_maxs)
+                circ1_acc = jnp.array([0.0, 1.1 * max_acc_max])
+                herder_acc = herder_acc + jnp.where(in_circ_perturb, circ1_acc, 0.0)
+
+                herder_vel_new = herder_vel + herder_acc * dt
+
+                # Prevent negative velocities in y-axis.
+                herder_vel_new = herder_vel_new.at[:, 1].set(jnp.maximum(herder_vel_new[:, 1], 0.0))
+            else:
+                herder_vel_new = herder_vel + herder_acc * dt
+
             herder_pos_new = herder_pos + herder_vel * dt + 0.5 * herder_acc * dt**2
 
             vel_max = jnp.array(self.cfg.vel_maxs)
@@ -263,6 +284,16 @@ class HerdBase(Env):
         # (n_circs, )
         c_dists = which.min(ch_dists, axis=-1)
         c_is_herder_inside = c_dists < (which.array(self.radiuses) - self.cfg.agent_radius)
+        return c_is_herder_inside
+
+    def is_herder_circ_perturb(self, state: HerdBaseState, which=jnp):
+        h_pos = state.herder_state[..., :, 0:2]
+        c_pos = which.array(self.centers_perturb)
+        # (n_circs, n_herders, 2) -> (n_circs, n_herders)
+        ch_dists = which.linalg.norm(h_pos[..., None, :, :] - c_pos[..., :, None, :], axis=-1)
+        # (n_circs, )
+        c_dists = which.min(ch_dists, axis=-1)
+        c_is_herder_inside = c_dists < (which.array(self.radiuses_perturb) - self.cfg.agent_radius)
         return c_is_herder_inside
 
     def pred_herder_circs(self, state: HerdBaseState, which=jnp):
@@ -468,9 +499,17 @@ class HerdBase(Env):
         ax.axhspan(cfg.halfsize[1], cfg.halfsize[1] + 1.0, **opts)
         ax.axhspan(-cfg.halfsize[1] - 1.0, -cfg.halfsize[1], **opts)
 
-        # Plot the herd circle.
-        herd_circle = plt.Circle((0, 0), cfg.herded_radius, color="lightgray", alpha=0.5)
-        ax.add_patch(herd_circle)
+        if not HERD_ZERO:
+            # Plot the herd circle.
+            herd_circle = plt.Circle((0, 0), cfg.herded_radius, color="lightgray", alpha=0.5)
+            ax.add_patch(herd_circle)
+
+        if TEST_INVARIANT:
+            # Plot the perturbation circles.
+            for ii, center in enumerate(self.centers_perturb):
+                radius = self.radiuses_perturb[ii]
+                circ = plt.Circle((center[0], center[1]), radius, color="C0", alpha=0.2)
+                ax.add_patch(circ)
 
         # Plot the circles.
         for ii, center in enumerate(self.centers):

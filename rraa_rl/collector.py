@@ -37,6 +37,12 @@ class TruncateFn(Protocol):
     def __call__(self, env: HerdOs, b_key: PRNGKeyArray, b_step: EnvStep) -> EnvStep: ...
 
 
+class SwitchFn(Protocol):
+    """Function that can be passed to the collector to modify the temporal_node_idx."""
+
+    def __call__(self, env: HerdOs, key: PRNGKeyArray, step: EnvStep) -> EnvStep: ...
+
+
 @jdc.pytree_dataclass
 class CollectorState:
     b_state: Any  # Current states of each environment.
@@ -154,6 +160,7 @@ class Collector(struct.PyTreeNode):
         T: int,
         reset_fn: BatchResetFn = None,
         truncate_fn: TruncateFn = None,
+        switch_fn: SwitchFn = None,
     ) -> tuple[Self, RolloutOutput, dict]:
         if reset_fn is None:
             reset_fn = _default_reset_fn
@@ -161,12 +168,17 @@ class Collector(struct.PyTreeNode):
         def loop(carry: tuple[CollectorState], args):
             b_key = args
             (colstate,) = carry
-            b3_key = jax.vmap(ft.partial(jr.split, num=3))(b_key)
-            b_key_pol, b_key_reset, b_key_truncate = b3_key[:, 0], b3_key[:, 1], b3_key[:, 2]
+            b3_key = jax.vmap(ft.partial(jr.split, num=4))(b_key)
+            b_key_pol, b_key_reset = b3_key[:, 0], b3_key[:, 1]
+            b_key_truncate, b_key_switch = b3_key[:, 2], b3_key[:, 3]
 
             step_single_fn = ft.partial(self.step_single_fn, sample_action)
             b_step_result: EnvStep
             b_step_result, b_act, b_logprob = jax.vmap(step_single_fn)(b_key_pol, colstate.b_state, colstate.b_obs)
+
+            if switch_fn is not None:
+                # Switch the temporal_node_idx based on some criteria. Possible use the value function.
+                b_step_result = switch_fn(self.env, b_key_truncate, b_step_result)
 
             if truncate_fn is not None:
                 # Additional function to truncate episodes early (potentially using extra info)
@@ -202,19 +214,31 @@ class Collector(struct.PyTreeNode):
         return self_new, Tb_rollout, collect_info
 
     def collect_full_traj_det(
-        self, get_action: GetActionFn, T: int, reset_fn: BatchResetFn = None
+        self,
+        get_action: GetActionFn,
+        T: int,
+        reset_fn: BatchResetFn = None,
+        switch_fn: SwitchFn = None,
     ) -> tuple[Self, RolloutOutput, dict]:
         if reset_fn is None:
             reset_fn = _default_reset_fn
 
         def loop(carry: tuple[CollectorState], args):
-            b_key_reset = args
+            b_key = args
             (colstate,) = carry
+
+            b2_key = jax.vmap(ft.partial(jr.split, num=2))(b_key)
+            b_key_reset, b_key_switch = b2_key[:, 0], b2_key[:, 1]
 
             step_single_fn = ft.partial(self.step_single_fn_det, get_action)
             b_step_result: EnvStep
             b_step_result, b_act = jax.vmap(step_single_fn)(colstate.b_state, colstate.b_obs)
             b_logprob = jnp.zeros(self.cfg.n_envs)
+
+            if switch_fn is not None:
+                # Switch the temporal_node_idx based on some criteria. Possible use the value function.
+                b_step_result = jax.vmap(ft.partial(switch_fn, self.env))(b_key_switch, b_step_result)
+
             # NOTE: Reset DOESN'T change the step, only the colstate.
             out = RolloutOutput.from_rollout(colstate, b_step_result, b_act, b_logprob)
 

@@ -96,7 +96,7 @@ class HerdOs(Env):
         # self.dag_info = extract_trigger_predicate_map(self.dag_nodes, self.dag_root)
 
         # root first.
-        self.temporal_nodes = temporal_nodes_topological(self.dag_nodes, self.dag_root)[::-1]
+        self.temporal_nodes: list[DAGId] = temporal_nodes_topological(self.dag_nodes, self.dag_root)[::-1]
 
         if self.cfg.temporal_node_fracs is None:
             # Split it evenly.
@@ -134,7 +134,8 @@ class HerdOs(Env):
     def specification(self):
         # return "F(G(herd_herded)) && G( !herder_collide ) && G( !herder_oob )"
         # return "( !herder_collide && ! herder_oob ) U ( G(herd_herded && !herder_collide && ! herder_oob) )"
-        return "F herder_c1 && F herder_c2"
+        # return "F herder_c1 && F herder_c2"
+        return "F G (herder_c1 || herder_c2)"
         # return "F herder_c1"
         # return "!herder_collide U herder_c1"
 
@@ -195,10 +196,12 @@ class HerdOs(Env):
         base_step: EnvStep = self.base.step(state.base, action)
 
         temporal_node_idx = state.temporal_node_idx
-        if self.cfg.do_temporal_transition:
-            logger.debug("Doing temporal transition")
-            predicates = base_step.predicates
-            temporal_node_idx = self.transition_temporal_node(predicates, temporal_node_idx)
+
+        # Temporal transitions with G require the value function, so we pass that in as a callback.
+        # if self.cfg.do_temporal_transition:
+        #     logger.debug("Doing temporal transition")
+        #     predicates = base_step.predicates
+        #     temporal_node_idx = self.transition_temporal_node(predicates, temporal_node_idx)
 
         state_new = jdc.replace(state, temporal_node_idx=temporal_node_idx, base=base_step.envstate)
         obs = self._augment_obs(state_new, base_step.obs)
@@ -207,9 +210,9 @@ class HerdOs(Env):
         return step
 
     def transition_temporal_node(
-        self, predicates: dict[str, jnp.ndarray], temporal_node_idx: jnp.ndarray
+        self, predicates: dict[str, jnp.ndarray], t_value: jnp.ndarray, temporal_node_idx: jnp.ndarray
     ) -> jnp.ndarray:
-        all_triggers = self.get_rules(predicates)
+        all_triggers = self.get_rules(predicates, t_value)
         t_parents = jnp.stack([trigger.parent for trigger in all_triggers])
         t_conditions = jnp.stack([trigger.condition for trigger in all_triggers])
         t_children = jnp.stack([trigger.child for trigger in all_triggers])
@@ -276,7 +279,7 @@ class HerdOs(Env):
         )
         return state
 
-    def get_rules(self, predicates: dict[str, jnp.ndarray], which=jnp):
+    def get_rules(self, predicates: dict[str, jnp.ndarray], t_value: jnp.ndarray, which=jnp):
         scratch: dict[DAGId, jnp.ndarray] = {}
 
         all_dag_triggers: list[DAGTransition] = []
@@ -284,13 +287,31 @@ class HerdOs(Env):
             node = self.dag_nodes[node_idx]
             match node:
                 case DAGReach(reach=reach_id):
-                    triggers = get_triggers(self.dag_nodes, node_idx, reach_id, predicates, scratch, which=which)
+                    triggers = get_triggers(
+                        self.dag_nodes,
+                        self.temporal_nodes,
+                        node_idx,
+                        reach_id,
+                        predicates,
+                        t_value,
+                        scratch,
+                        which=which,
+                    )
                     all_dag_triggers.extend(triggers)
                 case DAGAvoid(avoid=avoid_id):
                     # Avoid nodes are at the very bottom and don't transition to other temporal nodes.
                     pass
                 case DAGReachAvoid(reach=reach_id, avoid=avoid_id):
-                    triggers = get_triggers(self.dag_nodes, node_idx, reach_id, predicates, scratch, which=which)
+                    triggers = get_triggers(
+                        self.dag_nodes,
+                        self.temporal_nodes,
+                        node_idx,
+                        reach_id,
+                        predicates,
+                        t_value,
+                        scratch,
+                        which=which,
+                    )
                     all_dag_triggers.extend(triggers)
                 case DAGGU(args=args):
                     raise NotImplementedError("GU not implemented yet")
@@ -381,9 +402,11 @@ def evaluate_dag(
 
 def get_triggers(
     dag_nodes: list[DAGNode],
+    temporal_nodes: list[DAGId],
     parent_idx: DAGId,
     node_idx: DAGId,
     predicates: dict[str, jnp.ndarray],
+    t_value: jnp.ndarray,
     scratch: dict[DAGId, jnp.ndarray],
     which=jnp,
 ) -> list[DAGTransition]:
@@ -392,6 +415,7 @@ def get_triggers(
     # Either:
     # - max_i min_j (..., temporal)
     # -       min_j (..., temporal)
+    # - a temporal node (e.g., G)
 
     if isinstance(node, DAGMaxN):
         min_nodes = []
@@ -403,6 +427,18 @@ def get_triggers(
                 raise ValueError("Expected max to have min children")
     elif isinstance(node, DAGMinN):
         min_nodes = [node]
+    elif isinstance(node, DAGAvoid):
+        # Ga  transition if a AND G a
+        temporal_node_idx = temporal_nodes.index(node_idx)
+        value = t_value[temporal_node_idx]
+
+        avoid_dag_id = node.avoid
+        # TODO: Modify evaluate_dag to allow temporal nodes.
+        stay_value = evaluate_dag(dag_nodes, avoid_dag_id, predicates, scratch, which=which)
+
+        value = jnp.minimum(value, stay_value)
+        return [DAGTransition(parent_idx, node_idx, value)]
+
     elif not has_temporal_children(node_idx, dag_nodes):
         # No temporal children, so doesn't transition to anything.
         return []

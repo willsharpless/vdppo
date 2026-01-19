@@ -68,10 +68,9 @@ class Trainer:
             env=env,
             cfg=Collector.Cfg(n_envs=n_envs_train),
         )
-        env_eval_transition = env.with_temporal_transitions()
         collector_eval = Collector.create(
             key=key_collector,
-            env=env_eval_transition,
+            env=env,
             cfg=Collector.Cfg(n_envs=n_envs_test),
         )
 
@@ -110,7 +109,8 @@ class Trainer:
                 # Log
                 log_dict = {"step": train_step}
                 log_dict = log_dict | info_eval
-                wandb.log(log_dict, step=train_step)
+                if wandb.run is not None:
+                    wandb.log(log_dict, step=train_step)
 
             if train_step % save_every == 0:
                 pbar.set_description(f"Saving at step {train_step}")
@@ -159,7 +159,7 @@ class Trainer:
                 log_dict = {"step": train_step}
                 log_dict = log_dict | info_collect | info_collect2 | info_update_log
 
-                if not debug:
+                if wandb.run is not None:
                     wandb.log(log_dict, step=train_step)
 
     def eval(self, collector: Collector, key_eval: jr.PRNGKey):
@@ -168,7 +168,7 @@ class Trainer:
         if self.b_state0 is None:
             self.b_state0 = env.get_eval_states(collector.cfg.n_envs)
 
-        Tb_rollout, info_collect = self.agent.collect_eval_with_states(collector, self.b_state0, env.eval_T)
+        Tb_rollout, info_collect = self.agent.collect_eval_with_states(collector, self.b_state0, env.eval_T, temporal_transitions=True)
         Tb_rollout = jax.device_get(Tb_rollout)
         bT_rollout = Tb_rollout.switch01()
 
@@ -195,12 +195,14 @@ class Trainer:
             # Satisfy if positive.
             info_satisfaction[f"Eval/Satisfy/{node_name}"] = float(np.mean(temporal_node_value > 0.1))
 
-        # Evaluate the satisfaction of each temporal node.
-        trigger_dict = evaluate_triggers(env, trajs)
-        # Compute the average satisfaction rate for each trigger
-        info_trigger = {f"Eval/Triggers/{k[0]}->{k[1]}": float(np.mean(v)) for k, v in trigger_dict.items()}
+        # # Evaluate the satisfaction of each temporal node.
+        # trigger_dict = evaluate_triggers(env, trajs)
+        # # Compute the average satisfaction rate for each trigger
+        # info_trigger = {f"Eval/Triggers/{k[0]}->{k[1]}": float(np.mean(v)) for k, v in trigger_dict.items()}
+        trigger_dict = {}
+        info = info_satisfaction
 
-        info = info_trigger | info_satisfaction
+        # info = info_trigger | info_satisfaction
 
         info["debug/temporal_values_dict"] = temporal_node_values
 
