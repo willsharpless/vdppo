@@ -52,6 +52,26 @@ class BellmanMaxMin(NamedTuple):
         return T_Q_curr
 
 
+class BellmanGUSingle(NamedTuple):
+    T_q: jnp.ndarray
+    T_r: jnp.ndarray
+    T_V_nextGU: jnp.ndarray
+    T_V_nextGU_next: jnp.ndarray
+
+    def __call__(self, T_term: jnp.ndarray, T_V_next_k: jnp.ndarray, gamma: float):
+        T_q, T_r = self.T_q, self.T_r
+        T_V_nextGU, T_V_nextGU_next = self.T_V_nextGU, self.T_V_nextGU_next
+        assert len(T_q) == len(T_r) == len(T_term)
+
+        # Reach r AND be able to reach the next GU.
+        T_r_tilde = jnp.minimum(T_r, T_V_nextGU)
+
+        T_V_next_k_masked = jnp.where(T_term, -jnp.inf, T_V_next_k)
+        T_disc_term = jnp.minimum(T_q, T_r)
+        T_Q_curr = (1 - gamma) * T_disc_term + gamma * jnp.maximum(T_r_tilde, jnp.minimum(T_q, T_V_next_k_masked))
+        return T_Q_curr
+
+
 def gae_generalized(
     T_V_next: jnp.ndarray,
     T_term: jnp.ndarray,

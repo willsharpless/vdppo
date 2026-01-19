@@ -18,7 +18,7 @@ VEL_ZERO = False
 HERD_ZERO = True
 
 # If True, one of the circles is not control invariant.
-TEST_INVARIANT = True
+TEST_INVARIANT = False
 
 
 class ShouldTermFn:

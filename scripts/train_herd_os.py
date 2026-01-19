@@ -26,7 +26,7 @@ def main(name: str | None = None, debug: bool = False):
         herd_os_cbs.animate_eval_trajs,
     ]
     # eval_cbs = [herd_os_cbs.plot_eval_trajs, VizValues.create()]
-    collect_cbs = [herd_os_cbs.viz_collect_data]
+    collect_cbs = [herd_os_cbs.viz_collect_data, herd_os_cbs.viz_obs_histogram]
 
     run = Run.create(env_name="HerdOs", name=name)
     trainer = Trainer(agent)
