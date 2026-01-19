@@ -220,7 +220,7 @@ def animate_eval_trajs(p: CallbackProps):
     T_max = max(traj.shape[0] for traj in p.bT_test_rollouts)
 
     # Count how many trajectories each temporal node has.
-    n_temporal_nodes = np.array([np.sum(b_temporal_idx == ii) for ii in range(n_temporal_nodes)])
+    temporal_node_count = np.array([np.sum(b_temporal_idx == ii) for ii in range(n_temporal_nodes)])
 
     figsize = np.array([4 * ncol, 3])
     fig, axes = plt.subplots(1, ncol, figsize=figsize)
@@ -242,7 +242,7 @@ def animate_eval_trajs(p: CallbackProps):
     for ii, ax in enumerate(axes):
         env.base.setup_ax(ax)
 
-        n_traj = n_temporal_nodes[ii]
+        n_traj = temporal_node_count[ii]
         end_idx = start_idx + n_traj
         start_idxs.append(start_idx)
         end_idxs.append(end_idx)
@@ -250,7 +250,7 @@ def animate_eval_trajs(p: CallbackProps):
         node_idx = env.temporal_nodes[ii]
         node = env.dag_nodes[node_idx]
         node_name = type(node).__name__
-        ax.set_title(f"Node {ii} ({node_name}) | {n_temporal_nodes[ii]} trajs")
+        ax.set_title(f"Node {ii} ({node_name}) | {temporal_node_count[ii]} trajs")
 
         start_idx = end_idx
 
