@@ -145,7 +145,7 @@ def plot_eval_trajs(p: CallbackProps):
     b_temporal_idx = np.array([T_state.temporal_node_idx[0] for T_state in bT_states])
 
     # Count how many trajectories each temporal node has.
-    n_temporal_nodes = np.array([np.sum(b_temporal_idx == ii) for ii in range(n_temporal_nodes)])
+    num_temporal_nodes_in_batch = np.array([np.sum(b_temporal_idx == ii) for ii in range(n_temporal_nodes)])
 
     figsize = np.array([4 * ncol, 3])
     fig, axes = plt.subplots(1, ncol, figsize=figsize, layout="constrained")
@@ -157,7 +157,7 @@ def plot_eval_trajs(p: CallbackProps):
     for ii, ax in enumerate(axes):
         env.base.setup_ax(ax)
 
-        end_idx = start_idx + n_temporal_nodes[ii]
+        end_idx = start_idx + num_temporal_nodes_in_batch[ii]
 
         node_idx = env.temporal_nodes[ii]
         node = env.dag_nodes[node_idx]
@@ -168,7 +168,7 @@ def plot_eval_trajs(p: CallbackProps):
 
         node_name = type(node).__name__
         ax.set_title(
-            f"Node {ii} ({node_name}) | {n_temporal_nodes[ii]} trajs | "
+            f"Node {ii} ({node_name}) | {num_temporal_nodes_in_batch[ii]} trajs | "
             f"{n_satisfy}/{n_total} ({n_satisfy / n_total:.1%})",
             fontsize="small",
         )
@@ -406,7 +406,7 @@ class PlotRootTrajPreds(struct.PyTreeNode):
 def viz_collect_data(p: CallbackProps):
     train_step = p.train_step
 
-    # Only plot every 1_000 steps.
+    # Only plot every 5_000 steps.
     if train_step % 5_000 != 0:
         return
 
@@ -429,109 +429,59 @@ def viz_collect_data(p: CallbackProps):
 
     batch_size = len(b_pos0)
     b_Q = b_data.Q
-
-    # # Get one index where the herder starts inside c1.
-    # logger.info("n rollouts start inside c1: {}/{}".format(np.sum(b_in_c1), batch_size))
-    # idx = np.argmax(b_in_c1)
-    #
-    # T_rollout: RolloutOutput = jtu.tree_map(lambda Tb_x: Tb_x[:, idx], Tb_rollout)
-    # T_state: HerdOs.State = T_rollout.state_now
-    # T_term = T_rollout.term
-    # T_predicates = T_rollout.predicates
-    # T_r = T_predicates["herder_c1"]
-    # T_q = -T_predicates["herder_oob"]
-    #
-    # n_temporal_nodes = env.n_temporal_nodes
-    # t_V_dummy = np.zeros(n_temporal_nodes)
-    #
-    # temporal_node_idx = T_state.temporal_node_idx[0]
-    # dag_node_idx = env.temporal_nodes[temporal_node_idx]
-    # dag_node = env.dag_nodes[dag_node_idx]
-    # assert isinstance(dag_node, DAGReachAvoid)
-    # logger.debug("Evaluating reach")
-    # T_r2 = agent.evaluate_dag(dag_node.reach, t_V_dummy, T_predicates)
-    # logger.debug("Evaluating avoid")
-    # T_q2 = agent.evaluate_dag(dag_node.avoid, t_V_dummy, T_predicates)
-    #
-    # T = len(T_r)
-    # T_V = T_V_next = np.zeros(T)
-    # gamma, lam = cfg_agent.gamma, cfg_agent.gae_lambda
-    # bellman = BellmanMaxMin(T_q, T_r)
-    # T_Q_gae = gae_generalized(T_V, T_V_next, T_term, bellman, gamma, lam)
-    # T_pos = Tb_state.base.herder_state[:, idx, 0, :2]
-    #
-    # logger.info("T_q    : {}".format(T_q))
-    # logger.info("T_q2   : {}".format(T_q2))
-    # logger.info("T_r    : {}".format(T_r))
-    # logger.info("T_r2   : {}".format(T_r2))
-    # logger.info("T_term : {}".format(T_term))
-    # logger.info("T_Q_gae: {}".format(T_Q_gae))
-    #
-    # Tb_data: PPOData = jtu.tree_map(lambda b_x: ei.rearrange(b_x, "(T b) ... -> T b ...", T=T, b=batch_size), b_data)
-    # Tb_Q = Tb_data.Q
-    # Tb_state: HerdOs.State = Tb_data.state
-    #
-    # # If there are any Tb_Q > 1.0, but are outside the circle... ???
-    # Tb_pos = Tb_state.base.herder_state[:, :, 0, :2]
-    #
-    # Tb_Q_high = Tb_Q >= 0.97
-    # Tb_in_circ = np.linalg.norm(Tb_pos - c_pos[0], axis=-1) < c_radii[0]
-    #
-    # Tb_weird = Tb_Q_high & (~Tb_in_circ)
-    # if np.any(Tb_weird):
-    #     T_idx, b_idx = np.where(Tb_weird)
-    #     T_idx, b_idx = T_idx[0], b_idx[0]
-    #     Q_weird = Tb_Q[T_idx, b_idx]
-    #     logger.warning("Weird high Q-value ({:.4f}) found at T={}, b={}".format(Q_weird, T_idx, b_idx))
-    #
-    #     T_rollout: RolloutOutput = jtu.tree_map(lambda Tb_x: Tb_x[:, b_idx], Tb_rollout)
-    #     T_predicates = T_rollout.predicates
-    #     T_term = T_rollout.term
-    #     T_r = T_predicates["herder_c1"]
-    #     T_q = -T_predicates["herder_oob"]
-    #
-    #     T_V = T_V_next = np.zeros(T)
-    #
-    #     bellman = BellmanMaxMin(T_q, T_r)
-    #     T_Q_gae = gae_generalized(T_V, T_V_next, T_term, bellman, gamma, lam)
-    #
-    #     logger.info("T_q    : {}".format(T_q))
-    #     logger.info("T_r    : {}".format(T_r))
-    #     logger.info("T_term : {}".format(T_term))
-    #     logger.info("T_Q_gae: {}".format(T_Q_gae))
-    #     logger.debug("Now trying to set_trace inside the method...")
-    #
-    #     agent.compute_A_Q(Tb_rollout, debug=True)
-    #
-    #     # ------------------------------------
-    #
-    #     ipdb.set_trace()
-
+    n_temporal_nodes = env.n_temporal_nodes
     # ---------------------------------------------------------------
     b_state: HerdOs.State = b_data.state
     b_pos = b_state.base.herder_state[:, 0, :2]
 
-    fig, ax = plt.subplots()
-    env.base.setup_ax(ax)
+    b_temporal_idx = b_state.temporal_node_idx
 
-    # cmap = get_BuRd_trunc(0.1).reversed()
     cmap = get_BuRd_smooth().reversed()
 
-    # Visualize the herder positions colored by Q-values.
-    sc = ax.scatter(b_pos[:, 0], b_pos[:, 1], c=b_Q, cmap=cmap, s=5, vmin=-1, vmax=1)
-    ax.set_title("Q∈[{:.2f}, {:.2f}] | mean={:.2f}".format(np.min(b_Q), np.max(b_Q), b_Q.mean()))
-    fig.colorbar(sc, ax=ax)
+    ncol = n_temporal_nodes
+    figsize = np.array([4 * ncol, 3])
+    fig, axes = plt.subplots(1, ncol, figsize=figsize, layout="constrained")
+    if ncol == 1:
+        axes = [axes]
 
-    # # Visualize the trajectory of the selected rollout.
-    # ax.plot(T_pos[:, 0], T_pos[:, 1], color="C2", lw=1.0)
-    # ax.plot(T_pos[0, 0], T_pos[0, 1], marker="s", color="C2", ms=3)
+    for ii, ax in enumerate(axes):
+        env.base.setup_ax(ax)
+
+        b_isthis = b_temporal_idx == ii
+
+        dag_id = env.temporal_nodes[ii]
+        node = env.dag_nodes[dag_id]
+        node_name = type(node).__name__
+
+        c_pos = b_pos[b_isthis]
+        c_Q = b_Q[b_isthis]
+
+        # Visualize the herder positions colored by Q-values
+        sc = ax.scatter(c_pos[:, 0], c_pos[:, 1], c=c_Q, cmap=cmap, s=5, vmin=-1, vmax=1)
+        ax.set_title(
+            "{} %{} | Q∈[{:.2f}, {:.2f}] | mean={:.2f}".format(node_name, dag_id, np.min(c_Q), np.max(c_Q), c_Q.mean()),
+            fontsize="small",
+        )
+        fig.colorbar(sc, ax=ax)
 
     plot_dir = p.run.plots_dir / "collect_data"
     plot_dir.mkdir(parents=True, exist_ok=True)
     fig_path = plot_dir / f"collect_data_step{p.train_step}.jpg"
     fig.savefig(fig_path, bbox_inches="tight", dpi=500)
     plt.close(fig)
-    # -------------------------------------------------------------------------
+
+
+def viz_obs_histogram(p: CallbackProps):
+    train_step = p.train_step
+
+    # Only plot every 5_000 steps.
+    if train_step % 5_000 != 0:
+        return
+
+    agent = p.agent
+    b_data: PPOData = jax.device_get(p.info_update["debug/b_data"])
+    Tb_rollout: RolloutOutput = jax.device_get(p.Tb_rollout)
+
     # Visualize the observation distribution on a histogram.
     b_obs_: AugObs = b_data.obs
     b_obs = b_obs_.combine(which=np)

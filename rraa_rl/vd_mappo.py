@@ -301,8 +301,16 @@ class VDMAPPOAgent:
                     gu_idx_nextGU = (gu_idx + 1) % len(gu_singles)
                     dag_idx_nextGU = gu_singles[gu_idx_nextGU]
                     temporal_node_idx_nextGU = self.env.temporal_nodes.index(dag_idx_nextGU)
+
+                    logger.debug(
+                        "[GUSingle] temporal_idx={}, next temporal_idx={}".format(
+                            temporal_node_idx, temporal_node_idx_nextGU
+                        )
+                    )
+
                     cT_V_nextGU = cTt_V[:, :, temporal_node_idx_nextGU]
                     cT_V_nextGU_next = cTt_V_next[:, :, temporal_node_idx_nextGU]
+                    assert cT_V_nextGU.shape == cT_V_nextGU_next.shape == cT_r.shape
 
                     # ------
                     gamma, lam = self.cfg.gamma, self.cfg.gae_lambda
