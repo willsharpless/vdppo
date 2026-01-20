@@ -1,0 +1,90 @@
+name: jaxrl
+# name: jax_sbx
+channels:
+  - conda-forge
+  - defaults
+dependencies:
+  - python=3.12
+  - pip
+  - pip:
+      # Core JAX with CUDA 12
+      - --find-links https://storage.googleapis.com/jax-releases/jax_cuda_releases.html
+      - jax[cuda12_pip]==0.4.26
+      - nvidia-cudnn-cu12==8.9.2.26
+
+      # JAX ecosystem (compatible versions)
+      - flax
+      - optax
+      - chex
+      - jaxopt
+      - orbax-checkpoint
+      
+      # RL/Gym environments
+      - brax
+      - gymnax
+      - gymnasium
+      - shimmy
+      - mujoco
+      - mujoco-mjx
+      - stable_baselines3
+      - sbx-rl
+      
+      # Scientific computing
+      - numpy==1.26.4  # JAX 0.4.26 needs numpy<2.0
+      - scipy==1.11.4  # Compatible version
+      - pandas==2.3.3
+      - control==0.10.2
+      
+      # Distributions and utilities
+      - distrax
+      - tfp-nightly==0.26.0.dev20260113
+      - einops==0.8.1
+      - jax_dataclasses
+      - jaxtyping
+      
+      # Visualization
+      - matplotlib==3.10.8
+      - seaborn==0.13.2
+      - imageio==2.37.2
+      - imageio-ffmpeg==0.6.0
+      - colour==0.1.5
+      - graphviz==0.21
+      - PyOpenGL==3.1.10
+      - glfw==2.10.0
+      - trimesh==4.11.0
+      - treescope==0.1.10
+      
+      # ML experiment tracking
+      - wandb==0.23.1
+      - tensorboardX==2.6.4
+      - sentry-sdk==2.49.0
+      
+      # CLI and utilities
+      - cyclopts==4.4.5
+      - loguru==0.7.3
+      - ipdb==0.13.13
+      - ipython==9.9.0
+      - rich==14.2.0
+      - tqdm==4.67.1
+      - click==8.3.1
+      
+      # Data structures and parsing
+      - attrs==25.4.0
+      - pydantic==2.12.5
+      - pydantic_core==2.41.5
+      - ml_collections==1.1.0
+      - msgpack==1.1.2
+      - PyYAML==6.0.3
+      
+      # NLP utilities
+      - nltk==3.9.2
+      - wordfreq==3.1.1
+      - ftfy==6.3.1
+      - langcodes==3.5.1
+      
+      # Git repositories (install these last)
+      - git+https://github.com/oswinso/lovely_histogram.git@90d4e086121a09fb5df6560cc3ac695006540ed2
+      - git+https://github.com/willsharpless/valtr.git@c6f6550f156297c3bc30135e80da79f12aaccf51
+      # Note: jax-f16 not in pip freeze, uncomment if needed:
+      # - git+https://github.com/willsharpless/jax-f16.git
+

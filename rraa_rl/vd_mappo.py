@@ -19,7 +19,16 @@ from cyclopts import Parameter
 from flax import struct
 from jaxtyping import PRNGKeyArray
 from loguru import logger
-from optax.tree_utils import tree_where
+# from optax.tree_utils import tree_where
+from jax import tree_util
+
+try:
+    from optax.tree_utils import tree_where
+except ImportError:
+    def tree_where(condition, x, y):
+        """Fallback implementation of tree_where for older optax versions."""
+        return tree_util.tree_map(lambda xi, yi: jnp.where(condition, xi, yi), x, y)
+
 from valtr.reachability import (DAGAvoid, DAGConst, DAGGUMinN, DAGGUSingle, DAGId, DAGMaxN, DAGMinN, DAGNegate,
                                 DAGReach, DAGReachAvoid, DAGVar)
 
