@@ -614,7 +614,7 @@ class HerdingHerd(HerdBase):
         super().__init__(cfg, should_term_fn=should_term_fn)
         self.cfg = cfg
 
-        halfsize = 0.5 * min(cfg.halfsize)
+        halfsize = min(cfg.halfsize)
         self.herded_center = np.array([0.4 * halfsize, 0.05 * halfsize])
         self.gates = np.array([[-0.6 * halfsize, 0.5 * halfsize], [-0.1 * halfsize, -0.2 * halfsize]])
 
@@ -660,9 +660,9 @@ class HerdingHerd(HerdBase):
         max_radius = cfg.herded_radius - cfg.agent_radius
         herd_radius = jr.uniform(key=key_herd_radius, minval=1.01 * min_radius, maxval=1.01 * max_radius)
 
-        herd_pos_x = herd_radius * jnp.cos(herd_angles)
-        herd_pos_y = herd_radius * jnp.sin(herd_angles)
-        her_pos = jnp.stack([herd_pos_x, herd_pos_y], axis=-1)
+        herd_pos_x = self.herded_center + herd_radius * jnp.cos(herd_angles)
+        herd_pos_y = self.herded_center + herd_radius * jnp.sin(herd_angles)
+        herd_pos = jnp.stack([herd_pos_x, herd_pos_y], axis=-1)
         # -------------------------------
 
         herder_angles = jr.uniform(key_herder_angle, shape=(cfg.n_herders,), minval=0.0, maxval=2 * jnp.pi)
@@ -676,7 +676,7 @@ class HerdingHerd(HerdBase):
         )
         herder_pos_x = herder_radius * jnp.cos(herder_angles)
         herder_pos_y = herder_radius * jnp.sin(herder_angles)
-        herder_pos = jnp.stack([herder_pos_x, herder_pos_y], axis=-1)
+        herder_pos = self.herded_center + jnp.stack([herder_pos_x, herder_pos_y], axis=-1)
 
         herder_vel = jr.uniform(
             key=key_herder_vel,
@@ -686,7 +686,7 @@ class HerdingHerd(HerdBase):
         )
         herder_state = jnp.concatenate([herder_pos, herder_vel], axis=-1)
 
-        return HerdBaseState(herd_state=her_pos, herder_state=herder_state, steps=0)
+        return HerdBaseState(herd_state=herd_pos, herder_state=herder_state, steps=0)
 
     def reset_herding(self, key: PRNGKeyArray):
         # Two herd agents initialized on opposite sides of a circle of varying radius.
@@ -718,7 +718,7 @@ class HerdingHerd(HerdBase):
 
         herd_pos_x = circle_center[0] + radius * radius_fracs * jnp.cos(angles)
         herd_pos_y = circle_center[1] + radius * radius_fracs * jnp.sin(angles)
-        herd_pos = jnp.stack([herd_pos_x, herd_pos_y], axis=-1)
+        herd_pos = self.herded_center + jnp.stack([herd_pos_x, herd_pos_y], axis=-1)
 
         herd_pos = jnp.clip(herd_pos, -cfg.halfsize[0] + cfg.agent_radius, cfg.halfsize[0] - cfg.agent_radius)
 
@@ -750,7 +750,7 @@ class HerdingHerd(HerdBase):
         )
         herder_pos_x = herder_radius * jnp.cos(herder_angles)
         herder_pos_y = herder_radius * jnp.sin(herder_angles)
-        herder_pos = jnp.stack([herder_pos_x, herder_pos_y], axis=-1)
+        herder_pos = self.herded_center + jnp.stack([herder_pos_x, herder_pos_y], axis=-1)
 
         herder_pos = jnp.clip(herder_pos, -cfg.halfsize[0] + cfg.agent_radius, cfg.halfsize[0] - cfg.agent_radius)
 
