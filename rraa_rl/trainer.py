@@ -97,7 +97,7 @@ class Trainer:
 
         cb_props = CallbackProps(run, -1, self.agent, None, None, None, None, collector, None, None)
 
-        pbar = tqdm.trange(n_train_steps)
+        pbar = tqdm.trange(n_train_steps, miniters=100)
         for train_step in pbar:
             if train_step % eval_every == 0:
                 pbar.set_description(f"Eval at step {train_step}")

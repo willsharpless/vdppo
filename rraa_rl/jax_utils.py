@@ -23,7 +23,7 @@ def softmaximum(x, axis=-1, temperature=1.0):
     scaled_x = x / temperature
     log_sum_exp = jax.scipy.special.logsumexp(scaled_x, axis=axis)
     softmax = temperature * log_sum_exp
-    return jnp.squeeze(softmax, axis=axis)
+    return softmax
 
 
 def softminimum(x, axis=-1, temperature=1.0):

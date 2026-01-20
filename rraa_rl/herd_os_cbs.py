@@ -437,12 +437,31 @@ def animate_eval_trajs_multi_agent(p: CallbackProps):
         bbox=dict(facecolor="black", alpha=0.5, pad=2),
     )
 
+    herd_vel_texts = {}
+    if "dyn/herd_vel" in bT_test_rollouts[0].info:
+        for ii in range(n_traj_anim):
+            for jj in range(n_temporal_nodes):
+                # bottom right.
+                herd_vel_texts[ii, jj] = axes[ii, jj].text(
+                    0.98,
+                    0.02,
+                    "",
+                    transform=axes[ii, jj].transAxes,
+                    verticalalignment="bottom",
+                    horizontalalignment="right",
+                    color="white",
+                    fontsize=8,
+                    bbox=dict(facecolor="black", alpha=0.5, pad=2),
+                )
+
     # fig.canvas.draw()  # compute constrained layout once
     # fig.set_layout_engine("none")  # freeze layout for animation
     fig.tight_layout()
 
     for circ in all_circs:
         circ.set_animated(True)
+    for text in herd_vel_texts.values():
+        text.set_animated(True)
     kk_text.set_animated(True)
 
     fig.canvas.draw()
@@ -497,9 +516,19 @@ def animate_eval_trajs_multi_agent(p: CallbackProps):
                         pos = T_state.base.herd_state[t_idx, herd_idx, :2]
                         circ.center = pos
 
+                    if len(herd_vel_texts) > 0:
+                        # (n_herd, 2)
+                        herd_vel = traj.info["dyn/herd_vel"][t_idx]
+                        # (n_herd,)
+                        herd_speeds = np.linalg.norm(herd_vel, axis=-1)
+                        herd_speed_str = ", ".join([f"{s:.2f}" for s in herd_speeds])
+                        herd_vel_texts[ii, jj].set_text(f"Herd: {herd_speed_str}")
+
             # draw only animated artists onto the restored background
             for a in all_circs:
                 a.axes.draw_artist(a)
+            for text in herd_vel_texts.values():
+                text.axes.draw_artist(text)
             kk_text.axes.draw_artist(kk_text)
 
             # IMPORTANT: update the buffer
