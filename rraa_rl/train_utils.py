@@ -160,3 +160,8 @@ def tree_where_dim0(mask, a, b):
     """
     mask = np.asarray(mask)
     return jtu.tree_map(lambda x, y: np.where(mask[:, None], x, y), a, b)
+
+
+def tree_where(condition, x, y):
+    """Fallback implementation of tree_where for older optax versions."""
+    return jtu.tree_map(lambda xi, yi: jnp.where(condition, xi, yi), x, y)

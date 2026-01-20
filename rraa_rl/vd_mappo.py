@@ -2,7 +2,6 @@ import functools as ft
 import pathlib
 # from typing import Any, Self
 from typing import Any
-from typing_extensions import Self
 
 import einops as ei
 import flax
@@ -19,7 +18,7 @@ from cyclopts import Parameter
 from flax import struct
 from jaxtyping import PRNGKeyArray
 from loguru import logger
-from optax.tree_utils import tree_where
+from typing_extensions import Self
 from valtr.reachability import (DAGAvoid, DAGConst, DAGGUMinN, DAGGUSingle, DAGId, DAGMaxN, DAGMinN, DAGNegate,
                                 DAGReach, DAGReachAvoid, DAGVar)
 
@@ -28,10 +27,10 @@ from rraa_rl.distribution import tfd
 from rraa_rl.gae import BellmanGUSingle, BellmanMax, BellmanMaxMin, BellmanMin, gae_generalized
 from rraa_rl.jax_types import FloatScalar, bFloat
 from rraa_rl.nn_modules import BaseObsOnly, BothObs, MAMultiDiscretePolicy, VDValue
-from rraa_rl.src.env.general_task.env import EnvStep, Env
+from rraa_rl.src.env.general_task.env import Env, EnvStep
 from rraa_rl.src.env.general_task.herd_os import HerdOs
 from rraa_rl.train_state import ModuleDict, Params, TrainState
-from rraa_rl.train_utils import compute_norm_and_clip, has_any_nan_or_inf
+from rraa_rl.train_utils import compute_norm_and_clip, has_any_nan_or_inf, tree_where
 
 
 @struct.dataclass

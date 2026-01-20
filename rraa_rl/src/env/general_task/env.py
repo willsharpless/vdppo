@@ -1,14 +1,21 @@
-from typing import Any, NamedTuple
+import copy
+from typing import Any, NamedTuple, Protocol, Self
 
 import jax
 import jax.nn as jnn
 import jax.random as jr
+import jax.tree_util as jtu
+import jax_dataclasses as jdc
+import numpy as np
+from attrs import define
 from jax import numpy as jnp
 from jaxtyping import PRNGKeyArray
 from valtr.reachability import (DAGAvoid, DAGConst, DAGGUMinN, DAGGUSingle, DAGId, DAGMaxN, DAGMinN, DAGNegate, DAGNode,
                                 DAGReach, DAGReachAvoid, DAGVar, collect_predicate_info, get_node_parent_dict,
                                 has_temporal_children, temporal_nodes_topological)
 from valtr.valtr import to_dag
+
+from rraa_rl.jax_utils import tree_cat
 
 
 class EnvStep(NamedTuple):
@@ -21,6 +28,12 @@ class EnvStep(NamedTuple):
 
 
 class BaseEnv:
+    def __init__(self):
+        self._obs_names = None
+
+    def step(self, state: Any, action: jnp.ndarray):
+        raise NotImplementedError("")
+
     def reset(self, key: PRNGKeyArray) -> Any:
         raise NotImplementedError("")
 
@@ -28,9 +41,47 @@ class BaseEnv:
         b_key = jr.split(key, batch_size)
         return jax.vmap(self.reset)(b_key)
 
+    @property
+    def n_agents(self) -> int:
+        raise NotImplementedError("")
+
+    @property
+    def value_lims(self) -> tuple[float, float]:
+        raise NotImplementedError("")
+
+    @property
+    def n_actions_per_agent(self) -> list[list[int]]:
+        raise NotImplementedError("")
+
+    @property
+    def max_entropy(self) -> float:
+        raise NotImplementedError("")
+
+    def get_obs(self, state: Any) -> Any:
+        raise NotImplementedError("")
+
+    def get_obs_and_names(self, state: Any) -> tuple[jnp.ndarray, list[str]]:
+        raise NotImplementedError("")
+
+    def get_obs_names(self):
+        if self._obs_names is None:
+            dummy_state = self.reset(jr.PRNGKey(0))
+            _, obs_names = self.get_obs_and_names(dummy_state)
+            self._obs_names = obs_names
+        return self._obs_names
+
+    def get_predicates(self, state: Any) -> dict[str, jnp.ndarray]:
+        raise NotImplementedError("")
+
+
+@define(slots=False)
+class EnvCfg:
+    eval_T: int = 200
+
 
 class Env:
-    def __init__(self, specification: str):
+    def __init__(self, cfg: EnvCfg, specification: str):
+        self.cfg = cfg
         dag_builder, dag_root = to_dag(specification, dag_filename="herd_os_dag.pdf")
         self.dag_nodes = dag_builder.nodes
         self.dag_root = dag_root
@@ -135,7 +186,163 @@ class Env:
 
     @property
     def eval_T(self) -> int:
-        raise NotImplementedError("")
+        return self.cfg.eval_T
+
+    def transition_temporal_node(
+        self, predicates: dict[str, jnp.ndarray], t_value: jnp.ndarray, temporal_node_idx: jnp.ndarray
+    ) -> jnp.ndarray:
+        """Compute the new temporal node idx after applying the DAG transitions."""
+        all_triggers = get_rules(self.temporal_nodes, self.dag_nodes, predicates, t_value)
+        t_parents = jnp.stack([trigger.parent for trigger in all_triggers])
+        t_conditions = jnp.stack([trigger.condition for trigger in all_triggers])
+        t_children = jnp.stack([trigger.child for trigger in all_triggers])
+
+        t_is_valid = (t_parents == temporal_node_idx) & (t_conditions > 0.0)
+
+        # If there are multiple valid transitions, pick the one with the highest condition value.
+        t_has_valid = jnp.any(t_is_valid)
+        t_conditions_masked = jnp.where(t_is_valid, t_conditions, -jnp.inf)
+        transition_idx = jnp.argmax(t_conditions_masked)
+
+        temporal_node_idx_new = jnp.where(t_has_valid, t_children[transition_idx], temporal_node_idx)
+
+        # jd.print("-----------", ordered=True)
+        # jd.print("t_parents: {}", t_parents, ordered=True)
+        # jd.print("t_conditions: {}", t_conditions, ordered=True)
+        # jd.print("t_children: {}", t_children, ordered=True)
+        # jd.print("{} -> {}", temporal_node_idx, temporal_node_idx_new, ordered=True)
+
+        return temporal_node_idx_new
+
+    @staticmethod
+    def create(cfg: EnvCfg):
+        pass
+
+
+@jdc.pytree_dataclass
+class StateWithTemporalNode:
+    temporal_node_idx: int
+    base: BaseEnv
+
+
+class EnvUsingBase(Env):
+    def __init__(self, cfg: EnvCfg, specification: str, base_env: BaseEnv):
+        super().__init__(cfg, specification)
+        self.base = base_env
+
+    @property
+    def n_agents(self) -> int:
+        return self.base.n_agents
+
+    @property
+    def value_lims(self):
+        return self.base.value_lims
+
+    @property
+    def n_actions_per_agent(self) -> list[list[int]]:
+        return self.base.n_actions_per_agent
+
+    @property
+    def max_entropy(self) -> float:
+        return self.base.max_entropy
+
+    @property
+    def n_temporal_nodes(self):
+        return len(self.temporal_nodes)
+
+    def step(self, state: Any, action: jnp.ndarray):
+        base_step: EnvStep = self.base.step(state.base, action)
+
+        temporal_node_idx = state.temporal_node_idx
+
+        state_new = jdc.replace(state, temporal_node_idx=temporal_node_idx, base=base_step.envstate)
+        obs = self._augment_obs(state_new, base_step.obs)
+        step = base_step._replace(envstate=state_new, obs=obs)
+
+        return step
+
+    def get_obs(self, state: Any) -> Any:
+        base_obs = self.base.get_obs(state.base)
+        return self._augment_obs(state, base_obs)
+
+    def get_obs_names(self) -> list[str]:
+        return self.base.get_obs_names() + self.augment_obs_names()
+
+    def get_predicates(self, state: Any) -> dict[str, jnp.ndarray]:
+        return self.base.get_predicates(state.base)
+
+
+@define(slots=False)
+class StaticTemporalNodeMixinCfg:
+    temporal_node_fracs: list[float] | None = None
+    """Fractions for sampling each temporal node. This is reverse topological order. If None, split evenly."""
+
+    @property
+    def root_only(self):
+        return self.temporal_node_fracs[0] == 1.0
+
+
+class StaticTemporalNodeMixinProtocol(Protocol):
+    base: BaseEnv
+    cfg: StaticTemporalNodeMixinCfg
+    n_temporal_nodes: int
+
+
+class StaticTemporalNodeMixin:
+    def __init__(self: StaticTemporalNodeMixinProtocol, cfg: StaticTemporalNodeMixinCfg, **kwargs):
+        self.cfg = cfg
+
+        if self.cfg.temporal_node_fracs is None:
+            # Split it evenly.
+            self.cfg.temporal_node_fracs = np.full(self.n_temporal_nodes, 1.0 / self.n_temporal_nodes).tolist()
+
+        assert len(self.cfg.temporal_node_fracs) == len(self.temporal_nodes)
+
+    def reset(self: StaticTemporalNodeMixinProtocol, key: PRNGKeyArray) -> StateWithTemporalNode:
+        key_base, key_node = jr.split(key)
+        base_state = self.base.reset(key_base)
+
+        # Sample temporal node idx according to configured fractions.
+        node_fracs = jnp.array(self.cfg.temporal_node_fracs)
+        node_fracs = node_fracs / jnp.sum(node_fracs)
+        temporal_node_idx = jr.choice(key_node, a=self.n_temporal_nodes, p=node_fracs)
+        state = StateWithTemporalNode(temporal_node_idx=temporal_node_idx, base=base_state)
+        return state
+
+    def reset_batch(self, key: PRNGKeyArray, batch_size: int) -> Any:
+        # Instead of randomly sampling temporal nodes, we assign fixed fractions of the batch to each temporal node.
+        base_state = self.base.reset_batch(key, batch_size)
+
+        n_per_temporal_node = np.round(np.array(self.cfg.temporal_node_fracs) * batch_size).astype(int)
+        n_per_temporal_node[-1] = batch_size - n_per_temporal_node[:-1].sum()
+
+        temporal_node_idxs = jnp.concatenate([jnp.full((n,), idx) for idx, n in enumerate(n_per_temporal_node)], axis=0)
+        state = StateWithTemporalNode(
+            temporal_node_idx=temporal_node_idxs,
+            base=base_state,
+        )
+        return state
+
+    def get_eval_states(self, n_envs: int) -> StateWithTemporalNode:
+        # Assign envs evenly to each temporal node.
+        n_envs_per_node = np.full((self.n_temporal_nodes,), n_envs // self.n_temporal_nodes)
+        n_envs_per_node[0] = n_envs - n_envs_per_node[1:].sum()
+
+        key = jr.PRNGKey(seed=12345)
+        max_n_envs_per_node = n_envs_per_node.max()
+        m_state_base = self.base.reset_batch(key, max_n_envs_per_node)
+
+        states = []
+        for ii, n_envs_this in enumerate(n_envs_per_node):
+            state_base = jtu.tree_map(lambda x: x[:n_envs_this], m_state_base)
+            state = StateWithTemporalNode(
+                temporal_node_idx=jnp.full((n_envs_this,), ii),
+                base=state_base,
+            )
+            states.append(state)
+
+        b_state0 = tree_cat(states, axis=0)
+        return b_state0
 
 
 class AugObs(NamedTuple):

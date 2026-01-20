@@ -6,7 +6,8 @@ import matplotlib.pyplot as plt
 import numpy as np
 from matplotlib.animation import FuncAnimation
 
-from rraa_rl.src.env.general_task.herd_os import HerdOs, HerdOsCfg, HerdOsState
+from rraa_rl.src.env.general_task.herd_os import HerdOs, HerdOsCfg
+from rraa_rl.src.env.general_task.env import StateWithTemporalNode
 
 
 def main():
