@@ -15,6 +15,7 @@ def main(name: str | None = None, debug: bool = False, env_name: str = "HerdOsPl
     env = get_env(env_name)
 
     cfg = VDMAPPOAgent.Cfg()
+    cfg.actor_lr = 8e-4
     cfg.n_epochs = 2
     cfg.n_minibatches = 4
     cfg.entropy_coef = 1.5e-2
