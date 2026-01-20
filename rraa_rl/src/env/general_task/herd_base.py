@@ -820,7 +820,10 @@ class HerdingHerd(HerdBase):
 
     def get_predicates_bool(self, state: HerdBaseState):
         predicates = super().get_predicates_bool(state)
-        predicates = {"herd_herded": self.is_herd_herded(state)} | predicates
+        predicates = {
+            "herd_herded": self.is_herd_herded(state),
+            "herder_collide_wall": self.is_herder_collide_wall(state),
+        } | predicates
 
         is_herd_in_gates = self.is_herd_in_gates(state)
         for ii in range(self.n_gates):
@@ -829,11 +832,20 @@ class HerdingHerd(HerdBase):
         return predicates
 
     def get_predicates_float(self, state: HerdBaseState):
-        predicates = super().get_predicates_float(state)
+        predicates_bool = self.get_predicates_bool(state)
+        predicates = {k: jnp.where(v, 1.0, -1.0) for k, v in predicates_bool.items()}
+
+        predicates = predicates | super().get_predicates_float(state)
         predicates = {
             "herd_herded": self.is_herd_herded_float(state),
             "herd_herder_collide": self.herd_herder_collide(state),
         } | predicates
+
+        is_herder_unsafe = jnp.stack(
+            [predicates["herder_oob"], predicates["herd_herder_collide"], predicates["herder_collide_wall"]], axis=-1
+        ).max(axis=-1)
+        predicates = predicates | {"herder_unsafe": is_herder_unsafe}
+
         return predicates
 
     def is_herd_herded_float(self, state: HerdBaseState):
