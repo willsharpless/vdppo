@@ -4,6 +4,7 @@ from typing import Any
 import jax
 import jax.numpy as jnp
 import jax.random as jr
+import jax.tree_util as jtu
 import jax_dataclasses as jdc
 import matplotlib.pyplot as plt
 import numpy as np
@@ -11,8 +12,9 @@ from attrs import define
 from jaxtyping import PRNGKeyArray
 
 from rraa_rl.jax_types import BoolScalar
-from rraa_rl.jax_utils import softminimum
+from rraa_rl.jax_utils import softmaximum, softminimum, tree_stack
 from rraa_rl.src.env.general_task.env import BaseEnv, Env, EnvStep
+from rraa_rl.train_utils import tree_where
 
 VEL_ZERO = False
 # HERD_ZERO = True
@@ -37,7 +39,8 @@ class HerdBaseState:
 
 @define(slots=False)
 class HerdBaseCfg:
-    herd_vel: float = 0.2
+    herd_vel: float = 0.25
+    herd_vel_self: float = 0.1
     dt: float = 0.2
 
     # n_herders: int = 2
@@ -59,6 +62,11 @@ class HerdBaseCfg:
     trunc_steps: int = 100
 
     herded_radius: float = 1.0  # Radius within which herd agents are considered herded.
+
+
+@define(slots=False)
+class HerdingHerdCfg(HerdBaseCfg):
+    p_reset_center: float = 0.1
 
 
 class HerdBase(BaseEnv):
@@ -140,52 +148,70 @@ class HerdBase(BaseEnv):
         def get_weighted_dist(ii: int, herd_pos_new: jnp.ndarray):
             # Compute the minimum distance to the other herd agents.
 
+            # Keep the softmin error <= 0.05 * halfwidth. error <= temperature * log(n)  =>  temperature = error / log(n)
+            temperature = 0.05 * min(self.cfg.halfsize) / jnp.log(max(self.cfg.n_herd, self.cfg.n_herders, 4))
+
             n_herd_dist = jnp.linalg.norm(n_herd_pos - herd_pos_new, axis=-1)
             # Ignore self-distance
             n_herd_dist = n_herd_dist.at[ii].set(jnp.inf)
-            herd_softmin = softminimum(n_herd_dist)
+            herd_softmin = softminimum(n_herd_dist, temperature=temperature)
             herd_min = jnp.min(n_herd_dist)
 
             # Compute the minimum distance to the herders.
             # (n_herd, 1, 2) - (1, n_herders, 2) -> (n_herd, n_herders, 2) -> (n_herd, n_herders)
             m_herder_dist = jnp.linalg.norm(m_herder_pos - herd_pos_new, axis=-1)
-            herder_softmin = softminimum(m_herder_dist)
+            herder_softmin = softminimum(m_herder_dist, temperature=temperature)
             herder_min = jnp.min(m_herder_dist)
 
             # Compute the minimum distance to the walls.
             herd_wall_dists = self.dist_to_wall(herd_pos_new)
-            herd_wall_softmin = softminimum(herd_wall_dists, axis=-1)
+            herd_wall_softmin = softminimum(herd_wall_dists, temperature=temperature, axis=-1)
             herd_wall_min = jnp.min(herd_wall_dists)
 
-            herd_max_dist = 15 * self.cfg.agent_radius
-            herder_max_dist = 15 * self.cfg.agent_radius
-            wall_max_dist = 15 * self.cfg.agent_radius
-            dist_thresh = jnp.array([herd_max_dist, herder_max_dist, wall_max_dist])
-            apply_action_herd = jnp.any(jnp.array([herd_min, herder_min, herd_wall_min]) <= dist_thresh)
+            # If the distance to the wall is larger than a threshold, then treat the distance as very big.
+            # Smoothly increase the effect of this
+            wall_dist_thresh = 10 * self.cfg.agent_radius
+            coef = 1 + 2 * jnp.tanh(herd_wall_min / wall_dist_thresh * 2)
+            herd_wall_softmin = coef * herd_wall_softmin
 
-            w_herd = 0.5
+            w_herd = 0.1
             w_herder = 2.0
-            w_wall = 2.0
+            w_wall = 1.5
             vals = jnp.array([herd_softmin, herder_softmin, herd_wall_softmin])
             weights = jnp.array([w_herd, w_herder, w_wall])
-            weighted_dist = softminimum(vals * weights)
-            return weighted_dist, apply_action_herd
+            # Higher weight => divide by larger number => is minimum more often.
+            weighted_dist = softminimum(vals / weights, temperature=temperature)
+            closest = jnp.argmin(vals / weights)
+            return weighted_dist, closest, herder_min
 
         def get_vel_single(ii: int):
             herd_pos = n_herd_pos[ii]
 
             # Generate candidate actions uniformly in a circle.
             angles = jnp.linspace(0, 2 * jnp.pi, num=16, endpoint=False)
-            deltas = self.cfg.herd_vel * jnp.stack([jnp.cos(angles), jnp.sin(angles)], axis=-1)  # (num_actions, 2)
-            herd_pos_new = herd_pos + deltas  # (num_actions, 2)
+            vel_test = self.cfg.herd_vel * jnp.stack([jnp.cos(angles), jnp.sin(angles)], axis=-1)  # (num_actions, 2)
+            herd_pos_new = herd_pos + vel_test * self.cfg.dt  # (num_actions, 2)
 
-            _, apply_action = get_weighted_dist(ii, herd_pos)
-            weighted_dists, _ = jax.vmap(ft.partial(get_weighted_dist, ii))(herd_pos_new)  # (num_actions,)
+            _, closest_idx, herder_min_dist = get_weighted_dist(ii, herd_pos)
+            weighted_dists, _, _ = jax.vmap(ft.partial(get_weighted_dist, ii))(herd_pos_new)  # (num_actions,)
             # Select the action that maximizes the weighted distance.
             best_idx = jnp.argmax(weighted_dists)
-            best_delta = deltas[best_idx]
-            best_delta = best_delta * jnp.where(apply_action, 1.0, 0.0)
-            return best_delta
+            best_vel = vel_test[best_idx]
+
+            # As the herder moves away, the herd slows down.
+            eff_range = 4.0
+            sigma = eff_range / 2
+            free_range = 4 * self.cfg.agent_radius
+            tmp = jnp.maximum(herder_min_dist - free_range, 0.0)
+            # Use Gaussian kernel.
+            herder_vel_coef = jnp.exp(-0.5 * (tmp / sigma) ** 2)
+
+            # If the closest thing is the herd, then move slower than if the closest is a herder.
+            closest_is_herd = closest_idx == 0
+            vel_coef = jnp.where(closest_is_herd, self.cfg.herd_vel_self / self.cfg.herd_vel, herder_vel_coef)
+            best_vel = vel_coef * best_vel
+
+            return best_vel
 
         n_idxs = jnp.arange(self.cfg.n_herd)
         n_herd_vel = jax.vmap(get_vel_single)(n_idxs)
@@ -231,7 +257,9 @@ class HerdBase(BaseEnv):
             herd_vel = 0
         herd_state_new = herd_pos + herd_vel * dt
 
-        return HerdBaseState(herd_state=herd_state_new, herder_state=herder_state_new, steps=state.steps + 1)
+        info_dyn = {"dyn/herd_vel": herd_vel}
+
+        return HerdBaseState(herd_state=herd_state_new, herder_state=herder_state_new, steps=state.steps + 1), info_dyn
 
     def is_herder_collide(self, state: HerdBaseState):
         herder_pos = state.herder_state[:, 0:2]
@@ -255,18 +283,10 @@ class HerdBase(BaseEnv):
         oob = jnp.any(min_dists < self.cfg.agent_radius)
         return oob
 
-    def is_herd_herded(self, state: HerdBaseState):
-        """All herd agents are fully within a circle in the center."""
-        herd_pos = state.herd_state
-        dists = jnp.linalg.norm(herd_pos, axis=-1)
-        herded = jnp.all((dists + self.cfg.agent_radius) < self.cfg.herded_radius)
-        return herded
-
     def get_predicates_bool(self, state: HerdBaseState):
         predicates = {
             "herder_collide": self.is_herder_collide(state),
             "herder_oob": self.is_herder_oob(state),
-            "herd_herded": self.is_herd_herded(state),
         }
         return predicates
 
@@ -284,14 +304,14 @@ class HerdBase(BaseEnv):
 
     def step(self, state: HerdBaseState, action: jnp.ndarray):
         controls = self._action_to_controls(action)
-        state_new = self.next_state(state, controls)
+        state_new, info_dyn = self.next_state(state, controls)
         obs_new = self.get_obs(state_new)
 
         predicates = self.get_predicates(state_new)
         term = self.should_term_fn(predicates)
         trunc = state_new.steps >= self.cfg.trunc_steps
 
-        info = {"age": state_new.steps}
+        info = {"age": state_new.steps} | info_dyn
         return EnvStep(state_new, obs_new, predicates, term, trunc, info)
 
     def get_objects_pos(self, state: HerdBaseState):
@@ -436,11 +456,6 @@ class HerdBase(BaseEnv):
         ax.axhspan(cfg.halfsize[1], cfg.halfsize[1] + 1.0, **opts)
         ax.axhspan(-cfg.halfsize[1] - 1.0, -cfg.halfsize[1], **opts)
 
-        if not self.cfg.herd_zero:
-            # Plot the herd circle.
-            herd_circle = plt.Circle((0, 0), cfg.herded_radius, color="lightgray", alpha=0.5)
-            ax.add_patch(herd_circle)
-
 
 @define(slots=False)
 class HerdBasePlayCfg(HerdBaseCfg):
@@ -516,7 +531,9 @@ class HerdBasePlay(HerdBase):
             herd_vel = 0
         herd_state_new = herd_pos + herd_vel * dt
 
-        return HerdBaseState(herd_state=herd_state_new, herder_state=herder_state_new, steps=state.steps + 1)
+        next_state = HerdBaseState(herd_state=herd_state_new, herder_state=herder_state_new, steps=state.steps + 1)
+        info_dyn = {}
+        return next_state, info_dyn
 
     def get_predicates_bool(self, state: HerdBaseState):
         predicates = super().get_predicates_bool(state)
@@ -586,3 +603,321 @@ class HerdBasePlay(HerdBase):
             radius = self.radiuses[ii]
             circ = plt.Circle((center[0], center[1]), radius, color="C5", alpha=0.3)
             ax.add_patch(circ)
+
+
+class HerdingHerd(HerdBase):
+    Cfg = HerdingHerdCfg
+    State = HerdBaseState
+
+    def __init__(self, cfg: HerdingHerdCfg = HerdingHerdCfg(), should_term_fn: ShouldTermFn = None):
+
+        super().__init__(cfg, should_term_fn=should_term_fn)
+        self.cfg = cfg
+
+        halfsize = min(cfg.halfsize)
+        self.herded_center = np.array([0.4 * halfsize, 0.05 * halfsize])
+        self.gates = np.array([[-0.6 * halfsize, 0.4 * halfsize], [-0.3 * halfsize, -0.7 * halfsize]])
+
+    @property
+    def n_gates(self) -> int:
+        return len(self.gates)
+
+    @ft.partial(jax.jit, static_argnames=("self",))
+    def reset(self, key: PRNGKeyArray):
+        # With some prob, reset the herd in the center.
+        p_reset_center = self.cfg.p_reset_center
+        # p_reset_center = 0.5
+        # With some prob, reset the herd within small circle, and herder agents on outside pointing inwards.
+        p_reset_herd = 0.2
+        p_reset_gate = 0.2
+        p_reset_orig = 1.0 - p_reset_center - p_reset_herd - p_reset_gate
+
+        key_orig, key_center, key_herding, key_gate, key_which, key_which_gate = jr.split(key, 6)
+        key_gates = jr.split(key_gate, self.n_gates)
+
+        herd_state_orig = super().reset(key_orig)
+        herd_state_center = self.reset_center(key_center)
+        herd_state_herding, _ = self.reset_herding(key_herding, center=self.herded_center)
+
+        herd_state_gates, _ = jax.vmap(self.reset_herding)(key_gates, self.gates)
+        which_gate = jr.randint(key_which_gate, shape=(), minval=0, maxval=self.n_gates)
+        herd_state_gate = jtu.tree_map(lambda x: x[which_gate], herd_state_gates)
+
+        # reset_center = jr.bernoulli(key_do_center, p=p_reset_center)
+        which_reset = jr.categorical(key_which, jnp.array([p_reset_orig, p_reset_center, p_reset_herd, p_reset_gate]))
+
+        herd_state_stack = tree_stack([herd_state_orig, herd_state_center, herd_state_herding, herd_state_gate])
+        herd_state = jtu.tree_map(lambda x: x[which_reset], herd_state_stack)
+
+        return herd_state
+
+    def reset_center(self, key: PRNGKeyArray):
+        # All three herd agents in the center, as close as possible without overlapping.
+        # Uniformly spread out in a circle, randomize the rotation.
+        # Herders are randomly placed on the outside.
+        cfg = self.cfg
+
+        key_herd_angle0, key_herd_radius, key_herder_angle, key_herder_radius, key_herder_vel = jr.split(key, 5)
+
+        # -------------------------------
+        angle0 = jr.uniform(key_herd_angle0, minval=0.0, maxval=2 * jnp.pi)
+        herd_angles = angle0 + jnp.linspace(0, 2 * jnp.pi, num=self.cfg.n_herd, endpoint=False)
+        # Should be >= r/sin(pi/n) to not be overlapping.
+        min_radius = cfg.agent_radius / jnp.sin(jnp.pi / cfg.n_herd)
+        max_radius = cfg.herded_radius - cfg.agent_radius
+        herd_radius = jr.uniform(key=key_herd_radius, minval=1.01 * min_radius, maxval=1.01 * max_radius)
+
+        herd_pos_x = herd_radius * jnp.cos(herd_angles)
+        herd_pos_y = herd_radius * jnp.sin(herd_angles)
+        herd_pos = self.herded_center + jnp.stack([herd_pos_x, herd_pos_y], axis=-1)
+        # -------------------------------
+
+        herder_angles = jr.uniform(key_herder_angle, shape=(cfg.n_herders,), minval=0.0, maxval=2 * jnp.pi)
+        min_radius = herd_radius + 2.1 * cfg.agent_radius
+        max_radius = herd_radius + 5.0 * cfg.agent_radius
+        herder_radius = jr.uniform(
+            key=key_herder_radius,
+            shape=(cfg.n_herders,),
+            minval=min_radius,
+            maxval=max_radius,
+        )
+        herder_pos_x = herder_radius * jnp.cos(herder_angles)
+        herder_pos_y = herder_radius * jnp.sin(herder_angles)
+        herder_pos = self.herded_center + jnp.stack([herder_pos_x, herder_pos_y], axis=-1)
+
+        herder_vel = jr.uniform(
+            key=key_herder_vel,
+            shape=(cfg.n_herders, 2),
+            minval=-jnp.array(cfg.vel_maxs) * 0.5,
+            maxval=jnp.array(cfg.vel_maxs) * 0.5,
+        )
+        herder_state = jnp.concatenate([herder_pos, herder_vel], axis=-1)
+
+        return HerdBaseState(herd_state=herd_pos, herder_state=herder_state, steps=0)
+
+    def reset_herding(self, key: PRNGKeyArray, center):
+        # Two herd agents initialized on opposite sides of a circle of varying radius.
+        # All other herd agents initialized randomly inside the circle.
+        # The center of the circle is close to the herding center.
+        cfg = self.cfg
+        if cfg.n_herd == 1:
+            raise NotImplementedError("TODO")
+
+        key_herd, key_herders = jr.split(key, 2)
+
+        # --------------------------------------------
+        key_circle_radius, key_circle_center, key_angles, key_radius_frac = jr.split(key_herd, 4)
+
+        min_radius = cfg.agent_radius / jnp.sin(jnp.pi / cfg.n_herd)
+        min_radius = min_radius + cfg.agent_radius
+        max_radius = cfg.herded_radius
+        radius = jr.uniform(key_circle_radius, minval=min_radius, maxval=max_radius)
+
+        max_pos = 0.5 * cfg.halfsize[0]
+        min_pos = -max_pos
+        circle_center = jr.uniform(key_circle_center, shape=(2,), minval=min_pos, maxval=max_pos)
+
+        angles = jr.uniform(key_angles, shape=(cfg.n_herd,), minval=0.0, maxval=2 * jnp.pi)
+        angles = angles.at[1].set(angles[0] + jnp.pi)
+
+        radius_fracs = jr.uniform(key_radius_frac, shape=(cfg.n_herd,), minval=0.0, maxval=1.0)
+        radius_fracs = radius_fracs.at[:2].set(1.0)
+
+        herd_pos_x = circle_center[0] + radius * radius_fracs * jnp.cos(angles)
+        herd_pos_y = circle_center[1] + radius * radius_fracs * jnp.sin(angles)
+        herd_pos = center + jnp.stack([herd_pos_x, herd_pos_y], axis=-1)
+
+        herd_pos = jnp.clip(herd_pos, -cfg.halfsize[0] + cfg.agent_radius, cfg.halfsize[0] - cfg.agent_radius)
+
+        # --------------------------------------------
+        key_angles, key_radius, key_vel = jr.split(key_herders, 3)
+
+        # Herders are placed such that the herd is between them and the center.
+        herd_circle_angle = jnp.arctan2(circle_center[1], circle_center[0])
+        herd_circle_radius = jnp.linalg.norm(circle_center) + radius
+
+        # Compute the max angle such that the line from the herder to the center is tangential to the herd circle.
+        inside = radius / herd_circle_radius
+        inside_safe = jnp.clip(inside, -0.999, 0.999)
+        max_angle_offset = jnp.arcsin(inside_safe)
+
+        herder_angles = herd_circle_angle + jr.uniform(
+            key_angles,
+            shape=(cfg.n_herders,),
+            minval=-max_angle_offset,
+            maxval=max_angle_offset,
+        )
+
+        herder_radius = jr.uniform(
+            key_radius,
+            shape=(cfg.n_herders,),
+            # minval=herd_circle_radius - 1.0 * cfg.agent_radius,
+            minval=herd_circle_radius + 1.0 * cfg.agent_radius,
+            maxval=herd_circle_radius + 7.0 * cfg.agent_radius,
+        )
+        herder_pos_x = herder_radius * jnp.cos(herder_angles)
+        herder_pos_y = herder_radius * jnp.sin(herder_angles)
+        herder_pos = center + jnp.stack([herder_pos_x, herder_pos_y], axis=-1)
+
+        herder_pos = jnp.clip(herder_pos, -cfg.halfsize[0] + cfg.agent_radius, cfg.halfsize[0] - cfg.agent_radius)
+
+        herder_vel = jr.uniform(
+            key=key_vel,
+            shape=(cfg.n_herders, 2),
+            minval=-jnp.array(cfg.vel_maxs) * 0.5,
+            maxval=jnp.array(cfg.vel_maxs) * 0.5,
+        )
+        herder_state = jnp.concatenate([herder_pos, herder_vel], axis=-1)
+
+        info = {
+            "herd/circle_center": circle_center,
+            "herd/radius": radius,
+            "herder_radius": herder_radius,
+            "hred_circle_angle": herd_circle_angle,
+        }
+        return HerdBaseState(herd_state=herd_pos, herder_state=herder_state, steps=0), info
+
+    def is_herd_herded(self, state: HerdBaseState):
+        """All herd agents are fully within a circle in the center."""
+        herd_pos = state.herd_state
+        dists = jnp.linalg.norm(herd_pos - self.herded_center, axis=-1)
+        herded = jnp.all((dists + self.cfg.agent_radius) <= self.cfg.herded_radius)
+        return herded
+
+    def is_herd_in_gates(self, state: HerdBaseState):
+        """For each gate, check if all herd agents are fully within the gate circle."""
+        n_pos = state.herd_state
+        n_gates = self.n_gates
+        m_pos_gates = self.gates
+
+        mn_dists = jnp.linalg.norm(n_pos[None, :, :] - m_pos_gates[:, None, :], axis=-1)
+        assert mn_dists.shape == (n_gates, self.cfg.n_herd)
+        m_is_herd_in_gates = jnp.all((mn_dists + self.cfg.agent_radius) <= self.cfg.herded_radius, axis=-1)
+
+        return m_is_herd_in_gates
+
+    def get_predicates_bool(self, state: HerdBaseState):
+        predicates = super().get_predicates_bool(state)
+        predicates = {"herd_herded": self.is_herd_herded(state)} | predicates
+
+        is_herd_in_gates = self.is_herd_in_gates(state)
+        for ii in range(self.n_gates):
+            predicates[f"herd_gate_{ii}"] = is_herd_in_gates[ii]
+
+        return predicates
+
+    def get_predicates_float(self, state: HerdBaseState):
+        predicates = super().get_predicates_float(state)
+        predicates = {
+            "herd_herded": self.is_herd_herded_float(state),
+            "herd_herder_collide": self.herd_herder_collide(state),
+        } | predicates
+        return predicates
+
+    def is_herd_herded_float(self, state: HerdBaseState):
+        """All herd agents are fully within a circle in the center.
+        1 when herded, -eps on boundary, scales linearly with soft maximum of furthest herd agent."""
+        herd_pos = state.herd_state
+        n_dists = jnp.linalg.norm(herd_pos - self.herded_center, axis=-1)
+
+        # In boundary if dists + agent_radius <= herded_radius
+        n_dist_to_boundary = n_dists + self.cfg.agent_radius - self.cfg.herded_radius
+
+        max_dist = jnp.max(n_dist_to_boundary)
+
+        if self.cfg.n_herd == 1:
+            # No need for softmax if only one herd agent.
+            max_dist_soft = max_dist
+        else:
+            # error <= temperature * log(n). I want error <= 0.1 * halfwidth, so temperature = 0.1 * halfwidth / log(n)
+            temperature = 0.1 * min(self.cfg.halfsize) / jnp.log(self.cfg.n_herd)
+            max_dist_soft = softmaximum(n_dist_to_boundary, temperature=temperature)
+
+        eps = 0.1
+
+        # Linear scaling from -eps to -1. Reach -1 at distance = halfsize.
+        t = max_dist_soft / min(self.cfg.halfsize)
+        t = jnp.clip(t, 0.0, 1.0)
+        outside_val = -(eps + (1.0 - eps) * t)
+
+        val = jnp.where(max_dist <= 0, 1.0, outside_val)
+        val = jnp.clip(val, -1.0, 1.0)
+        return val
+
+    def herd_herder_collide(self, state: HerdBaseState):
+        """+1 if herd-herder collisions. -eps at boundary, scales linearly with soft minimum of distances."""
+        n_herd_pos = state.herd_state[:, :2]
+        m_herder_pos = state.herder_state[:, :2]
+        nm_dists = jnp.linalg.norm(
+            n_herd_pos[:, None, :] - m_herder_pos[None, :, :],
+            axis=-1,
+        )
+        b_dists = nm_dists.flatten()
+
+        # In boundary if dists <= 2 * agent_radius
+        b_dist_to_boundary = b_dists - 2 * self.cfg.agent_radius
+
+        min_dist = b_dist_to_boundary.min()
+
+        if self.cfg.n_herd * self.cfg.n_herders == 1:
+            # No need for softmin if only one pair.
+            min_dist_soft = b_dist_to_boundary[0]
+        else:
+            # error <= temperature * log(n). I want error <= 0.05 * halfwidth, so temperature = 0.1 * halfwidth / log(n)
+            temperature = 0.05 * min(self.cfg.halfsize) / jnp.log(self.cfg.n_herd)
+            min_dist_soft = softminimum(b_dist_to_boundary, temperature=temperature)
+
+        eps = 0.1
+
+        # Linear scaling from -eps to -1. -eps at mindist=0, -1 at mindist = 1 * agent_radius.
+        t = min_dist_soft / (1.0 * self.cfg.agent_radius)
+        t = jnp.clip(t, 0.0, 1.0)
+        outside_val = -(eps + (1.0 - eps) * t)
+
+        val = jnp.where(min_dist <= 0.0, 1.0, outside_val)
+        val = jnp.clip(val, -1.0, 1.0)
+        return val
+
+    def get_objects_pos(self, state: HerdBaseState):
+        herd_pos = state.herd_state  # (n_herd, 2)
+        herder_pos = state.herder_state[:, 0:2]  # (n_herders, 2)
+        herded_center_pos = self.herded_center
+        gates_pos = self.gates
+        all_pos = jnp.concatenate([herd_pos, herder_pos, herded_center_pos[None, :], gates_pos], axis=0)
+        return all_pos
+
+    def setup_ax(self, ax: plt.Axes):
+        cfg = self.cfg
+        super().setup_ax(ax)
+
+        assert not self.cfg.herd_zero
+
+        # Plot the herd circle.
+        herd_circle = plt.Circle(self.herded_center, cfg.herded_radius, color="lightgray", alpha=0.5)
+        ax.add_patch(herd_circle)
+
+        # Plot the gates if they are active.
+        for ii in range(self.n_gates):
+            if self.is_predicate_active(f"herd_gate_{ii}"):
+                gate_circle = plt.Circle(self.gates[ii], cfg.herded_radius, color="lightgray", alpha=0.5)
+                ax.add_patch(gate_circle)
+
+                # Draw the number of the gate.
+                ax.text(
+                    self.gates[ii][0],
+                    self.gates[ii][1],
+                    f"{ii}",
+                    color="black",
+                    fontsize=12,
+                    ha="center",
+                    va="center",
+                    alpha=0.5,
+                )
+
+
+# def all_in_circle(pos, radius, circle_radius):
+#     assert pos.shape == (3, 2)
+#     dists = np.linalg.norm(pos, axis=-1)
+#     assert dists.shape == (3,)
+#     all_in_circle = np.all((dists + radius) <= circle_radius)
+#     return np.where(all_in_circle, 1, -1)
