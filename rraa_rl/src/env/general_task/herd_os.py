@@ -4,13 +4,14 @@ from attrs import define
 from rraa_rl.jax_types import BoolScalar
 from rraa_rl.src.env.general_task.env import (EnvCfg, EnvUsingBase, StateWithTemporalNode, StaticTemporalNodeMixin,
                                               StaticTemporalNodeMixinCfg)
-from rraa_rl.src.env.general_task.herd_base import HerdBase, HerdBaseCfg, HerdBasePlay, HerdBasePlayCfg
+from rraa_rl.src.env.general_task.herd_base import (HerdBase, HerdBaseCfg, HerdBasePlay, HerdBasePlayCfg, HerdingHerd,
+                                                    HerdingHerdCfg)
 
 
 @define(slots=False)
 class HerdOsCfg(EnvCfg, StaticTemporalNodeMixinCfg):
     specification: str = "F G herd_herded"
-    base: HerdBaseCfg = HerdBaseCfg()
+    base: HerdingHerdCfg = HerdBaseCfg()
 
 
 class HerdOs(StaticTemporalNodeMixin, EnvUsingBase):
@@ -31,7 +32,7 @@ class HerdOs(StaticTemporalNodeMixin, EnvUsingBase):
 
     def __init__(self, cfg: HerdOsCfg = HerdOsCfg()):
         self.cfg = cfg
-        base_env = HerdBase(cfg.base, should_term_fn=self.should_terminate)
+        base_env = HerdingHerd(cfg.base, should_term_fn=self.should_terminate)
         EnvUsingBase.__init__(self, cfg, self.specification, base_env)
         StaticTemporalNodeMixin.__init__(self, cfg)
         self.base = base_env

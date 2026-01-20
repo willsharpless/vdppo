@@ -9,21 +9,25 @@ import numpy as np
 _F = TypeVar("_F", bound=Callable)
 
 
-def softminimum(x, axis=-1, temperature=1.0):
-    """Compute the soft minimum of a tensor along a specified axis.
+def softmaximum(x, axis=-1, temperature=1.0):
+    """Compute the soft maximum of a tensor along a specified axis.
 
     Args:
         x: A JAX array.
-        axis: The axis along which to compute the soft minimum.
-        temperature: A positive scalar that controls the "softness" of the minimum.
+        axis: The axis along which to compute the soft maximum.
+        temperature: A positive scalar that controls the "softness" of the maximum.
 
     Returns:
-        A JAX array containing the soft minimum values.
+        A JAX array containing the soft maximum values.
     """
-    scaled_x = -x / temperature
-    log_sum_exp = jnp.log(jnp.sum(jnp.exp(scaled_x), axis=axis, keepdims=True))
-    softmin = -temperature * log_sum_exp
-    return jnp.squeeze(softmin, axis=axis)
+    scaled_x = x / temperature
+    log_sum_exp = jax.scipy.special.logsumexp(scaled_x, axis=axis)
+    softmax = temperature * log_sum_exp
+    return jnp.squeeze(softmax, axis=axis)
+
+
+def softminimum(x, axis=-1, temperature=1.0):
+    return -softmaximum(-x, axis=axis, temperature=temperature)
 
 
 def tree_where_dim0(cond, x_tree, y_tree, which=jnp):
@@ -46,6 +50,13 @@ def tree_cat(trees, axis=0, which=jnp):
         return which.concatenate(args, axis=axis)
 
     return jtu.tree_map(tree_cat_inner, *trees)
+
+
+def tree_stack(trees, axis=0, which=jnp):
+    def tree_stack_inner(*args):
+        return which.stack(args, axis=axis)
+
+    return jtu.tree_map(tree_stack_inner, *trees)
 
 
 def switch01(arr: jnp.ndarray):
