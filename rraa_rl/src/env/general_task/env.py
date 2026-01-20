@@ -82,7 +82,7 @@ class EnvCfg:
 class Env:
     def __init__(self, cfg: EnvCfg, specification: str):
         self.cfg = cfg
-        dag_builder, dag_root = to_dag(specification, dag_filename="herd_os_dag.pdf")
+        dag_builder, dag_root = to_dag(specification, dag_filename="dags/herd_os_dag")
         self.dag_nodes = dag_builder.nodes
         self.dag_root = dag_root
         self.pred_info = collect_predicate_info(self.dag_nodes, self.dag_root)
