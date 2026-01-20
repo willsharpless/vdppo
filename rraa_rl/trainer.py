@@ -73,7 +73,7 @@ class Trainer:
         collector_eval = Collector.create(
             key=key_collector,
             env=env,
-            cfg=Collector.Cfg(n_envs=n_envs_test),
+            cfg=Collector.Cfg(n_envs=n_envs_test, auto_reset=False, ignore_trunc=True),
         )
 
         # Save configs.
@@ -88,16 +88,16 @@ class Trainer:
 
         n_train_steps = 100_000
 
-        eval_every = 10_000
+        eval_every = 5_000
         log_every = 100
-        save_every = 10_000
+        save_every = 5_000
 
         if not debug:
             wandb.init(project="vd_mappo", name=run.wandb_name)
 
         cb_props = CallbackProps(run, -1, self.agent, None, None, None, None, collector, None, None)
 
-        pbar = tqdm.trange(n_train_steps)
+        pbar = tqdm.trange(n_train_steps, mininterval=0.25)
         for train_step in pbar:
             if train_step % eval_every == 0:
                 pbar.set_description(f"Eval at step {train_step}")

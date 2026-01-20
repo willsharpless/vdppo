@@ -1,5 +1,9 @@
 import time
 
+import av
+
+av.logging.set_level(av.logging.DEBUG)
+
 import einops as ei
 import imageio.v2 as imageio
 import imageio.v3 as iio
@@ -11,6 +15,7 @@ import matplotlib.pyplot as plt
 import numpy as np
 import tqdm
 from flax import struct
+from loguru import logger
 from lovely_histogram import plot_histogram
 from matplotlib.animation import FFMpegWriter, FuncAnimation
 from matplotlib.collections import EllipseCollection
@@ -360,6 +365,19 @@ def animate_eval_trajs_single_agent(p: CallbackProps):
             fig.canvas.blit(fig.bbox)
             frame_rgba = np.asarray(fig.canvas.buffer_rgba(), dtype=np.uint8)
             frame_rgb = np.ascontiguousarray(frame_rgba[..., :3])
+
+            # If the frame dimensions are not divisible by 16, then pad until they are.
+            h, w, _ = frame_rgb.shape
+            h_pad = (16 - (h % 16)) % 16
+            w_pad = (16 - (w % 16)) % 16
+            if h_pad > 0 or w_pad > 0:
+                frame_rgb = np.pad(
+                    frame_rgb,
+                    ((0, h_pad), (0, w_pad), (0, 0)),
+                    mode="constant",
+                    constant_values=0,
+                )
+
             writer.append_data(frame_rgb)
 
     finally:
@@ -376,15 +394,29 @@ def animate_eval_trajs_multi_agent(p: CallbackProps):
 
     n_temporal_nodes = env.n_temporal_nodes
 
-    bT_test_rollouts = p.bT_test_rollouts[:n_traj_anim]
+    bT_test_rollouts = p.bT_test_rollouts
 
     bT_states: list[HerdOs.State] = [traj.state_now for traj in bT_test_rollouts]
     b_temporal_idx = np.array([T_state.temporal_node_idx[0] for T_state in bT_states])
 
-    T_max = max(traj.shape[0] for traj in bT_test_rollouts)
+    temporal_node_count = np.array([np.sum(b_temporal_idx == ii) for ii in range(n_temporal_nodes)])
+    offsets = np.array([0, *np.cumsum(temporal_node_count)])
 
-    ncol = n_temporal_nodes
-    nrow = n_traj_anim
+    # T_max = max(traj.shape[0] for traj in bT_test_rollouts)
+    T_max = 0
+    batch_idxs: dict[tuple[int, int], int] = {}
+    for ii in range(n_traj_anim):
+        for jj in range(n_temporal_nodes):
+            batch_idx = ii + offsets[jj]
+            batch_idxs[ii, jj] = batch_idx
+            traj = bT_test_rollouts[batch_idx]
+            T_max = max(T_max, len(traj.term))
+    # -----------------------------
+
+    # ncol = n_temporal_nodes
+    # nrow = n_traj_anim
+    ncol = n_traj_anim
+    nrow = n_temporal_nodes
 
     # Use facecolor to indicate the current temporal node.
     colors_temporal_node = [f"C{ii}" for ii in range(n_temporal_nodes) if ii != 3]  # C3 is grey.
@@ -400,7 +432,7 @@ def animate_eval_trajs_multi_agent(p: CallbackProps):
     herds: dict[tuple[int, int], list[plt.Circle]] = {}
     for ii in range(n_traj_anim):
         for jj in range(n_temporal_nodes):
-            ax = axes[ii, jj]
+            ax = axes[jj, ii]
             env.base.setup_ax(ax)
 
             node_idx = env.temporal_nodes[jj]
@@ -437,12 +469,31 @@ def animate_eval_trajs_multi_agent(p: CallbackProps):
         bbox=dict(facecolor="black", alpha=0.5, pad=2),
     )
 
+    herd_vel_texts = {}
+    if "dyn/herd_vel" in bT_test_rollouts[0].info:
+        for ii in range(n_traj_anim):
+            for jj in range(n_temporal_nodes):
+                # bottom right.
+                herd_vel_texts[ii, jj] = axes[jj, ii].text(
+                    0.98,
+                    0.02,
+                    "",
+                    transform=axes[jj, ii].transAxes,
+                    verticalalignment="bottom",
+                    horizontalalignment="right",
+                    color="white",
+                    fontsize=8,
+                    bbox=dict(facecolor="black", alpha=0.5, pad=2),
+                )
+
     # fig.canvas.draw()  # compute constrained layout once
     # fig.set_layout_engine("none")  # freeze layout for animation
     fig.tight_layout()
 
     for circ in all_circs:
         circ.set_animated(True)
+    for text in herd_vel_texts.values():
+        text.set_animated(True)
     kk_text.set_animated(True)
 
     fig.canvas.draw()
@@ -451,14 +502,6 @@ def animate_eval_trajs_multi_agent(p: CallbackProps):
     plot_dir = plots_dir / "eval_trajs_anim"
     plot_dir.mkdir(parents=True, exist_ok=True)
     anim_path = plot_dir / f"eval_trajs_step{p.train_step}.mp4"
-
-    # writer = imageio.get_writer(
-    #     anim_path,
-    #     fps=30,
-    #     codec="libx264",
-    #     format="ffmpeg",
-    #     ffmpeg_params=["-preset", "ultrafast", "-crf", "23"],
-    # )
 
     with iio.imopen(anim_path, "w", plugin="pyav") as writer:
         writer.init_video_stream("libx264", fps=30)
@@ -471,14 +514,16 @@ def animate_eval_trajs_multi_agent(p: CallbackProps):
             # update artists (your existing update body, but do NOT return artists)
             kk_text.set_text(f"Step {kk: 3}")
             for ii in range(n_traj_anim):
-                traj = bT_test_rollouts[ii]
-                (T,) = traj.shape
-                T_state: HerdOs.State = traj.state_now
-                T_herder_pos = T_state.base.herder_state[:, :, :2]
-
-                t_idx = min(kk, T - 1)
-
                 for jj in range(n_temporal_nodes):
+
+                    batch_idx = batch_idxs[ii, jj]
+                    traj = bT_test_rollouts[batch_idx]
+                    (T,) = traj.shape
+                    T_state: HerdOs.State = traj.state_now
+                    T_herder_pos = T_state.base.herder_state[:, :, :2]
+
+                    t_idx = min(kk, T - 1)
+
                     circs = agent_collections[(ii, jj)]
                     for agent_idx, circ in enumerate(circs):
                         pos = T_herder_pos[t_idx, agent_idx, :]
@@ -497,9 +542,19 @@ def animate_eval_trajs_multi_agent(p: CallbackProps):
                         pos = T_state.base.herd_state[t_idx, herd_idx, :2]
                         circ.center = pos
 
+                    if len(herd_vel_texts) > 0:
+                        # (n_herd, 2)
+                        herd_vel = traj.info["dyn/herd_vel"][t_idx]
+                        # (n_herd,)
+                        herd_speeds = np.linalg.norm(herd_vel, axis=-1)
+                        herd_speed_str = ", ".join([f"{s:.2f}" for s in herd_speeds])
+                        herd_vel_texts[ii, jj].set_text(f"Herd: {herd_speed_str}")
+
             # draw only animated artists onto the restored background
             for a in all_circs:
                 a.axes.draw_artist(a)
+            for text in herd_vel_texts.values():
+                text.axes.draw_artist(text)
             kk_text.axes.draw_artist(kk_text)
 
             # IMPORTANT: update the buffer
@@ -508,6 +563,18 @@ def animate_eval_trajs_multi_agent(p: CallbackProps):
             # Grab frame (ensure contiguous uint8 RGB)
             frame_rgba = np.asarray(fig.canvas.buffer_rgba(), dtype=np.uint8)
             frame_rgb = np.ascontiguousarray(frame_rgba[..., :3])
+
+            # If the frame dimensions are not divisible by 16, then pad until they are.
+            h, w, _ = frame_rgb.shape
+            h_pad = (16 - (h % 16)) % 16
+            w_pad = (16 - (w % 16)) % 16
+            if h_pad > 0 or w_pad > 0:
+                frame_rgb = np.pad(
+                    frame_rgb,
+                    ((0, h_pad), (0, w_pad), (0, 0)),
+                    mode="constant",
+                    constant_values=0,
+                )
 
             # writer.append_data(frame_rgb)
             writer.write_frame(frame_rgb)

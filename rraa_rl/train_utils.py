@@ -153,7 +153,7 @@ def hash_key(key: jnp.ndarray) -> jnp.uint32:
     return k[0] * jnp.uint32(0x9E3779B1) + k[1]
 
 
-def tree_where_dim0(mask, a, b):
+def tree_where_dim0(mask, a, b, which=jnp):
     """
     mask: (b,) boolean
     a, b: PyTrees with leading dim b

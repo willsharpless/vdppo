@@ -1,16 +1,22 @@
+import jax
 import jax.numpy as jnp
+import jax.random as jr
+import jax_dataclasses as jdc
 from attrs import define
+from jaxtyping import PRNGKeyArray
+from loguru import logger
 
 from rraa_rl.jax_types import BoolScalar
 from rraa_rl.src.env.general_task.env import (EnvCfg, EnvUsingBase, StateWithTemporalNode, StaticTemporalNodeMixin,
                                               StaticTemporalNodeMixinCfg)
-from rraa_rl.src.env.general_task.herd_base import HerdBase, HerdBaseCfg, HerdBasePlay, HerdBasePlayCfg
+from rraa_rl.src.env.general_task.herd_base import (HerdBase, HerdBaseCfg, HerdBasePlay, HerdBasePlayCfg, HerdingHerd,
+                                                    HerdingHerdCfg)
 
 
 @define(slots=False)
 class HerdOsCfg(EnvCfg, StaticTemporalNodeMixinCfg):
     specification: str = "F G herd_herded"
-    base: HerdBaseCfg = HerdBaseCfg()
+    base: HerdingHerdCfg = HerdBaseCfg()
 
 
 class HerdOs(StaticTemporalNodeMixin, EnvUsingBase):
@@ -31,7 +37,7 @@ class HerdOs(StaticTemporalNodeMixin, EnvUsingBase):
 
     def __init__(self, cfg: HerdOsCfg = HerdOsCfg()):
         self.cfg = cfg
-        base_env = HerdBase(cfg.base, should_term_fn=self.should_terminate)
+        base_env = HerdingHerd(cfg.base, should_term_fn=self.should_terminate)
         EnvUsingBase.__init__(self, cfg, self.specification, base_env)
         StaticTemporalNodeMixin.__init__(self, cfg)
         self.base = base_env
@@ -39,6 +45,21 @@ class HerdOs(StaticTemporalNodeMixin, EnvUsingBase):
     @staticmethod
     def create(cfg: HerdOsCfg) -> "HerdOs":
         return HerdOs(cfg)
+
+    def reset_batch(self, key: PRNGKeyArray, batch_size: int, init: bool = False) -> StateWithTemporalNode:
+        key_reset, key_steps = jr.split(key)
+        b_state = super().reset_batch(key, batch_size)
+
+        if init:
+            # Randomize the initial timestep.
+            with jdc.copy_and_mutate(b_state) as b_state_new:
+                # b_state_new_base: HerdingHerd.State = b_state_new.base
+                # b_state_new_base.steps = jr.randint(key_steps, (batch_size,), 0, self.base.cfg.trunc_steps)
+                b_state_new.base.steps = jr.randint(key_steps, (batch_size,), 0, self.base.cfg.trunc_steps)
+        else:
+            b_state_new = b_state
+
+        return b_state_new
 
     @property
     def specification(self):

@@ -1,4 +1,5 @@
 import copy
+import functools as ft
 from typing import Any, NamedTuple, Protocol, Self
 
 import jax
@@ -30,6 +31,13 @@ class EnvStep(NamedTuple):
 class BaseEnv:
     def __init__(self):
         self._obs_names = None
+        self.active_predicates: list[str] | None = None
+
+    def is_predicate_active(self, predicate_name: str) -> bool:
+        if self.active_predicates is None:
+            return True
+
+        return predicate_name in self.active_predicates
 
     def step(self, state: Any, action: jnp.ndarray):
         raise NotImplementedError("")
@@ -37,6 +45,13 @@ class BaseEnv:
     def reset(self, key: PRNGKeyArray) -> Any:
         raise NotImplementedError("")
 
+    @ft.partial(
+        jax.jit,
+        static_argnames=(
+            "self",
+            "batch_size",
+        ),
+    )
     def reset_batch(self, key: PRNGKeyArray, batch_size: int) -> Any:
         b_key = jr.split(key, batch_size)
         return jax.vmap(self.reset)(b_key)
@@ -82,7 +97,7 @@ class EnvCfg:
 class Env:
     def __init__(self, cfg: EnvCfg, specification: str):
         self.cfg = cfg
-        dag_builder, dag_root = to_dag(specification, dag_filename="dags/herd_os_dag")
+        dag_builder, dag_root = to_dag(specification, ir_filename="dags/herd_os_ir", dag_filename="dags/herd_os_dag")
         self.dag_nodes = dag_builder.nodes
         self.dag_root = dag_root
         self.pred_info = collect_predicate_info(self.dag_nodes, self.dag_root)
@@ -121,7 +136,7 @@ class Env:
     def reset(self, key: PRNGKeyArray) -> Any:
         raise NotImplementedError("")
 
-    def reset_batch(self, key: PRNGKeyArray, batch_size: int) -> Any:
+    def reset_batch(self, key: PRNGKeyArray, batch_size: int, init: bool = False) -> Any:
         b_key = jr.split(key, batch_size)
         return jax.vmap(self.reset)(b_key)
 
@@ -215,11 +230,10 @@ class Env:
         return temporal_node_idx_new
 
 
-
 @jdc.pytree_dataclass
 class StateWithTemporalNode:
     temporal_node_idx: int
-    base: BaseEnv
+    base: Any
 
 
 class EnvUsingBase(Env):
@@ -283,6 +297,7 @@ class StaticTemporalNodeMixinProtocol(Protocol):
     base: BaseEnv
     cfg: StaticTemporalNodeMixinCfg
     n_temporal_nodes: int
+    temporal_nodes: list[DAGId]
 
 
 class StaticTemporalNodeMixin:
@@ -295,6 +310,7 @@ class StaticTemporalNodeMixin:
 
         assert len(self.cfg.temporal_node_fracs) == len(self.temporal_nodes)
 
+    @ft.partial(jax.jit, static_argnames=("self",))
     def reset(self: StaticTemporalNodeMixinProtocol, key: PRNGKeyArray) -> StateWithTemporalNode:
         key_base, key_node = jr.split(key)
         base_state = self.base.reset(key_base)
@@ -306,7 +322,8 @@ class StaticTemporalNodeMixin:
         state = StateWithTemporalNode(temporal_node_idx=temporal_node_idx, base=base_state)
         return state
 
-    def reset_batch(self, key: PRNGKeyArray, batch_size: int) -> Any:
+    @ft.partial(jax.jit, static_argnames=("self", "batch_size"))
+    def reset_batch(self: StaticTemporalNodeMixinProtocol, key: PRNGKeyArray, batch_size: int) -> Any:
         # Instead of randomly sampling temporal nodes, we assign fixed fractions of the batch to each temporal node.
         base_state = self.base.reset_batch(key, batch_size)
 
@@ -320,7 +337,7 @@ class StaticTemporalNodeMixin:
         )
         return state
 
-    def get_eval_states(self, n_envs: int) -> StateWithTemporalNode:
+    def get_eval_states(self: StaticTemporalNodeMixinProtocol, n_envs: int) -> StateWithTemporalNode:
         # Assign envs evenly to each temporal node.
         n_envs_per_node = np.full((self.n_temporal_nodes,), n_envs // self.n_temporal_nodes)
         n_envs_per_node[0] = n_envs - n_envs_per_node[1:].sum()

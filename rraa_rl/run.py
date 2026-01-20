@@ -72,6 +72,8 @@ def get_random_noun(n_letters: int = 5) -> str:
 
     common_words = top_n_list("en", 5000)
     words = [w for w in common_words if len(w) == n_letters]
+    # Remove any words with non-alphabetic characters
+    words = [w for w in words if w.isalpha()]
     tagged = nltk.pos_tag(words)
     nouns = [w for w, tag in tagged if tag.startswith("NN")]
     return random.choice(nouns)
