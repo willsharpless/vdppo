@@ -4,7 +4,7 @@ from cyclopts import App
 from rraa_rl import herd_os_cbs
 from rraa_rl.run import Run
 from rraa_rl.src.env.general_task.env import Env
-from rraa_rl.src.env.general_task.herd_base import HerdBasePlay
+from rraa_rl.src.env.general_task.herd_base import HerdBaseCfg, HerdBasePlay
 from rraa_rl.src.env.general_task.herd_os import HerdOs, HerdOsPlay
 from rraa_rl.trainer import Trainer
 from rraa_rl.vd_mappo import VDMAPPOAgent
@@ -19,7 +19,18 @@ def get_env(env_name: str) -> Env:
         return HerdOsPlay()
 
     if env_name == "herdos":
-        return HerdOs()
+        # specification = "F G herd_herded && G !herder_oob"
+        specification = "(!herder_oob) U (G (herd_herded && !herder_oob) )"
+
+        base_cfg = HerdBaseCfg()
+        base_cfg.herd_zero = False
+        base_cfg.n_herd = 1
+        base_cfg.n_herders = 2
+        base_cfg.acc_maxs = [1.0, 2.0]
+        base_cfg.vel_maxs = [0.5, 1.0]
+
+        cfg = HerdOs.Cfg(specification=specification, base=base_cfg)
+        return HerdOs(cfg)
 
     raise ValueError(f"Unknown environment name: {env_name}")
 

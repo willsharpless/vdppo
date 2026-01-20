@@ -230,7 +230,7 @@ def animate_eval_trajs_single_agent(p: CallbackProps):
     temporal_node_count = np.array([np.sum(b_temporal_idx == ii) for ii in range(n_temporal_nodes)])
 
     figsize = np.array([4 * ncol, 3])
-    fig, axes = plt.subplots(1, ncol, figsize=figsize, dpi=200, layout=None)
+    fig, axes = plt.subplots(1, ncol, figsize=figsize, dpi=200, layout="none")
     if ncol == 1:
         axes = [axes]
 
@@ -367,7 +367,7 @@ def animate_eval_trajs_single_agent(p: CallbackProps):
 
 def animate_eval_trajs_multi_agent(p: CallbackProps):
     plots_dir = p.run.plots_dir
-    env = p.env
+    env: HerdOs = p.env
     cfg = env.base.cfg
 
     n_traj_anim = 8
@@ -385,16 +385,17 @@ def animate_eval_trajs_multi_agent(p: CallbackProps):
     nrow = n_traj_anim
 
     # Use facecolor to indicate the current temporal node.
-    colors_temporal_node = [f"C{ii}" for ii in range(n_temporal_nodes)]
+    colors_temporal_node = [f"C{ii}" for ii in range(n_temporal_nodes) if ii != 3]  # C3 is grey.
 
     # Use edgecolor to indicate alive vs dead.
     color_alive = to_rgba("C0", 0.0)
     color_dead = np.array(to_rgba("C0"))
 
     figsize = 0.9 * np.array([4 * ncol, 3 * nrow])
-    fig, axes = plt.subplots(nrow, ncol, figsize=figsize, dpi=150, squeeze=False, layout=None)
+    fig, axes = plt.subplots(nrow, ncol, figsize=figsize, dpi=150, squeeze=False, layout="none")
 
     agent_collections: dict[tuple[int, int], list[plt.Circle]] = {}
+    herds: dict[tuple[int, int], list[plt.Circle]] = {}
     for ii in range(n_traj_anim):
         for jj in range(n_temporal_nodes):
             ax = axes[ii, jj]
@@ -412,7 +413,15 @@ def animate_eval_trajs_multi_agent(p: CallbackProps):
                 circs.append(circ)
             agent_collections[(ii, jj)] = circs
 
+            circs = []
+            for herd_idx in range(env.cfg.base.n_herd):
+                circ = plt.Circle((0, 0), cfg.agent_radius, facecolor="C3", edgecolor="none")
+                ax.add_patch(circ)
+                circs.append(circ)
+            herds[(ii, jj)] = circs
+
     all_circs = [v for values_list in agent_collections.values() for v in values_list]
+    all_circs += [v for values_list in herds.values() for v in values_list]
 
     kk_text = axes[0, 0].text(
         0.02,
@@ -436,45 +445,6 @@ def animate_eval_trajs_multi_agent(p: CallbackProps):
 
     fig.canvas.draw()
     bg = fig.canvas.copy_from_bbox(fig.bbox)
-
-    # def init():
-    #     return all_circs + [kk_text]
-    #
-    # def update(kk: int):
-    #     kk_text.set_text(f"Step {kk: 3}")
-    #     for ii in range(n_traj_anim):
-    #         traj = bT_test_rollouts[ii]
-    #         (T,) = traj.shape
-    #         T_state: HerdOs.State = traj.state_now
-    #         T_herder_pos = T_state.base.herder_state[:, :, :2]
-    #
-    #         t_idx = min(kk, T - 1)
-    #
-    #         for jj in range(n_temporal_nodes):
-    #             circs = agent_collections[(ii, jj)]
-    #             for agent_idx, circ in enumerate(circs):
-    #                 pos = T_herder_pos[t_idx, agent_idx, :]
-    #                 circ.center = pos
-    #
-    #                 temporal_node_idx = T_state.temporal_node_idx[t_idx]
-    #                 circ.set_facecolor(colors_temporal_node[temporal_node_idx])
-    #
-    #                 if kk < T:
-    #                     circ.set_edgecolor(color_alive)
-    #                 else:
-    #                     circ.set_edgecolor(color_dead)
-    #
-    #     return all_circs + [kk_text]
-
-    # pbar = tqdm.tqdm(total=T_max, unit="frame", desc="Generating eval trajs animation")
-    #
-    # def on_progress(current_frame: int, total_frames: int):
-    #     n_done = current_frame + 1
-    #     pbar.total = total_frames
-    #     pbar.n = n_done
-    #     pbar.refresh()
-    #
-    # anim = FuncAnimation(fig, update, init_func=init, frames=T_max, blit=True)
 
     plot_dir = plots_dir / "eval_trajs_anim"
     plot_dir.mkdir(parents=True, exist_ok=True)
@@ -517,6 +487,11 @@ def animate_eval_trajs_multi_agent(p: CallbackProps):
                             circ.set_edgecolor(color_alive)
                         else:
                             circ.set_edgecolor(color_dead)
+
+                    circs = herds[(ii, jj)]
+                    for herd_idx, circ in enumerate(circs):
+                        pos = T_state.base.herd_state[t_idx, herd_idx, :2]
+                        circ.center = pos
 
             # draw only animated artists onto the restored background
             for a in all_circs:
@@ -604,6 +579,10 @@ def viz_collect_data(p: CallbackProps):
 
     # Only plot every 5_000 steps.
     if train_step % 5_000 != 0:
+        return
+
+    env = p.env
+    if env.n_agents > 1:
         return
 
     agent = p.agent

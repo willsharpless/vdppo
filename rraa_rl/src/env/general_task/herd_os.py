@@ -9,6 +9,7 @@ from rraa_rl.src.env.general_task.herd_base import HerdBase, HerdBaseCfg, HerdBa
 
 @define(slots=False)
 class HerdOsCfg(EnvCfg, StaticTemporalNodeMixinCfg):
+    specification: str = "F G herd_herded"
     base: HerdBaseCfg = HerdBaseCfg()
 
 
@@ -33,6 +34,7 @@ class HerdOs(StaticTemporalNodeMixin, EnvUsingBase):
         base_env = HerdBase(cfg.base, should_term_fn=self.should_terminate)
         EnvUsingBase.__init__(self, cfg, self.specification, base_env)
         StaticTemporalNodeMixin.__init__(self, cfg)
+        self.base = base_env
 
     @staticmethod
     def create(cfg: HerdOsCfg) -> "HerdOs":
@@ -40,8 +42,7 @@ class HerdOs(StaticTemporalNodeMixin, EnvUsingBase):
 
     @property
     def specification(self):
-        specification: str = "F G herd_herded"
-        return specification
+        return self.cfg.specification
 
     def should_terminate(self, predicates: dict[str, jnp.ndarray]) -> BoolScalar:
         eps = 0.1
