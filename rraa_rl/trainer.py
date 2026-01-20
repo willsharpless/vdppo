@@ -62,7 +62,7 @@ class Trainer:
         key_base = jr.PRNGKey(124521)
         key_base, key_collector, key_eval = jr.split(key_base, 3)
 
-        n_envs_train = 1024
+        n_envs_train = self.agent.cfg.n_envs_train
         n_envs_test = 128
 
         collector = Collector.create(

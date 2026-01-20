@@ -1,9 +1,5 @@
 import time
 
-import av
-
-av.logging.set_level(av.logging.DEBUG)
-
 import einops as ei
 import imageio.v2 as imageio
 import imageio.v3 as iio
@@ -426,7 +422,7 @@ def animate_eval_trajs_multi_agent(p: CallbackProps):
     color_dead = np.array(to_rgba("C0"))
 
     figsize = 0.9 * np.array([4 * ncol, 3 * nrow])
-    fig, axes = plt.subplots(nrow, ncol, figsize=figsize, dpi=150, squeeze=False, layout="none")
+    fig, axes = plt.subplots(nrow, ncol, figsize=figsize, dpi=80, squeeze=False, layout="none")
 
     agent_collections: dict[tuple[int, int], list[plt.Circle]] = {}
     herds: dict[tuple[int, int], list[plt.Circle]] = {}

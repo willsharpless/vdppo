@@ -12,6 +12,7 @@ def get_env(env_name: str) -> Env:
     if env_name == "herdos":
         # specification = "F G herd_herded && G !herder_oob"
         # fmt: off
+        # spec = "G(!herder_oob && !herd_herder_collide) && (F G (herd_herded) && F( herd_gate_1 )"
         # spec = "(!herder_oob && !herd_herder_collide) U (G (herd_herded && !herder_oob && !herd_herder_collide) ) && F( herd_gate_1 )"
         spec = "(!herder_oob && !herd_herder_collide) U ( herd_gate_1 && (( !herder_oob && !herd_herder_collide ) U G (herd_herded && !herder_oob && !herd_herder_collide) ) )"
         # fmt: on
@@ -19,6 +20,10 @@ def get_env(env_name: str) -> Env:
         base_cfg = HerdingHerdCfg()
         base_cfg.herd_vel = 0.4
         base_cfg.herd_vel_self = 0.05
+
+        # Multiply by 2.25 from original to align with sizes in real life. 10m in sim = 2.5m in real life.
+        base_cfg.agent_radius = 0.45
+        base_cfg.herded_radius = 2.25
 
         base_cfg.p_reset_center = 0.25
 

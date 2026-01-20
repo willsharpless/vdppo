@@ -15,7 +15,11 @@ def main(name: str | None = None, debug: bool = False, env_name: str = "HerdOsPl
     env = get_env(env_name)
 
     cfg = VDMAPPOAgent.Cfg()
+    cfg.n_epochs = 2
+    cfg.n_minibatches = 4
     cfg.entropy_coef = 1.5e-2
+    cfg.rollout_T = 30
+    cfg.n_envs_train = 4096
 
     agent = VDMAPPOAgent.create(seed, cfg, env)
 
@@ -23,7 +27,7 @@ def main(name: str | None = None, debug: bool = False, env_name: str = "HerdOsPl
         herd_os_cbs.animate_eval_trajs,
         herd_os_cbs.PlotRootTrajPreds.create(),
         herd_os_cbs.plot_eval_trajs,
-        herd_os_cbs.VizValues.create(),
+        # herd_os_cbs.VizValues.create(),
     ]
     # eval_cbs = [herd_os_cbs.plot_eval_trajs, VizValues.create()]
     # collect_cbs = [herd_os_cbs.viz_collect_data, herd_os_cbs.viz_obs_histogram]
