@@ -30,6 +30,8 @@ def get_env(env_name: str) -> Env:
         base_cfg.vel_maxs = [0.5, 1.0]
 
         cfg = HerdOs.Cfg(specification=specification, base=base_cfg)
+        cfg.eval_T = 256
+
         return HerdOs(cfg)
 
     raise ValueError(f"Unknown environment name: {env_name}")
