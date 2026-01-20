@@ -1,5 +1,9 @@
 import time
 
+import av
+
+av.logging.set_level(av.logging.DEBUG)
+
 import einops as ei
 import imageio.v2 as imageio
 import imageio.v3 as iio
@@ -11,6 +15,7 @@ import matplotlib.pyplot as plt
 import numpy as np
 import tqdm
 from flax import struct
+from loguru import logger
 from lovely_histogram import plot_histogram
 from matplotlib.animation import FFMpegWriter, FuncAnimation
 from matplotlib.collections import EllipseCollection
@@ -360,6 +365,19 @@ def animate_eval_trajs_single_agent(p: CallbackProps):
             fig.canvas.blit(fig.bbox)
             frame_rgba = np.asarray(fig.canvas.buffer_rgba(), dtype=np.uint8)
             frame_rgb = np.ascontiguousarray(frame_rgba[..., :3])
+
+            # If the frame dimensions are not divisible by 16, then pad until they are.
+            h, w, _ = frame_rgb.shape
+            h_pad = (16 - (h % 16)) % 16
+            w_pad = (16 - (w % 16)) % 16
+            if h_pad > 0 or w_pad > 0:
+                frame_rgb = np.pad(
+                    frame_rgb,
+                    ((0, h_pad), (0, w_pad), (0, 0)),
+                    mode="constant",
+                    constant_values=0,
+                )
+
             writer.append_data(frame_rgb)
 
     finally:
@@ -545,6 +563,18 @@ def animate_eval_trajs_multi_agent(p: CallbackProps):
             # Grab frame (ensure contiguous uint8 RGB)
             frame_rgba = np.asarray(fig.canvas.buffer_rgba(), dtype=np.uint8)
             frame_rgb = np.ascontiguousarray(frame_rgba[..., :3])
+
+            # If the frame dimensions are not divisible by 16, then pad until they are.
+            h, w, _ = frame_rgb.shape
+            h_pad = (16 - (h % 16)) % 16
+            w_pad = (16 - (w % 16)) % 16
+            if h_pad > 0 or w_pad > 0:
+                frame_rgb = np.pad(
+                    frame_rgb,
+                    ((0, h_pad), (0, w_pad), (0, 0)),
+                    mode="constant",
+                    constant_values=0,
+                )
 
             # writer.append_data(frame_rgb)
             writer.write_frame(frame_rgb)

@@ -17,7 +17,7 @@ def get_env(env_name: str) -> Env:
         # fmt: on
 
         base_cfg = HerdingHerdCfg()
-        base_cfg.herd_vel = 0.2
+        base_cfg.herd_vel = 0.4
         base_cfg.herd_vel_self = 0.05
 
         base_cfg.p_reset_center = 0.25

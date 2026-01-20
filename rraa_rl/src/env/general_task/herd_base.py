@@ -628,19 +628,25 @@ class HerdingHerd(HerdBase):
         p_reset_center = self.cfg.p_reset_center
         # p_reset_center = 0.5
         # With some prob, reset the herd within small circle, and herder agents on outside pointing inwards.
-        p_reset_herd = 0.25
-        p_reset_orig = 1.0 - p_reset_center - p_reset_herd
+        p_reset_herd = 0.2
+        p_reset_gate = 0.2
+        p_reset_orig = 1.0 - p_reset_center - p_reset_herd - p_reset_gate
 
-        key_orig, key_center, key_herding, key_which = jr.split(key, 4)
+        key_orig, key_center, key_herding, key_gate, key_which, key_which_gate = jr.split(key, 6)
+        key_gates = jr.split(key_gate, self.n_gates)
 
         herd_state_orig = super().reset(key_orig)
         herd_state_center = self.reset_center(key_center)
-        herd_state_herding, _ = self.reset_herding(key_herding)
+        herd_state_herding, _ = self.reset_herding(key_herding, center=self.herded_center)
+
+        herd_state_gates, _ = jax.vmap(self.reset_herding)(key_gates, self.gates)
+        which_gate = jr.randint(key_which_gate, shape=(), minval=0, maxval=self.n_gates)
+        herd_state_gate = jtu.tree_map(lambda x: x[which_gate], herd_state_gates)
 
         # reset_center = jr.bernoulli(key_do_center, p=p_reset_center)
-        which_reset = jr.categorical(key_which, jnp.array([p_reset_orig, p_reset_center, p_reset_herd]))
+        which_reset = jr.categorical(key_which, jnp.array([p_reset_orig, p_reset_center, p_reset_herd, p_reset_gate]))
 
-        herd_state_stack = tree_stack([herd_state_orig, herd_state_center, herd_state_herding])
+        herd_state_stack = tree_stack([herd_state_orig, herd_state_center, herd_state_herding, herd_state_gate])
         herd_state = jtu.tree_map(lambda x: x[which_reset], herd_state_stack)
 
         return herd_state
@@ -689,7 +695,7 @@ class HerdingHerd(HerdBase):
 
         return HerdBaseState(herd_state=herd_pos, herder_state=herder_state, steps=0)
 
-    def reset_herding(self, key: PRNGKeyArray):
+    def reset_herding(self, key: PRNGKeyArray, center):
         # Two herd agents initialized on opposite sides of a circle of varying radius.
         # All other herd agents initialized randomly inside the circle.
         # The center of the circle is close to the herding center.
@@ -719,7 +725,7 @@ class HerdingHerd(HerdBase):
 
         herd_pos_x = circle_center[0] + radius * radius_fracs * jnp.cos(angles)
         herd_pos_y = circle_center[1] + radius * radius_fracs * jnp.sin(angles)
-        herd_pos = self.herded_center + jnp.stack([herd_pos_x, herd_pos_y], axis=-1)
+        herd_pos = center + jnp.stack([herd_pos_x, herd_pos_y], axis=-1)
 
         herd_pos = jnp.clip(herd_pos, -cfg.halfsize[0] + cfg.agent_radius, cfg.halfsize[0] - cfg.agent_radius)
 
@@ -751,7 +757,7 @@ class HerdingHerd(HerdBase):
         )
         herder_pos_x = herder_radius * jnp.cos(herder_angles)
         herder_pos_y = herder_radius * jnp.sin(herder_angles)
-        herder_pos = self.herded_center + jnp.stack([herder_pos_x, herder_pos_y], axis=-1)
+        herder_pos = center + jnp.stack([herder_pos_x, herder_pos_y], axis=-1)
 
         herder_pos = jnp.clip(herder_pos, -cfg.halfsize[0] + cfg.agent_radius, cfg.halfsize[0] - cfg.agent_radius)
 
@@ -802,10 +808,11 @@ class HerdingHerd(HerdBase):
 
     def get_predicates_float(self, state: HerdBaseState):
         predicates = super().get_predicates_float(state)
-        return {
+        predicates = {
             "herd_herded": self.is_herd_herded_float(state),
             "herd_herder_collide": self.herd_herder_collide(state),
         } | predicates
+        return predicates
 
     def is_herd_herded_float(self, state: HerdBaseState):
         """All herd agents are fully within a circle in the center.
