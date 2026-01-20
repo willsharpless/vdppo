@@ -71,6 +71,8 @@ class HerdBase(BaseEnv):
     action: (n_herders, 2): int, {0, 1, 2} for each axis, where 0 = -accel, 1 = no accel, 2 = accel
     """
 
+    Cfg = HerdBaseCfg
+
     def __init__(self, cfg: HerdBaseCfg = HerdBaseCfg(), should_term_fn: ShouldTermFn = None):
         self.cfg = cfg
         assert len(cfg.acc_maxs) == len(cfg.vel_maxs) == cfg.n_herders
@@ -91,7 +93,7 @@ class HerdBase(BaseEnv):
 
     @property
     def n_agents(self) -> int:
-        return self.cfg.n_herd
+        return self.cfg.n_herders
 
     @property
     def value_lims(self):

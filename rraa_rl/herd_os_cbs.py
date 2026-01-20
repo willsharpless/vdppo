@@ -1,4 +1,7 @@
+import time
+
 import einops as ei
+import imageio.v2 as imageio
 import jax
 import jax.numpy as jnp
 import jax_dataclasses as jdc
@@ -13,8 +16,8 @@ from matplotlib.colors import CenteredNorm, to_rgba
 
 from rraa_rl.collector import RolloutOutput
 from rraa_rl.jax_utils import jax_vmap, rep_vmap
-from rraa_rl.src.env.general_task.herd_os import HerdOs
 from rraa_rl.src.env.general_task.env import AugObs
+from rraa_rl.src.env.general_task.herd_os import HerdOs
 from rraa_rl.src.rl.utils.utils import get_BuRd_smooth
 from rraa_rl.trainer import CallbackProps
 from rraa_rl.vd_mappo import PPOData, VDMAPPOAgent
@@ -129,6 +132,9 @@ def plot_eval_trajs(p: CallbackProps):
     plots_dir = p.run.plots_dir
     env = p.env
 
+    if env.n_agents > 1:
+        return
+
     temporal_values_dict = p.temporal_values_dict
 
     n_temporal_nodes = env.n_temporal_nodes
@@ -201,6 +207,14 @@ def plot_eval_trajs(p: CallbackProps):
 
 
 def animate_eval_trajs(p: CallbackProps):
+    env: HerdOs = p.env
+    if env.n_agents == 1:
+        animate_eval_trajs_single_agent(p)
+    else:
+        animate_eval_trajs_multi_agent(p)
+
+
+def animate_eval_trajs_single_agent(p: CallbackProps):
     plots_dir = p.run.plots_dir
     env = p.env
 
@@ -331,6 +345,177 @@ def animate_eval_trajs(p: CallbackProps):
 
     anim.save(anim_path, writer=writer, dpi=200, progress_callback=on_progress)
     plt.close(fig)
+
+
+def animate_eval_trajs_multi_agent(p: CallbackProps):
+    plots_dir = p.run.plots_dir
+    env = p.env
+    cfg = env.base.cfg
+
+    n_traj_anim = 8
+
+    n_temporal_nodes = env.n_temporal_nodes
+
+    bT_test_rollouts = p.bT_test_rollouts[:n_traj_anim]
+
+    bT_states: list[HerdOs.State] = [traj.state_now for traj in bT_test_rollouts]
+    b_temporal_idx = np.array([T_state.temporal_node_idx[0] for T_state in bT_states])
+
+    T_max = max(traj.shape[0] for traj in bT_test_rollouts)
+
+    ncol = n_temporal_nodes
+    nrow = n_traj_anim
+
+    # Use facecolor to indicate the current temporal node.
+    colors_temporal_node = [f"C{ii}" for ii in range(n_temporal_nodes)]
+
+    # Use edgecolor to indicate alive vs dead.
+    color_alive = to_rgba("C0", 0.0)
+    color_dead = np.array(to_rgba("C0"))
+
+    figsize = 0.9 * np.array([4 * ncol, 3 * nrow])
+    fig, axes = plt.subplots(nrow, ncol, figsize=figsize, dpi=150, squeeze=False)
+
+    agent_collections: dict[tuple[int, int], list[plt.Circle]] = {}
+    for ii in range(n_traj_anim):
+        for jj in range(n_temporal_nodes):
+            ax = axes[ii, jj]
+            env.base.setup_ax(ax)
+
+            node_idx = env.temporal_nodes[jj]
+            node = env.dag_nodes[node_idx]
+            node_name = type(node).__name__
+            ax.set_title(f"Node {jj} ({node_name})")
+
+            circs = []
+            for agent_idx in range(env.n_agents):
+                circ = plt.Circle((0, 0), cfg.agent_radius, facecolor="C1", edgecolor="none")
+                ax.add_patch(circ)
+                circs.append(circ)
+            agent_collections[(ii, jj)] = circs
+
+    all_circs = [v for values_list in agent_collections.values() for v in values_list]
+
+    kk_text = axes[0, 0].text(
+        0.02,
+        0.98,
+        "",
+        transform=axes[0, 0].transAxes,
+        verticalalignment="top",
+        horizontalalignment="left",
+        color="white",
+        fontsize=8,
+        bbox=dict(facecolor="black", alpha=0.5, pad=2),
+    )
+
+    # fig.canvas.draw()  # compute constrained layout once
+    # fig.set_layout_engine("none")  # freeze layout for animation
+    fig.tight_layout()
+
+    for circ in all_circs:
+        circ.set_animated(True)
+    kk_text.set_animated(True)
+
+    fig.canvas.draw()
+    bg = fig.canvas.copy_from_bbox(fig.bbox)
+
+    # def init():
+    #     return all_circs + [kk_text]
+    #
+    # def update(kk: int):
+    #     kk_text.set_text(f"Step {kk: 3}")
+    #     for ii in range(n_traj_anim):
+    #         traj = bT_test_rollouts[ii]
+    #         (T,) = traj.shape
+    #         T_state: HerdOs.State = traj.state_now
+    #         T_herder_pos = T_state.base.herder_state[:, :, :2]
+    #
+    #         t_idx = min(kk, T - 1)
+    #
+    #         for jj in range(n_temporal_nodes):
+    #             circs = agent_collections[(ii, jj)]
+    #             for agent_idx, circ in enumerate(circs):
+    #                 pos = T_herder_pos[t_idx, agent_idx, :]
+    #                 circ.center = pos
+    #
+    #                 temporal_node_idx = T_state.temporal_node_idx[t_idx]
+    #                 circ.set_facecolor(colors_temporal_node[temporal_node_idx])
+    #
+    #                 if kk < T:
+    #                     circ.set_edgecolor(color_alive)
+    #                 else:
+    #                     circ.set_edgecolor(color_dead)
+    #
+    #     return all_circs + [kk_text]
+
+    # pbar = tqdm.tqdm(total=T_max, unit="frame", desc="Generating eval trajs animation")
+    #
+    # def on_progress(current_frame: int, total_frames: int):
+    #     n_done = current_frame + 1
+    #     pbar.total = total_frames
+    #     pbar.n = n_done
+    #     pbar.refresh()
+    #
+    # anim = FuncAnimation(fig, update, init_func=init, frames=T_max, blit=True)
+
+    plot_dir = plots_dir / "eval_trajs_anim"
+    plot_dir.mkdir(parents=True, exist_ok=True)
+    anim_path = plot_dir / f"eval_trajs_step{p.train_step}.mp4"
+
+    writer = imageio.get_writer(
+        anim_path,
+        fps=30,
+        codec="libx264",
+        format="ffmpeg",
+        ffmpeg_params=["-preset", "ultrafast", "-crf", "23"],
+    )
+
+    pbar = tqdm.trange(T_max, unit="frame", desc="Generating eval trajs animation")
+    try:
+        for kk in pbar:
+            # restore background
+            fig.canvas.restore_region(bg)
+
+            # update artists (your existing update body, but do NOT return artists)
+            kk_text.set_text(f"Step {kk: 3}")
+            for ii in range(n_traj_anim):
+                traj = bT_test_rollouts[ii]
+                (T,) = traj.shape
+                T_state: HerdOs.State = traj.state_now
+                T_herder_pos = T_state.base.herder_state[:, :, :2]
+
+                t_idx = min(kk, T - 1)
+
+                for jj in range(n_temporal_nodes):
+                    circs = agent_collections[(ii, jj)]
+                    for agent_idx, circ in enumerate(circs):
+                        pos = T_herder_pos[t_idx, agent_idx, :]
+                        circ.center = pos
+
+                        temporal_node_idx = T_state.temporal_node_idx[t_idx]
+                        circ.set_facecolor(colors_temporal_node[temporal_node_idx])
+
+                        if kk < T:
+                            circ.set_edgecolor(color_alive)
+                        else:
+                            circ.set_edgecolor(color_dead)
+
+            # draw only animated artists onto the restored background
+            for a in all_circs:
+                a.axes.draw_artist(a)
+            kk_text.axes.draw_artist(kk_text)
+
+            # IMPORTANT: update the buffer
+            fig.canvas.blit(fig.bbox)
+
+            # Grab frame (ensure contiguous uint8 RGB)
+            frame_rgba = np.asarray(fig.canvas.buffer_rgba(), dtype=np.uint8)
+            frame_rgb = np.ascontiguousarray(frame_rgba[..., :3])
+
+            writer.append_data(frame_rgb)
+    finally:
+        writer.close()
+        plt.close(fig)
 
 
 class PlotRootTrajPreds(struct.PyTreeNode):
