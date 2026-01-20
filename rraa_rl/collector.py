@@ -113,6 +113,9 @@ class CollectorCfg:
     auto_reset: bool = True
     """False for evals to make it easier to track episode ends."""
 
+    ignore_trunc: bool = False
+    """If True, then remove all truncations from the collected data."""
+
 
 class Collector(struct.PyTreeNode):
     Cfg = CollectorCfg
@@ -239,6 +242,10 @@ class Collector(struct.PyTreeNode):
             if switch_fn is not None:
                 # Switch the temporal_node_idx based on some criteria. Possible use the value function.
                 b_step_result = jax.vmap(ft.partial(switch_fn, self.env))(b_key_switch, b_step_result)
+
+            if self.cfg.ignore_trunc:
+                logger.debug("Ignoring truncations in collected data.")
+                b_step_result = b_step_result._replace(trunc=jnp.zeros_like(b_step_result.trunc))
 
             # NOTE: Reset DOESN'T change the step, only the colstate.
             out = RolloutOutput.from_rollout(colstate, b_step_result, b_act, b_logprob)

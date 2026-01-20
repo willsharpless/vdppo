@@ -73,7 +73,7 @@ class Trainer:
         collector_eval = Collector.create(
             key=key_collector,
             env=env,
-            cfg=Collector.Cfg(n_envs=n_envs_test),
+            cfg=Collector.Cfg(n_envs=n_envs_test, auto_reset=False, ignore_trunc=True),
         )
 
         # Save configs.
