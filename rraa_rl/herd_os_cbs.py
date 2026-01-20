@@ -2,6 +2,8 @@ import time
 
 import einops as ei
 import imageio.v2 as imageio
+import imageio.v3 as iio
+import ipdb
 import jax
 import jax.numpy as jnp
 import jax_dataclasses as jdc
@@ -450,16 +452,18 @@ def animate_eval_trajs_multi_agent(p: CallbackProps):
     plot_dir.mkdir(parents=True, exist_ok=True)
     anim_path = plot_dir / f"eval_trajs_step{p.train_step}.mp4"
 
-    writer = imageio.get_writer(
-        anim_path,
-        fps=30,
-        codec="libx264",
-        format="ffmpeg",
-        ffmpeg_params=["-preset", "ultrafast", "-crf", "23"],
-    )
+    # writer = imageio.get_writer(
+    #     anim_path,
+    #     fps=30,
+    #     codec="libx264",
+    #     format="ffmpeg",
+    #     ffmpeg_params=["-preset", "ultrafast", "-crf", "23"],
+    # )
 
-    pbar = tqdm.trange(T_max, unit="frame", desc="Generating eval trajs animation")
-    try:
+    with iio.imopen(anim_path, "w", plugin="pyav") as writer:
+        writer.init_video_stream("libx264", fps=30)
+
+        pbar = tqdm.trange(T_max, unit="frame", desc="Generating eval trajs animation")
         for kk in pbar:
             # restore background
             fig.canvas.restore_region(bg)
@@ -505,10 +509,12 @@ def animate_eval_trajs_multi_agent(p: CallbackProps):
             frame_rgba = np.asarray(fig.canvas.buffer_rgba(), dtype=np.uint8)
             frame_rgb = np.ascontiguousarray(frame_rgba[..., :3])
 
-            writer.append_data(frame_rgb)
-    finally:
-        writer.close()
-        plt.close(fig)
+            # writer.append_data(frame_rgb)
+            writer.write_frame(frame_rgb)
+
+    # finally:
+    #     writer.close()
+    plt.close(fig)
 
 
 class PlotRootTrajPreds(struct.PyTreeNode):
