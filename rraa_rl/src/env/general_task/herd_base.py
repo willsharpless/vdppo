@@ -148,14 +148,14 @@ class HerdBase(BaseEnv):
         def get_weighted_dist(ii: int, herd_pos_new: jnp.ndarray):
             # Compute the minimum distance to the other herd agents.
 
+            # Keep the softmin error <= 0.05 * halfwidth. error <= temperature * log(n)  =>  temperature = error / log(n)
+            temperature = 0.05 * min(self.cfg.halfsize) / jnp.log(max(self.cfg.n_herd, self.cfg.n_herders, 4))
+
             n_herd_dist = jnp.linalg.norm(n_herd_pos - herd_pos_new, axis=-1)
             # Ignore self-distance
             n_herd_dist = n_herd_dist.at[ii].set(jnp.inf)
-            herd_softmin = softminimum(n_herd_dist)
+            herd_softmin = softminimum(n_herd_dist, temperature=temperature)
             herd_min = jnp.min(n_herd_dist)
-
-            # Keep the softmin error <= 0.05 * halfwidth. error <= temperature * log(n)  =>  temperature = error / log(n)
-            temperature = 0.05 * min(self.cfg.halfsize) / jnp.log(max(self.cfg.n_herd, self.cfg.n_herders, 4))
 
             # Compute the minimum distance to the herders.
             # (n_herd, 1, 2) - (1, n_herders, 2) -> (n_herd, n_herders, 2) -> (n_herd, n_herders)
@@ -174,12 +174,6 @@ class HerdBase(BaseEnv):
             coef = 1 + 2 * jnp.tanh(herd_wall_min / wall_dist_thresh * 2)
             herd_wall_softmin = coef * herd_wall_softmin
 
-            herd_max_dist = 15 * self.cfg.agent_radius
-            herder_max_dist = 15 * self.cfg.agent_radius
-            wall_max_dist = 15 * self.cfg.agent_radius
-            dist_thresh = jnp.array([herd_max_dist, herder_max_dist, wall_max_dist])
-            apply_action_herd = jnp.any(jnp.array([herd_min, herder_min, herd_wall_min]) <= dist_thresh)
-
             w_herd = 0.1
             w_herder = 2.0
             w_wall = 1.5
@@ -188,7 +182,7 @@ class HerdBase(BaseEnv):
             # Higher weight => divide by larger number => is minimum more often.
             weighted_dist = softminimum(vals / weights, temperature=temperature)
             closest = jnp.argmin(vals / weights)
-            return weighted_dist, apply_action_herd, closest
+            return weighted_dist, closest, herder_min
 
         def get_vel_single(ii: int):
             herd_pos = n_herd_pos[ii]
@@ -198,16 +192,24 @@ class HerdBase(BaseEnv):
             vel_test = self.cfg.herd_vel * jnp.stack([jnp.cos(angles), jnp.sin(angles)], axis=-1)  # (num_actions, 2)
             herd_pos_new = herd_pos + vel_test * self.cfg.dt  # (num_actions, 2)
 
-            _, apply_action, closest_idx = get_weighted_dist(ii, herd_pos)
+            _, closest_idx, herder_min_dist = get_weighted_dist(ii, herd_pos)
             weighted_dists, _, _ = jax.vmap(ft.partial(get_weighted_dist, ii))(herd_pos_new)  # (num_actions,)
             # Select the action that maximizes the weighted distance.
             best_idx = jnp.argmax(weighted_dists)
             best_vel = vel_test[best_idx]
-            best_vel = best_vel * jnp.where(apply_action, 1.0, 0.0)
+
+            # As the herder moves away, the herd slows down.
+            eff_range = 4.0
+            sigma = eff_range / 2
+            free_range = 4 * self.cfg.agent_radius
+            tmp = jnp.maximum(herder_min_dist - free_range, 0.0)
+            # Use Gaussian kernel.
+            herder_vel_coef = jnp.exp(-0.5 * (tmp / sigma) ** 2)
 
             # If the closest thing is the herd, then move slower than if the closest is a herder.
             closest_is_herd = closest_idx == 0
-            best_vel = jnp.where(closest_is_herd, self.cfg.herd_vel_self / self.cfg.herd_vel, 1.0) * best_vel
+            vel_coef = jnp.where(closest_is_herd, self.cfg.herd_vel_self / self.cfg.herd_vel, herder_vel_coef)
+            best_vel = vel_coef * best_vel
 
             return best_vel
 
