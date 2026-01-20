@@ -214,9 +214,6 @@ class Env:
 
         return temporal_node_idx_new
 
-    @staticmethod
-    def create(cfg: EnvCfg):
-        pass
 
 
 @jdc.pytree_dataclass

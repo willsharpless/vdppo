@@ -9,10 +9,7 @@ from rraa_rl.src.env.general_task.herd_base import HerdBase, HerdBaseCfg, HerdBa
 
 @define(slots=False)
 class HerdOsCfg(EnvCfg, StaticTemporalNodeMixinCfg):
-    # specification: str = "F herder_c1 && F herder_c2"
-    specification: str = "F herder_c1 && F herder_c2 && G(!herder_oob) && G(!herder_collide)"
-
-    base: HerdBasePlayCfg = HerdBasePlayCfg()
+    base: HerdBaseCfg = HerdBaseCfg()
 
 
 class HerdOs(StaticTemporalNodeMixin, EnvUsingBase):
@@ -33,13 +30,47 @@ class HerdOs(StaticTemporalNodeMixin, EnvUsingBase):
 
     def __init__(self, cfg: HerdOsCfg = HerdOsCfg()):
         self.cfg = cfg
-        base_env = HerdBasePlay(cfg.base, should_term_fn=self.should_terminate)
+        base_env = HerdBase(cfg.base, should_term_fn=self.should_terminate)
         EnvUsingBase.__init__(self, cfg, self.specification, base_env)
         StaticTemporalNodeMixin.__init__(self, cfg)
 
     @staticmethod
     def create(cfg: HerdOsCfg) -> "HerdOs":
         return HerdOs(cfg)
+
+    @property
+    def specification(self):
+        specification: str = "F G herd_herded"
+        return specification
+
+    def should_terminate(self, predicates: dict[str, jnp.ndarray]) -> BoolScalar:
+        eps = 0.1
+
+        # Terminate when leaving the allowed area.
+        is_oob = predicates["herder_oob"] > eps
+        should_term = is_oob
+
+        return should_term
+
+
+@define(slots=False)
+class HerdOsPlayCfg(EnvCfg, StaticTemporalNodeMixinCfg):
+    specification: str = "F herder_c1 && F herder_c2 && G(!herder_oob) && G(!herder_collide)"
+
+    base: HerdBasePlayCfg = HerdBasePlayCfg()
+
+
+class HerdOsPlay(StaticTemporalNodeMixin, EnvUsingBase):
+    """HerdOs but for playing around."""
+
+    Cfg = HerdOsCfg
+    State = StateWithTemporalNode
+
+    def __init__(self, cfg: HerdOsPlayCfg = HerdOsPlayCfg()):
+        self.cfg = cfg
+        base_env = HerdBasePlay(cfg.base, should_term_fn=self.should_terminate)
+        EnvUsingBase.__init__(self, cfg, self.specification, base_env)
+        StaticTemporalNodeMixin.__init__(self, cfg)
 
     @property
     def specification(self):

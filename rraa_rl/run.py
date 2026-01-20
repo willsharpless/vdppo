@@ -17,7 +17,7 @@ class Run:
     name: str
     folder_suffix: str
     env_name: str
-    run_dir: pathlib.Path
+    run_dir_: pathlib.Path
 
     @property
     def wandb_name(self):
@@ -45,8 +45,13 @@ class Run:
             name=name,
             folder_suffix=folder_suffix,
             env_name=env_name,
-            run_dir=run_dir,
+            run_dir_=run_dir,
         )
+
+    @property
+    def run_dir(self) -> pathlib.Path:
+        self.run_dir_.mkdir(parents=True, exist_ok=True)
+        return self.run_dir_
 
     @property
     def plots_dir(self) -> pathlib.Path:

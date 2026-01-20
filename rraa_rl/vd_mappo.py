@@ -22,13 +22,13 @@ from typing_extensions import Self
 from valtr.reachability import (DAGAvoid, DAGConst, DAGGUMinN, DAGGUSingle, DAGId, DAGMaxN, DAGMinN, DAGNegate,
                                 DAGReach, DAGReachAvoid, DAGVar)
 
+from rraa_rl.cfg_utils import Cfg
 from rraa_rl.collector import Collector, RolloutOutput
 from rraa_rl.distribution import tfd
 from rraa_rl.gae import BellmanGUSingle, BellmanMax, BellmanMaxMin, BellmanMin, gae_generalized
 from rraa_rl.jax_types import FloatScalar, bFloat
 from rraa_rl.nn_modules import BaseObsOnly, BothObs, MAMultiDiscretePolicy, VDValue
-from rraa_rl.src.env.general_task.env import Env, EnvStep
-from rraa_rl.src.env.general_task.herd_os import HerdOs
+from rraa_rl.src.env.general_task.env import Env, EnvStep, StateWithTemporalNode
 from rraa_rl.train_state import ModuleDict, Params, TrainState
 from rraa_rl.train_utils import compute_norm_and_clip, has_any_nan_or_inf, tree_where
 
@@ -54,7 +54,7 @@ class PPOData:
 
 @Parameter("*", group="AgentConfig")
 @define
-class VDMAPPOAgentCfg:
+class VDMAPPOAgentCfg(Cfg):
     actor_lr: float = 1e-3
     critic_lr: float = 1e-3
     max_grad_norm: float = 0.5
@@ -450,7 +450,7 @@ class VDMAPPOAgent:
     def update(self, Tb_rollout: RolloutOutput, key: PRNGKeyArray) -> tuple[Self, dict]:
         # Assumption: temporal_node_idx is ascending in the batch dimension.
         # Move the temporal node information into the static field, since our update function depends on it.
-        Tb_state_now: HerdOs.State = Tb_rollout.state_now
+        Tb_state_now: StateWithTemporalNode = Tb_rollout.state_now
         b_temporal_node_idx = jax.device_get(Tb_state_now.temporal_node_idx[0])
         # Count how many of each temporal node we have in the batch.
         temporal_node_alloc = []
@@ -738,11 +738,11 @@ class VDMAPPOAgent:
         t_reach_val = jnp.stack(t_reach_val, axis=-1)
         return t_reach_val
 
-    def should_truncate(self, env: HerdOs, b_key: PRNGKeyArray, b_step: EnvStep) -> EnvStep:
+    def should_truncate(self, env: Env, b_key: PRNGKeyArray, b_step: EnvStep) -> EnvStep:
         """For all reach or reach-avoid nodes, truncate if we reach the goal."""
         batch_size = len(b_step.term)
         bt_reach_val = jax.vmap(self.get_t_reach_val)(b_step.obs, b_step.predicates)
-        b_state: HerdOs.State = b_step.envstate
+        b_state: StateWithTemporalNode = b_step.envstate
         b_temporal_node_idx = b_state.temporal_node_idx
         assert b_temporal_node_idx.shape == (batch_size,)
 
@@ -754,12 +754,12 @@ class VDMAPPOAgent:
         b_step = b_step._replace(trunc=b_trunc | b_step.trunc)
         return b_step
 
-    def temporal_switch_fn(self, env: HerdOs, key: PRNGKeyArray, step: EnvStep):
+    def temporal_switch_fn(self, env: Env, key: PRNGKeyArray, step: EnvStep):
         if len(env.temporal_nodes) == 1:
             # No need to switch if only one temporal node.
             return step
 
-        state_next: HerdOs.State = step.envstate
+        state_next: StateWithTemporalNode = step.envstate
         temporal_node_idx = state_next.temporal_node_idx
         predicates_next = step.predicates
         obs_next = step.obs

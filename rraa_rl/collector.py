@@ -1,7 +1,6 @@
 import functools as ft
 # from typing import Any, Callable, Protocol, Self, Tuple
 from typing import Any, Callable, Protocol, Tuple
-from typing_extensions import Self
 
 import einops as ei
 import jax
@@ -15,10 +14,10 @@ from attrs import define
 from flax import struct
 from jaxtyping import Bool, Float, PRNGKeyArray
 from loguru import logger
+from typing_extensions import Self
 
 from rraa_rl.jax_utils import switch01, tree_where_dim0
-from rraa_rl.src.env.general_task.env import EnvStep
-from rraa_rl.src.env.general_task.herd_os import HerdOs
+from rraa_rl.src.env.general_task.env import Env, EnvStep
 
 
 class SampleActionFn(Protocol):
@@ -30,19 +29,19 @@ class GetActionFn(Protocol):
 
 
 class BatchResetFn(Protocol):
-    def __call__(self, env: HerdOs, b_key: PRNGKeyArray, b_state: Any) -> Any: ...
+    def __call__(self, env: Env, b_key: PRNGKeyArray, b_state: Any) -> Any: ...
 
 
 class TruncateFn(Protocol):
     """Function that can be passed to the collector to truncate episodes early."""
 
-    def __call__(self, env: HerdOs, b_key: PRNGKeyArray, b_step: EnvStep) -> EnvStep: ...
+    def __call__(self, env: Env, b_key: PRNGKeyArray, b_step: EnvStep) -> EnvStep: ...
 
 
 class SwitchFn(Protocol):
     """Function that can be passed to the collector to modify the temporal_node_idx."""
 
-    def __call__(self, env: HerdOs, key: PRNGKeyArray, step: EnvStep) -> EnvStep: ...
+    def __call__(self, env: Env, key: PRNGKeyArray, step: EnvStep) -> EnvStep: ...
 
 
 @jdc.pytree_dataclass
@@ -121,11 +120,11 @@ class Collector(struct.PyTreeNode):
     collect_idx: int
     key: PRNGKeyArray
     collect_state: CollectorState
-    env: HerdOs = struct.field(pytree_node=False)
+    env: Env = struct.field(pytree_node=False)
     cfg: CollectorCfg = struct.field(pytree_node=False)
 
     @classmethod
-    def create(cls, key: PRNGKeyArray, env: HerdOs, cfg: CollectorCfg):
+    def create(cls, key: PRNGKeyArray, env: Env, cfg: CollectorCfg):
         key, key_init = jr.split(key)
         b_state = env.reset_batch(key_init, cfg.n_envs)
         b_obs = jax.vmap(env.get_obs)(b_state)
@@ -271,7 +270,7 @@ class Collector(struct.PyTreeNode):
         return self_new, Tb_rollout, collect_info
 
 
-def _default_reset_fn(env: HerdOs, b_key: PRNGKeyArray, b_state: Any) -> Any:
+def _default_reset_fn(env: Env, b_key: PRNGKeyArray, b_state: Any) -> Any:
     batch_size = len(b_key)
     return env.reset_batch(b_key[0], batch_size)
 

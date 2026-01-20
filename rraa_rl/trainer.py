@@ -5,14 +5,16 @@ import jax
 import jax.random as jr
 import numpy as np
 import tqdm
+import yaml
 from attrs import define
+from loguru import logger
 
 import wandb
 from rraa_rl.collector import Collector, RolloutOutput, extract_info_from_rollout
-from rraa_rl.rollout_temporal_analysis import evaluate_ltl_finite, evaluate_triggers
+from rraa_rl.rollout_temporal_analysis import evaluate_ltl_finite
 from rraa_rl.rollout_utils import extract_rollouts_eval
 from rraa_rl.run import Run
-from rraa_rl.src.env.general_task.herd_os import HerdOs
+from rraa_rl.src.env.general_task.env import Env
 from rraa_rl.vd_mappo import VDMAPPOAgent
 
 
@@ -50,7 +52,7 @@ class Trainer:
     def train(
         self,
         run: Run,
-        env: HerdOs,
+        env: Env,
         eval_cbs: list[Callback] = None,
         collect_cbs: list[Callback] = None,
         debug: bool = False,
@@ -73,6 +75,16 @@ class Trainer:
             env=env,
             cfg=Collector.Cfg(n_envs=n_envs_test),
         )
+
+        # Save configs.
+        cfg_to_save = {
+            "agent": self.agent.cfg.asdict(),
+        }
+        # Save as yaml.
+        yaml_path = run.run_dir / "config.yaml"
+        with open(yaml_path, "w") as f:
+            yaml.dump(cfg_to_save, f)
+        logger.success("Saved config to {}".format(yaml_path))
 
         n_train_steps = 100_000
 
