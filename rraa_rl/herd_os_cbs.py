@@ -641,6 +641,7 @@ class PlotRootTrajPreds(struct.PyTreeNode):
         plot_dir.mkdir(parents=True, exist_ok=True)
         fig_path = plot_dir / f"root_traj_preds_step{p.train_step}.jpg"
         fig.savefig(fig_path, bbox_inches="tight", dpi=500)
+        plt.close(fig)
 
 
 def viz_collect_data(p: CallbackProps):
