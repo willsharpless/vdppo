@@ -15,7 +15,7 @@ def get_env(env_name: str) -> Env:
         # spec = "G(!herder_oob && !herd_herder_collide) && (F G (herd_herded) && F( herd_gate_1 )"
         # spec = "(!herder_oob && !herd_herder_collide) U (G (herd_herded && !herder_oob && !herd_herder_collide) ) && F( herd_gate_1 )"
         # spec = "(!herder_oob && !herd_herder_collide) U ( herd_gate_1 && (( !herder_oob && !herd_herder_collide ) U G (herd_herded && !herder_oob && !herd_herder_collide) ) )"
-        spec = "(!is_herder_unsafe) U ( herd_gate_0 && (( !is_herder_unsafe ) U ( herd_gate_1 && (( !is_herder_unsafe ) U G (herd_herded && !is_herder_unsafe) ) ) ) )"
+        spec = "(!herder_unsafe) U ( herd_gate_0 && (( !herder_unsafe ) U ( herd_gate_1 && (( !herder_unsafe ) U G (herd_herded && !herder_unsafe) ) ) ) )"
         # fmt: on
 
         base_cfg = HerdingHerdCfg()

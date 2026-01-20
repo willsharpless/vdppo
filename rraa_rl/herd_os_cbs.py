@@ -415,7 +415,7 @@ def animate_eval_trajs_multi_agent(p: CallbackProps):
     nrow = n_temporal_nodes
 
     # Use facecolor to indicate the current temporal node.
-    colors_temporal_node = [f"C{ii}" for ii in range(n_temporal_nodes) if ii != 3]  # C3 is grey.
+    colors_temporal_node = ["C0", "C1", "C2", "C4", "C5", "C6"]  # C3 is grey.
 
     # Use edgecolor to indicate alive vs dead.
     color_alive = to_rgba("C0", 0.0)
