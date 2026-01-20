@@ -8,9 +8,11 @@ from rraa_rl.src.env.general_task.delivery_base import DeliveryBaseCfg, Delivery
 from rraa_rl.src.env.general_task.delivery import Delivery, DeliveryPlay
 from rraa_rl.trainer import Trainer
 from rraa_rl.vd_mappo import VDMAPPOAgent
+import os 
 
 app = App()
 
+os.environ["CUDA_VISIBLE_DEVICES"] = "1"
 
 def get_env(env_name: str) -> Env:
     env_name = env_name.lower()
@@ -21,11 +23,12 @@ def get_env(env_name: str) -> Env:
     if env_name == "delivery":
         # specification = "F G herd_herded && G !herder_oob"
         # specification = "(!herder_oob) U (G (herd_herded && !herder_oob) )"
-        # specification = "F target0 && F target1 && G(!obstacles)"
-        # specification = "F target0"
-        specification = "F herder_c1"
+        specification = "F target0 && F target1 && G(!obstacles) && G(!oob)"
+        # specification = "F target0 && F target1"
+        # specification = "F herder_c1"
         # specification = "F target0 && G !obstacles"
 
+        # 2 ag by default
         base_cfg = DeliveryBaseCfg()
 
         # 1 agent test

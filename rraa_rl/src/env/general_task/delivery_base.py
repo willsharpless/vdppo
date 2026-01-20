@@ -40,14 +40,14 @@ class DeliveryBaseCfg:
     herd_vel: float = 0.2
     dt: float = 0.2
 
-    # n_herders: int = 2
-    # n_herd: int = 2
-    # acc_maxs: list[float] = [1.0, 2.0]
-    # vel_maxs: list[float] = [0.5, 1.0]
-    n_herders: int = 1
-    n_herd: int = 1
-    acc_maxs: list[float] = [1.0]
-    vel_maxs: list[float] = [0.5]
+    n_herders: int = 2
+    n_herd: int = 2
+    acc_maxs: list[float] = [2.0, 2.0]
+    vel_maxs: list[float] = [1.0, 1.0]
+    # n_herders: int = 1
+    # n_herd: int = 1
+    # acc_maxs: list[float] = [1.0]
+    # vel_maxs: list[float] = [0.5]
     # n_herders: int = 3
     # n_herd: int = 3
     # acc_maxs: list[float] = [2.0, 2.0, 1.0]
@@ -68,17 +68,17 @@ class DeliveryBaseCfg:
         [-2.0, 0.0],
         [3.0, 1.0]
     ]
-    radiuses: list[float] = [0.2, 0.2]
+    radiuses: list[float] = [0.5, 0.5]
 
     obstacle_centers: list[list[float]] = [
-        [-2.0, 2.0],
-        [-1.8, -3.0],
-        [0.6, -0.8],
+        [-2.5, 2.2],
+        [-1.0, -3.0],
+        [0.8, -0.8],
         [0.3, 0.1],
-        [1.6, 2.5],
+        [2.75, 2.5],
     ]
-    obstacle_radiuses: list[float] = [0.75, 0.5, 0.6, 0.1, 0.5]
-    obstacle_lw_ratios: list[float] = [1.0, 3.0, 0.8, 0.2, 0.7]
+    obstacle_radiuses: list[float] = [1.0, 0.9, 0.9, 0.8, 1.0]
+    obstacle_lw_ratios: list[float] = [1.0, 3.5, 3., 0.9, 0.7]
     obstacle_shape_norm: float = float("inf")
 
 
@@ -288,7 +288,7 @@ class DeliveryBase(BaseEnv):
 
     def is_herder_in_obstacles(self, state: DeliveryBaseState, which=jnp):
         herder_pos = state.herder_state[..., :, 0:2] 
-        # TODO subselect for herders (dont care abt herded)
+        
         obst_centers = which.array(self.cfg.obstacle_centers)
         obst_radii = which.array(self.cfg.obstacle_radiuses)
         obstacle_lw_ratios = which.array(self.cfg.obstacle_lw_ratios)
@@ -326,8 +326,8 @@ class DeliveryBase(BaseEnv):
         predicates = {
             "collide": self.is_herder_collide(state),
             "oob": self.is_herder_oob(state),
-            "herd_herded": self.is_herd_herded(state),
-            # "obstacles": self.is_herder_in_obstacles(state),
+            # "herd_herded": self.is_herd_herded(state),
+            "obstacles": self.is_herder_in_obstacles(state),
             "target0": self.is_herder_in_target(state, center=self.cfg.centers[0], radius=self.cfg.radiuses[0]),
             "target1": self.is_herder_in_target(state, center=self.cfg.centers[1], radius=self.cfg.radiuses[1]),
         }
@@ -358,8 +358,9 @@ class DeliveryBase(BaseEnv):
         return pred
 
     def get_predicates_float(self, state: DeliveryBaseState):
-        pred_herder_circs = self.pred_herder_circs(state)
-        return {"herder_c1": pred_herder_circs[0], "herder_c2": pred_herder_circs[1]}
+        # pred_herder_circs = self.pred_herder_circs(state)
+        # return {"herder_c1": pred_herder_circs[0], "herder_c2": pred_herder_circs[1]}
+        return {}
 
     def get_predicates(self, state: DeliveryBaseState):
         predicates_bool = self.get_predicates_bool(state)
@@ -476,6 +477,46 @@ class DeliveryBase(BaseEnv):
         obs, _ = self.get_obs_and_names(state)
         return obs
 
+    def reset_no_obst(self, key: PRNGKeyArray, herd_pos, maxpos_per_ag: jnp.ndarray, minpos_per_ag: jnp.ndarray):
+        n_herd = self.cfg.n_herd
+        n_herders = self.cfg.n_herders
+        valid_pos = jnp.zeros((n_herders, 2))
+
+        def sample_valid_for_ag(key, ag_ix):
+
+            def sample_valid_position(key):
+                pos_try = jr.uniform(key, shape=(1, 2), minval=minpos_per_ag, maxval=maxpos_per_ag)
+                pos_try_doubled = jnp.concatenate([pos_try, pos_try], axis=0)
+                valid_vel = jnp.zeros_like(pos_try_doubled)
+                herder_state_try = jnp.concatenate([pos_try_doubled, valid_vel], axis=-1)
+                state_try = DeliveryBaseState(herd_state=herd_pos, herder_state=herder_state_try, steps=0)
+                is_not_valid = self.is_herder_in_obstacles(state_try)
+                return ~is_not_valid, pos_try
+
+            def sample_until_valid(carry):
+                key, is_valid, pos = carry
+                key, key_new = jax.random.split(key)
+                is_valid_new, pos_new = sample_valid_position(key_new)
+                pos = jnp.where(is_valid, pos, pos_new)
+                is_valid = is_valid | is_valid_new
+                return (key, is_valid, pos)
+
+            init_carry = (key, False, jnp.zeros((1, 2)))
+
+            key, _, valid_pos_ag = jax.lax.while_loop(
+                lambda carry: ~carry[1],
+                sample_until_valid,
+                init_carry
+            )
+
+            return valid_pos_ag
+
+        keys = jr.split(key, n_herders)
+        agent_indices = jnp.arange(n_herders)
+        valid_pos = jax.vmap(sample_valid_for_ag)(keys, agent_indices)
+
+        return valid_pos.squeeze(1)
+
     def reset(self, key: PRNGKeyArray):
         n_herd = self.cfg.n_herd
         n_herders = self.cfg.n_herders
@@ -491,20 +532,21 @@ class DeliveryBase(BaseEnv):
 
         # Uniformly sample herder positions and velocities.
         # (n_herders, 4)
-        maxstate = np.zeros((n_herders, 4))
-        maxstate[:, 0] = halfsize_x - self.cfg.agent_radius
-        maxstate[:, 1] = halfsize_y - self.cfg.agent_radius
-        maxstate[:, 2] = np.array(self.cfg.vel_maxs)
-        maxstate[:, 3] = np.array(self.cfg.vel_maxs)
+        maxpos_per_ag = np.zeros((1, 2))
+        maxpos_per_ag[:, 0] = halfsize_x - self.cfg.agent_radius
+        maxpos_per_ag[:, 1] = halfsize_y - self.cfg.agent_radius
+        maxvel = np.zeros((n_herders, 2))
+        maxvel[:, 0] = np.array(self.cfg.vel_maxs)
+        maxvel[:, 1] = np.array(self.cfg.vel_maxs)
 
         if VEL_ZERO:
-            maxstate[:, 2] = 0.0
-            maxstate[:, 3] = 0.0
+            maxvel[:, 0] = 0.0
+            maxvel[:, 1] = 0.0
 
-        minstate = -maxstate
-
-        herder_state = jr.uniform(key_herders, shape=(n_herders, 4), minval=minstate, maxval=maxstate)
-
+        herder_pos_valid = self.reset_no_obst(key_herders, herd_pos, maxpos_per_ag=maxpos_per_ag, minpos_per_ag=-maxpos_per_ag)
+        herder_vel = jr.uniform(key_herders, shape=(n_herders, 2), minval=-maxvel, maxval=maxvel)
+        herder_state = jnp.concatenate([herder_pos_valid, herder_vel], axis=-1)
+        
         return DeliveryBaseState(herd_state=herd_pos, herder_state=herder_state, steps=0)
 
     @property
