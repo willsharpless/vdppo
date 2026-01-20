@@ -22,8 +22,12 @@ def get_env(env_name: str) -> Env:
         base_cfg.herd_vel_self = 0.05
 
         # Multiply by 2.25 from original to align with sizes in real life. 10m in sim = 2.5m in real life.
-        base_cfg.agent_radius = 0.45
-        base_cfg.herded_radius = 2.25
+        # base_cfg.agent_radius = 0.45
+        base_cfg.agent_radius = 0.41
+
+        # base_cfg.herded_radius = 2.25
+        # base_cfg.herded_radius = 2.0
+        base_cfg.herded_radius = 1.8
 
         base_cfg.p_reset_center = 0.25
 

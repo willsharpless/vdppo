@@ -615,8 +615,14 @@ class HerdingHerd(HerdBase):
         self.cfg = cfg
 
         halfsize = min(cfg.halfsize)
-        self.herded_center = np.array([0.4 * halfsize, 0.05 * halfsize])
-        self.gates = np.array([[-0.6 * halfsize, 0.4 * halfsize], [-0.3 * halfsize, -0.7 * halfsize]])
+        self.herded_center = np.array([0.56 * halfsize, -0.56 * halfsize])
+        self.gates = np.array([[-0.3 * halfsize, 0.5 * halfsize], [0.3 * halfsize, 0.5 * halfsize]])
+
+        # Have a vertical wall, with a gap.
+        self.wall_x = 0.0
+        self.wall_thick_x = 0.05
+        self.gap_y = self.gates[0, 1]
+        self.gap_halfheight = 2 * cfg.agent_radius
 
     @property
     def n_gates(self) -> int:
@@ -796,6 +802,22 @@ class HerdingHerd(HerdBase):
 
         return m_is_herd_in_gates
 
+    def is_herder_collide_wall(self, state: HerdBaseState):
+        # Check if any herder collides with either the bottom or top sections of the wall.
+        herder_pos = state.herder_state[:, 0:2]
+        herder_x = herder_pos[:, 0]
+        herder_y = herder_pos[:, 1]
+        collide_bottom = jnp.logical_and(
+            jnp.abs(herder_x - self.wall_x) < (self.cfg.agent_radius - 0.5 * self.wall_thick_x),
+            herder_y < (self.gap_y - self.gap_halfheight + self.cfg.agent_radius),
+        )
+        collide_top = jnp.logical_and(
+            jnp.abs(herder_x - self.wall_x) < (self.cfg.agent_radius - 0.5 * self.wall_thick_x),
+            herder_y > (self.gap_y + self.gap_halfheight - self.cfg.agent_radius),
+        )
+        collide = jnp.any(collide_bottom | collide_top)
+        return collide
+
     def get_predicates_bool(self, state: HerdBaseState):
         predicates = super().get_predicates_bool(state)
         predicates = {"herd_herded": self.is_herd_herded(state)} | predicates
@@ -913,6 +935,24 @@ class HerdingHerd(HerdBase):
                     va="center",
                     alpha=0.5,
                 )
+
+        # Visualize the bottom and top parts of the wall with rectangles.
+        wall_bottom = plt.Rectangle(
+            (-self.wall_thick_x / 2, -cfg.halfsize[1]),
+            self.wall_thick_x,
+            self.gap_y - self.gap_halfheight + cfg.halfsize[1],
+            color="black",
+            alpha=0.8,
+        )
+        wall_top = plt.Rectangle(
+            (-self.wall_thick_x / 2, self.gap_y + self.gap_halfheight),
+            self.wall_thick_x,
+            cfg.halfsize[1] - (self.gap_y + self.gap_halfheight),
+            color="black",
+            alpha=0.8,
+        )
+        ax.add_patch(wall_bottom)
+        ax.add_patch(wall_top)
 
 
 # def all_in_circle(pos, radius, circle_radius):
