@@ -15,6 +15,8 @@ def main(name: str | None = None, debug: bool = False, env_name: str = "HerdOsPl
     env = get_env(env_name)
 
     cfg = VDMAPPOAgent.Cfg()
+    cfg.entropy_coef = 1.5e-2
+
     agent = VDMAPPOAgent.create(seed, cfg, env)
 
     eval_cbs = [

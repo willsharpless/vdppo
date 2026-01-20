@@ -283,18 +283,10 @@ class HerdBase(BaseEnv):
         oob = jnp.any(min_dists < self.cfg.agent_radius)
         return oob
 
-    def is_herd_herded(self, state: HerdBaseState):
-        """All herd agents are fully within a circle in the center."""
-        herd_pos = state.herd_state
-        dists = jnp.linalg.norm(herd_pos, axis=-1)
-        herded = jnp.all((dists + self.cfg.agent_radius) <= self.cfg.herded_radius)
-        return herded
-
     def get_predicates_bool(self, state: HerdBaseState):
         predicates = {
             "herder_collide": self.is_herder_collide(state),
             "herder_oob": self.is_herder_oob(state),
-            "herd_herded": self.is_herd_herded(state),
         }
         return predicates
 
@@ -464,11 +456,6 @@ class HerdBase(BaseEnv):
         ax.axhspan(cfg.halfsize[1], cfg.halfsize[1] + 1.0, **opts)
         ax.axhspan(-cfg.halfsize[1] - 1.0, -cfg.halfsize[1], **opts)
 
-        if not self.cfg.herd_zero:
-            # Plot the herd circle.
-            herd_circle = plt.Circle((0, 0), cfg.herded_radius, color="lightgray", alpha=0.5)
-            ax.add_patch(herd_circle)
-
 
 @define(slots=False)
 class HerdBasePlayCfg(HerdBaseCfg):
@@ -620,11 +607,20 @@ class HerdBasePlay(HerdBase):
 
 class HerdingHerd(HerdBase):
     Cfg = HerdingHerdCfg
+    State = HerdBaseState
 
     def __init__(self, cfg: HerdingHerdCfg = HerdingHerdCfg(), should_term_fn: ShouldTermFn = None):
 
         super().__init__(cfg, should_term_fn=should_term_fn)
         self.cfg = cfg
+
+        halfsize = 0.5 * min(cfg.halfsize)
+        self.herded_center = np.array([0.4 * halfsize, 0.05 * halfsize])
+        self.gates = np.array([[-0.6 * halfsize, 0.5 * halfsize], [-0.1 * halfsize, -0.2 * halfsize]])
+
+    @property
+    def n_gates(self) -> int:
+        return len(self.gates)
 
     def reset(self, key: PRNGKeyArray):
         # With some prob, reset the herd in the center.
@@ -774,10 +770,41 @@ class HerdingHerd(HerdBase):
         }
         return HerdBaseState(herd_state=herd_pos, herder_state=herder_state, steps=0), info
 
+    def is_herd_herded(self, state: HerdBaseState):
+        """All herd agents are fully within a circle in the center."""
+        herd_pos = state.herd_state
+        dists = jnp.linalg.norm(herd_pos - self.herded_center, axis=-1)
+        herded = jnp.all((dists + self.cfg.agent_radius) <= self.cfg.herded_radius)
+        return herded
+
+    def is_herd_in_gates(self, state: HerdBaseState):
+        """For each gate, check if all herd agents are fully within the gate circle."""
+        n_pos = state.herd_state
+        n_gates = self.n_gates
+        m_pos_gates = self.gates
+
+        mn_dists = jnp.linalg.norm(n_pos[None, :, :] - m_pos_gates[:, None, :], axis=-1)
+        assert mn_dists.shape == (n_gates, self.cfg.n_herd)
+        m_is_herd_in_gates = jnp.all((mn_dists + self.cfg.agent_radius) <= self.cfg.herded_radius, axis=-1)
+
+        return m_is_herd_in_gates
+
+    def get_predicates_bool(self, state: HerdBaseState):
+        predicates = super().get_predicates_bool(state)
+        predicates = {"herd_herded": self.is_herd_herded(state)} | predicates
+
+        is_herd_in_gates = self.is_herd_in_gates(state)
+        for ii in range(self.n_gates):
+            predicates[f"herd_gate_{ii}"] = is_herd_in_gates[ii]
+
+        return predicates
+
     def get_predicates_float(self, state: HerdBaseState):
+        predicates = super().get_predicates_float(state)
         return {
             "herd_herded": self.is_herd_herded_float(state),
-        }
+            "herd_herder_collide": self.herd_herder_collide(state),
+        } | predicates
 
     def is_herd_herded_float(self, state: HerdBaseState):
         """All herd agents are fully within a circle in the center.
@@ -808,6 +835,68 @@ class HerdingHerd(HerdBase):
         val = jnp.where(max_dist <= 0, 1.0, outside_val)
         val = jnp.clip(val, -1.0, 1.0)
         return val
+
+    def herd_herder_collide(self, state: HerdBaseState):
+        """+1 if herd-herder collisions. -eps at boundary, scales linearly with soft minimum of distances."""
+        n_herd_pos = state.herd_state[:, :2]
+        m_herder_pos = state.herder_state[:, :2]
+        nm_dists = jnp.linalg.norm(
+            n_herd_pos[:, None, :] - m_herder_pos[None, :, :],
+            axis=-1,
+        )
+        b_dists = nm_dists.flatten()
+
+        # In boundary if dists <= 2 * agent_radius
+        b_dist_to_boundary = b_dists - 2 * self.cfg.agent_radius
+
+        min_dist = b_dist_to_boundary.min()
+
+        if self.cfg.n_herd * self.cfg.n_herders == 1:
+            # No need for softmin if only one pair.
+            min_dist_soft = b_dist_to_boundary[0]
+        else:
+            # error <= temperature * log(n). I want error <= 0.05 * halfwidth, so temperature = 0.1 * halfwidth / log(n)
+            temperature = 0.05 * min(self.cfg.halfsize) / jnp.log(self.cfg.n_herd)
+            min_dist_soft = softminimum(b_dist_to_boundary, temperature=temperature)
+
+        eps = 0.1
+
+        # Linear scaling from -eps to -1. -eps at mindist=0, -1 at mindist = 1 * agent_radius.
+        t = min_dist_soft / (1.0 * self.cfg.agent_radius)
+        t = jnp.clip(t, 0.0, 1.0)
+        outside_val = -(eps + (1.0 - eps) * t)
+
+        val = jnp.where(min_dist <= 0.0, 1.0, outside_val)
+        val = jnp.clip(val, -1.0, 1.0)
+        return val
+
+    def setup_ax(self, ax: plt.Axes):
+        cfg = self.cfg
+        super().setup_ax(ax)
+
+        assert not self.cfg.herd_zero
+
+        # Plot the herd circle.
+        herd_circle = plt.Circle(self.herded_center, cfg.herded_radius, color="lightgray", alpha=0.5)
+        ax.add_patch(herd_circle)
+
+        # Plot the gates if they are active.
+        for ii in range(self.n_gates):
+            if self.is_predicate_active(f"herd_gate_{ii}"):
+                gate_circle = plt.Circle(self.gates[ii], cfg.herded_radius, color="lightgray", alpha=0.5)
+                ax.add_patch(gate_circle)
+
+                # Draw the number of the gate.
+                ax.text(
+                    self.gates[ii][0],
+                    self.gates[ii][1],
+                    f"{ii}",
+                    color="black",
+                    fontsize=12,
+                    ha="center",
+                    va="center",
+                    alpha=0.5,
+                )
 
 
 # def all_in_circle(pos, radius, circle_radius):
