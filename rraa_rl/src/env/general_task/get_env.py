@@ -26,7 +26,7 @@ def get_env(env_name: str) -> Env:
         base_cfg.vel_maxs = [1.0, 2.0]
 
         cfg = HerdOs.Cfg(specification=specification, base=base_cfg)
-        cfg.eval_T = 256
+        cfg.eval_T = 512
 
         return HerdOs(cfg)
 
