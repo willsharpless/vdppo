@@ -1,4 +1,5 @@
 import copy
+import functools as ft
 from typing import Any, NamedTuple, Protocol, Self
 
 import jax
@@ -44,6 +45,13 @@ class BaseEnv:
     def reset(self, key: PRNGKeyArray) -> Any:
         raise NotImplementedError("")
 
+    @ft.partial(
+        jax.jit,
+        static_argnames=(
+            "self",
+            "batch_size",
+        ),
+    )
     def reset_batch(self, key: PRNGKeyArray, batch_size: int) -> Any:
         b_key = jr.split(key, batch_size)
         return jax.vmap(self.reset)(b_key)
@@ -302,6 +310,7 @@ class StaticTemporalNodeMixin:
 
         assert len(self.cfg.temporal_node_fracs) == len(self.temporal_nodes)
 
+    @ft.partial(jax.jit, static_argnames=("self",))
     def reset(self: StaticTemporalNodeMixinProtocol, key: PRNGKeyArray) -> StateWithTemporalNode:
         key_base, key_node = jr.split(key)
         base_state = self.base.reset(key_base)
@@ -313,6 +322,7 @@ class StaticTemporalNodeMixin:
         state = StateWithTemporalNode(temporal_node_idx=temporal_node_idx, base=base_state)
         return state
 
+    @ft.partial(jax.jit, static_argnames=("self", "batch_size"))
     def reset_batch(self: StaticTemporalNodeMixinProtocol, key: PRNGKeyArray, batch_size: int) -> Any:
         # Instead of randomly sampling temporal nodes, we assign fixed fractions of the batch to each temporal node.
         base_state = self.base.reset_batch(key, batch_size)

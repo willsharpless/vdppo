@@ -616,12 +616,13 @@ class HerdingHerd(HerdBase):
 
         halfsize = min(cfg.halfsize)
         self.herded_center = np.array([0.4 * halfsize, 0.05 * halfsize])
-        self.gates = np.array([[-0.6 * halfsize, 0.5 * halfsize], [-0.1 * halfsize, -0.2 * halfsize]])
+        self.gates = np.array([[-0.6 * halfsize, 0.4 * halfsize], [-0.3 * halfsize, -0.7 * halfsize]])
 
     @property
     def n_gates(self) -> int:
         return len(self.gates)
 
+    @ft.partial(jax.jit, static_argnames=("self",))
     def reset(self, key: PRNGKeyArray):
         # With some prob, reset the herd in the center.
         p_reset_center = self.cfg.p_reset_center
@@ -810,7 +811,7 @@ class HerdingHerd(HerdBase):
         """All herd agents are fully within a circle in the center.
         1 when herded, -eps on boundary, scales linearly with soft maximum of furthest herd agent."""
         herd_pos = state.herd_state
-        n_dists = jnp.linalg.norm(herd_pos, axis=-1)
+        n_dists = jnp.linalg.norm(herd_pos - self.herded_center, axis=-1)
 
         # In boundary if dists + agent_radius <= herded_radius
         n_dist_to_boundary = n_dists + self.cfg.agent_radius - self.cfg.herded_radius
@@ -869,6 +870,14 @@ class HerdingHerd(HerdBase):
         val = jnp.where(min_dist <= 0.0, 1.0, outside_val)
         val = jnp.clip(val, -1.0, 1.0)
         return val
+
+    def get_objects_pos(self, state: HerdBaseState):
+        herd_pos = state.herd_state  # (n_herd, 2)
+        herder_pos = state.herder_state[:, 0:2]  # (n_herders, 2)
+        herded_center_pos = self.herded_center
+        gates_pos = self.gates
+        all_pos = jnp.concatenate([herd_pos, herder_pos, herded_center_pos[None, :], gates_pos], axis=0)
+        return all_pos
 
     def setup_ax(self, ax: plt.Axes):
         cfg = self.cfg

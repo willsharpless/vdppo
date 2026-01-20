@@ -376,15 +376,29 @@ def animate_eval_trajs_multi_agent(p: CallbackProps):
 
     n_temporal_nodes = env.n_temporal_nodes
 
-    bT_test_rollouts = p.bT_test_rollouts[:n_traj_anim]
+    bT_test_rollouts = p.bT_test_rollouts
 
     bT_states: list[HerdOs.State] = [traj.state_now for traj in bT_test_rollouts]
     b_temporal_idx = np.array([T_state.temporal_node_idx[0] for T_state in bT_states])
 
-    T_max = max(traj.shape[0] for traj in bT_test_rollouts)
+    temporal_node_count = np.array([np.sum(b_temporal_idx == ii) for ii in range(n_temporal_nodes)])
+    offsets = np.array([0, *np.cumsum(temporal_node_count)])
 
-    ncol = n_temporal_nodes
-    nrow = n_traj_anim
+    # T_max = max(traj.shape[0] for traj in bT_test_rollouts)
+    T_max = 0
+    batch_idxs: dict[tuple[int, int], int] = {}
+    for ii in range(n_traj_anim):
+        for jj in range(n_temporal_nodes):
+            batch_idx = ii + offsets[jj]
+            batch_idxs[ii, jj] = batch_idx
+            traj = bT_test_rollouts[batch_idx]
+            T_max = max(T_max, len(traj.term))
+    # -----------------------------
+
+    # ncol = n_temporal_nodes
+    # nrow = n_traj_anim
+    ncol = n_traj_anim
+    nrow = n_temporal_nodes
 
     # Use facecolor to indicate the current temporal node.
     colors_temporal_node = [f"C{ii}" for ii in range(n_temporal_nodes) if ii != 3]  # C3 is grey.
@@ -400,7 +414,7 @@ def animate_eval_trajs_multi_agent(p: CallbackProps):
     herds: dict[tuple[int, int], list[plt.Circle]] = {}
     for ii in range(n_traj_anim):
         for jj in range(n_temporal_nodes):
-            ax = axes[ii, jj]
+            ax = axes[jj, ii]
             env.base.setup_ax(ax)
 
             node_idx = env.temporal_nodes[jj]
@@ -442,11 +456,11 @@ def animate_eval_trajs_multi_agent(p: CallbackProps):
         for ii in range(n_traj_anim):
             for jj in range(n_temporal_nodes):
                 # bottom right.
-                herd_vel_texts[ii, jj] = axes[ii, jj].text(
+                herd_vel_texts[ii, jj] = axes[jj, ii].text(
                     0.98,
                     0.02,
                     "",
-                    transform=axes[ii, jj].transAxes,
+                    transform=axes[jj, ii].transAxes,
                     verticalalignment="bottom",
                     horizontalalignment="right",
                     color="white",
@@ -471,14 +485,6 @@ def animate_eval_trajs_multi_agent(p: CallbackProps):
     plot_dir.mkdir(parents=True, exist_ok=True)
     anim_path = plot_dir / f"eval_trajs_step{p.train_step}.mp4"
 
-    # writer = imageio.get_writer(
-    #     anim_path,
-    #     fps=30,
-    #     codec="libx264",
-    #     format="ffmpeg",
-    #     ffmpeg_params=["-preset", "ultrafast", "-crf", "23"],
-    # )
-
     with iio.imopen(anim_path, "w", plugin="pyav") as writer:
         writer.init_video_stream("libx264", fps=30)
 
@@ -490,14 +496,16 @@ def animate_eval_trajs_multi_agent(p: CallbackProps):
             # update artists (your existing update body, but do NOT return artists)
             kk_text.set_text(f"Step {kk: 3}")
             for ii in range(n_traj_anim):
-                traj = bT_test_rollouts[ii]
-                (T,) = traj.shape
-                T_state: HerdOs.State = traj.state_now
-                T_herder_pos = T_state.base.herder_state[:, :, :2]
-
-                t_idx = min(kk, T - 1)
-
                 for jj in range(n_temporal_nodes):
+
+                    batch_idx = batch_idxs[ii, jj]
+                    traj = bT_test_rollouts[batch_idx]
+                    (T,) = traj.shape
+                    T_state: HerdOs.State = traj.state_now
+                    T_herder_pos = T_state.base.herder_state[:, :, :2]
+
+                    t_idx = min(kk, T - 1)
+
                     circs = agent_collections[(ii, jj)]
                     for agent_idx, circ in enumerate(circs):
                         pos = T_herder_pos[t_idx, agent_idx, :]
