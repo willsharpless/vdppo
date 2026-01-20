@@ -1,9 +1,5 @@
 import time
 
-import av
-
-av.logging.set_level(av.logging.DEBUG)
-
 import einops as ei
 import imageio.v2 as imageio
 import imageio.v3 as iio
@@ -419,14 +415,14 @@ def animate_eval_trajs_multi_agent(p: CallbackProps):
     nrow = n_temporal_nodes
 
     # Use facecolor to indicate the current temporal node.
-    colors_temporal_node = [f"C{ii}" for ii in range(n_temporal_nodes) if ii != 3]  # C3 is grey.
+    colors_temporal_node = ["C0", "C1", "C2", "C4", "C5", "C6"]  # C3 is grey.
 
     # Use edgecolor to indicate alive vs dead.
     color_alive = to_rgba("C0", 0.0)
     color_dead = np.array(to_rgba("C0"))
 
     figsize = 0.9 * np.array([4 * ncol, 3 * nrow])
-    fig, axes = plt.subplots(nrow, ncol, figsize=figsize, dpi=150, squeeze=False, layout="none")
+    fig, axes = plt.subplots(nrow, ncol, figsize=figsize, dpi=80, squeeze=False, layout="none")
 
     agent_collections: dict[tuple[int, int], list[plt.Circle]] = {}
     herds: dict[tuple[int, int], list[plt.Circle]] = {}
@@ -645,6 +641,7 @@ class PlotRootTrajPreds(struct.PyTreeNode):
         plot_dir.mkdir(parents=True, exist_ok=True)
         fig_path = plot_dir / f"root_traj_preds_step{p.train_step}.jpg"
         fig.savefig(fig_path, bbox_inches="tight", dpi=500)
+        plt.close(fig)
 
 
 def viz_collect_data(p: CallbackProps):

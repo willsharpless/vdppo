@@ -63,6 +63,8 @@ class VDMAPPOAgentCfg(Cfg):
     entropy_coef: float = 1e-2
     clip_eps: float = 0.1
 
+    n_envs_train: int = 1024
+
     n_epochs: int = 2
     n_minibatches: int = 4
 

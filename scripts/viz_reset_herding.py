@@ -19,7 +19,7 @@ def main():
 
     agent_radius = env.cfg.base.agent_radius
 
-    n_plot = 5
+    n_plot = 2
     ncol = n_plot
 
     figsize = (4 * ncol, 3)
@@ -28,7 +28,7 @@ def main():
 
     for ii, ax in enumerate(axes):
         key = jr.PRNGKey(12340 + ii)
-        state, info = jax.device_get(env.base.reset_herding(key))
+        state = jax.device_get(env.base.reset(key))
 
         # Plot the herd and herders.
         herd_pos = state.herd_state[:, :2]
@@ -42,19 +42,19 @@ def main():
             circle = plt.Circle((hp[0], hp[1]), agent_radius, color="C3", alpha=0.5)
             ax.add_artist(circle)
 
-        herd_circle_center = info["herd/circle_center"]
-        herd_circle_radius = info["herd/radius"]
-
-        circ = plt.Circle(
-            (herd_circle_center[0], herd_circle_center[1]),
-            herd_circle_radius,
-            color="C3",
-            alpha=0.2,
-            linestyle="--",
-            fill=False,
-            linewidth=2,
-        )
-        ax.add_artist(circ)
+        # herd_circle_center = info["herd/circle_center"]
+        # herd_circle_radius = info["herd/radius"]
+        #
+        # circ = plt.Circle(
+        #     (herd_circle_center[0], herd_circle_center[1]),
+        #     herd_circle_radius,
+        #     color="C3",
+        #     alpha=0.2,
+        #     linestyle="--",
+        #     fill=False,
+        #     linewidth=2,
+        # )
+        # ax.add_artist(circ)
 
         env.base.setup_ax(ax)
 
