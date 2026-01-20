@@ -660,9 +660,9 @@ class HerdingHerd(HerdBase):
         max_radius = cfg.herded_radius - cfg.agent_radius
         herd_radius = jr.uniform(key=key_herd_radius, minval=1.01 * min_radius, maxval=1.01 * max_radius)
 
-        herd_pos_x = self.herded_center + herd_radius * jnp.cos(herd_angles)
-        herd_pos_y = self.herded_center + herd_radius * jnp.sin(herd_angles)
-        herd_pos = jnp.stack([herd_pos_x, herd_pos_y], axis=-1)
+        herd_pos_x = herd_radius * jnp.cos(herd_angles)
+        herd_pos_y = herd_radius * jnp.sin(herd_angles)
+        herd_pos = self.herded_center + jnp.stack([herd_pos_x, herd_pos_y], axis=-1)
         # -------------------------------
 
         herder_angles = jr.uniform(key_herder_angle, shape=(cfg.n_herders,), minval=0.0, maxval=2 * jnp.pi)
