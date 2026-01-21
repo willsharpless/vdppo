@@ -209,6 +209,8 @@ class HerdBase(BaseEnv):
     def is_herder_oob(self, state: HerdBaseState):
         herder_pos = state.herder_state[:, 0:2]
         dists = self.dist_to_wall(herder_pos)
+        # assert dists.shape == (self.cfg.n_herders, 6)
+        # dists = dists[..., 5:]
         min_dists = jnp.min(dists, axis=-1)
         oob = jnp.any(min_dists < self.cfg.agent_radius)
         return oob
@@ -552,7 +554,7 @@ class HerdingHerd(HerdBase):
         self.wall_x = 0.0
         self.wall_thick_x = 0.05
         self.gap_y = self.gates[0, 1]
-        self.gap_halfheight = 2 * cfg.agent_radius
+        self.gap_halfheight = 3 * cfg.agent_radius
 
         self.wall_lower_aabb, self.wall_upper_aabb = self._get_wall_gap_aabb(self.wall_x, self.wall_thick_x, self.gap_y, self.gap_halfheight, cfg.halfsize[1])
 
@@ -677,7 +679,7 @@ class HerdingHerd(HerdBase):
         # The center of the circle is close to the herding center.
         cfg = self.cfg
         if cfg.n_herd == 1:
-            raise NotImplementedError("TODO")
+            return super().reset(key), {}
 
         key_herd, key_herders = jr.split(key, 2)
 

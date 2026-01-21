@@ -1,6 +1,6 @@
 import copy
 import functools as ft
-from typing import Any, NamedTuple, Protocol, Self
+from typing import Any, NamedTuple, Protocol, Self, Generic, TypeVar
 
 import jax
 import jax.nn as jnn
@@ -229,11 +229,12 @@ class Env:
 
         return temporal_node_idx_new
 
+BaseClass = TypeVar("BaseClass")
 
 @jdc.pytree_dataclass
-class StateWithTemporalNode:
+class StateWithTemporalNode(Generic[BaseClass]):
     temporal_node_idx: int
-    base: Any
+    base: BaseClass
 
 
 class EnvUsingBase(Env):
