@@ -1,4 +1,5 @@
 import functools as ft
+import einops as ei
 from typing import Any
 
 import jax
@@ -1016,12 +1017,13 @@ class HerdingHerd(HerdBase):
             m_herder_dist = m_herder_dist - 2 * self.cfg.agent_radius
 
             # Set the distance to infinity if the herder has no line of sight to the herd agent.
-            m_segments_0 = herd_pos_new[None, :]
-            m_segments_1 = m_herder_pos
-            m_segments = LineSegment(m_segments_0, m_segments_1)
-            m_intersect_lower = jax.vmap(ft.partial(segment_intersects_aabb, aabb=self.wall_lower_aabb))(m_segments)
-            m_intersect_upper = jax.vmap(ft.partial(segment_intersects_aabb, aabb=self.wall_upper_aabb))(m_segments)
-            m_intersect_any = m_intersect_lower | m_intersect_upper
+            def intersects_any(herder_pos_):
+                segment = LineSegment(herd_pos_new, herder_pos_)
+                intersects_upper = segment_intersects_aabb(segment, aabb=self.wall_upper_aabb)
+                intersects_lower = segment_intersects_aabb(segment, aabb=self.wall_lower_aabb)
+                return intersects_upper | intersects_lower
+
+            m_intersect_any = jax.vmap(intersects_any)(m_herder_pos)
             m_herder_dist = jnp.where(m_intersect_any, jnp.inf, m_herder_dist)
 
             herder_softmin = softminimum(m_herder_dist, temperature=temperature)
