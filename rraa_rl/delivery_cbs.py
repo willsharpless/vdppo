@@ -16,6 +16,7 @@ from lovely_histogram import plot_histogram
 from matplotlib.animation import FFMpegWriter, FuncAnimation
 from matplotlib.collections import EllipseCollection
 from matplotlib.colors import CenteredNorm, to_rgba
+from matplotlib.patches import RegularPolygon
 
 from rraa_rl.collector import RolloutOutput
 from rraa_rl.jax_utils import jax_vmap, rep_vmap
@@ -274,7 +275,7 @@ def animate_eval_trajs_single_agent(p: CallbackProps):
         node_ix = env.temporal_nodes[node_idx]
         pred_info = collect_predicate_info(env.dag_nodes, node_ix)
         node_idx_to_predicates.append(pred_info.predicates)
-    dont_plot_predicates = ['collide']
+    plot_predicates = ['target0', 'target1', 'oob', 'obstacles']
 
     circ_collections = []
     start_idxs, end_idxs = [], []
@@ -293,9 +294,8 @@ def animate_eval_trajs_single_agent(p: CallbackProps):
         ax.set_title(f"Node {ii} ({node_name}) | {temporal_node_count[ii]} trajs")
 
         for pred_name in node_idx_to_predicates[ii]:
-            if pred_name in dont_plot_predicates:
-                continue
-            ax.contourf(bb_X, bb_Y, bb_predicates[pred_name], levels=[0, 1], colors=pred_colors[pred_name], alpha=0.5)
+            if pred_name in plot_predicates:
+                ax.contourf(bb_X, bb_Y, bb_predicates[pred_name], levels=[0, 1], colors=pred_colors[pred_name], alpha=0.5)
 
         start_idx = end_idx
 
@@ -482,7 +482,7 @@ def animate_eval_trajs_multi_agent(p: CallbackProps):
         node_ix = env.temporal_nodes[node_idx]
         pred_info = collect_predicate_info(env.dag_nodes, node_ix)
         node_idx_to_predicates.append(pred_info.predicates)
-    dont_plot_predicates = ['collide']
+    plot_predicates = ['target0', 'target1', 'oob', 'obstacles']
 
     figsize = 0.9 * np.array([4 * ncol, 3 * nrow])
     fig, axes = plt.subplots(nrow, ncol, figsize=figsize, dpi=80, squeeze=False, layout="none")
@@ -502,21 +502,22 @@ def animate_eval_trajs_multi_agent(p: CallbackProps):
             circs = []
             for agent_idx in range(env.n_agents):
                 circ = plt.Circle((0, 0), cfg.agent_radius, facecolor="C1", edgecolor="none")
+                if env.cfg.base.base_agent and agent_idx == env.n_agents - 1:
+                    circ = RegularPolygon((0, 0), numVertices=3, radius=cfg.agent_radius, orientation=np.pi/2, facecolor="C1", edgecolor="none")
                 ax.add_patch(circ)
                 circs.append(circ)
             agent_collections[(ii, jj)] = circs
 
             circs = []
             for herd_idx in range(env.cfg.base.n_herd):
-                circ = plt.Circle((0, 0), cfg.agent_radius, facecolor="C3", edgecolor="none")
+                circ = plt.Circle((0, 0), cfg.agent_radius, facecolor="C3", edgecolor="none")    
                 ax.add_patch(circ)
                 circs.append(circ)
             herds[(ii, jj)] = circs
 
-            for pred_name in node_idx_to_predicates[ii]:
-                if pred_name in dont_plot_predicates:
-                    continue
-                ax.contourf(bb_X, bb_Y, bb_predicates[pred_name], levels=[0, 1], colors=pred_colors[pred_name], alpha=0.5)
+            for pred_name in node_idx_to_predicates[jj]:
+                if pred_name in plot_predicates:
+                    ax.contourf(bb_X, bb_Y, bb_predicates[pred_name], levels=[0, 1], colors=pred_colors[pred_name], alpha=0.5)
 
     all_circs = [v for values_list in agent_collections.values() for v in values_list]
     all_circs += [v for values_list in herds.values() for v in values_list]

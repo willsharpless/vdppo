@@ -81,6 +81,7 @@ class DeliveryBaseCfg:
     obstacle_lw_ratios: list[float] = [1.0, 3.5, 3., 0.9, 0.7]
     obstacle_shape_norm: float = float("inf")
 
+    base_agent: bool = False
 
 class DeliveryBase(BaseEnv):
     """
@@ -236,7 +237,7 @@ class DeliveryBase(BaseEnv):
             #     Max acceleration when cmd=vel_max and current_vel = 0.
             #     =>  acc_max = kp_vel * vel_max   => kp_vel = acc_max / vel_max
             kp_vel = 0.5 * jnp.array(self.cfg.acc_maxs) / jnp.array(self.cfg.vel_maxs)
-            herder_acc = kp_vel * (herder_vel_cmd - herder_vel)
+            herder_acc = kp_vel[:, None] * (herder_vel_cmd - herder_vel)
             acc_max = jnp.array(self.cfg.acc_maxs)
             herder_acc = jnp.clip(herder_acc, -acc_max[:, None], acc_max[:, None])
             herder_vel_new = herder_vel + herder_acc * dt
@@ -256,6 +257,8 @@ class DeliveryBase(BaseEnv):
         herd_state_new = herd_pos + herd_vel * dt
 
         return DeliveryBaseState(herd_state=herd_state_new, herder_state=herder_state_new, steps=state.steps + 1)
+
+    ## BOOL PREDICATES (SPARSE)
 
     def is_herder_collide(self, state: DeliveryBaseState):
         herder_pos = state.herder_state[:, 0:2]
@@ -322,6 +325,13 @@ class DeliveryBase(BaseEnv):
         c_is_herder_inside = c_dists < (which.array(self.radiuses) - self.cfg.agent_radius)
         return c_is_herder_inside
 
+    def is_herder_at_base_ag(self, state: DeliveryBaseState, which=jnp):
+        h_pos = state.herder_state[..., :, 0:2]
+        base_ag_pos = state.herder_state[-1, 0:2]
+        ch_dists = which.linalg.norm(h_pos - base_ag_pos, axis=-1)
+        c_all_herder_inside = which.all(ch_dists < self.cfg.agent_radius)
+        return c_all_herder_inside
+
     def get_predicates_bool(self, state: DeliveryBaseState):
         predicates = {
             "collide": self.is_herder_collide(state),
@@ -330,8 +340,11 @@ class DeliveryBase(BaseEnv):
             "obstacles": self.is_herder_in_obstacles(state),
             "target0": self.is_herder_in_target(state, center=self.cfg.centers[0], radius=self.cfg.radiuses[0]),
             "target1": self.is_herder_in_target(state, center=self.cfg.centers[1], radius=self.cfg.radiuses[1]),
+            "ags_to_base_agent": self.is_herder_at_base_ag(state),
         }
         return predicates
+
+    ## FLOAT PREDICATES (DENSE)
     
     def pred_herder_circs(self, state: DeliveryBaseState, which=jnp):
         """
