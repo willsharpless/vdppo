@@ -948,8 +948,8 @@ class HerdingHerd(HerdBase):
         top_dists = halfsize[1] - py
 
         # Wall with gap.
-        wall_lower_dist = dist_pt_to_aabb(pos, self.wall_lower_aabb)
-        wall_upper_dist = dist_pt_to_aabb(pos, self.wall_upper_aabb)
+        wall_lower_dist = jax.vmap(ft.partial(dist_pt_to_aabb, aabb=self.wall_lower_aabb))(pos)
+        wall_upper_dist = jax.vmap(ft.partial(dist_pt_to_aabb, aabb=self.wall_upper_aabb))(pos)
 
         dists = jnp.stack([left_dists, right_dists, bottom_dists, top_dists, wall_lower_dist, wall_upper_dist], axis=-1)  # (n_agents, 4)
         return dists
