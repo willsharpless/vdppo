@@ -1,19 +1,20 @@
+import os
+
 import ipdb
 from cyclopts import App
 
-from rraa_rl import herd_os_cbs
-from rraa_rl import delivery_cbs
+from rraa_rl import delivery_cbs, herd_os_cbs
 from rraa_rl.run import Run
-from rraa_rl.src.env.general_task.env import Env
-from rraa_rl.src.env.general_task.delivery_base import DeliveryBaseCfg
 from rraa_rl.src.env.general_task.delivery import Delivery
-from rraa_rl.trainer import Trainer
+from rraa_rl.src.env.general_task.delivery_base import DeliveryBaseCfg
+from rraa_rl.src.env.general_task.env import Env
+from rraa_rl.trainer import Trainer, TrainerCfg
 from rraa_rl.vd_mappo import VDMAPPOAgent
-import os 
 
 app = App()
 
 # os.environ["CUDA_VISIBLE_DEVICES"] = "1"
+
 
 def get_env(env_name: str) -> Env:
     env_name = env_name.lower()
@@ -27,7 +28,7 @@ def get_env(env_name: str) -> Env:
         # specification = "F target0 && F target1 && G(!obstacles) && G(!oob) && G(ag_at_target => ag_to_base_agent)"
         # specification = "F target0 && F target1 && G(!obstacles) && G(!oob) && G(!ag_at_target || ag_to_base_agent)"
         # specification = "F target0 && F target1 && G(!obstacles) && G(!oob) && G(!ag1_at_target || ag1_to_base_agent) && G(!ag2_at_target || ag2_to_base_agent)"
-        
+
         # specification = "G(F target0 && F target1) && G(!obstacles && !oob) && G(!ag_at_target || ag_to_base_agent)"
         # specification = "G(F target0 && F target1) && G(!obstacles && !oob) && G(!ag1_at_target || ag1_to_base_agent) && G(!ag2_at_target || ag2_to_base_agent)"
 
@@ -61,7 +62,13 @@ def get_env(env_name: str) -> Env:
 
 
 @app.default()
-def main(name: str | None = None, debug: bool = False, env_name: str = "delivery", seed: int = 123):
+def main(
+    name: str | None = None,
+    debug: bool = False,
+    env_name: str = "delivery",
+    seed: int = 123,
+    trainer_cfg: TrainerCfg = TrainerCfg(),
+):
     env = get_env(env_name)
 
     cfg = VDMAPPOAgent.Cfg()
@@ -78,7 +85,7 @@ def main(name: str | None = None, debug: bool = False, env_name: str = "delivery
 
     env_name = type(env).__name__
     run = Run.create(env_name=env_name, name=name)
-    trainer = Trainer(agent)
+    trainer = Trainer(agent, cfg=trainer_cfg)
     trainer.train(run, env, eval_cbs=eval_cbs, collect_cbs=collect_cbs, debug=debug)
 
 

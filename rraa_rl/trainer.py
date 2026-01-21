@@ -7,9 +7,11 @@ import numpy as np
 import tqdm
 import yaml
 from attrs import define
+from cyclopts import Parameter
 from loguru import logger
 
 import wandb
+from rraa_rl.cfg_utils import Cfg
 from rraa_rl.collector import Collector, RolloutOutput, extract_info_from_rollout
 from rraa_rl.rollout_temporal_analysis import evaluate_ltl_finite
 from rraa_rl.rollout_utils import extract_rollouts_eval
@@ -42,10 +44,21 @@ class Callback(Protocol):
     def __call__(self, p: CallbackProps) -> None: ...
 
 
+@Parameter("*", group="Trainer")
+@define
+class TrainerCfg(Cfg):
+    eval_every: int = 5_000
+    log_every: int = 100
+    save_every: int = 5_000
+
+
 class Trainer:
+    Cfg = TrainerCfg
+
     agent: VDMAPPOAgent
 
-    def __init__(self, agent: VDMAPPOAgent):
+    def __init__(self, agent: VDMAPPOAgent, cfg: TrainerCfg):
+        self.cfg = cfg
         self.agent = agent
         self.b_state0 = None
 
@@ -79,6 +92,7 @@ class Trainer:
         # Save configs.
         cfg_to_save = {
             "agent": self.agent.cfg.asdict(),
+            "trainer": self.cfg.asdict(),
         }
         # Save as yaml.
         yaml_path = run.run_dir / "config.yaml"
@@ -88,10 +102,6 @@ class Trainer:
 
         n_train_steps = 100_000
 
-        eval_every = 100
-        log_every = 100
-        save_every = 5_000
-
         if not debug:
             wandb.init(project="vd_mappo", name=run.wandb_name)
 
@@ -99,7 +109,7 @@ class Trainer:
 
         pbar = tqdm.trange(n_train_steps, mininterval=0.25)
         for train_step in pbar:
-            if train_step % eval_every == 0:
+            if train_step % self.cfg.eval_every == 0:
                 pbar.set_description(f"Eval at step {train_step}")
                 trajs, bT_rollout, trigger_dict, info_eval = self.eval(collector_eval, key_eval)
 
@@ -124,7 +134,7 @@ class Trainer:
                 if wandb.run is not None:
                     wandb.log(log_dict, step=train_step)
 
-            if train_step % save_every == 0:
+            if train_step % self.cfg.save_every == 0:
                 pbar.set_description(f"Saving at step {train_step}")
 
                 ckpts_dir = run.ckpts_dir
@@ -138,7 +148,7 @@ class Trainer:
             collector, Tb_rollout, info_collect = self.agent.collect_batch(collector, self.agent.cfg.rollout_T)
 
             info_collect2 = {}
-            if train_step % log_every == 0:
+            if train_step % self.cfg.log_every == 0:
                 # Extract easy-to-log info from the rollouts, e.g., average reset age
                 info_collect2 = extract_info_from_rollout(Tb_rollout)
 
@@ -162,7 +172,7 @@ class Trainer:
             pbar.update(1)
 
             # Log info to wandb
-            if train_step % log_every == 0:
+            if train_step % self.cfg.log_every == 0:
                 # Remove any keys that start with debug/
                 info_update_log = {k: v for k, v in info_update.items() if not k.startswith("debug/")}
 

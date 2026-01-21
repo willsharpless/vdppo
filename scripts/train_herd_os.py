@@ -4,14 +4,20 @@ from cyclopts import App
 from rraa_rl import herd_os_cbs
 from rraa_rl.run import Run
 from rraa_rl.src.env.general_task.get_env import get_env
-from rraa_rl.trainer import Trainer
+from rraa_rl.trainer import Trainer, TrainerCfg
 from rraa_rl.vd_mappo import VDMAPPOAgent
 
 app = App()
 
 
 @app.default()
-def main(name: str | None = None, debug: bool = False, env_name: str = "HerdOsPlay", seed: int = 123):
+def main(
+    name: str | None = None,
+    debug: bool = False,
+    env_name: str = "HerdOsPlay",
+    seed: int = 123,
+    trainer_cfg: TrainerCfg = TrainerCfg(),
+):
     env = get_env(env_name)
 
     cfg = VDMAPPOAgent.Cfg()
@@ -36,7 +42,7 @@ def main(name: str | None = None, debug: bool = False, env_name: str = "HerdOsPl
 
     env_name = type(env).__name__
     run = Run.create(env_name=env_name, name=name)
-    trainer = Trainer(agent)
+    trainer = Trainer(agent, trainer_cfg)
     trainer.train(run, env, eval_cbs=eval_cbs, collect_cbs=collect_cbs, debug=debug)
 
 
