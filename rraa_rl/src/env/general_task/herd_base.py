@@ -582,14 +582,16 @@ class HerdingHerd(HerdBase):
         p_reset_task = 0.2
         p_reset_herd = 0.3
         p_reset_gate = 0.3
+        p_reset_gap = 0.05
         p_reset_orig = 1.0 - p_reset_center - p_reset_herd - p_reset_gate
 
-        key_orig, key_task, key_center, key_herding, key_gate, key_which, key_which_gate = jr.split(key, 7)
+        key_orig, key_task, key_center, key_gap, key_herding, key_gate, key_which, key_which_gate = jr.split(key, 8)
         key_gates = jr.split(key_gate, self.n_gates)
 
         herd_state_orig = super().reset(key_orig)
         herd_state_task = self.reset_task(key_task)
         herd_state_center = self.reset_center(key_center)
+        herd_state_gap = self.reset_gap(key_gap)
         herd_state_herding, _ = self.reset_herding(key_herding, center=self.herded_center)
 
         herd_state_gates, _ = jax.vmap(self.reset_herding)(key_gates, self.gates)
@@ -597,9 +599,13 @@ class HerdingHerd(HerdBase):
         herd_state_gate = jtu.tree_map(lambda x: x[which_gate], herd_state_gates)
 
         # reset_center = jr.bernoulli(key_do_center, p=p_reset_center)
-        which_reset = jr.categorical(key_which, jnp.array([p_reset_orig, p_reset_task, p_reset_center, p_reset_herd, p_reset_gate]))
+        probs =jnp.array([p_reset_orig, p_reset_task, p_reset_center, p_reset_gap, p_reset_herd, p_reset_gate])
+        which_reset = jr.categorical(key_which, probs)
 
-        herd_state_stack = tree_stack([herd_state_orig, herd_state_task, herd_state_center, herd_state_herding, herd_state_gate])
+        stack_list = [herd_state_orig, herd_state_task, herd_state_center, herd_state_gap, herd_state_herding, herd_state_gate]
+        assert len(probs) == len(stack_list)
+
+        herd_state_stack = tree_stack(stack_list)
         herd_state = jtu.tree_map(lambda x: x[which_reset], herd_state_stack)
 
         return herd_state
@@ -672,6 +678,31 @@ class HerdingHerd(HerdBase):
         herder_state = jnp.concatenate([herder_pos, herder_vel], axis=-1)
 
         return HerdBaseState(herd_state=herd_pos, herder_state=herder_state, steps=0)
+
+    def reset_gap(self, key: PRNGKeyArray):
+        cfg = self.cfg
+        key_base, key_which, key_pos = jr.split(key, 3)
+
+        herd_state = self.reset_task(key)
+
+        # Choose a random herder agent and position it within the gap.
+        agent_idx = jr.randint(key_which, shape=(), minval=0, maxval=self.cfg.n_herders)
+
+        # Position within the gap.
+        wall_x = self.wall_x
+        wall_thick_x = self.wall_thick_x
+        agent_radius = cfg.agent_radius
+        gap_y = self.gap_y
+        gap_halfheight = self.gap_halfheight
+
+        minpos = jnp.array([wall_x - wall_thick_x - agent_radius, gap_y - gap_halfheight + agent_radius])
+        maxpos = jnp.array([wall_x + wall_thick_x + agent_radius, gap_y + gap_halfheight - agent_radius])
+        herder_pos_in_gap = jr.uniform(key_pos, shape=(2,), minval=minpos, maxval=maxpos)
+
+        with jdc.copy_and_mutate(herd_state) as herd_state:
+            herd_state.herder_state = herd_state.herder_state.at[agent_idx, 0:2].set(herder_pos_in_gap)
+
+        return herd_state
 
     def reset_herding(self, key: PRNGKeyArray, center):
         # Two herd agents initialized on opposite sides of a circle of varying radius.
