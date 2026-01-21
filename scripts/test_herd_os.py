@@ -9,10 +9,10 @@ import jax
 import jax.random as jr
 import numpy as np
 import tqdm
+import wandb
 from attrs import define
 from loguru import logger
 
-import wandb
 from rraa_rl import herd_os_cbs
 from rraa_rl.collector import Collector, RolloutOutput, extract_info_from_rollout
 from rraa_rl.distribution import tfd
