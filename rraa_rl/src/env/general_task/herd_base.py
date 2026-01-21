@@ -577,9 +577,9 @@ class HerdingHerd(HerdBase):
         p_reset_center = self.cfg.p_reset_center
         # p_reset_center = 0.5
         # With some prob, reset the herd within small circle, and herder agents on outside pointing inwards.
-        p_reset_task = 0.4
-        p_reset_herd = 0.2
-        p_reset_gate = 0.2
+        p_reset_task = 0.2
+        p_reset_herd = 0.3
+        p_reset_gate = 0.3
         p_reset_orig = 1.0 - p_reset_center - p_reset_herd - p_reset_gate
 
         key_orig, key_task, key_center, key_herding, key_gate, key_which, key_which_gate = jr.split(key, 7)
