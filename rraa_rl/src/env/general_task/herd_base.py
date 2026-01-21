@@ -159,6 +159,7 @@ class HerdBase(BaseEnv):
 
         # Desired velocity.
         herder_vel_cmd = control
+        assert herder_vel_cmd.shape == herder_vel.shape == (self.n_agents, 2)
 
         if VEL_ZERO:
             vel_inp = control
@@ -168,8 +169,17 @@ class HerdBase(BaseEnv):
             # Take velocity limit into account.
             #     Max acceleration when cmd=vel_max and current_vel = 0.
             #     =>  acc_max = kp_vel * vel_max   => kp_vel = acc_max / vel_max
-            kp_vel = 0.5 * jnp.array(self.cfg.acc_maxs) / jnp.array(self.cfg.vel_maxs)
-            herder_acc = kp_vel * (herder_vel_cmd - herder_vel)
+            acc_maxs = jnp.array(self.cfg.acc_maxs)
+            vel_maxs = jnp.array(self.cfg.vel_maxs)
+            assert acc_maxs.shape == vel_maxs.shape == (self.n_agents,)
+
+            kp_vel = 0.5 * acc_maxs / vel_maxs
+            assert kp_vel.shape == (self.n_agents,)
+
+            # (n_agents, 1) * (n_agents, 2)
+            herder_acc = kp_vel[:, None] * (herder_vel_cmd - herder_vel)
+            assert herder_acc.shape == (self.n_agents, 2)
+
             acc_max = jnp.array(self.cfg.acc_maxs)
             herder_acc = jnp.clip(herder_acc, -acc_max[:, None], acc_max[:, None])
             herder_vel_new = herder_vel + herder_acc * dt
