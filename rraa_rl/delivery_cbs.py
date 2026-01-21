@@ -20,6 +20,7 @@ from matplotlib.patches import RegularPolygon
 
 from rraa_rl.collector import RolloutOutput
 from rraa_rl.jax_utils import jax_vmap, rep_vmap
+from rraa_rl.src.env.general_task.delivery import Delivery
 from rraa_rl.src.env.general_task.env import AugObs
 from rraa_rl.src.env.general_task.herd_os import HerdOs
 from rraa_rl.src.rl.utils.utils import get_BuRd_smooth
@@ -446,7 +447,7 @@ def animate_eval_trajs_single_agent(p: CallbackProps):
 
 def animate_eval_trajs_multi_agent(p: CallbackProps):
     plots_dir = p.run.plots_dir
-    env: HerdOs = p.env
+    env: Delivery = p.env
     cfg = env.base.cfg
 
     n_traj_anim = 8
@@ -628,7 +629,7 @@ def animate_eval_trajs_multi_agent(p: CallbackProps):
                     batch_idx = batch_idxs[ii, jj]
                     traj = bT_test_rollouts[batch_idx]
                     (T,) = traj.shape
-                    T_state: HerdOs.State = traj.state_now
+                    T_state: Delivery.State = traj.state_now
                     T_herder_pos = T_state.base.herder_state[:, :, :2]
 
                     t_idx = min(kk, T - 1)
@@ -636,6 +637,7 @@ def animate_eval_trajs_multi_agent(p: CallbackProps):
                     circs = agent_collections[(ii, jj)]
                     for agent_idx, circ in enumerate(circs):
                         pos = T_herder_pos[t_idx, agent_idx, :]
+                        assert pos.shape == (2,)
                         circ.center = pos
 
                         temporal_node_idx = T_state.temporal_node_idx[t_idx]
@@ -649,6 +651,7 @@ def animate_eval_trajs_multi_agent(p: CallbackProps):
                     circs = herds[(ii, jj)]
                     for herd_idx, circ in enumerate(circs):
                         pos = T_state.base.herd_state[t_idx, herd_idx, :2]
+                        assert pos.shape == (2,)
                         circ.center = pos
 
                     # Update target positions
@@ -656,7 +659,9 @@ def animate_eval_trajs_multi_agent(p: CallbackProps):
                         T_centers = T_state.base.centers
                         circs = target_circs[(ii, jj)]
                         for target_idx, circ in enumerate(circs):
-                            circ.center = T_centers[t_idx, target_idx, :]
+                            pos = T_centers[t_idx, target_idx, :]
+                            assert pos.shape == (2,)
+                            circ.center = pos
 
                     if len(herd_vel_texts) > 0:
                         # (n_herd, 2)

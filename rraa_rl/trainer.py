@@ -88,7 +88,7 @@ class Trainer:
 
         n_train_steps = 100_000
 
-        eval_every = 5_000
+        eval_every = 100
         log_every = 100
         save_every = 5_000
 

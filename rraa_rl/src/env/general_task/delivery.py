@@ -1,14 +1,14 @@
 import jax.numpy as jnp
-from attrs import define
 import jax.random as jr
 import jax_dataclasses as jdc
+from attrs import define
 from jaxtyping import PRNGKeyArray
 from loguru import logger
 
 from rraa_rl.jax_types import BoolScalar
+from rraa_rl.src.env.general_task.delivery_base import DeliveryBase, DeliveryBaseCfg, DeliveryBaseState
 from rraa_rl.src.env.general_task.env import (EnvCfg, EnvUsingBase, StateWithTemporalNode, StaticTemporalNodeMixin,
                                               StaticTemporalNodeMixinCfg)
-from rraa_rl.src.env.general_task.delivery_base import DeliveryBase, DeliveryBaseCfg, DeliveryBasePlay, DeliveryBasePlayCfg
 
 
 @define(slots=False)
@@ -23,7 +23,7 @@ class Delivery(StaticTemporalNodeMixin, EnvUsingBase):
     """
     Delivery env -- made from herd env (eg. num agents = n_herders) to use same callbacks/plotting/utils. Agents move
 
-    Also, in case "dummy" agents (herded) are desired (moving obstacles). Otherwise, just a multi-agent env designed for multi-reach-avoiding. 
+    Also, in case "dummy" agents (herded) are desired (moving obstacles). Otherwise, just a multi-agent env designed for multi-reach-avoiding.
 
     Predicates include:
         - reaching targets (delivery locs)
@@ -36,7 +36,7 @@ class Delivery(StaticTemporalNodeMixin, EnvUsingBase):
     """
 
     Cfg = DeliveryCfg
-    State = StateWithTemporalNode
+    State = StateWithTemporalNode[DeliveryBaseState]
 
     def __init__(self, cfg: DeliveryCfg = DeliveryCfg()):
         self.cfg = cfg
@@ -66,41 +66,6 @@ class Delivery(StaticTemporalNodeMixin, EnvUsingBase):
 
     @property
     def specification(self):
-        return self.cfg.specification
-
-    def should_terminate(self, predicates: dict[str, jnp.ndarray]) -> BoolScalar:
-        eps = 0.1
-
-        # Terminate when leaving the allowed area.
-        is_oob = predicates["oob"] > eps
-        should_term = is_oob
-
-        return should_term
-
-
-@define(slots=False)
-class DeliveryPlayCfg(EnvCfg, StaticTemporalNodeMixinCfg):
-    specification: str = "F target0 && F target1 && G(!oob) && G(!obstacles) && (!collide)"
-
-    base: DeliveryBasePlayCfg = DeliveryBasePlayCfg()
-
-
-class DeliveryPlay(StaticTemporalNodeMixin, EnvUsingBase):
-    """Delivery but for playing around."""
-
-    Cfg = DeliveryCfg
-    State = StateWithTemporalNode
-
-    def __init__(self, cfg: DeliveryPlayCfg = DeliveryPlayCfg()):
-        self.cfg = cfg
-        base_env = DeliveryBasePlay(cfg.base, should_term_fn=self.should_terminate)
-        EnvUsingBase.__init__(self, cfg, self.specification, base_env)
-        StaticTemporalNodeMixin.__init__(self, cfg)
-
-    @property
-    def specification(self):
-        # return "F(G(herd_herded)) && G( !herder_collide ) && G( !herder_oob )"
-        # return "( !herder_collide && ! herder_oob ) U ( G(herd_herded && !herder_collide && ! herder_oob) )"
         return self.cfg.specification
 
     def should_terminate(self, predicates: dict[str, jnp.ndarray]) -> BoolScalar:

@@ -32,9 +32,9 @@ class DeliveryBaseState:
     # (n_herd, 4) [px, py, vx, vy]
     herder_state: jnp.ndarray
 
-    steps: int = 0
+    steps: int
 
-    centers: jnp.ndarray = jdc.field(default_factory=lambda: jnp.array([[0.0, 0.0], [1.0, 1.0]]))
+    centers: jnp.ndarray
 
 @define(slots=False)
 class DeliveryBaseCfg:
@@ -136,6 +136,9 @@ class DeliveryBaseCfg:
             return valid_center
 
         valid_centers = jax.vmap(sample_valid_for_ag)(jr.split(key, n_targets), jnp.arange(n_targets))
+        assert valid_centers.shape == (2, 1, 2)
+        valid_centers = valid_centers.squeeze(1)
+        assert valid_centers.shape == (2, 2)
 
         return valid_centers
 
@@ -159,6 +162,7 @@ class DeliveryBase(BaseEnv):
     """
 
     Cfg = DeliveryBaseCfg
+    State = DeliveryBaseState
 
     def __init__(self, cfg: DeliveryBaseCfg = DeliveryBaseCfg(), should_term_fn: ShouldTermFn = None):
         super().__init__()
@@ -617,6 +621,8 @@ class DeliveryBase(BaseEnv):
         n_herders = self.cfg.n_herders
         valid_pos = jnp.zeros((n_herders, 2))
 
+        centers = jnp.array(self.cfg.centers)
+
         def sample_valid_for_ag(key, ag_ix):
 
             def sample_valid_position(key):
@@ -624,7 +630,7 @@ class DeliveryBase(BaseEnv):
                 pos_try_full = jnp.zeros((n_herders, 2)).at[:,:2].set(pos_try)
                 valid_vel = jnp.zeros_like(pos_try_full)
                 herder_state_try = jnp.concatenate([pos_try_full, valid_vel], axis=-1)
-                state_try = DeliveryBaseState(herd_state=herd_pos, herder_state=herder_state_try, steps=0)
+                state_try = DeliveryBaseState(herd_state=herd_pos, herder_state=herder_state_try, steps=0, centers=centers)
                 is_not_valid = self.is_herder_in_obstacles(state_try)
                 return ~is_not_valid, pos_try
 
@@ -688,6 +694,8 @@ class DeliveryBase(BaseEnv):
         else:
             centers = self.cfg.centers
 
+        assert centers.shape == (2, 2)
+
         return DeliveryBaseState(herd_state=herd_pos, herder_state=herder_state, steps=0, centers=centers)
 
     @property
@@ -713,147 +721,17 @@ class DeliveryBase(BaseEnv):
             ax.add_patch(herd_circle)
 
 
-@define(slots=False)
-class DeliveryBasePlayCfg(DeliveryBaseCfg):
-    test_invariant: bool = False
-
-
-class DeliveryBasePlay(DeliveryBase):
-    """For testing."""
-
-    Cfg = DeliveryBasePlayCfg
-
-    def __init__(self, cfg: DeliveryBasePlayCfg, should_term_fn: ShouldTermFn = None):
-        super().__init__(cfg, should_term_fn=should_term_fn)
-        self.cfg = cfg
-
-        self.centers = np.array([[-3.0, -3.0], [3.0, 3.0]])
-        self.radiuses = np.array([1.0, 1.0])
-
-        self.centers_perturb = self.centers[0:1]
-        self.radiuses_perturb = self.radiuses[0:1] + 3 * cfg.agent_radius
-
-    def next_state(self, state: DeliveryBaseState, control: jnp.ndarray):
-        """Compute next state given current state and control inputs."""
-        dt = self.cfg.dt
-
-        # Update herder states
-        herder_pos = state.herder_state[:, 0:2]
-        herder_vel = state.herder_state[:, 2:4]
-
-        # Desired velocity.
-        herder_vel_cmd = control
-
-        if VEL_ZERO:
-            vel_inp = control
-            herder_pos_new = herder_pos + vel_inp * dt
-            herder_vel_new = herder_vel
-        else:
-            # Take velocity limit into account.
-            #     Max acceleration when cmd=vel_max and current_vel = 0.
-            #     =>  acc_max = kp_vel * vel_max   => kp_vel = acc_max / vel_max
-            kp_vel = 0.5 * jnp.array(self.cfg.acc_maxs) / jnp.array(self.cfg.vel_maxs)
-            herder_acc = kp_vel * (herder_vel_cmd - herder_vel)
-            acc_max = jnp.array(self.cfg.acc_maxs)
-            herder_acc = jnp.clip(herder_acc, -acc_max[:, None], acc_max[:, None])
-
-            if self.cfg.test_invariant:
-                # Make the first circle not control invariant by adding a constant upwards acceleration
-                # larger than the max acceleration.
-                in_circ_perturb = jnp.any(self.is_herder_circ_perturb(state, which=jnp))
-
-                max_acc_max = max(self.cfg.acc_maxs)
-                circ1_acc = jnp.array([0.0, 1.1 * max_acc_max])
-                herder_acc = herder_acc + jnp.where(in_circ_perturb, circ1_acc, 0.0)
-
-                herder_vel_new = herder_vel + herder_acc * dt
-
-                # Prevent negative velocities in y-axis.
-                herder_vel_new = herder_vel_new.at[:, 1].set(jnp.maximum(herder_vel_new[:, 1], 0.0))
-            else:
-                herder_vel_new = herder_vel + herder_acc * dt
-
-            herder_pos_new = herder_pos + herder_vel * dt + 0.5 * herder_acc * dt**2
-
-            vel_max = jnp.array(self.cfg.vel_maxs)
-            herder_vel_new = jnp.clip(herder_vel_new, -vel_max[:, None], vel_max[:, None])
-
-        herder_state_new = jnp.concatenate([herder_pos_new, herder_vel_new], axis=-1)
-
-        # Update herd states (simple dynamics: herd agents move towards the average position of the herders)
-        herd_pos = state.herd_state
-        herd_vel = self.compute_herd_vel(herd_pos, herder_pos)
-        if self.cfg.herd_zero:
-            herd_vel = 0
-        herd_state_new = herd_pos + herd_vel * dt
-
-        return DeliveryBaseState(herd_state=herd_state_new, herder_state=herder_state_new, steps=state.steps + 1)
-
-    def get_predicates_bool(self, state: DeliveryBaseState):
-        predicates = super().get_predicates_bool(state)
-        return predicates
-
-    def get_predicates_float(self, state: DeliveryBaseState):
-        predicates = super().get_predicates_float(state)
-        pred_herder_circs = self.pred_herder_circs(state)
-        return {"herder_c1": pred_herder_circs[0], "herder_c2": pred_herder_circs[1]} | predicates
-
-    def is_herder_circs(self, state: DeliveryBaseState, which=jnp):
-        h_pos = state.herder_state[..., :, 0:2]
-        c_pos = which.array(self.centers)
-        # (n_circs, n_herders, 2) -> (n_circs, n_herders)
-        ch_dists = which.linalg.norm(h_pos[..., None, :, :] - c_pos[..., :, None, :], axis=-1)
-        # (n_circs, )
-        c_dists = which.min(ch_dists, axis=-1)
-        c_is_herder_inside = c_dists < (which.array(self.radiuses) - self.cfg.agent_radius)
-        return c_is_herder_inside
-
-    def is_herder_circ_perturb(self, state: DeliveryBaseState, which=jnp):
-        h_pos = state.herder_state[..., :, 0:2]
-        c_pos = which.array(self.centers_perturb)
-        # (n_circs, n_herders, 2) -> (n_circs, n_herders)
-        ch_dists = which.linalg.norm(h_pos[..., None, :, :] - c_pos[..., :, None, :], axis=-1)
-        # (n_circs, )
-        c_dists = which.min(ch_dists, axis=-1)
-        c_is_herder_inside = c_dists < (which.array(self.radiuses_perturb) - self.cfg.agent_radius)
-        return c_is_herder_inside
-
-    def pred_herder_circs(self, state: DeliveryBaseState, which=jnp):
-        """
-        Inside the circle is +1.
-        Outside the circle is negative.
-        - Linearly scale from -1 when distance=edge to -eps when distance=0
-        """
-
-        h_pos = state.herder_state[..., :, 0:2]
-        c_pos = which.array(self.centers)
-        # (n_circs, n_herders, 2) -> (n_circs, n_herders)
-        ch_dists = which.linalg.norm(h_pos[..., None, :, :] - c_pos[..., :, None, :], axis=-1)
-        # (n_circs, )
-        c_dists = which.min(ch_dists, axis=-1)
-        c_radiuses = which.array(self.radiuses)
-        c_dist_to_circ = c_dists - c_radiuses + self.cfg.agent_radius
-        eps = 0.1
-
-        val_at_edge = -1.0
-        edge = 2 * which.array(self.cfg.halfsize).max() - c_radiuses.max()
-        coef = (val_at_edge + eps) / edge
-        pred = jnp.where(c_dist_to_circ <= 0, 1.0, -eps + coef * c_dist_to_circ)
-        pred = jnp.clip(pred, -1.0, 1.0)
-        return pred
-
-    def setup_ax(self, ax: plt.Axes):
-        super().setup_ax(ax)
-
-        if self.cfg.test_invariant:
-            # Plot the perturbation circles.
-            for ii, center in enumerate(self.centers_perturb):
-                radius = self.radiuses_perturb[ii]
-                circ = plt.Circle((center[0], center[1]), radius, color="C0", alpha=0.2)
-                ax.add_patch(circ)
-
-        # Plot the circles.
-        for ii, center in enumerate(self.centers):
-            radius = self.radiuses[ii]
-            circ = plt.Circle((center[0], center[1]), radius, color="C5", alpha=0.3)
-            ax.add_patch(circ)
+# class DeliveryBasePlay(DeliveryBase):
+#     """For testing."""
+#
+#     Cfg = DeliveryBasePlayCfg
+#
+#     def __init__(self, cfg: DeliveryBasePlayCfg, should_term_fn: ShouldTermFn = None):
+#         super().__init__(cfg, should_term_fn=should_term_fn)
+#         self.cfg = cfg
+#
+#         self.centers = np.array([[-3.0, -3.0], [3.0, 3.0]])
+#         self.radiuses = np.array([1.0, 1.0])
+#
+#         self.centers_perturb = self.centers[0:1]
+#         self.radiuses_perturb = self.radiuses[0:1] + 3 * cfg.agent_radius

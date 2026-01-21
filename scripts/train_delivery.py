@@ -5,21 +5,18 @@ from rraa_rl import herd_os_cbs
 from rraa_rl import delivery_cbs
 from rraa_rl.run import Run
 from rraa_rl.src.env.general_task.env import Env
-from rraa_rl.src.env.general_task.delivery_base import DeliveryBaseCfg, DeliveryBasePlay
-from rraa_rl.src.env.general_task.delivery import Delivery, DeliveryPlay
+from rraa_rl.src.env.general_task.delivery_base import DeliveryBaseCfg
+from rraa_rl.src.env.general_task.delivery import Delivery
 from rraa_rl.trainer import Trainer
 from rraa_rl.vd_mappo import VDMAPPOAgent
 import os 
 
 app = App()
 
-os.environ["CUDA_VISIBLE_DEVICES"] = "1"
+# os.environ["CUDA_VISIBLE_DEVICES"] = "1"
 
 def get_env(env_name: str) -> Env:
     env_name = env_name.lower()
-
-    if env_name == "deliveryplay":
-        return DeliveryPlay()
 
     if env_name == "delivery":
         # specification = "F target0 && F target1 && G(!obstacles) && G(!oob)"
@@ -54,7 +51,7 @@ def get_env(env_name: str) -> Env:
         base_cfg.n_herd = 3
         base_cfg.acc_maxs = [2.0, 2.0, 1.0]
         base_cfg.vel_maxs = [1.0, 1.0, 0.1]
-        base_cfg.dynamic_targets = False
+        base_cfg.dynamic_targets = True
         # base_cfg.update_targets = True
 
         cfg = Delivery.Cfg(specification=specification, base=base_cfg)
@@ -86,6 +83,6 @@ def main(name: str | None = None, debug: bool = False, env_name: str = "delivery
 
 
 if __name__ == "__main__":
-    # with ipdb.launch_ipdb_on_exception():
-    #     app()
-    app()
+    with ipdb.launch_ipdb_on_exception():
+        app()
+    # app()
