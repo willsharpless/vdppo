@@ -1,7 +1,7 @@
 import functools as ft
-import einops as ei
 from typing import Any
 
+import einops as ei
 import jax
 import jax.numpy as jnp
 import jax.random as jr
@@ -12,7 +12,7 @@ import numpy as np
 from attrs import define
 from jaxtyping import PRNGKeyArray
 
-from rraa_rl.geometry import AABB, dist_pt_to_aabb, LineSegment, segment_intersects_aabb
+from rraa_rl.geometry import AABB, LineSegment, dist_pt_to_aabb, segment_intersects_aabb
 from rraa_rl.jax_types import BoolScalar
 from rraa_rl.jax_utils import softmaximum, softminimum, tree_stack
 from rraa_rl.src.env.general_task.env import BaseEnv, Env, EnvStep
@@ -567,10 +567,14 @@ class HerdingHerd(HerdBase):
         self.gap_y = self.gates[0, 1]
         self.gap_halfheight = 3 * cfg.agent_radius
 
-        self.wall_lower_aabb, self.wall_upper_aabb = self._get_wall_gap_aabb(self.wall_x, self.wall_thick_x, self.gap_y, self.gap_halfheight, cfg.halfsize[1])
+        self.wall_lower_aabb, self.wall_upper_aabb = self._get_wall_gap_aabb(
+            self.wall_x, self.wall_thick_x, self.gap_y, self.gap_halfheight, cfg.halfsize[1]
+        )
 
     @staticmethod
-    def _get_wall_gap_aabb(wall_x: float, wall_thick_x: float, gap_y: float, gap_halfheight: float, halfsize_y: float) -> tuple[AABB, AABB]:
+    def _get_wall_gap_aabb(
+        wall_x: float, wall_thick_x: float, gap_y: float, gap_halfheight: float, halfsize_y: float
+    ) -> tuple[AABB, AABB]:
         minpos = np.array([wall_x - wall_thick_x / 2, -halfsize_y])
         maxpos = np.array([wall_x + wall_thick_x / 2, gap_y - gap_halfheight])
         aabb_lower = AABB(minpos=minpos, maxpos=maxpos)
@@ -610,10 +614,17 @@ class HerdingHerd(HerdBase):
         herd_state_gate = jtu.tree_map(lambda x: x[which_gate], herd_state_gates)
 
         # reset_center = jr.bernoulli(key_do_center, p=p_reset_center)
-        probs =jnp.array([p_reset_orig, p_reset_task, p_reset_center, p_reset_gap, p_reset_herd, p_reset_gate])
+        probs = jnp.array([p_reset_orig, p_reset_task, p_reset_center, p_reset_gap, p_reset_herd, p_reset_gate])
         which_reset = jr.categorical(key_which, probs)
 
-        stack_list = [herd_state_orig, herd_state_task, herd_state_center, herd_state_gap, herd_state_herding, herd_state_gate]
+        stack_list = [
+            herd_state_orig,
+            herd_state_task,
+            herd_state_center,
+            herd_state_gap,
+            herd_state_herding,
+            herd_state_gate,
+        ]
         assert len(probs) == len(stack_list)
 
         herd_state_stack = tree_stack(stack_list)
@@ -644,7 +655,6 @@ class HerdingHerd(HerdBase):
         herder_state = jnp.concatenate([herder_pos, herder_vel], axis=-1)
 
         return HerdBaseState(herd_state=herd_pos, herder_state=herder_state, steps=0)
-
 
     def reset_center(self, key: PRNGKeyArray):
         # All three herd agents in the center, as close as possible without overlapping.
@@ -856,7 +866,7 @@ class HerdingHerd(HerdBase):
         } | predicates
 
         is_herder_unsafe = jnp.stack(
-            [predicates["herder_oob"], predicates["herd_herder_collide"]], axis=-1
+            [predicates["herder_oob"], predicates["herder_collide"], predicates["herd_herder_collide"]], axis=-1
         ).max(axis=-1)
         predicates = predicates | {"herder_unsafe": is_herder_unsafe}
 
@@ -1001,7 +1011,9 @@ class HerdingHerd(HerdBase):
             wall_lower_dist = jax.vmap(ft.partial(dist_pt_to_aabb, aabb=self.wall_lower_aabb))(pos)
             wall_upper_dist = jax.vmap(ft.partial(dist_pt_to_aabb, aabb=self.wall_upper_aabb))(pos)
 
-        dists = jnp.stack([left_dists, right_dists, bottom_dists, top_dists, wall_lower_dist, wall_upper_dist], axis=-1)  # (n_agents, 4)
+        dists = jnp.stack(
+            [left_dists, right_dists, bottom_dists, top_dists, wall_lower_dist, wall_upper_dist], axis=-1
+        )  # (n_agents, 4)
         return dists
 
     def compute_herd_vel(self, n_herd_pos: jnp.ndarray, m_herder_pos: jnp.ndarray):
