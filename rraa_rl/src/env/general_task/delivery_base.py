@@ -499,9 +499,9 @@ class DeliveryBase(BaseEnv):
 
             def sample_valid_position(key):
                 pos_try = jr.uniform(key, shape=(1, 2), minval=minpos_per_ag, maxval=maxpos_per_ag)
-                pos_try_doubled = jnp.concatenate([pos_try, pos_try], axis=0)
-                valid_vel = jnp.zeros_like(pos_try_doubled)
-                herder_state_try = jnp.concatenate([pos_try_doubled, valid_vel], axis=-1)
+                pos_try_full = jnp.zeros((n_herders, 2)).at[:,:2].set(pos_try)
+                valid_vel = jnp.zeros_like(pos_try_full)
+                herder_state_try = jnp.concatenate([pos_try_full, valid_vel], axis=-1)
                 state_try = DeliveryBaseState(herd_state=herd_pos, herder_state=herder_state_try, steps=0)
                 is_not_valid = self.is_herder_in_obstacles(state_try)
                 return ~is_not_valid, pos_try

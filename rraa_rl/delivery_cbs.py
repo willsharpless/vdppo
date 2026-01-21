@@ -503,7 +503,7 @@ def animate_eval_trajs_multi_agent(p: CallbackProps):
             for agent_idx in range(env.n_agents):
                 circ = plt.Circle((0, 0), cfg.agent_radius, facecolor="C1", edgecolor="none")
                 if env.cfg.base.base_agent and agent_idx == env.n_agents - 1:
-                    circ = RegularPolygon((0, 0), numVertices=3, radius=cfg.agent_radius, orientation=np.pi/2, facecolor="C1", edgecolor="none")
+                    circ = plt.Circle((0, 0), 2*cfg.agent_radius, facecolor="C1", edgecolor="black")
                 ax.add_patch(circ)
                 circs.append(circ)
             agent_collections[(ii, jj)] = circs

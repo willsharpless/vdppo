@@ -52,8 +52,8 @@ def get_env(env_name: str) -> Env:
         base_cfg.base_agent = True
         base_cfg.n_herders = 3
         base_cfg.n_herd = 3
-        base_cfg.acc_maxs = [3.0, 3.0, 1.0]
-        base_cfg.vel_maxs = [1.0, 1.0, 0.5]
+        base_cfg.acc_maxs = [2.0, 2.0, 1.0]
+        base_cfg.vel_maxs = [1.0, 1.0, 0.1]
 
         cfg = Delivery.Cfg(specification=specification, base=base_cfg)
         return Delivery(cfg)
