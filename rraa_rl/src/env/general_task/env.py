@@ -1,6 +1,6 @@
 import copy
 import functools as ft
-from typing import Any, NamedTuple, Protocol, Self, Generic, TypeVar
+from typing import Any, Generic, NamedTuple, Protocol, Self, TypeVar
 
 import jax
 import jax.nn as jnn
@@ -153,6 +153,10 @@ class Env:
         """Number of controlled agents."""
         raise NotImplementedError("")
 
+    @property
+    def n_actions_per_agent(self) -> list[list[int]]:
+        raise NotImplementedError("")
+
     def _temporal_node_idx_to_node_type(self):
         """Map from temporal node idx to node type (as index)"""
         temporal_node_types = DAGNode.get_temporal_classes_sorted()
@@ -197,8 +201,9 @@ class Env:
         return obs
 
     def _augment_obs(self, state: Any, obs: jnp.ndarray):
-        obs_aug = self._get_augment_obs(state)
-        return AugObs(base=obs, temporal=obs_aug)
+        raise NotImplementedError("")
+        # obs_aug = self._get_augment_obs(state)
+        # return AugObs(base=obs, temporal=obs_aug)
 
     @property
     def eval_T(self) -> int:
@@ -230,7 +235,9 @@ class Env:
 
         return temporal_node_idx_new
 
+
 BaseClass = TypeVar("BaseClass")
+
 
 @jdc.pytree_dataclass
 class StateWithTemporalNode(Generic[BaseClass]):
@@ -301,6 +308,10 @@ class StaticTemporalNodeMixinProtocol(Protocol):
     n_temporal_nodes: int
     temporal_nodes: list[DAGId]
 
+    def _get_augment_obs(self, state: StateWithTemporalNode) -> jnp.ndarray: ...
+
+    def _temporal_node_idx_to_node_type(self) -> jnp.ndarray: ...
+
 
 class StaticTemporalNodeMixin:
     def __init__(self: StaticTemporalNodeMixinProtocol, cfg: StaticTemporalNodeMixinCfg, **kwargs):
@@ -360,10 +371,26 @@ class StaticTemporalNodeMixin:
         b_state0 = tree_cat(states, axis=0)
         return b_state0
 
+    def _augment_obs(self: StaticTemporalNodeMixinProtocol, state: StateWithTemporalNode, obs: jnp.ndarray):
+        obs_aug = self._get_augment_obs(state)
+        if self.n_temporal_nodes == 1:
+            temporal_node_idx = 0
+            temporal_node_type = 0
+        else:
+            temporal_node_idx = state.temporal_node_idx
+            temporal_node_idx_to_node_type = self._temporal_node_idx_to_node_type()
+            temporal_node_type = temporal_node_idx_to_node_type[state.temporal_node_idx]
+
+        return AugObs(
+            temporal_node_idx=temporal_node_idx, temporal_node_type=temporal_node_type, base=obs, temporal=obs_aug
+        )
+
 
 class AugObs(NamedTuple):
     """Separate the "base" observation and the observation of the temporal node."""
 
+    temporal_node_idx: int
+    temporal_node_type: int
     base: jnp.ndarray
     temporal: jnp.ndarray
 
@@ -483,7 +510,9 @@ def get_gu_triggers(
             raise ValueError(f"Expected GUminN to have only GUsingle children, found {type(gu_single)}")
 
         gu_single_reach_dag_id = gu_single.reach
-        condition_val = evaluate_dag(dag_nodes, gu_single_reach_dag_id, predicates, V_dict, scratch=scratch, which=which)
+        condition_val = evaluate_dag(
+            dag_nodes, gu_single_reach_dag_id, predicates, V_dict, scratch=scratch, which=which
+        )
 
         gu_idx_next = (gu_idx + 1) % n_GU
         gu_single_next_dag_id = gu_single_dag_ids[gu_idx_next]
@@ -492,7 +521,13 @@ def get_gu_triggers(
     return triggers
 
 
-def get_rules(temporal_nodes: list[DAGId], dag_nodes: list[DAGNode], predicates: dict[str, jnp.ndarray], t_value: jnp.ndarray, which=jnp):
+def get_rules(
+    temporal_nodes: list[DAGId],
+    dag_nodes: list[DAGNode],
+    predicates: dict[str, jnp.ndarray],
+    t_value: jnp.ndarray,
+    which=jnp,
+):
     """Get the temporal node transition rules."""
     scratch: dict[DAGId, jnp.ndarray] = {}
 

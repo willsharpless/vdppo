@@ -28,7 +28,8 @@ from rraa_rl.distribution import tfd
 from rraa_rl.evaluate_dag import evaluate_dag
 from rraa_rl.gae import BellmanGUSingle, BellmanMax, BellmanMaxMin, BellmanMin, gae_generalized
 from rraa_rl.jax_types import FloatScalar, bFloat
-from rraa_rl.nn_modules import BaseObsOnly, BothObs, MAMultiDiscretePolicy, VDValue
+from rraa_rl.nn_modules import (BaseObsOnly, BothObs, IndexAtEnd, MAMultiDiscretePolicy, SeparateMAMultiDiscretePolicy,
+                                VDValue, VDValueShared, LearnTemporalEmbedding)
 from rraa_rl.src.env.general_task.env import Env, EnvStep, StateWithTemporalNode
 from rraa_rl.train_state import ModuleDict, Params, TrainState
 from rraa_rl.train_utils import compute_norm_and_clip, has_any_nan_or_inf, tree_where
@@ -80,6 +81,14 @@ class VDMAPPOAgentCfg(Cfg):
     actor_hids: tuple[int, ...] = (128, 128)
     critic_hids: tuple[int, ...] = (128, 128)
 
+    value_shared_trunk: bool = False
+    """If true, the values for all agents share a trunk"""
+
+    actor_shared_trunk: bool = True
+    """If true, the policies for all agents share a trunk"""
+
+    actor_learn_embedding: bool = False
+    """If true, and actor_shared_trunk is true, then add an additional linear layer to learn per-node embeddings."""
 
 class VDMAPPOStatic:
     def __init__(self, temporal_node_alloc: np.ndarray | None = None):
@@ -114,16 +123,36 @@ class VDMAPPOAgent:
         dummy_obs = env.get_dummy_obs()
 
         # Define networks.
-        critic_def = VDValue(
-            hidden_dims=cfg.critic_hids,
-            n_out=env.n_temporal_nodes,
-        )
-        critic_def = BaseObsOnly(critic_def)
-        actor_def = MAMultiDiscretePolicy(
-            hidden_dims=cfg.actor_hids,
-            n_actions_per_agent=env.n_actions_per_agent,
-        )
-        actor_def = BothObs(actor_def)
+        if cfg.value_shared_trunk:
+            # 1 MLP, with a linear at the end.
+            critic_def = VDValueShared(
+                hidden_dims=cfg.critic_hids,
+                n_out=env.n_temporal_nodes,
+            )
+            critic_def = BaseObsOnly(critic_def)
+        else:
+            # n_temporal_node separate MLPs.
+            critic_def = VDValue(
+                hidden_dims=cfg.critic_hids,
+                n_out=env.n_temporal_nodes,
+            )
+            critic_def = BaseObsOnly(critic_def)
+
+        if cfg.actor_shared_trunk:
+            actor_def = MAMultiDiscretePolicy(
+                hidden_dims=cfg.actor_hids,
+                n_actions_per_agent=env.n_actions_per_agent,
+            )
+            if cfg.actor_learn_embedding:
+                actor_def = LearnTemporalEmbedding(actor_def, n_temporal_nodes=env.n_temporal_nodes)
+            else:
+                actor_def = BothObs(actor_def)
+        else:
+            actor_def = SeparateMAMultiDiscretePolicy(
+                hidden_dims=cfg.actor_hids, n_actions_per_agent=env.n_actions_per_agent, n_out=env.n_temporal_nodes
+            )
+            actor_def = IndexAtEnd(actor_def, n_out=env.n_temporal_nodes)
+
         network_info = dict(
             critic=(critic_def, (dummy_obs,)),
             actor=(actor_def, (dummy_obs,)),

@@ -51,6 +51,27 @@ class MAMultiDiscretePolicy(nn.Module):
         return dist
 
 
+class SeparateMAMultiDiscretePolicy(nn.Module):
+    """MAMultiDiscretePolicy, but vmap'ed n_out times."""
+
+    hidden_dims: Sequence[int]
+    n_actions_per_agent: list[list[int]]
+    n_out: int
+
+    @nn.compact
+    def __call__(self, obs) -> tfd.Distribution:
+        BatchPolicy = nn.vmap(
+            MAMultiDiscretePolicy,
+            in_axes=None,
+            out_axes=-1,
+            variable_axes={"params": 0},
+            split_rngs={"params": True},
+            axis_size=self.n_out,
+        )
+        policy = BatchPolicy(self.hidden_dims, self.n_actions_per_agent)(obs)
+        return policy
+
+
 class ScalarValue(nn.Module):
     hidden_dims: Sequence[int]
 
@@ -81,6 +102,17 @@ class VDValue(nn.Module):
         return v
 
 
+class VDValueShared(nn.Module):
+    hidden_dims: Sequence[int]
+    n_out: int
+
+    @nn.compact
+    def __call__(self, obs):
+        x = MLP(hid_sizes=self.hidden_dims, act=nn.tanh, act_final=True)(obs)
+        v = nn.Dense(self.n_out, kernel_init=default_nn_init(), name="ValueHead")(x)
+        return v
+
+
 class BaseObsOnly(nn.Module):
     nn: nn.Module
 
@@ -96,3 +128,36 @@ class BothObs(nn.Module):
     def __call__(self, obs: AugObs):
         combined_obs = obs.combine()
         return self.nn(combined_obs)
+
+
+class LearnTemporalEmbedding(nn.Module):
+    nn: nn.Module
+    n_temporal_nodes: int
+    n_temporal_types: int
+    n_embed_feats: int
+
+    @nn.compact
+    def __call__(self, obs: AugObs):
+        # Learn an embedding for obs.temporal_node_idx and obs.temporal_type_idx, then concatenate to obs.base
+        node_idx_embed = nn.Embed(
+            num_embeddings=self.n_temporal_nodes, features=self.n_embed_feats, name="NodeIdxEmbed"
+        )(obs.temporal_node_idx)
+        node_type_embed = nn.Embed(
+            num_embeddings=self.n_temporal_types, features=self.n_embed_feats, name="NodeTypeEmbed"
+        )(obs.temporal_node_type)
+        obs = jnp.concatenate([obs.base, node_idx_embed, node_type_embed], axis=-1)
+        return self.nn(obs)
+
+
+class IndexAtEnd(nn.Module):
+    """Use the base obs only. The nn will output n_out outputs, and we index using the temporal_node_idx."""
+
+    nn: nn.Module
+    n_out: int
+
+    @nn.compact
+    def __call__(self, obs: AugObs):
+        n_out = self.nn(obs.base)
+        assert n_out.shape[-1] == n_out
+        out = n_out[..., obs.temporal_node_idx]
+        return out
