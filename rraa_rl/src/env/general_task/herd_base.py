@@ -11,6 +11,7 @@ import numpy as np
 from attrs import define
 from jaxtyping import PRNGKeyArray
 
+from rraa_rl.geometry import AABB, dist_pt_to_aabb
 from rraa_rl.jax_types import BoolScalar
 from rraa_rl.jax_utils import softmaximum, softminimum, tree_stack
 from rraa_rl.src.env.general_task.env import BaseEnv, Env, EnvStep
@@ -145,78 +146,7 @@ class HerdBase(BaseEnv):
         return dists
 
     def compute_herd_vel(self, n_herd_pos: jnp.ndarray, m_herder_pos: jnp.ndarray):
-        def get_weighted_dist(ii: int, herd_pos_new: jnp.ndarray):
-            # Compute the minimum distance to the other herd agents.
-
-            # Keep the softmin error <= 0.05 * halfwidth. error <= temperature * log(n)  =>  temperature = error / log(n)
-            temperature = 0.05 * min(self.cfg.halfsize) / jnp.log(max(self.cfg.n_herd, self.cfg.n_herders, 4))
-
-            n_herd_dist = jnp.linalg.norm(n_herd_pos - herd_pos_new, axis=-1)
-            # Ignore self-distance
-            n_herd_dist = n_herd_dist.at[ii].set(jnp.inf)
-            herd_softmin = softminimum(n_herd_dist, temperature=temperature)
-            herd_min = jnp.min(n_herd_dist)
-
-            # Compute the minimum distance to the herders.
-            # (n_herd, 1, 2) - (1, n_herders, 2) -> (n_herd, n_herders, 2) -> (n_herd, n_herders)
-            m_herder_dist = jnp.linalg.norm(m_herder_pos - herd_pos_new, axis=-1)
-            herder_softmin = softminimum(m_herder_dist, temperature=temperature)
-            herder_min = jnp.min(m_herder_dist)
-
-            # Compute the minimum distance to the walls.
-            herd_wall_dists = self.dist_to_wall(herd_pos_new)
-            herd_wall_softmin = softminimum(herd_wall_dists, temperature=temperature, axis=-1)
-            herd_wall_min = jnp.min(herd_wall_dists)
-
-            # If the distance to the wall is larger than a threshold, then treat the distance as very big.
-            # Smoothly increase the effect of this
-            wall_dist_thresh = 10 * self.cfg.agent_radius
-            coef = 1 + 2 * jnp.tanh(herd_wall_min / wall_dist_thresh * 2)
-            herd_wall_softmin = coef * herd_wall_softmin
-
-            w_herd = 0.1
-            w_herder = 2.0
-            w_wall = 1.5
-            vals = jnp.array([herd_softmin, herder_softmin, herd_wall_softmin])
-            weights = jnp.array([w_herd, w_herder, w_wall])
-            # Higher weight => divide by larger number => is minimum more often.
-            weighted_dist = softminimum(vals / weights, temperature=temperature)
-            closest = jnp.argmin(vals / weights)
-            return weighted_dist, closest, herder_min
-
-        def get_vel_single(ii: int):
-            herd_pos = n_herd_pos[ii]
-
-            # Generate candidate actions uniformly in a circle.
-            angles = jnp.linspace(0, 2 * jnp.pi, num=16, endpoint=False)
-            vel_test = self.cfg.herd_vel * jnp.stack([jnp.cos(angles), jnp.sin(angles)], axis=-1)  # (num_actions, 2)
-            herd_pos_new = herd_pos + vel_test * self.cfg.dt  # (num_actions, 2)
-
-            _, closest_idx, herder_min_dist = get_weighted_dist(ii, herd_pos)
-            weighted_dists, _, _ = jax.vmap(ft.partial(get_weighted_dist, ii))(herd_pos_new)  # (num_actions,)
-            # Select the action that maximizes the weighted distance.
-            best_idx = jnp.argmax(weighted_dists)
-            best_vel = vel_test[best_idx]
-
-            # As the herder moves away, the herd slows down.
-            eff_range = 4.0
-            sigma = eff_range / 2
-            free_range = 4 * self.cfg.agent_radius
-            tmp = jnp.maximum(herder_min_dist - free_range, 0.0)
-            # Use Gaussian kernel.
-            herder_vel_coef = jnp.exp(-0.5 * (tmp / sigma) ** 2)
-
-            # If the closest thing is the herd, then move slower than if the closest is a herder.
-            closest_is_herd = closest_idx == 0
-            vel_coef = jnp.where(closest_is_herd, self.cfg.herd_vel_self / self.cfg.herd_vel, herder_vel_coef)
-            best_vel = vel_coef * best_vel
-
-            return best_vel
-
-        n_idxs = jnp.arange(self.cfg.n_herd)
-        n_herd_vel = jax.vmap(get_vel_single)(n_idxs)
-
-        return n_herd_vel
+        return jnp.zeros_like(n_herd_pos)
 
     def next_state(self, state: HerdBaseState, control: jnp.ndarray):
         """Compute next state given current state and control inputs."""
@@ -624,6 +554,19 @@ class HerdingHerd(HerdBase):
         self.gap_y = self.gates[0, 1]
         self.gap_halfheight = 2 * cfg.agent_radius
 
+        self.wall_lower_aabb, self.wall_upper_aabb = self._get_wall_gap_aabb(self.wall_x, self.wall_thick_x, self.gap_y, self.gap_halfheight, cfg.halfsize[1])
+
+    @staticmethod
+    def _get_wall_gap_aabb(wall_x: float, wall_thick_x: float, gap_y: float, gap_halfheight: float, halfsize_y: float) -> tuple[AABB, AABB]:
+        minpos = np.array([wall_x - wall_thick_x / 2, -halfsize_y])
+        maxpos = np.array([wall_x + wall_thick_x / 2, gap_y - gap_halfheight])
+        aabb_lower = AABB(minpos=minpos, maxpos=maxpos)
+
+        minpos = np.array([wall_x - wall_thick_x / 2, gap_y + gap_halfheight])
+        maxpos = np.array([wall_x + wall_thick_x / 2, halfsize_y])
+        aabb_upper = AABB(minpos=minpos, maxpos=maxpos)
+        return aabb_lower, aabb_upper
+
     @property
     def n_gates(self) -> int:
         return len(self.gates)
@@ -634,14 +577,16 @@ class HerdingHerd(HerdBase):
         p_reset_center = self.cfg.p_reset_center
         # p_reset_center = 0.5
         # With some prob, reset the herd within small circle, and herder agents on outside pointing inwards.
+        p_reset_task = 0.4
         p_reset_herd = 0.2
         p_reset_gate = 0.2
         p_reset_orig = 1.0 - p_reset_center - p_reset_herd - p_reset_gate
 
-        key_orig, key_center, key_herding, key_gate, key_which, key_which_gate = jr.split(key, 6)
+        key_orig, key_task, key_center, key_herding, key_gate, key_which, key_which_gate = jr.split(key, 7)
         key_gates = jr.split(key_gate, self.n_gates)
 
         herd_state_orig = super().reset(key_orig)
+        herd_state_task = self.reset_task(key_task)
         herd_state_center = self.reset_center(key_center)
         herd_state_herding, _ = self.reset_herding(key_herding, center=self.herded_center)
 
@@ -650,12 +595,37 @@ class HerdingHerd(HerdBase):
         herd_state_gate = jtu.tree_map(lambda x: x[which_gate], herd_state_gates)
 
         # reset_center = jr.bernoulli(key_do_center, p=p_reset_center)
-        which_reset = jr.categorical(key_which, jnp.array([p_reset_orig, p_reset_center, p_reset_herd, p_reset_gate]))
+        which_reset = jr.categorical(key_which, jnp.array([p_reset_orig, p_reset_task, p_reset_center, p_reset_herd, p_reset_gate]))
 
-        herd_state_stack = tree_stack([herd_state_orig, herd_state_center, herd_state_herding, herd_state_gate])
+        herd_state_stack = tree_stack([herd_state_orig, herd_state_task, herd_state_center, herd_state_herding, herd_state_gate])
         herd_state = jtu.tree_map(lambda x: x[which_reset], herd_state_stack)
 
         return herd_state
+
+    def reset_task(self, key: PRNGKeyArray):
+        # Randomly reset the herd agents on the left, and the herders on the right.
+        key_herd, key_herders = jr.split(key)
+
+        halfsize = np.array(self.cfg.halfsize)
+
+        pos_lo = -0.9 * halfsize
+        pos_hi = -0.1 * halfsize
+        herd_pos = jr.uniform(key_herd, shape=(self.cfg.n_herd, 2), minval=pos_lo, maxval=pos_hi)
+
+        pos_lo = 0.1 * halfsize
+        pos_hi = 0.9 * halfsize
+        herder_pos = jr.uniform(key_herders, shape=(self.cfg.n_herders, 2), minval=pos_lo, maxval=pos_hi)
+
+        herder_vel = jr.uniform(
+            key_herders,
+            shape=(self.cfg.n_herders, 2),
+            minval=-jnp.array(self.cfg.vel_maxs) * 0.5,
+            maxval=jnp.array(self.cfg.vel_maxs) * 0.5,
+        )
+        herder_state = jnp.concatenate([herder_pos, herder_vel], axis=-1)
+
+        return HerdBaseState(herd_state=herd_pos, herder_state=herder_state, steps=0)
+
 
     def reset_center(self, key: PRNGKeyArray):
         # All three herd agents in the center, as close as possible without overlapping.
@@ -842,7 +812,7 @@ class HerdingHerd(HerdBase):
         } | predicates
 
         is_herder_unsafe = jnp.stack(
-            [predicates["herder_oob"], predicates["herd_herder_collide"], predicates["herder_collide_wall"]], axis=-1
+            [predicates["herder_oob"], predicates["herd_herder_collide"]], axis=-1
         ).max(axis=-1)
         predicates = predicates | {"herder_unsafe": is_herder_unsafe}
 
@@ -965,6 +935,98 @@ class HerdingHerd(HerdBase):
         )
         ax.add_patch(wall_bottom)
         ax.add_patch(wall_top)
+
+    def dist_to_wall(self, pos: jnp.ndarray):
+        """Compute distance to walls given positions."""
+        halfsize = self.cfg.halfsize
+        px, py = pos[..., 0], pos[..., 1]
+
+        # Four walls of the room.
+        left_dists = px + halfsize[0]
+        right_dists = halfsize[0] - px
+        bottom_dists = py + halfsize[1]
+        top_dists = halfsize[1] - py
+
+        # Wall with gap.
+        wall_lower_dist = dist_pt_to_aabb(pos, self.wall_lower_aabb)
+        wall_upper_dist = dist_pt_to_aabb(pos, self.wall_upper_aabb)
+
+        dists = jnp.stack([left_dists, right_dists, bottom_dists, top_dists, wall_lower_dist, wall_upper_dist], axis=-1)  # (n_agents, 4)
+        return dists
+
+    def compute_herd_vel(self, n_herd_pos: jnp.ndarray, m_herder_pos: jnp.ndarray):
+        def get_weighted_dist(ii: int, herd_pos_new: jnp.ndarray):
+            # Compute the minimum distance to the other herd agents.
+
+            # Keep the softmin error <= 0.05 * halfwidth. error <= temperature * log(n)  =>  temperature = error / log(n)
+            temperature = 0.05 * min(self.cfg.halfsize) / jnp.log(max(self.cfg.n_herd, self.cfg.n_herders, 4))
+
+            n_herd_dist = jnp.linalg.norm(n_herd_pos - herd_pos_new, axis=-1)
+            # Ignore self-distance
+            n_herd_dist = n_herd_dist.at[ii].set(jnp.inf)
+            herd_softmin = softminimum(n_herd_dist, temperature=temperature)
+            herd_min = jnp.min(n_herd_dist)
+
+            # Compute the minimum distance to the herders.
+            # (n_herd, 1, 2) - (1, n_herders, 2) -> (n_herd, n_herders, 2) -> (n_herd, n_herders)
+            m_herder_dist = jnp.linalg.norm(m_herder_pos - herd_pos_new, axis=-1)
+            herder_softmin = softminimum(m_herder_dist, temperature=temperature)
+            herder_min = jnp.min(m_herder_dist)
+
+            # Compute the minimum distance to the walls.
+            herd_wall_dists = self.dist_to_wall(herd_pos_new)
+            herd_wall_softmin = softminimum(herd_wall_dists, temperature=temperature, axis=-1)
+            herd_wall_min = jnp.min(herd_wall_dists)
+
+            # If the distance to the wall is larger than a threshold, then treat the distance as very big.
+            # Smoothly increase the effect of this
+            wall_dist_thresh = 10 * self.cfg.agent_radius
+            coef = 1 + 2 * jnp.tanh(herd_wall_min / wall_dist_thresh * 2)
+            herd_wall_softmin = coef * herd_wall_softmin
+
+            w_herd = 0.1
+            w_herder = 2.0
+            w_wall = 1.5
+            vals = jnp.array([herd_softmin, herder_softmin, herd_wall_softmin])
+            weights = jnp.array([w_herd, w_herder, w_wall])
+            # Higher weight => divide by larger number => is minimum more often.
+            weighted_dist = softminimum(vals / weights, temperature=temperature)
+            closest = jnp.argmin(vals / weights)
+            return weighted_dist, closest, herder_min
+
+        def get_vel_single(ii: int):
+            herd_pos = n_herd_pos[ii]
+
+            # Generate candidate actions uniformly in a circle.
+            angles = jnp.linspace(0, 2 * jnp.pi, num=16, endpoint=False)
+            vel_test = self.cfg.herd_vel * jnp.stack([jnp.cos(angles), jnp.sin(angles)], axis=-1)  # (num_actions, 2)
+            herd_pos_new = herd_pos + vel_test * self.cfg.dt  # (num_actions, 2)
+
+            _, closest_idx, herder_min_dist = get_weighted_dist(ii, herd_pos)
+            weighted_dists, _, _ = jax.vmap(ft.partial(get_weighted_dist, ii))(herd_pos_new)  # (num_actions,)
+            # Select the action that maximizes the weighted distance.
+            best_idx = jnp.argmax(weighted_dists)
+            best_vel = vel_test[best_idx]
+
+            # As the herder moves away, the herd slows down.
+            eff_range = 4.0
+            sigma = eff_range / 2
+            free_range = 4 * self.cfg.agent_radius
+            tmp = jnp.maximum(herder_min_dist - free_range, 0.0)
+            # Use Gaussian kernel.
+            herder_vel_coef = jnp.exp(-0.5 * (tmp / sigma) ** 2)
+
+            # If the closest thing is the herd, then move slower than if the closest is a herder.
+            closest_is_herd = closest_idx == 0
+            vel_coef = jnp.where(closest_is_herd, self.cfg.herd_vel_self / self.cfg.herd_vel, herder_vel_coef)
+            best_vel = vel_coef * best_vel
+
+            return best_vel
+
+        n_idxs = jnp.arange(self.cfg.n_herd)
+        n_herd_vel = jax.vmap(get_vel_single)(n_idxs)
+
+        return n_herd_vel
 
 
 # def all_in_circle(pos, radius, circle_radius):
