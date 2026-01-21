@@ -11,7 +11,7 @@ import numpy as np
 from attrs import define
 from jaxtyping import PRNGKeyArray
 
-from rraa_rl.geometry import AABB, dist_pt_to_aabb
+from rraa_rl.geometry import AABB, dist_pt_to_aabb, LineSegment, segment_intersects_aabb
 from rraa_rl.jax_types import BoolScalar
 from rraa_rl.jax_utils import softmaximum, softminimum, tree_stack
 from rraa_rl.src.env.general_task.env import BaseEnv, Env, EnvStep
@@ -1014,6 +1014,15 @@ class HerdingHerd(HerdBase):
             m_herder_dist = jnp.linalg.norm(m_herder_pos - herd_pos_new, axis=-1)
             # Take the geometry into account.
             m_herder_dist = m_herder_dist - 2 * self.cfg.agent_radius
+
+            # Set the distance to infinity if the herder has no line of sight to the herd agent.
+            m_segments_0 = herd_pos_new[None, :]
+            m_segments_1 = m_herder_pos
+            m_segments = LineSegment(m_segments_0, m_segments_1)
+            m_intersect_lower = jax.vmap(ft.partial(segment_intersects_aabb, aabb=self.wall_lower_aabb))(m_segments)
+            m_intersect_upper = jax.vmap(ft.partial(segment_intersects_aabb, aabb=self.wall_upper_aabb))(m_segments)
+            m_intersect_any = m_intersect_lower | m_intersect_upper
+            m_herder_dist = jnp.where(m_intersect_any, jnp.inf, m_herder_dist)
 
             herder_softmin = softminimum(m_herder_dist, temperature=temperature)
             herder_min = jnp.min(m_herder_dist)
