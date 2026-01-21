@@ -34,6 +34,7 @@ class DeliveryBaseState:
 
     steps: int = 0
 
+    centers: jnp.ndarray = jdc.field(default_factory=lambda: jnp.array([[0.0, 0.0], [1.0, 1.0]]))
 
 @define(slots=False)
 class DeliveryBaseCfg:
@@ -82,6 +83,64 @@ class DeliveryBaseCfg:
     obstacle_shape_norm: float = float("inf")
 
     base_agent: bool = False
+
+    dynamic_targets: bool = False
+    update_targets: bool = False
+
+    def sample_center_outside_obst(self, key: PRNGKeyArray):
+        n_targets = len(self.centers)
+        valid_centers = jnp.zeros((n_targets, 2))
+        halfsize_x, halfsize_y = self.halfsize
+        maxpos_per_ag = np.zeros((1, 2))
+        maxpos_per_ag[:, 0] = halfsize_x - self.agent_radius
+        maxpos_per_ag[:, 1] = halfsize_y - self.agent_radius
+
+        def sample_valid_for_ag(key, c_ix):
+
+            def sample_valid_position(key):
+                pos_try = jr.uniform(key, shape=(1, 2), minval=-maxpos_per_ag, maxval=maxpos_per_ag)
+                
+                obst_centers = jnp.array(self.obstacle_centers)  # (n_obst, 2)
+                obst_radii = jnp.array(self.obstacle_radiuses)  # (n_obst,)
+                obstacle_lw_ratios = jnp.array(self.obstacle_lw_ratios)  # (n_obst,)
+
+                # pos_try: (1, 2), obst_centers: (n_obst, 2) -> rel_pos: (n_obst, 2)
+                rel_pos = pos_try - obst_centers
+                semi_axes = jnp.stack([
+                    obst_radii * obstacle_lw_ratios,  # x semi-axis (length)
+                    obst_radii                          # y semi-axis (width)
+                ], axis=-1)  # (n_obst, 2)
+                normalized_pos = rel_pos / semi_axes
+                c_dists = jnp.linalg.norm(normalized_pos, axis=-1, 
+                                            ord=self.obstacle_shape_norm)  # (n_obst,)
+
+                is_not_valid = jnp.any(c_dists < obst_radii) # only making sure center isnt in obstacle
+                return ~is_not_valid, pos_try
+
+            def sample_until_valid(carry):
+                key, is_valid, pos = carry
+                key, key_new = jax.random.split(key)
+                is_valid_new, pos_new = sample_valid_position(key_new)
+                pos = jnp.where(is_valid, pos, pos_new)
+                is_valid = is_valid | is_valid_new
+                return (key, is_valid, pos)
+
+            init_carry = (key, False, jnp.zeros((1, 2)))
+
+            key, _, valid_center = jax.lax.while_loop(
+                lambda carry: ~carry[1],
+                sample_until_valid,
+                init_carry
+            )
+
+            return valid_center
+
+        valid_centers = jax.vmap(sample_valid_for_ag)(jr.split(key, n_targets), jnp.arange(n_targets))
+
+        return valid_centers
+
+    reset_targets_fn = sample_center_outside_obst
+    update_targets_fn = sample_center_outside_obst # random jump
 
 class DeliveryBase(BaseEnv):
     """
@@ -256,7 +315,17 @@ class DeliveryBase(BaseEnv):
             herd_vel = 0
         herd_state_new = herd_pos + herd_vel * dt
 
-        return DeliveryBaseState(herd_state=herd_state_new, herder_state=herder_state_new, steps=state.steps + 1)
+        # Update targets
+        if self.cfg.dynamic_targets and self.cfg.update_targets:
+            centers_new = self.cfg.update_targets_fn(jr.PRNGKey(state.steps))
+            def check_target(center_ix):
+                return self.is_herder_in_dyn_target(state, which=jnp, center_ix=center_ix, radius=self.cfg.radiuses[center_ix])            
+            update_cond = jax.vmap(check_target)(jnp.arange(len(self.cfg.centers)))
+            centers = jnp.where(update_cond[:, None], centers_new, state.centers)
+        else:
+            centers = state.centers
+
+        return DeliveryBaseState(herd_state=herd_state_new, herder_state=herder_state_new, steps=state.steps + 1, centers=centers)
 
     ## BOOL PREDICATES (SPARSE)
 
@@ -315,6 +384,12 @@ class DeliveryBase(BaseEnv):
         c_is_herder_inside = which.any(ch_dists < (which.array(radius) - self.cfg.agent_radius))
         return c_is_herder_inside
 
+    def is_herder_in_dyn_target(self, state: DeliveryBaseState, which=jnp, center_ix=0, radius=0.25):
+        h_pos = state.herder_state[..., :, 0:2]
+        ch_dists = which.linalg.norm(h_pos - state.centers[center_ix], axis=-1)
+        c_is_herder_inside = which.any(ch_dists < (which.array(radius) - self.cfg.agent_radius))
+        return c_is_herder_inside
+
     def is_herder_circs(self, state: DeliveryBaseState, which=jnp):
         h_pos = state.herder_state[..., :, 0:2]
         c_pos = which.array(self.cfg.centers)
@@ -342,6 +417,9 @@ class DeliveryBase(BaseEnv):
             "target1": self.is_herder_in_target(state, center=self.cfg.centers[1], radius=self.cfg.radiuses[1]),
             "ags_to_base_agent": self.is_herder_at_base_ag(state),
         }
+        if self.cfg.dynamic_targets:
+            predicates["target0"] = self.is_herder_in_dyn_target(state, center_ix=0, radius=self.cfg.radiuses[0])
+            predicates["target1"] = self.is_herder_in_dyn_target(state, center_ix=1, radius=self.cfg.radiuses[1])
         return predicates
 
     ## FLOAT PREDICATES (DENSE)
@@ -452,45 +530,89 @@ class DeliveryBase(BaseEnv):
         obs_dist_names = [f"rel_dist{ii}" for ii, _ in enumerate(rel_dists)]
 
         # ---------------------------------------------------------------------
+        # 3: Dynamic target centers (if enabled)
+        if self.cfg.dynamic_targets:
+            obs_centers = state.centers / jnp.array(self.cfg.halfsize)  # (n_targets, 2)
+            obs_centers_names = [[f"target{ii}_cx", f"target{ii}_cy"] for ii in range(len(state.centers))]
+        
+        # ---------------------------------------------------------------------
         if self.cfg.herd_zero:
-            obs = jnp.concatenate(
-                [
-                    obs_herder_pos.flatten(),
-                    obs_herder_vel.flatten(),
-                    obs_rel_unit_vecs.flatten(),
-                    obs_dists.flatten(),
+            if self.cfg.dynamic_targets:
+                obs = jnp.concatenate(
+                    [
+                        obs_herder_pos.flatten(),
+                        obs_herder_vel.flatten(),
+                        obs_rel_unit_vecs.flatten(),
+                        obs_dists.flatten(),
+                        obs_centers.flatten(),
+                    ]
+                )
+                obs_names = [
+                    *fl(obs_herder_pos_names),
+                    *fl(obs_herder_vel_names),
+                    *fl(obs_rel_unit_vecs_names),
+                    *obs_dist_names,
+                    *fl(obs_centers_names),
                 ]
-            )
-            obs_names = [
-                *fl(obs_herder_pos_names),
-                *fl(obs_herder_vel_names),
-                *fl(obs_rel_unit_vecs_names),
-                *obs_dist_names,
-            ]
+            else:
+                obs = jnp.concatenate(
+                    [
+                        obs_herder_pos.flatten(),
+                        obs_herder_vel.flatten(),
+                        obs_rel_unit_vecs.flatten(),
+                        obs_dists.flatten(),
+                    ]
+                )
+                obs_names = [
+                    *fl(obs_herder_pos_names),
+                    *fl(obs_herder_vel_names),
+                    *fl(obs_rel_unit_vecs_names),
+                    *obs_dist_names,
+                ]
         else:
-            obs = jnp.concatenate(
-                [
-                    obs_herd_pos.flatten(),
-                    obs_herder_pos.flatten(),
-                    obs_herder_vel.flatten(),
-                    obs_rel_unit_vecs.flatten(),
-                    obs_dists.flatten(),
+            if self.cfg.dynamic_targets:
+                obs = jnp.concatenate(
+                    [
+                        obs_herd_pos.flatten(),
+                        obs_herder_pos.flatten(),
+                        obs_herder_vel.flatten(),
+                        obs_rel_unit_vecs.flatten(),
+                        obs_dists.flatten(),
+                        obs_centers.flatten(),
+                    ]
+                )
+                obs_names = [
+                    *fl(obs_herd_pos_names),
+                    *fl(obs_herder_pos_names),
+                    *fl(obs_herder_vel_names),
+                    *fl(obs_rel_unit_vecs_names),
+                    *obs_dist_names,
+                    *fl(obs_centers_names),
                 ]
-            )
-            obs_names = [
-                *fl(obs_herd_pos_names),
-                *fl(obs_herder_pos_names),
-                *fl(obs_herder_vel_names),
-                *fl(obs_rel_unit_vecs_names),
-                *obs_dist_names,
-            ]
+            else:
+                obs = jnp.concatenate(
+                    [
+                        obs_herd_pos.flatten(),
+                        obs_herder_pos.flatten(),
+                        obs_herder_vel.flatten(),
+                        obs_rel_unit_vecs.flatten(),
+                        obs_dists.flatten(),
+                    ]
+                )
+                obs_names = [
+                    *fl(obs_herd_pos_names),
+                    *fl(obs_herder_pos_names),
+                    *fl(obs_herder_vel_names),
+                    *fl(obs_rel_unit_vecs_names),
+                    *obs_dist_names,
+                ]
         return obs, obs_names
 
     def get_obs(self, state: DeliveryBaseState):
         obs, _ = self.get_obs_and_names(state)
         return obs
 
-    def reset_no_obst(self, key: PRNGKeyArray, herd_pos, maxpos_per_ag: jnp.ndarray, minpos_per_ag: jnp.ndarray):
+    def sample_pos_outside_obst(self, key: PRNGKeyArray, herd_pos: jnp.ndarray, maxpos_per_ag: jnp.ndarray, minpos_per_ag: jnp.ndarray):
         n_herd = self.cfg.n_herd
         n_herders = self.cfg.n_herders
         valid_pos = jnp.zeros((n_herders, 2))
@@ -556,11 +678,17 @@ class DeliveryBase(BaseEnv):
             maxvel[:, 0] = 0.0
             maxvel[:, 1] = 0.0
 
-        herder_pos_valid = self.reset_no_obst(key_herders, herd_pos, maxpos_per_ag=maxpos_per_ag, minpos_per_ag=-maxpos_per_ag)
+        herder_pos_valid = self.sample_pos_outside_obst(key_herders, herd_pos, maxpos_per_ag=maxpos_per_ag, minpos_per_ag=-maxpos_per_ag)
         herder_vel = jr.uniform(key_herders, shape=(n_herders, 2), minval=-maxvel, maxval=maxvel)
         herder_state = jnp.concatenate([herder_pos_valid, herder_vel], axis=-1)
-        
-        return DeliveryBaseState(herd_state=herd_pos, herder_state=herder_state, steps=0)
+
+        # Sample dynamic target positions.
+        if self.cfg.dynamic_targets:
+            centers = self.cfg.reset_targets_fn(key)
+        else:
+            centers = self.cfg.centers
+
+        return DeliveryBaseState(herd_state=herd_pos, herder_state=herder_state, steps=0, centers=centers)
 
     @property
     def eval_T(self) -> int:

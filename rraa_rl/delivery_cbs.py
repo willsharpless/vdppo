@@ -276,8 +276,11 @@ def animate_eval_trajs_single_agent(p: CallbackProps):
         pred_info = collect_predicate_info(env.dag_nodes, node_ix)
         node_idx_to_predicates.append(pred_info.predicates)
     plot_predicates = ['target0', 'target1', 'oob', 'obstacles']
+    if cfg.dynamic_targets:
+        plot_predicates = ['oob', 'obstacles']
 
     circ_collections = []
+    target_circs = []
     start_idxs, end_idxs = [], []
     start_idx = 0
     for ii, ax in enumerate(axes):
@@ -296,6 +299,17 @@ def animate_eval_trajs_single_agent(p: CallbackProps):
         for pred_name in node_idx_to_predicates[ii]:
             if pred_name in plot_predicates:
                 ax.contourf(bb_X, bb_Y, bb_predicates[pred_name], levels=[0, 1], colors=pred_colors[pred_name], alpha=0.5)
+
+        # Add target circles
+        if cfg.dynamic_targets:
+            target_circs_ax = []
+            for target_idx in range(len(cfg.centers)):
+                circ = plt.Circle((0, 0), cfg.radiuses[target_idx], 
+                                facecolor=pred_colors[f'target{target_idx}'], 
+                                edgecolor='none', alpha=0.5, animated=True)
+                ax.add_patch(circ)
+                target_circs_ax.append(circ)
+            target_circs.append(target_circs_ax)
 
         start_idx = end_idx
 
@@ -329,6 +343,10 @@ def animate_eval_trajs_single_agent(p: CallbackProps):
     # Mark animated artists
     for ec in circ_collections:
         ec.set_animated(True)
+    if cfg.dynamic_targets:
+        for target_circs_ax in target_circs:
+            for circ in target_circs_ax:
+                circ.set_animated(True)
     kk_text.set_animated(True)
 
     # Prime the renderer + background
@@ -369,7 +387,7 @@ def animate_eval_trajs_single_agent(p: CallbackProps):
 
                 for jj, traj in enumerate(trajs):
                     (T,) = traj.shape
-                    T_state: HerdOs.State = traj.state_now
+                    T_state = traj.state_now
                     T_herder_pos = T_state.base.herder_state[:, 0, :2]
 
                     t_idx = min(kk, T - 1)
@@ -383,6 +401,12 @@ def animate_eval_trajs_single_agent(p: CallbackProps):
                     else:
                         edgecolors.append(color_dead)
 
+                    # Update target positions 
+                    if jj == 0 and cfg.dynamic_targets:
+                        T_centers = T_state.base.centers
+                        for target_idx, circ in enumerate(target_circs[ii]):
+                            circ.center = T_centers[t_idx, target_idx, :]
+
                 circ_collections[ii].set_offsets(offsets)
                 circ_collections[ii].set_facecolor(facecolors)
                 circ_collections[ii].set_edgecolor(edgecolors)
@@ -390,6 +414,10 @@ def animate_eval_trajs_single_agent(p: CallbackProps):
             # Draw only animated artists
             for ec in circ_collections:
                 ec.axes.draw_artist(ec)
+            if cfg.dynamic_targets:
+                for target_circs_ax in target_circs:
+                    for circ in target_circs_ax:
+                        circ.axes.draw_artist(circ)
             kk_text.axes.draw_artist(kk_text)
 
             # Blit + grab frame
@@ -483,12 +511,15 @@ def animate_eval_trajs_multi_agent(p: CallbackProps):
         pred_info = collect_predicate_info(env.dag_nodes, node_ix)
         node_idx_to_predicates.append(pred_info.predicates)
     plot_predicates = ['target0', 'target1', 'oob', 'obstacles']
+    if cfg.dynamic_targets:
+        plot_predicates = ['oob', 'obstacles']
 
     figsize = 0.9 * np.array([4 * ncol, 3 * nrow])
     fig, axes = plt.subplots(nrow, ncol, figsize=figsize, dpi=80, squeeze=False, layout="none")
 
     agent_collections: dict[tuple[int, int], list[plt.Circle]] = {}
     herds: dict[tuple[int, int], list[plt.Circle]] = {}
+    target_circs: dict[tuple[int, int], list[plt.Circle]] = {}
     for ii in range(n_traj_anim):
         for jj in range(n_temporal_nodes):
             ax = axes[jj, ii]
@@ -519,8 +550,21 @@ def animate_eval_trajs_multi_agent(p: CallbackProps):
                 if pred_name in plot_predicates:
                     ax.contourf(bb_X, bb_Y, bb_predicates[pred_name], levels=[0, 1], colors=pred_colors[pred_name], alpha=0.5)
 
+            # Add target circles
+            if cfg.dynamic_targets:
+                circs = []
+                for target_idx in range(len(cfg.centers)):
+                    circ = plt.Circle((0, 0), cfg.radiuses[target_idx], 
+                                    facecolor=pred_colors[f'target{target_idx}'], 
+                                    edgecolor='none', alpha=0.5, animated=True)
+                    ax.add_patch(circ)
+                    circs.append(circ)
+                target_circs[(ii, jj)] = circs
+
     all_circs = [v for values_list in agent_collections.values() for v in values_list]
     all_circs += [v for values_list in herds.values() for v in values_list]
+    if cfg.dynamic_targets:
+        all_circs += [v for values_list in target_circs.values() for v in values_list]
 
     kk_text = axes[0, 0].text(
         0.02,
@@ -606,6 +650,13 @@ def animate_eval_trajs_multi_agent(p: CallbackProps):
                     for herd_idx, circ in enumerate(circs):
                         pos = T_state.base.herd_state[t_idx, herd_idx, :2]
                         circ.center = pos
+
+                    # Update target positions
+                    if cfg.dynamic_targets:
+                        T_centers = T_state.base.centers
+                        circs = target_circs[(ii, jj)]
+                        for target_idx, circ in enumerate(circs):
+                            circ.center = T_centers[t_idx, target_idx, :]
 
                     if len(herd_vel_texts) > 0:
                         # (n_herd, 2)

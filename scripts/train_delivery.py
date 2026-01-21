@@ -54,6 +54,8 @@ def get_env(env_name: str) -> Env:
         base_cfg.n_herd = 3
         base_cfg.acc_maxs = [2.0, 2.0, 1.0]
         base_cfg.vel_maxs = [1.0, 1.0, 0.1]
+        base_cfg.dynamic_targets = False
+        # base_cfg.update_targets = True
 
         cfg = Delivery.Cfg(specification=specification, base=base_cfg)
         return Delivery(cfg)
