@@ -980,9 +980,16 @@ class HerdingHerd(HerdBase):
             herder_min = jnp.min(m_herder_dist)
 
             # Compute the minimum distance to the walls.
-            herd_wall_dists = self.dist_to_wall(herd_pos_new)
+            herd_wall_dists_all = self.dist_to_wall(herd_pos_new)
+            assert herd_wall_dists_all.shape == (6,)
+            herd_wall_dists = herd_wall_dists_all[:4]
+            herd_wall_gap_dists = herd_wall_dists_all[4:]
+
             herd_wall_softmin = softminimum(herd_wall_dists, temperature=temperature, axis=-1)
             herd_wall_min = jnp.min(herd_wall_dists)
+
+            herd_wall_gap_softmin = softminimum(herd_wall_gap_dists, temperature=temperature, axis=-1)
+            herd_wall_gap_min = jnp.min(herd_wall_gap_dists)
 
             # If the distance to the wall is larger than a threshold, then treat the distance as very big.
             # Smoothly increase the effect of this
@@ -993,8 +1000,9 @@ class HerdingHerd(HerdBase):
             w_herd = 0.1
             w_herder = 2.0
             w_wall = 1.5
-            vals = jnp.array([herd_softmin, herder_softmin, herd_wall_softmin])
-            weights = jnp.array([w_herd, w_herder, w_wall])
+            w_wall_gap = 0.05
+            vals = jnp.array([herd_softmin, herder_softmin, herd_wall_softmin, herd_wall_gap_softmin])
+            weights = jnp.array([w_herd, w_herder, w_wall, w_wall_gap])
             # Higher weight => divide by larger number => is minimum more often.
             weighted_dist = softminimum(vals / weights, temperature=temperature)
             closest = jnp.argmin(vals / weights)
