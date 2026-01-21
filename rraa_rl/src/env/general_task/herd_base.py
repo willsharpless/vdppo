@@ -582,7 +582,7 @@ class HerdingHerd(HerdBase):
         p_reset_task = 0.2
         p_reset_herd = 0.3
         p_reset_gate = 0.3
-        p_reset_gap = 0.05
+        p_reset_gap = 0.01
         p_reset_orig = 1.0 - p_reset_center - p_reset_herd - p_reset_gate
 
         key_orig, key_task, key_center, key_gap, key_herding, key_gate, key_which, key_which_gate = jr.split(key, 8)
@@ -1003,18 +1003,27 @@ class HerdingHerd(HerdBase):
             n_herd_dist = jnp.linalg.norm(n_herd_pos - herd_pos_new, axis=-1)
             # Ignore self-distance
             n_herd_dist = n_herd_dist.at[ii].set(jnp.inf)
+            # Take the geometry into account.
+            n_herd_dist = n_herd_dist - 2 * self.cfg.agent_radius
+
             herd_softmin = softminimum(n_herd_dist, temperature=temperature)
             herd_min = jnp.min(n_herd_dist)
 
             # Compute the minimum distance to the herders.
             # (n_herd, 1, 2) - (1, n_herders, 2) -> (n_herd, n_herders, 2) -> (n_herd, n_herders)
             m_herder_dist = jnp.linalg.norm(m_herder_pos - herd_pos_new, axis=-1)
+            # Take the geometry into account.
+            m_herder_dist = m_herder_dist - 2 * self.cfg.agent_radius
+
             herder_softmin = softminimum(m_herder_dist, temperature=temperature)
             herder_min = jnp.min(m_herder_dist)
 
             # Compute the minimum distance to the walls.
             herd_wall_dists_all = self.dist_to_wall(herd_pos_new)
             assert herd_wall_dists_all.shape == (6,)
+            # Take geometry into account.
+            herd_wall_dists_all = herd_wall_dists_all - self.cfg.agent_radius
+
             herd_wall_dists = herd_wall_dists_all[:4]
             herd_wall_gap_dists = herd_wall_dists_all[4:]
 
