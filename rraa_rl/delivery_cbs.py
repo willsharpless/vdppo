@@ -24,6 +24,7 @@ from rraa_rl.src.env.general_task.herd_os import HerdOs
 from rraa_rl.src.rl.utils.utils import get_BuRd_smooth
 from rraa_rl.trainer import CallbackProps
 from rraa_rl.vd_mappo import PPOData, VDMAPPOAgent
+from valtr.reachability import collect_predicate_info
 
 plt.style.use("seaborn-v0_8-darkgrid")
 
@@ -242,6 +243,7 @@ def animate_eval_trajs_single_agent(p: CallbackProps):
 
     # Use facecolor to indicate the current temporal node.
     colors_temporal_node = [f"C{ii}" for ii in range(n_temporal_nodes)]
+    pred_colors = {name: f"C{ii}" for ii, name in enumerate(env.pred_info.predicates)}
 
     # Use edgecolor to indicate alive vs dead.
     color_alive = to_rgba("C0", 0.0)
@@ -266,6 +268,13 @@ def animate_eval_trajs_single_agent(p: CallbackProps):
         bb_state.temporal_node_idx = bb_state.temporal_node_idx.at[:].set(0)
 
     bb_predicates = jax_vmap(env.get_predicates, rep=2)(bb_state)
+    
+    node_idx_to_predicates = []
+    for node_idx in range(n_temporal_nodes):
+        node_ix = env.temporal_nodes[node_idx]
+        pred_info = collect_predicate_info(env.dag_nodes, node_ix)
+        node_idx_to_predicates.append(pred_info.predicates)
+    dont_plot_predicates = ['collide']
 
     circ_collections = []
     start_idxs, end_idxs = [], []
@@ -283,7 +292,10 @@ def animate_eval_trajs_single_agent(p: CallbackProps):
         node_name = type(node).__name__
         ax.set_title(f"Node {ii} ({node_name}) | {temporal_node_count[ii]} trajs")
 
-        ax.contourf(bb_X, bb_Y, bb_predicates["obstacles"], levels=[0, 1], colors="C0", alpha=0.5)
+        for pred_name in node_idx_to_predicates[ii]:
+            if pred_name in dont_plot_predicates:
+                continue
+            ax.contourf(bb_X, bb_Y, bb_predicates[pred_name], levels=[0, 1], colors=pred_colors[pred_name], alpha=0.5)
 
         start_idx = end_idx
 
@@ -439,6 +451,7 @@ def animate_eval_trajs_multi_agent(p: CallbackProps):
 
     # Use facecolor to indicate the current temporal node.
     colors_temporal_node = ["C0", "C1", "C2", "C4", "C5", "C6"]  # C3 is grey.
+    pred_colors = {name: f"C{ii}" for ii, name in enumerate(env.pred_info.predicates)}
 
     # Use edgecolor to indicate alive vs dead.
     color_alive = to_rgba("C0", 0.0)
@@ -463,6 +476,13 @@ def animate_eval_trajs_multi_agent(p: CallbackProps):
         bb_state.temporal_node_idx = bb_state.temporal_node_idx.at[:].set(0)
 
     bb_predicates = jax_vmap(env.get_predicates, rep=2)(bb_state)
+
+    node_idx_to_predicates = []
+    for node_idx in range(n_temporal_nodes):
+        node_ix = env.temporal_nodes[node_idx]
+        pred_info = collect_predicate_info(env.dag_nodes, node_ix)
+        node_idx_to_predicates.append(pred_info.predicates)
+    dont_plot_predicates = ['collide']
 
     figsize = 0.9 * np.array([4 * ncol, 3 * nrow])
     fig, axes = plt.subplots(nrow, ncol, figsize=figsize, dpi=80, squeeze=False, layout="none")
@@ -493,7 +513,10 @@ def animate_eval_trajs_multi_agent(p: CallbackProps):
                 circs.append(circ)
             herds[(ii, jj)] = circs
 
-            ax.contourf(bb_X, bb_Y, bb_predicates["obstacles"], levels=[0, 1], colors="C0", alpha=0.5)
+            for pred_name in node_idx_to_predicates[ii]:
+                if pred_name in dont_plot_predicates:
+                    continue
+                ax.contourf(bb_X, bb_Y, bb_predicates[pred_name], levels=[0, 1], colors=pred_colors[pred_name], alpha=0.5)
 
     all_circs = [v for values_list in agent_collections.values() for v in values_list]
     all_circs += [v for values_list in herds.values() for v in values_list]
