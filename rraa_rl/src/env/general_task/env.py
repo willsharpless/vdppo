@@ -16,6 +16,7 @@ from valtr.reachability import (DAGAvoid, DAGConst, DAGGUMinN, DAGGUSingle, DAGI
                                 has_temporal_children, temporal_nodes_topological)
 from valtr.valtr import to_dag
 
+from rraa_rl.evaluate_dag import evaluate_dag
 from rraa_rl.jax_utils import tree_cat
 
 
@@ -382,54 +383,12 @@ class TemporalNodeTransition(NamedTuple):
     condition: jnp.ndarray
 
 
-def evaluate_dag(
-    dag_nodes: list[DAGNode],
-    node_idx: DAGId,
-    predicates: dict[str, jnp.ndarray],
-    scratch: dict[DAGId, jnp.ndarray] | None = None,
-    which=jnp,
-) -> jnp.ndarray:
-    if scratch is None:
-        scratch: dict[DAGId, jnp.ndarray] = {}
-
-    # Check if already computed.
-    if node_idx in scratch:
-        return scratch[node_idx]
-
-    dag_node = dag_nodes[node_idx]
-    match dag_node:
-        case DAGConst(value=value):
-            raise ValueError("Const nodes should have been removed")
-        case DAGVar(name=name):
-            out = predicates[name]
-        case DAGNegate(arg=arg):
-            out = -evaluate_dag(dag_nodes, arg, predicates, scratch)
-        case DAGMinN(args=args):
-            args_vals = which.stack(
-                [evaluate_dag(dag_nodes, arg, predicates, scratch) for arg in args],
-                axis=0,
-            )
-            out = which.min(args_vals, axis=0)
-        case DAGMaxN(args=args):
-            args_vals = which.stack(
-                [evaluate_dag(dag_nodes, arg, predicates, scratch) for arg in args],
-                axis=0,
-            )
-            out = which.max(args_vals, axis=0)
-        case _:
-            raise ValueError("Shouldn't have any temporal nodes.")
-
-    scratch[node_idx] = out
-    return out
-
-
 def get_triggers(
     dag_nodes: list[DAGNode],
-    temporal_nodes: list[DAGId],
     parent_idx: DAGId,
     node_idx: DAGId,
     predicates: dict[str, jnp.ndarray],
-    t_value: jnp.ndarray,
+    V_dict: dict[DAGId, jnp.ndarray],
     scratch: dict[DAGId, jnp.ndarray],
     which=jnp,
 ) -> list[DAGTransition]:
@@ -439,6 +398,11 @@ def get_triggers(
     # - max_i min_j (..., temporal)
     # -       min_j (..., temporal)
     # - a temporal node (e.g., G)
+    #
+    # # Convert t_value to V_dict.
+    # V_dict = {}
+    # for temporal_node_idx, dag_id in enumerate(temporal_nodes):
+    #     V_dict[dag_id] = t_value[temporal_node_idx]
 
     if isinstance(node, DAGMaxN):
         min_nodes = []
@@ -452,12 +416,11 @@ def get_triggers(
         min_nodes = [node]
     elif isinstance(node, DAGAvoid):
         # Ga  transition if a AND G a
-        temporal_node_idx = temporal_nodes.index(node_idx)
-        value = t_value[temporal_node_idx]
+        value = V_dict[node_idx]
 
         avoid_dag_id = node.avoid
         # TODO: Modify evaluate_dag to allow temporal nodes.
-        stay_value = evaluate_dag(dag_nodes, avoid_dag_id, predicates, scratch, which=which)
+        stay_value = evaluate_dag(dag_nodes, avoid_dag_id, predicates, V_dict, scratch, which=which)
 
         value = jnp.minimum(value, stay_value)
         return [DAGTransition(parent_idx, node_idx, value)]
@@ -482,7 +445,7 @@ def get_triggers(
                 # If we reach a GUminN, transition to the first temporal child.
                 temporal_children.append(child.args[0])
             else:
-                dag_value = evaluate_dag(dag_nodes, child_id, predicates, scratch, which=which)
+                dag_value = evaluate_dag(dag_nodes, child_id, predicates, V_dict, scratch, which=which)
                 nontemporal_children.append(dag_value)
 
         assert len(temporal_children) == 1, "There should only be one temporal child per min node."
@@ -501,7 +464,7 @@ def get_gu_triggers(
     dag_nodes: list[DAGNode],
     GU_min_node_idx: DAGId,
     predicates: dict[str, jnp.ndarray],
-    t_value: jnp.ndarray,
+    V_dict: dict[DAGId, jnp.ndarray],
     scratch: dict[DAGId, jnp.ndarray],
     which=jnp,
 ) -> list[DAGTransition]:
@@ -520,7 +483,7 @@ def get_gu_triggers(
             raise ValueError(f"Expected GUminN to have only GUsingle children, found {type(gu_single)}")
 
         gu_single_reach_dag_id = gu_single.reach
-        condition_val = evaluate_dag(dag_nodes, gu_single_reach_dag_id, predicates, scratch, which=which)
+        condition_val = evaluate_dag(dag_nodes, gu_single_reach_dag_id, predicates, V_dict, scratch=scratch, which=which)
 
         gu_idx_next = (gu_idx + 1) % n_GU
         gu_single_next_dag_id = gu_single_dag_ids[gu_idx_next]
@@ -529,9 +492,14 @@ def get_gu_triggers(
     return triggers
 
 
-def get_rules(temporal_nodes, dag_nodes, predicates: dict[str, jnp.ndarray], t_value: jnp.ndarray, which=jnp):
+def get_rules(temporal_nodes: list[DAGId], dag_nodes: list[DAGNode], predicates: dict[str, jnp.ndarray], t_value: jnp.ndarray, which=jnp):
     """Get the temporal node transition rules."""
     scratch: dict[DAGId, jnp.ndarray] = {}
+
+    # Convert t_value into V_dict.
+    V_dict = {}
+    for temporal_node_idx, dag_id in enumerate(temporal_nodes):
+        V_dict[dag_id] = t_value[temporal_node_idx]
 
     all_dag_triggers: list[DAGTransition] = []
     for temporal_node_idx, node_idx in enumerate(temporal_nodes):
@@ -555,12 +523,11 @@ def get_rules(temporal_nodes, dag_nodes, predicates: dict[str, jnp.ndarray], t_v
             case DAGReachAvoid(reach=reach_id, avoid=avoid_id):
                 triggers = get_triggers(
                     dag_nodes,
-                    temporal_nodes,
                     node_idx,
                     reach_id,
                     predicates,
-                    t_value,
-                    scratch,
+                    V_dict,
+                    scratch=scratch,
                     which=which,
                 )
                 all_dag_triggers.extend(triggers)
@@ -577,8 +544,8 @@ def get_rules(temporal_nodes, dag_nodes, predicates: dict[str, jnp.ndarray], t_v
             dag_nodes,
             DAGId(node_idx),
             predicates,
-            t_value,
-            scratch,
+            V_dict,
+            scratch=scratch,
             which=which,
         )
         all_dag_triggers.extend(triggers)

@@ -25,6 +25,7 @@ from valtr.reachability import (DAGAvoid, DAGConst, DAGGUMinN, DAGGUSingle, DAGI
 from rraa_rl.cfg_utils import Cfg
 from rraa_rl.collector import Collector, RolloutOutput
 from rraa_rl.distribution import tfd
+from rraa_rl.evaluate_dag import evaluate_dag
 from rraa_rl.gae import BellmanGUSingle, BellmanMax, BellmanMaxMin, BellmanMin, gae_generalized
 from rraa_rl.jax_types import FloatScalar, bFloat
 from rraa_rl.nn_modules import BaseObsOnly, BothObs, MAMultiDiscretePolicy, VDValue
@@ -156,52 +157,66 @@ class VDMAPPOAgent:
         scratch: dict[DAGId, jnp.ndarray] | None = None,
         allow_const: bool = False,
     ) -> jnp.ndarray:
-        """Can be called with batch of data."""
+        V_dict = {}
+        for temporal_idx, dag_node_idx in enumerate(self.env.temporal_nodes):
+            V_dict[dag_node_idx] = t_V[..., temporal_idx]
 
-        # Check if already computed.
-        if scratch is None:
-            scratch = {}
+        return evaluate_dag(self.env.dag_nodes, node_idx, predicates, V_dict, scratch=scratch, allow_const=allow_const)
 
-        if node_idx in scratch:
-            return scratch[node_idx]
-
-        batch_shape = t_V.shape[:-1]
-
-        dag_node = self.env.dag_nodes[node_idx]
-        match dag_node:
-            case DAGConst(value=value):
-                if allow_const:
-                    big_float = 6.969e7
-                    value_float = {True: big_float, False: -big_float}[value]
-                    out = jnp.full(batch_shape, value_float)
-                else:
-                    raise ValueError("Const nodes should have been removed")
-            case DAGVar(name=name):
-                out = predicates[name]
-                # logger.debug("Var(%{}) = {}".format(node_idx, out))
-            case DAGNegate(arg=arg):
-                out = -self.evaluate_dag(arg, t_V, predicates, scratch)
-                # logger.debug("Negate(%{}) = {}".format(node_idx, out))
-            case DAGMinN(args=args):
-                args_vals = jnp.stack(
-                    [self.evaluate_dag(arg, t_V, predicates, scratch) for arg in args],
-                    axis=0,
-                )
-                out = jnp.min(args_vals, axis=0)
-            case DAGMaxN(args=args):
-                args_vals = jnp.stack(
-                    [self.evaluate_dag(arg, t_V, predicates, scratch) for arg in args],
-                    axis=0,
-                )
-                out = jnp.max(args_vals, axis=0)
-            case _:
-                # Temporal nodes. Use the value function.
-                temporal_idx = self.env.temporal_nodes.index(node_idx)
-                V = t_V[..., temporal_idx]
-                out = V
-
-        scratch[node_idx] = out
-        return out
+    # def evaluate_dag(
+    #     self,
+    #     node_idx: DAGId,
+    #     t_V: jnp.ndarray,
+    #     predicates: dict[str, jnp.ndarray],
+    #     scratch: dict[DAGId, jnp.ndarray] | None = None,
+    #     allow_const: bool = False,
+    # ) -> jnp.ndarray:
+    #     """Can be called with batch of data."""
+    #
+    #     # Check if already computed.
+    #     if scratch is None:
+    #         scratch = {}
+    #
+    #     if node_idx in scratch:
+    #         return scratch[node_idx]
+    #
+    #     batch_shape = t_V.shape[:-1]
+    #
+    #     dag_node = self.env.dag_nodes[node_idx]
+    #     match dag_node:
+    #         case DAGConst(value=value):
+    #             if allow_const:
+    #                 big_float = 6.969e7
+    #                 value_float = {True: big_float, False: -big_float}[value]
+    #                 out = jnp.full(batch_shape, value_float)
+    #             else:
+    #                 raise ValueError("Const nodes should have been removed")
+    #         case DAGVar(name=name):
+    #             out = predicates[name]
+    #             # logger.debug("Var(%{}) = {}".format(node_idx, out))
+    #         case DAGNegate(arg=arg):
+    #             out = -self.evaluate_dag(arg, t_V, predicates, scratch)
+    #             # logger.debug("Negate(%{}) = {}".format(node_idx, out))
+    #         case DAGMinN(args=args):
+    #             args_vals = jnp.stack(
+    #                 [self.evaluate_dag(arg, t_V, predicates, scratch) for arg in args],
+    #                 axis=0,
+    #             )
+    #             out = jnp.min(args_vals, axis=0)
+    #         case DAGMaxN(args=args):
+    #             args_vals = jnp.stack(
+    #                 [self.evaluate_dag(arg, t_V, predicates, scratch) for arg in args],
+    #                 axis=0,
+    #             )
+    #             out = jnp.max(args_vals, axis=0)
+    #         case _:
+    #             # Temporal nodes. Use the value function.
+    #             temporal_idx = self.env.temporal_nodes.index(node_idx)
+    #             V = t_V[..., temporal_idx]
+    #             out = V
+    #
+    #     scratch[node_idx] = out
+    #     return out
 
     def compute_A_Q(self, Tb_rollout: RolloutOutput, debug: bool = False):
         """Compute GAE advantages and Q-values from rollout."""
