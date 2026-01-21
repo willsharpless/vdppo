@@ -1,6 +1,6 @@
 from jax import numpy as jnp
 from valtr.reachability import (DAGConst, DAGId, DAGMaxN, DAGMinN, DAGNegate, DAGNode,
-                                DAGVar)
+                                DAGVar, DAGGUMinN)
 
 
 def evaluate_dag(
@@ -34,17 +34,24 @@ def evaluate_dag(
             out = -evaluate_dag(dag_nodes, arg, predicates, V_dict, scratch, which=which)
             # logger.debug("Negate(%{}) = {}".format(node_idx, out))
         case DAGMinN(args=args):
-            args_vals = jnp.stack(
+            args_vals = which.stack(
                 [evaluate_dag(dag_nodes, arg, predicates, V_dict, scratch, which=which) for arg in args],
                 axis=-1,
             )
-            out = jnp.min(args_vals, axis=-1)
+            out = which.min(args_vals, axis=-1)
         case DAGMaxN(args=args):
-            args_vals = jnp.stack(
+            args_vals = which.stack(
                 [evaluate_dag(dag_nodes, arg, predicates, V_dict, scratch, which=which) for arg in args],
                 axis=-1,
             )
-            out = jnp.max(args_vals, axis=-1)
+            out = which.max(args_vals, axis=-1)
+        case DAGGUMinN(args=args):
+            # Treat it as a normal Min.
+            args_vals = which.stack(
+                [evaluate_dag(dag_nodes, arg, predicates, V_dict, scratch, which=which) for arg in args],
+                axis=-1,
+            )
+            out = which.min(args_vals, axis=-1)
         case _:
             if V_dict is None:
                 raise ValueError("Trying to evaluate temporal node without value function")
