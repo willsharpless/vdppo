@@ -2,6 +2,7 @@ import ipdb
 from cyclopts import App
 
 from rraa_rl import herd_os_cbs
+from rraa_rl import delivery_cbs
 from rraa_rl.run import Run
 from rraa_rl.src.env.general_task.env import Env
 from rraa_rl.src.env.general_task.delivery_base import DeliveryBaseCfg, DeliveryBasePlay
@@ -21,12 +22,8 @@ def get_env(env_name: str) -> Env:
         return DeliveryPlay()
 
     if env_name == "delivery":
-        # specification = "F G herd_herded && G !herder_oob"
-        # specification = "(!herder_oob) U (G (herd_herded && !herder_oob) )"
         specification = "F target0 && F target1 && G(!obstacles) && G(!oob)"
-        # specification = "F target0 && F target1"
-        # specification = "F herder_c1"
-        # specification = "F target0 && G !obstacles"
+        # specification = "F target0 && F target1 && G(!obstacles) && G(!oob) && G(!collide)"
 
         # 2 ag by default
         base_cfg = DeliveryBaseCfg()
@@ -51,13 +48,13 @@ def main(name: str | None = None, debug: bool = False, env_name: str = "delivery
     agent = VDMAPPOAgent.create(seed, cfg, env)
 
     eval_cbs = [
-        herd_os_cbs.animate_eval_trajs,
-        herd_os_cbs.PlotRootTrajPreds.create(),
-        herd_os_cbs.plot_eval_trajs,
-        herd_os_cbs.VizValues.create(),
+        delivery_cbs.animate_eval_trajs,
+        delivery_cbs.PlotRootTrajPreds.create(),
+        delivery_cbs.plot_eval_trajs,
+        delivery_cbs.VizValues.create(),
     ]
     # eval_cbs = [herd_os_cbs.plot_eval_trajs, VizValues.create()]
-    collect_cbs = [herd_os_cbs.viz_collect_data, herd_os_cbs.viz_obs_histogram]
+    collect_cbs = [delivery_cbs.viz_collect_data, delivery_cbs.viz_obs_histogram]
 
     env_name = type(env).__name__
     run = Run.create(env_name=env_name, name=name)
