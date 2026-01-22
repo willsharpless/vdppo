@@ -11,7 +11,9 @@ from attrs import define
 from jaxtyping import PRNGKeyArray
 
 from rraa_rl.jax_types import BoolScalar
-from rraa_rl.jax_utils import softminimum
+from rraa_rl.jax_utils import softminimum, tree_stack
+from rraa_rl.train_utils import tree_where
+import jax.tree_util as jtu
 from rraa_rl.src.env.general_task.env import BaseEnv, Env, EnvStep
 
 VEL_ZERO = False
@@ -658,10 +660,51 @@ class DeliveryBase(BaseEnv):
 
         return valid_pos.squeeze(1)
 
-    def reset(self, key: PRNGKeyArray):
+    # standard reset old
+    # def reset(self, key: PRNGKeyArray):
+    #     n_herd = self.cfg.n_herd
+    #     n_herders = self.cfg.n_herders
+    #     key_herd, key_herders = jr.split(key)
+
+    #     # Uniformly sample herd positions.
+    #     halfsize_x, halfsize_y = self.cfg.halfsize
+    #     maxpos = np.array([halfsize_x, halfsize_y]) - self.cfg.agent_radius
+    #     if self.cfg.herd_zero:
+    #         maxpos = np.zeros(2)
+    #     minpos = -maxpos
+    #     herd_pos = jr.uniform(key_herd, shape=(n_herd, 2), minval=minpos, maxval=maxpos)
+
+    #     # Uniformly sample herder positions and velocities.
+    #     # (n_herders, 4)
+    #     maxpos_per_ag = np.zeros((1, 2))
+    #     maxpos_per_ag[:, 0] = halfsize_x - self.cfg.agent_radius
+    #     maxpos_per_ag[:, 1] = halfsize_y - self.cfg.agent_radius
+    #     maxvel = np.zeros((n_herders, 2))
+    #     maxvel[:, 0] = np.array(self.cfg.vel_maxs)
+    #     maxvel[:, 1] = np.array(self.cfg.vel_maxs)
+
+    #     if VEL_ZERO:
+    #         maxvel[:, 0] = 0.0
+    #         maxvel[:, 1] = 0.0
+
+    #     herder_pos_valid = self.sample_pos_outside_obst(key_herders, herd_pos, maxpos_per_ag=maxpos_per_ag, minpos_per_ag=-maxpos_per_ag)
+    #     herder_vel = jr.uniform(key_herders, shape=(n_herders, 2), minval=-maxvel, maxval=maxvel)
+    #     herder_state = jnp.concatenate([herder_pos_valid, herder_vel], axis=-1)
+
+    #     # Sample dynamic target positions.
+    #     if self.cfg.dynamic_targets:
+    #         centers = self.cfg.reset_targets_fn(key)
+    #     else:
+    #         centers = self.cfg.centers
+
+    #     assert centers.shape == (2, 2)
+
+    #     return DeliveryBaseState(herd_state=herd_pos, herder_state=herder_state, steps=0, centers=centers)
+
+    def reset_orig(self, key: PRNGKeyArray, centers: jnp.ndarray):
         n_herd = self.cfg.n_herd
         n_herders = self.cfg.n_herders
-        key_herd, key_herders = jr.split(key)
+        key_herd, key_herders, key_herders_vel = jr.split(key, 3)
 
         # Uniformly sample herd positions.
         halfsize_x, halfsize_y = self.cfg.halfsize
@@ -685,16 +728,131 @@ class DeliveryBase(BaseEnv):
             maxvel[:, 1] = 0.0
 
         herder_pos_valid = self.sample_pos_outside_obst(key_herders, herd_pos, maxpos_per_ag=maxpos_per_ag, minpos_per_ag=-maxpos_per_ag)
-        herder_vel = jr.uniform(key_herders, shape=(n_herders, 2), minval=-maxvel, maxval=maxvel)
+        herder_vel = jr.uniform(key_herders_vel, shape=(n_herders, 2), minval=-maxvel, maxval=maxvel)
         herder_state = jnp.concatenate([herder_pos_valid, herder_vel], axis=-1)
+
+        return DeliveryBaseState(herd_state=herd_pos, herder_state=herder_state, steps=0, centers=centers)
+
+    # mixed reset: including some ``good'' samples
+    def reset(self, key: PRNGKeyArray):
+        # With some prob, reset the herd within small circle, and herder agents on outside pointing inwards.
+        p_reset_close_center = 0.2
+        p_reset_med_center = 0.2
+        p_reset_together = 0.2
+        p_reset_orig = 1.0 - p_reset_close_center - p_reset_med_center - p_reset_together
+
+        key_close, key_med, key_together, key_orig, key_centers, key_which = jr.split(key, 6)
 
         # Sample dynamic target positions.
         if self.cfg.dynamic_targets:
-            centers = self.cfg.reset_targets_fn(key)
+            centers = self.cfg.reset_targets_fn(key_centers)
         else:
             centers = self.cfg.centers
 
-        assert centers.shape == (2, 2)
+        herd_state_orig = self.reset_orig(key_orig, centers)
+        herd_state_close = self.reset_center(key_close, centers, radius=1.)
+        herd_state_med = self.reset_center(key_med, centers, radius=2.)
+        herd_state_together = self.reset_together(key_together, centers, radius=1.)
+
+        probs = jnp.array([p_reset_close_center, p_reset_med_center, p_reset_together, p_reset_orig])
+        which_reset = jr.categorical(key_which, probs)
+
+        stack_list = [
+            herd_state_orig,
+            herd_state_close,
+            herd_state_med,
+            herd_state_together,
+        ]
+        assert len(probs) == len(stack_list)
+
+        herd_state_stack = tree_stack(stack_list)
+        herd_state = jtu.tree_map(lambda x: x[which_reset], herd_state_stack)
+
+        return herd_state
+
+    def reset_center(self, key:PRNGKeyArray, centers: jnp.ndarray, radius: float):
+        n_herd = self.cfg.n_herd
+        key_herd, key_herders, key_herders_vel = jr.split(key, 3)
+
+        # Uniformly sample herd positions.
+        halfsize_x, halfsize_y = self.cfg.halfsize
+        maxpos = np.array([halfsize_x, halfsize_y]) - self.cfg.agent_radius
+        if self.cfg.herd_zero:
+            maxpos = np.zeros(2)
+        minpos = -maxpos
+        herd_pos = jr.uniform(key_herd, shape=(n_herd, 2), minval=minpos, maxval=maxpos)
+
+        # Sample valid herders positions for min(num_centers, num_agents) agents near each center
+        n_agents_to_sample = min(centers.shape[0], self.cfg.n_herders)
+        keys_herders = jr.split(key_herders, n_agents_to_sample)
+        
+        # Sample position for each agent near its corresponding center
+        herder_positions_near_centers = []
+        for i in range(n_agents_to_sample):
+            center = centers[i]
+            key_agent = keys_herders[i]
+            herder_pos_all_near_centeri = self.sample_pos_outside_obst(key_agent, herd_pos, maxpos_per_ag=center + radius, minpos_per_ag=center - radius)
+            herder_pos_i_near_centeri = herder_pos_all_near_centeri[0:1]  # Take only the first agent's position from this sample
+            herder_positions_near_centers.append(herder_pos_i_near_centeri)
+
+        # Stack positions
+        herder_pos_valid_near = jnp.concatenate(herder_positions_near_centers, axis=0)
+        
+        # If we have more agents than centers, sample remaining agents randomly
+        if self.cfg.n_herders > n_agents_to_sample:
+            n_remaining = self.cfg.n_herders - n_agents_to_sample
+            maxpos_per_ag = np.zeros((1, 2))
+            maxpos_per_ag[:, 0] = halfsize_x - self.cfg.agent_radius
+            maxpos_per_ag[:, 1] = halfsize_y - self.cfg.agent_radius
+            
+            key_remaining = jr.fold_in(key_herders, n_agents_to_sample)
+            herder_pos_remaining = self.sample_pos_outside_obst(key_remaining, herd_pos, maxpos_per_ag=maxpos_per_ag, minpos_per_ag=-maxpos_per_ag)
+            herder_pos_remaining_n_agents_to_sample = herder_pos_remaining[0:n_remaining]
+            herder_pos_valid_near = jnp.concatenate([herder_pos_valid_near, herder_pos_remaining_n_agents_to_sample], axis=0)
+
+        # Sample vels
+        maxvel = np.zeros((self.cfg.n_herders, 2))
+        maxvel[:, 0] = np.array(self.cfg.vel_maxs)
+        maxvel[:, 1] = np.array(self.cfg.vel_maxs)
+        if VEL_ZERO:
+            maxvel[:, 0] = 0.0
+            maxvel[:, 1] = 0.0
+        herder_vel = jr.uniform(key_herders_vel, shape=(self.cfg.n_herders, 2), minval=-maxvel, maxval=maxvel)
+
+        herder_state = jnp.concatenate([herder_pos_valid_near, herder_vel], axis=-1)
+
+        return DeliveryBaseState(herd_state=herd_pos, herder_state=herder_state, steps=0, centers=centers)
+
+    def reset_together(self, key:PRNGKeyArray, centers: jnp.ndarray, radius: float):
+        n_herd = self.cfg.n_herd
+        key_herd, key_herders, key_herders_vel, key_herders_together = jr.split(key, 4)
+
+        # Uniformly sample herd positions.
+        halfsize_x, halfsize_y = self.cfg.halfsize
+        maxpos = np.array([halfsize_x, halfsize_y]) - self.cfg.agent_radius
+        if self.cfg.herd_zero:
+            maxpos = np.zeros(2)
+        minpos = -maxpos
+        herd_pos = jr.uniform(key_herd, shape=(n_herd, 2), minval=minpos, maxval=maxpos)
+
+        maxpos_per_ag = np.zeros((1, 2))
+        maxpos_per_ag[:, 0] = halfsize_x - self.cfg.agent_radius
+        maxpos_per_ag[:, 1] = halfsize_y - self.cfg.agent_radius
+
+        # Sample herder positions and velocities.
+        herder_pos_valid = self.sample_pos_outside_obst(key_herders, herd_pos, maxpos_per_ag=maxpos_per_ag, minpos_per_ag=-maxpos_per_ag)
+        herder_pos_valid_together = self.sample_pos_outside_obst(key_herders_together, herd_pos, maxpos_per_ag=herder_pos_valid[0:1] + radius, minpos_per_ag=-herder_pos_valid[0:1] - radius)
+
+        # Sample vel
+        maxvel = np.zeros((self.cfg.n_herders, 2))
+        maxvel[:, 0] = np.array(self.cfg.vel_maxs)
+        maxvel[:, 1] = np.array(self.cfg.vel_maxs)
+        if VEL_ZERO:
+            maxvel[:, 0] = 0.0
+            maxvel[:, 1] = 0.0
+        herder_vel = jr.uniform(key_herders_vel, shape=(self.cfg.n_herders, 2), minval=-maxvel, maxval=maxvel)
+
+        herder_state = jnp.concatenate([herder_pos_valid_together, herder_vel], axis=-1)
 
         return DeliveryBaseState(herd_state=herd_pos, herder_state=herder_state, steps=0, centers=centers)
 

@@ -14,7 +14,8 @@ from rraa_rl.vd_mappo import VDMAPPOAgent
 app = App()
 
 # os.environ["CUDA_VISIBLE_DEVICES"] = "1"
-
+# os.environ.setdefault('XLA_PYTHON_CLIENT_PREALLOCATE', 'false')
+# os.environ.setdefault('XLA_PYTHON_CLIENT_ALLOCATOR', 'platform')
 
 def get_env(env_name: str) -> Env:
     env_name = env_name.lower()
