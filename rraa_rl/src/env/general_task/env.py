@@ -7,6 +7,7 @@ import jax.nn as jnn
 import jax.random as jr
 import jax.tree_util as jtu
 import jax_dataclasses as jdc
+import matplotlib.pyplot as plt
 import numpy as np
 from attrs import define
 from jax import numpy as jnp
@@ -306,6 +307,9 @@ class EnvUsingBase(Env):
 
     def get_predicates(self, state: Any) -> dict[str, jnp.ndarray]:
         return self.base.get_predicates(state.base)
+
+    def setup_ax(self, ax: plt.Axes):
+        return self.base.setup_ax(ax)
 
 
 @define(slots=False)

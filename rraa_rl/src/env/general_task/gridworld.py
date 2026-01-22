@@ -60,10 +60,11 @@ class GridworldMap:
         d_raw, len_x, len_y = GridworldMap.parse_room_str(map_str, boundary="|")
 
         predicates = {
-            "A": np.where(d_raw["a"] | d_raw["A"], 1, -1),
-            "B": np.where(d_raw["b"] | d_raw["B"], 1, -1),
-            "C": np.where(d_raw["C"], 1, -1),
-            "q": np.where(d_raw["."] | d_raw["a"] | d_raw["b"], 1, -1),
+            "A": np.where(d_raw["A"], 1, -1),
+            "B": np.where(d_raw["B"], 1, -1),
+            "D": np.where(d_raw["D"], 1, -1),
+            "K": np.where(d_raw["K"], 1, -1),
+            "w": np.where(d_raw["#"], 1, -1),
         }
 
         return GridworldMap(len_x, len_y, predicates)
@@ -82,7 +83,7 @@ class GridworldMap:
 
     @staticmethod
     def parse_room_str(map_str: str, boundary: str = "|") -> tuple[dict[str, np.ndarray], int, int]:
-        map_str = map_str.strip("\n")
+        map_str = map_str.strip("\n").strip()
 
         # Figure out how many rows and columns.
         lines = map_str.split("\n")
@@ -100,6 +101,10 @@ class GridworldMap:
                     d[c] = np.zeros((len_x, len_y), dtype=bool)
 
                 d[c][jj, ii] = True
+
+        # Flip things. When we iterated above, (0, 0) was top-left. We want (0, 0) to be bottom-left.
+        for k in d.keys():
+            d[k] = d[k][:, ::-1]
 
         return d, len_x, len_y
 
@@ -236,10 +241,16 @@ class GridworldMABase(BaseEnv):
         # No major grid, white minor grid.
         ax.grid(False, which="major")
         ax.grid(which="minor", color="white", linewidth=1)
-        ax.tick_params(which="minor", bottom=False, left=False)
+
+        ax.tick_params(which="minor", bottom=True, left=True)
+        ax.tick_params(which="minor", color="black", labelcolor="black", length=3, width=1)
+        # ax.tick_params(which="major", color="black", labelcolor="black", length=3, width=1)
 
 
 class GridworldMA(StaticTemporalNodeMixin, EnvUsingBase):
+    Cfg = GridworldMACfg
+    State = StateWithTemporalNode[GridworldMAState]
+
     def __init__(self, cfg: GridworldMACfg):
         self.cfg = cfg
         base_env = GridworldMABase(cfg)

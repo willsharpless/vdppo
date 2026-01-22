@@ -33,7 +33,7 @@ class HerdOs(StaticTemporalNodeMixin, EnvUsingBase):
     """
 
     Cfg = HerdOsCfg
-    State = StateWithTemporalNode
+    State = StateWithTemporalNode[HerdingHerd.State]
 
     def __init__(self, cfg: HerdOsCfg = HerdOsCfg()):
         self.cfg = cfg
