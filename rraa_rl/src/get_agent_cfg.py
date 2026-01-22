@@ -18,6 +18,6 @@ def get_agent_cfg(env_name: str, agent_name: str):
         pass
 
     if env_name == "gridworld_map5":
-        pass
+        cfg.entropy_coef = 3e-2
 
     return cfg
