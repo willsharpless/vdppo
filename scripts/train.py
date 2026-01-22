@@ -14,7 +14,7 @@ app = App()
 def main(
     name: str | None = None,
     debug: bool = False,
-    env_name: str = "HerdOsPlay",
+    env_name: str = "HerdOs",
     seed: int = 123,
     trainer_cfg: TrainerCfg = TrainerCfg(),
 ):
@@ -22,10 +22,12 @@ def main(
     agent_cfg = get_agent_cfg(env_name, agent_name="VDMAPPO")
     agent = VDMAPPOAgent.create(seed, agent_cfg, env)
 
+    wandb_config = {"seed": seed, "cli_env_name": env_name}
+
     env_name = type(env).__name__
     run = Run.create(env_name=env_name, name=name)
     trainer = Trainer(agent, trainer_cfg)
-    trainer.train(run, env, eval_cbs=eval_cbs, collect_cbs=collect_cbs, debug=debug)
+    trainer.train(run, env, eval_cbs=eval_cbs, collect_cbs=collect_cbs, debug=debug, wandb_config=wandb_config)
 
 
 if __name__ == "__main__":

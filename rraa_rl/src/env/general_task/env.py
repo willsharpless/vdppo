@@ -85,10 +85,6 @@ class BaseEnv(Generic[_EnvState, _Obs]):
 
         return np.sum(np.array(agent_entropies))
 
-    @property
-    def max_entropy(self) -> float:
-        raise NotImplementedError("")
-
     def get_obs(self, state: _EnvState):
         obs, _ = self.get_obs_and_names(state)
         return obs

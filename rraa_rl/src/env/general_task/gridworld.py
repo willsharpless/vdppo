@@ -12,7 +12,9 @@ import numpy as np
 from attrs import define
 from jaxtyping import PRNGKeyArray
 from loguru import logger
+from matplotlib.colors import to_rgba
 
+from rraa_rl.emoji_util import plot_emoji
 from rraa_rl.geometry import AABB, LineSegment, dist_pt_to_aabb, segment_intersects_aabb
 from rraa_rl.jax_types import BoolScalar
 from rraa_rl.jax_utils import softmaximum, softminimum, tree_stack
@@ -21,6 +23,41 @@ from rraa_rl.src.env.general_task.env import (BaseEnv, Env, EnvCfg, EnvStep, Env
 from rraa_rl.src.env.general_task.herd_base import (HerdBase, HerdBaseCfg, HerdBasePlay, HerdBasePlayCfg, HerdingHerd,
                                                     HerdingHerdCfg)
 from rraa_rl.train_utils import tree_where
+
+
+class BoolExpression:
+    """So that we can specify either ANY agent or ALL agents"""
+
+    def __call__(self, bools: jnp.ndarray) -> jnp.ndarray:
+        raise NotImplementedError("")
+
+
+@define
+class AnyAgent(BoolExpression):
+    """Any agent within the specified set that is True will make the expression True. None means all agents."""
+
+    valid: jnp.ndarray = None  # (n_agents,)
+
+    def __call__(self, bools: jnp.ndarray) -> jnp.ndarray:
+        if self.valid is None:
+            return jnp.any(bools)
+        else:
+            bools_valid = bools[self.valid]
+            return jnp.any(bools_valid)
+
+
+@define
+class AllAgent(BoolExpression):
+    """All agent within the specified set being True will make the expression True. None means all agents."""
+
+    valid: jnp.ndarray = None  # (n_agents,)
+
+    def __call__(self, bools: jnp.ndarray) -> jnp.ndarray:
+        if self.valid is None:
+            return jnp.all(bools)
+        else:
+            bools_valid = bools[self.valid]
+            return jnp.all(bools_valid)
 
 
 class GridworldMap:
@@ -32,10 +69,37 @@ class GridworldMap:
     positions go from 0, 1, ..., len_x - 1 (or len_y - 1)
     """
 
-    def __init__(self, len_x: int, len_y: int, predicates: dict[str, np.ndarray]):
+    def __init__(
+        self,
+        len_x: int,
+        len_y: int,
+        predicates_bool: dict[str, np.ndarray],
+        predicate_expr: dict[str, BoolExpression],
+        d_raw: dict[str, np.ndarray],
+        color_dict: dict[str, Any] = None,
+        label_dict: dict[str, str] = None,
+    ):
         self._len_x = len_x
         self._len_y = len_y
-        self.predicates = predicates
+        self.predicates_bool = predicates_bool
+        self.predicate_expr = predicate_expr
+
+        self.d_raw = d_raw
+        self.color_dict = color_dict if color_dict is not None else {}
+        self.label_dict = label_dict if label_dict is not None else {}
+
+        # Construct the visualization color map.
+        empty_map = np.full((len_x, len_y, 4), fill_value=0)
+        for k, v in d_raw.items():
+            if k in self.color_dict:
+                color = to_rgba(self.color_dict[k])
+                empty_map = np.where(v[..., None], color, empty_map)
+        self.map_viz_color = empty_map
+
+    def show_map(self, ax: plt.Axes):
+        ax.imshow(np.swapaxes(self.map_viz_color, 0, 1), origin="lower", alpha=0.7)
+
+        annotate_cell(self.d_raw, self.label_dict, ax, offset=np.array([0.28, 0.28]), size_data=0.3, fontsize=10)
 
     @property
     def len_x(self) -> int:
@@ -60,25 +124,52 @@ class GridworldMap:
         d_raw, len_x, len_y = GridworldMap.parse_room_str(map_str, boundary="|")
 
         predicates = {
-            "A": np.where(d_raw["A"], 1, -1),
-            "B": np.where(d_raw["B"], 1, -1),
-            "D": np.where(d_raw["D"], 1, -1),
-            "K": np.where(d_raw["K"], 1, -1),
-            "w": np.where(d_raw["#"], 1, -1),
+            "A": d_raw["A"],
+            "B": d_raw["B"],
+            "D": d_raw["D"],
+            "K": d_raw["K"],
+            "w": d_raw["#"],
+        }
+        predicate_expr = {
+            "A": AnyAgent(),
+            "B": AnyAgent(),
+            "D": AnyAgent(),
+            "K": AnyAgent(),
+            "w": AnyAgent(),
         }
 
-        return GridworldMap(len_x, len_y, predicates)
+        color_dict = {
+            "#": "C3",
+            "K": to_rgba("C1", alpha=0.8),
+            "D": to_rgba("C1", alpha=0.8),
+        }
+
+        label_dict = {
+            "A": "A",
+            "B": "B",
+            "C": "C",
+            "K": ":key:",
+            "D": ":door:",
+        }
+
+        return GridworldMap(len_x, len_y, predicates, predicate_expr, d_raw, color_dict, label_dict)
 
     def get_predicates(self, pos: jnp.ndarray, which=jnp):
+        # (n_agents, 2)
+        n_agents, _ = pos.shape
         px, py = pos[..., 0], pos[..., 1]
 
-        d_predicates = {}
-        for pred_name, pred_map in self.predicates.items():
+        d_predicates_bool = {}
+        for pred_name, pred_map in self.predicates_bool.items():
             # pred_map: (len_x, len_y)
             pred_map_jnp = which.asarray(pred_map)
-            pred_values = pred_map_jnp[px, py]  # (...,)
-            d_predicates[pred_name] = pred_values
+            n_pred_values = pred_map_jnp[px, py]  # (...,)
+            assert n_pred_values.shape == (n_agents,)
+            pred_value = self.predicate_expr[pred_name](n_pred_values)
+            d_predicates_bool[pred_name] = pred_value
 
+        # Convert from bool to float.
+        d_predicates = {k: which.where(v, 1.0, -1.0) for k, v in d_predicates_bool.items()}
         return d_predicates
 
     @staticmethod
@@ -162,21 +253,28 @@ class GridworldMABase(BaseEnv):
         deltas = jnp.array([[0, 0], [0, 1], [0, -1], [1, 0], [-1, 0]])
         return deltas
 
-    def action_to_deltas(self, action: jnp.ndarray) -> jnp.ndarray:
-        assert action.shape == (self.n_agents,)
-        deltas = self.action_deltas[action]  # (n_agents, 2)
+    def action_to_deltas(self, action: list[jnp.ndarray]) -> jnp.ndarray:
+        assert len(action) == self.n_agents
+
+        action_deltas = self.action_deltas
+
+        deltas = []
+        for ii in range(self.n_agents):
+            agent_action = action[ii].squeeze()
+            deltas.append(action_deltas[agent_action])
+        deltas = jnp.stack(deltas, axis=0)
         assert deltas.shape == (self.n_agents, 2)
         return deltas
 
     def clip_pos(self, pos: jnp.ndarray) -> jnp.ndarray:
         len_x, len_y = self.map.len_x, self.map.len_y
-        assert pos.shape[-1] == (2,)
+        assert pos.shape[-1] == 2
         x_clip = jnp.clip(pos[..., 0], 0, len_x - 1)
         y_clip = jnp.clip(pos[..., 1], 0, len_y - 1)
         pos_clip = jnp.stack([x_clip, y_clip], axis=-1)
         return pos_clip
 
-    def next_state(self, state: GridworldMAState, action: jnp.ndarray) -> GridworldMAState:
+    def next_state(self, state: GridworldMAState, action: list[jnp.ndarray]) -> GridworldMAState:
         deltas = self.action_to_deltas(action)
         new_pos = self.clip_pos(state.pos + deltas)
         with jdc.copy_and_mutate(state) as state_new:
@@ -184,7 +282,7 @@ class GridworldMABase(BaseEnv):
             state_new.steps = state.steps + 1
         return state_new
 
-    def step(self, state: GridworldMAState, action: jnp.ndarray):
+    def step(self, state: GridworldMAState, action: list[jnp.ndarray]):
         state_new = self.next_state(state, action)
         obs_new = self.get_obs(state_new)
         predicates = self.get_predicates(state_new)
@@ -246,6 +344,10 @@ class GridworldMABase(BaseEnv):
         ax.tick_params(which="minor", color="black", labelcolor="black", length=3, width=1)
         # ax.tick_params(which="major", color="black", labelcolor="black", length=3, width=1)
 
+        # Visualize the map.
+        self.map.show_map(ax)
+        # ax.imshow(self.map.map_viz_color.T, origin="lower", alpha=0.7)
+
 
 class GridworldMA(StaticTemporalNodeMixin, EnvUsingBase):
     Cfg = GridworldMACfg
@@ -274,3 +376,40 @@ class GridworldMA(StaticTemporalNodeMixin, EnvUsingBase):
     @property
     def specification(self):
         return self.cfg.specification
+
+
+def annotate_cell(
+    d_raw: dict[str, np.ndarray],
+    label_dict: dict[str, str],
+    ax: plt.Axes,
+    fontsize: int = 20,
+    size_data: float = 0.8,
+    offset: np.ndarray = np.array([0.0, 0.0]),
+):
+    for k, v in d_raw.items():
+        if k not in label_dict:
+            continue
+
+        label = label_dict[k]
+        is_emoji = label.startswith(":") and label.endswith(":")
+        xs, ys = np.where(v)
+        for x, y in zip(xs, ys):
+            if is_emoji:
+                plot_emoji(
+                    np.array([x, y]) + offset,
+                    size_data=size_data,
+                    emoji_str=label_dict[k],
+                    size=512,
+                    ax=ax,
+                    extent="lower",
+                )
+            else:
+                ax.text(
+                    x + offset[0],
+                    y + offset[1],
+                    label_dict[k],
+                    color="black",
+                    fontsize=fontsize,
+                    ha="center",
+                    va="center",
+                )

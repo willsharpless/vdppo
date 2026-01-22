@@ -69,6 +69,7 @@ class Trainer:
         eval_cbs: list[Callback] = None,
         collect_cbs: list[Callback] = None,
         debug: bool = False,
+        wandb_config: dict | None = None,
     ):
         eval_cbs = eval_cbs if eval_cbs is not None else []
 
@@ -78,11 +79,13 @@ class Trainer:
         n_envs_train = self.agent.cfg.n_envs_train
         n_envs_test = 128
 
+        logger.debug("Constructing collector...")
         collector = Collector.create(
             key=key_collector,
             env=env,
             cfg=Collector.Cfg(n_envs=n_envs_train),
         )
+        logger.debug("Constructing collector_eval...")
         collector_eval = Collector.create(
             key=key_collector,
             env=env,
@@ -103,7 +106,13 @@ class Trainer:
         n_train_steps = 100_000
 
         if not debug:
-            wandb.init(project="vd_mappo", name=run.wandb_name)
+            wandb_config = wandb_config if wandb_config is not None else {}
+            wandb_config = {
+                "env": run.env_name,
+                "noun": run.noun,
+                "name": run.name,
+            } | wandb_config
+            wandb.init(project="vd_mappo", name=run.wandb_name, config=wandb_config)
 
         cb_props = CallbackProps(run, -1, self.agent, None, None, None, None, collector, None, None)
 

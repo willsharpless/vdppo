@@ -2,6 +2,7 @@ import functools as ft
 from typing import Any
 
 import einops as ei
+import ipdb
 import jax
 import jax.numpy as jnp
 import jax.random as jr
@@ -112,7 +113,7 @@ class HerdBase(BaseEnv):
             n_actions_per_agent.append([3, 3])
         return n_actions_per_agent
 
-    def _action_to_controls(self, action: jnp.ndarray):
+    def _action_to_controls(self, action: list[jnp.ndarray]):
         """Convert discrete action to continuous accelerations."""
         n_herders = self.cfg.n_herders
         accs = []
@@ -233,7 +234,7 @@ class HerdBase(BaseEnv):
 
         return predicates
 
-    def step(self, state: HerdBaseState, action: jnp.ndarray):
+    def step(self, state: HerdBaseState, action: list[jnp.ndarray]):
         controls = self._action_to_controls(action)
         state_new, info_dyn = self.next_state(state, controls)
         obs_new = self.get_obs(state_new)
