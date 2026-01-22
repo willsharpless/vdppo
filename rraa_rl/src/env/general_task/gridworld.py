@@ -60,6 +60,17 @@ class AllAgent(BoolExpression):
             return jnp.all(bools_valid)
 
 
+@define
+class GridworldPredicateCfg:
+    sparse_predicates: list[str] = []
+
+    eps: float = 0.1
+    # If not satisfied, then the one-hop neighbors are -eps.
+
+    delta: float = 0.1
+    # The n-hop neighbors are -eps - (n-1) * delta, clipped at -1.
+
+
 class GridworldMap:
     """In the valtr codebase, we ended up with the following convention:
 
@@ -78,6 +89,7 @@ class GridworldMap:
         d_raw: dict[str, np.ndarray],
         color_dict: dict[str, Any] = None,
         label_dict: dict[str, str] = None,
+        pred_cfg: GridworldPredicateCfg = GridworldPredicateCfg(),
     ):
         self._len_x = len_x
         self._len_y = len_y
@@ -95,6 +107,7 @@ class GridworldMap:
                 color = to_rgba(self.color_dict[k])
                 empty_map = np.where(v[..., None], color, empty_map)
         self.map_viz_color = empty_map
+        self.pred_cfg = pred_cfg
 
     def show_map(self, ax: plt.Axes):
         ax.imshow(np.swapaxes(self.map_viz_color, 0, 1), origin="lower", alpha=0.7)
@@ -152,25 +165,33 @@ class GridworldMap:
             "D": ":door:",
         }
 
-        return GridworldMap(len_x, len_y, predicates, predicate_expr, d_raw, color_dict, label_dict)
+        predicate_cfg = GridworldPredicateCfg(sparse_predicates=["w"])
+        return GridworldMap(len_x, len_y, predicates, predicate_expr, d_raw, color_dict, label_dict, predicate_cfg)
 
     def get_predicates(self, pos: jnp.ndarray, which=jnp):
         # (n_agents, 2)
         n_agents, _ = pos.shape
         px, py = pos[..., 0], pos[..., 1]
 
-        d_predicates_bool = {}
+        predicates_bool = {}
         for pred_name, pred_map in self.predicates_bool.items():
             # pred_map: (len_x, len_y)
             pred_map_jnp = which.asarray(pred_map)
             n_pred_values = pred_map_jnp[px, py]  # (...,)
             assert n_pred_values.shape == (n_agents,)
             pred_value = self.predicate_expr[pred_name](n_pred_values)
-            d_predicates_bool[pred_name] = pred_value
+            predicates_bool[pred_name] = pred_value
 
         # Convert from bool to float.
-        d_predicates = {k: which.where(v, 1.0, -1.0) for k, v in d_predicates_bool.items()}
-        return d_predicates
+        predicates_float = {k: self.pred_bool_to_float(k, v) for k, v in predicates_bool.items()}
+        # predicates = {k: which.where(v, 1.0, -1.0) for k, v in d_predicates_bool.items()}
+        return predicates_float
+
+    def pred_bool_to_float(self, name: str, pred_bool: jnp.ndarray) -> jnp.ndarray:
+        if name in self.pred_cfg.sparse_predicates:
+            return jnp.where(pred_bool, 1.0, -1.0)
+
+        raise NotImplementedError("Dense predicates not implemented yet.")
 
     @staticmethod
     def parse_room_str(map_str: str, boundary: str = "|") -> tuple[dict[str, np.ndarray], int, int]:
