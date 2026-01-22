@@ -72,7 +72,15 @@ class Delivery(StaticTemporalNodeMixin, EnvUsingBase):
         eps = 0.1
 
         # Terminate when leaving the allowed area.
+        # is_oob = predicates["oob"] > eps
+        # should_term = is_oob
+
         is_oob = predicates["oob"] > eps
-        should_term = is_oob
+        is_in_obst = predicates["obstacles"] > eps
+        should_term = is_oob | is_in_obst
+
+        # NOTE, both induce reset
+        # terminating is suffix will not affect value (reached end-point)
+        # truncate bootstraps thru reset!
 
         return should_term
