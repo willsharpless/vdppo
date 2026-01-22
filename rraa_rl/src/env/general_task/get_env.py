@@ -1,4 +1,6 @@
 from rraa_rl.src.env.general_task.env import Env
+from rraa_rl.src.env.general_task.gridworld import GridworldMA, GridworldMACfg, GridworldMap
+from rraa_rl import herd_os_cbs, delivery_cbs, gridworld_cbs
 from rraa_rl.src.env.general_task.herd_base import HerdingHerdCfg
 from rraa_rl.src.env.general_task.herd_os import HerdOs, HerdOsPlay
 
@@ -38,15 +40,27 @@ def get_cfg_herdos():
     return cfg
 
 
-def get_env(env_name: str) -> Env:
+def get_env_and_cbs(env_name: str) -> tuple[Env, list, list]:
     env_name = env_name.lower()
 
+    herd_eval_cbs = [
+        herd_os_cbs.animate_eval_trajs,
+        herd_os_cbs.PlotRootTrajPreds.create(),
+        herd_os_cbs.plot_eval_trajs,
+    ]
+    herd_collect_cbs = []
+
+    gridworld_eval_cbs = [
+        gridworld_cbs.animate_eval_trajs
+    ]
+    gridworld_collect_cbs = []
+
     if env_name == "herdosplay":
-        return HerdOsPlay()
+        return HerdOsPlay(), herd_eval_cbs, herd_collect_cbs
 
     if env_name == "herdos":
         cfg = get_cfg_herdos()
-        return HerdOs(cfg)
+        return HerdOs(cfg), herd_eval_cbs, herd_collect_cbs
 
     if env_name == "herdos_dbg":
         cfg = get_cfg_herdos()
@@ -57,6 +71,12 @@ def get_env(env_name: str) -> Env:
         cfg.base.acc_maxs = [2.0]
         cfg.base.vel_maxs = [1.0]
 
-        return HerdOs(cfg)
+        return HerdOs(cfg), herd_eval_cbs, herd_collect_cbs
+
+    if env_name == "gridworld_map5":
+        map5 = GridworldMap.Map5()
+        cfg = GridworldMACfg(map5)
+
+        return GridworldMA(cfg), gridworld_eval_cbs, gridworld_collect_cbs
 
     raise ValueError(f"Unknown environment name: {env_name}")

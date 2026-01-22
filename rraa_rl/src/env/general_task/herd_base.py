@@ -112,18 +112,6 @@ class HerdBase(BaseEnv):
             n_actions_per_agent.append([3, 3])
         return n_actions_per_agent
 
-    @property
-    def max_entropy(self) -> float:
-        # Sum of log of number of actions, per dimension, per agent.
-        n_actions_per_agent = self.n_actions_per_agent
-        agent_entropies = []
-        for actions_per_agent in n_actions_per_agent:
-            actions_per_agent = np.array(actions_per_agent)
-            agent_entropy = np.log(actions_per_agent).sum()
-            agent_entropies.append(agent_entropy)
-
-        return np.sum(np.array(agent_entropies))
-
     def _action_to_controls(self, action: jnp.ndarray):
         """Convert discrete action to continuous accelerations."""
         n_herders = self.cfg.n_herders
@@ -346,10 +334,6 @@ class HerdBase(BaseEnv):
                 *obs_dist_names,
             ]
         return obs, obs_names
-
-    def get_obs(self, state: HerdBaseState):
-        obs, _ = self.get_obs_and_names(state)
-        return obs
 
     def reset(self, key: PRNGKeyArray):
         n_herd = self.cfg.n_herd

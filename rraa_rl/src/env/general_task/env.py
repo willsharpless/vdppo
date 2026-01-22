@@ -19,17 +19,20 @@ from valtr.valtr import to_dag
 from rraa_rl.evaluate_dag import evaluate_dag
 from rraa_rl.jax_utils import tree_cat
 
+_EnvState = TypeVar("_EnvState")
+_Obs = TypeVar("_Obs")
 
-class EnvStep(NamedTuple):
-    envstate: Any
-    obs: Any
+
+class EnvStep(NamedTuple, Generic[_EnvState, _Obs]):
+    envstate: _EnvState
+    obs: _Obs
     predicates: dict
     term: bool
     trunc: bool
     info: dict
 
 
-class BaseEnv:
+class BaseEnv(Generic[_EnvState, _Obs]):
     def __init__(self):
         self._obs_names = None
         self.active_predicates: list[str] | None = None
@@ -40,7 +43,7 @@ class BaseEnv:
 
         return predicate_name in self.active_predicates
 
-    def step(self, state: Any, action: jnp.ndarray):
+    def step(self, state: _EnvState, action: jnp.ndarray) -> EnvStep[_EnvState, _Obs]:
         raise NotImplementedError("")
 
     def reset(self, key: PRNGKeyArray) -> Any:
@@ -71,10 +74,23 @@ class BaseEnv:
 
     @property
     def max_entropy(self) -> float:
+        # Sum of log of number of actions, per dimension, per agent.
+        n_actions_per_agent = self.n_actions_per_agent
+        agent_entropies = []
+        for actions_per_agent in n_actions_per_agent:
+            actions_per_agent = np.array(actions_per_agent)
+            agent_entropy = np.log(actions_per_agent).sum()
+            agent_entropies.append(agent_entropy)
+
+        return np.sum(np.array(agent_entropies))
+
+    @property
+    def max_entropy(self) -> float:
         raise NotImplementedError("")
 
-    def get_obs(self, state: Any) -> Any:
-        raise NotImplementedError("")
+    def get_obs(self, state: _EnvState):
+        obs, _ = self.get_obs_and_names(state)
+        return obs
 
     def get_obs_and_names(self, state: Any) -> tuple[jnp.ndarray, list[str]]:
         raise NotImplementedError("")
