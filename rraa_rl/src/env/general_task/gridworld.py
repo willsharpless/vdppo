@@ -62,7 +62,7 @@ class AllAgent(BoolExpression):
 
 @define
 class GridworldPredicateCfg:
-    sparse_predicates: list[str] = []
+    sparse_predicates: list[str] = None
 
     eps: float = 0.1
     # If not satisfied, then the one-hop neighbors are -eps.
@@ -160,13 +160,54 @@ class GridworldMap:
         label_dict = {
             "A": "A",
             "B": "B",
-            "C": "C",
             "K": ":key:",
             "D": ":door:",
         }
 
-        predicate_cfg = GridworldPredicateCfg(sparse_predicates=["w"])
-        return GridworldMap(len_x, len_y, predicates, predicate_expr, d_raw, color_dict, label_dict, predicate_cfg)
+        return GridworldMap(len_x, len_y, predicates, predicate_expr, d_raw, color_dict, label_dict)
+
+    @staticmethod
+    def Map6() -> "GridworldMap":
+        map_str = """
+            |    B   |
+            |        |
+            |  ..a.  |
+            |  ....  |
+            |C ....  |
+            |  ...b  |
+            |        |
+            |     A  |
+        """
+        d_raw, len_x, len_y = GridworldMap.parse_room_str(map_str, boundary="|")
+
+        predicates = {
+            "A": d_raw["A"] | d_raw["a"],
+            "B": d_raw["B"] | d_raw["b"],
+            "C": d_raw["C"],
+            "q": d_raw["."] | d_raw["a"] | d_raw["b"],
+        }
+        predicate_expr = {
+            "A": AnyAgent(),
+            "B": AnyAgent(),
+            "C": AnyAgent(),
+            "q": AnyAgent(),
+        }
+
+        color_dict = {
+            ".": to_rgba("C2", alpha=0.7),
+            "a": to_rgba("C2", alpha=0.7),
+            "b": to_rgba("C2", alpha=0.7),
+        }
+
+        label_dict = {
+            "A": "A",
+            "a": "A",
+            "B": "B",
+            "b": "B",
+            "C": "C",
+        }
+
+        return GridworldMap(len_x, len_y, predicates, predicate_expr, d_raw, color_dict, label_dict)
 
     def get_predicates(self, pos: jnp.ndarray, which=jnp):
         # (n_agents, 2)
@@ -188,7 +229,8 @@ class GridworldMap:
         return predicates_float
 
     def pred_bool_to_float(self, name: str, pred_bool: jnp.ndarray) -> jnp.ndarray:
-        if name in self.pred_cfg.sparse_predicates:
+        sparse_predicates = self.pred_cfg.sparse_predicates
+        if sparse_predicates is None or name in sparse_predicates:
             return jnp.where(pred_bool, 1.0, -1.0)
 
         raise NotImplementedError("Dense predicates not implemented yet.")

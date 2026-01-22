@@ -80,4 +80,11 @@ def get_env_and_cbs(env_name: str) -> tuple[Env, list, list]:
 
         return GridworldMA(cfg), gridworld_eval_cbs, gridworld_collect_cbs
 
+    if env_name == "gridworld_map6":
+        map6 = GridworldMap.Map6()
+        spec = "F( C && F G ( (q U (A && q )) && (q U (B && q )) ) )"
+        cfg = GridworldMACfg(specification=spec, map=map6)
+
+        return GridworldMA(cfg), gridworld_eval_cbs, gridworld_collect_cbs
+
     raise ValueError(f"Unknown environment name: {env_name}")

@@ -467,6 +467,17 @@ def get_triggers(
 
         value = jnp.minimum(value, stay_value)
         return [DAGTransition(parent_idx, node_idx, value)]
+    elif isinstance(node, DAGGUMinN):
+        # Transition to the first child, using the min of the GU children.
+        values_child = []
+        for child_dag_id in node.args:
+            child_node = dag_nodes[child_dag_id]
+            assert isinstance(child_node, DAGGUSingle)
+            values_child.append(V_dict[child_dag_id])
+        values_child = which.stack(values_child, axis=-1)
+        value = which.min(values_child, axis=-1)
+        first_child_dag_id = node.args[0]
+        return [DAGTransition(parent_idx, first_child_dag_id, value)]
 
     elif not has_temporal_children(node_idx, dag_nodes):
         # No temporal children, so doesn't transition to anything.
@@ -559,11 +570,10 @@ def get_rules(
             case DAGReach(reach=reach_id):
                 triggers = get_triggers(
                     dag_nodes,
-                    temporal_nodes,
                     node_idx,
                     reach_id,
                     predicates,
-                    t_value,
+                    V_dict,
                     scratch,
                     which=which,
                 )
