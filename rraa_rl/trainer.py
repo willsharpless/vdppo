@@ -221,22 +221,30 @@ class Trainer:
             temporal_node_values_l: dict[int, list[float]] = {}
             for traj in trajs:
                 T_temporal_node_idx: np.ndarray = traj.temporal_node_idx
-                temporal_node_idx = T_temporal_node_idx[0]
+                temporal_node_idx = int(T_temporal_node_idx[0])
                 dag_node_idx = env.temporal_nodes[temporal_node_idx]
                 dag_value = evaluate_ltl_finite(env, traj.predicates_next, which=np)[dag_node_idx]
 
-                temporal_node_value = temporal_node_values_l.get(temporal_node_idx, [])
-                temporal_node_value.append(dag_value)
-                temporal_node_values_l[temporal_node_idx] = temporal_node_value
-            temporal_node_values: dict[int, np.ndarray] = {k: np.array(v) for k, v in temporal_node_values_l.items()}
+                c_temporal_value = temporal_node_values_l.get(temporal_node_idx, [])
+                c_temporal_value.append(dag_value)
+                temporal_node_values_l[temporal_node_idx] = c_temporal_value
+            temporal_node_values_dict: dict[int, np.ndarray] = {
+                k: np.array(v) for k, v in temporal_node_values_l.items()
+            }
 
             # Compute the average satisfaction rate for each temporal node
             info_satisfaction = {}
-            for temporal_node_idx, temporal_node_value in temporal_node_values.items():
+            for temporal_node_idx, c_temporal_value in temporal_node_values_dict.items():
                 node_name = env.temporal_node_names[temporal_node_idx]
                 # Satisfy if positive.
-                satisfy_prob = float(np.mean(temporal_node_value > 0.1))
+                c_satisfied = c_temporal_value > 0.1
+                satisfy_prob = np.mean(c_satisfied)
                 info_satisfaction[f"Eval/Satisfy/{node_name}"] = satisfy_prob
+                logger.debug(
+                    "Temporal Idx {}: {} / {} ({:.1%})".format(
+                        temporal_node_idx, c_satisfied.sum(), len(c_satisfied), satisfy_prob
+                    )
+                )
 
                 if temporal_node_idx == env.dag_root:
                     info_satisfaction[f"Eval/Satisfy/Root"] = satisfy_prob
@@ -250,7 +258,7 @@ class Trainer:
             trigger_dict = {}
 
             # info = info_trigger | info_satisfaction
-            info["debug/temporal_values_dict"] = temporal_node_values
+            info["debug/temporal_values_dict"] = temporal_node_values_dict
         else:
             dag_values = []
             for traj in trajs:
