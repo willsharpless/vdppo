@@ -708,6 +708,7 @@ class VDMAPPOAgent:
             loss = loss + self.cfg.min_entropy_constr_coef * loss_min_entropy
 
             info["Loss Min Entropy"] = loss_min_entropy
+            info["Min Entropy Violate Frac"] = jnp.mean(bn_entropy < n_min_entropy)
 
         # Compute the fraction of maximum entropy, if available, to make it easier to interpret.
         max_entropy = self.env.max_entropy
