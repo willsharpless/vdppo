@@ -1,6 +1,7 @@
 from typing import Sequence
 
 import flax.linen as nn
+import jax.nn as jnn
 import jax.numpy as jnp
 import jax.tree_util as jtu
 
@@ -18,6 +19,10 @@ class MAMultiDiscretePolicy(nn.Module):
     n_actions_per_agent: list[list[int]]
 
     scale_final: float = 0.01
+
+    p_max: float | None = 0.999
+    """Prevent extreme probabilities, analogous to min_std for Gaussian policies.
+    Do this by doing a mixture of the probabilities, which is equiv to logaddexp the logits."""
 
     @property
     def total_n_logits(self) -> int:
@@ -39,6 +44,18 @@ class MAMultiDiscretePolicy(nn.Module):
             for n_actions in agent_n_actions_multi:
                 end_idx = start_idx + n_actions
                 logits_this_action_dim = logits[..., start_idx:end_idx]
+
+                if self.p_max is not None:
+                    # Adjust the logits to prevent extreme probabilities.
+                    eps = 1 - self.p_max
+                    logp_this_dim = jnn.log_softmax(logits_this_action_dim, axis=-1)
+                    # log( (1-eps) * p) = log( 1-eps) + logp
+                    logp_a = jnp.log1p(-eps) + logp_this_dim
+                    # log( eps * 1 / n_actions ) = log(eps) - log(n_actions)
+                    logp_b = jnp.log(eps) - jnp.log(n_actions)
+                    # log p' = log( (1-eps) * p + eps * 1/n_actions )
+                    logits_this_action_dim = jnp.logaddexp(logp_a, logp_b)
+
                 dist = tfd.Categorical(logits=logits_this_action_dim)
                 agent_dists.append(dist)
                 start_idx = end_idx
