@@ -85,8 +85,8 @@ dependencies:
       - cattrs
       
       # Git repositories (install these last)
-      - git+https://github.com/oswinso/lovely_histogram.git@90d4e086121a09fb5df6560cc3ac695006540ed2
-      - git+https://github.com/willsharpless/valtr.git@c6f6550f156297c3bc30135e80da79f12aaccf51
+      - git+ssh://git@github.com/oswinso/lovely_histogram.git
+      - git+ssh://git@github.com/willsharpless/valtr.git
       # Note: jax-f16 not in pip freeze, uncomment if needed:
       # - git+https://github.com/willsharpless/jax-f16.git
 
