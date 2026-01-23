@@ -112,6 +112,7 @@ class Trainer:
                 "env": run.env_name,
                 "noun": run.noun,
                 "name": run.name,
+                "spec": env.specification
             } | wandb_config
             wandb.init(project="vd_mappo", name=run.wandb_name, config=wandb_config)
 
@@ -246,6 +247,14 @@ class Trainer:
             # info = info_trigger | info_satisfaction
             info["debug/temporal_values_dict"] = temporal_node_values
         else:
+            dag_values = []
+            for traj in trajs:
+                dag_value = evaluate_ltl_finite(env, traj.predicates_next, which=np)[0]
+                dag_values.append(dag_value)
+
+            info_satisfaction = {"Eval/Satisfy/Root": float(np.mean(np.array(dag_values) > 0.1))}
+            info = info | info_satisfaction
+
             trigger_dict = {}
 
         return trajs, bT_rollout, trigger_dict, info

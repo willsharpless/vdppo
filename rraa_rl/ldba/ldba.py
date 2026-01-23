@@ -38,6 +38,7 @@ class Transition(NamedTuple):
 
 @define
 class LDBA:
+    # List of transitions. Should only be one transition eligible. If no eligible, go to sink.
     transitions: Transition
 
     # (n_epsilon_transitions,)
@@ -50,6 +51,22 @@ class LDBA:
 
     n_states: int
     predicate_order: list[str]
+
+    def __attrs_post_init__(self):
+        assert self.accepting_sets.shape[1] == self.n_states
+
+        # Iterate through all transitions, make sure the number of predicates referenced by the guard masks
+        # matches the number of predicates in predicate_order.
+        n_preds = len(self.predicate_order)
+        for ii in range(self.transitions.guard.pos_mask.shape[0]):
+            pos_mask = self.transitions.guard.pos_mask[ii]
+            neg_mask = self.transitions.guard.neg_mask[ii]
+            max_bit = max(int(pos_mask).bit_length(), int(neg_mask).bit_length())
+            if max_bit > n_preds:
+                raise ValueError(
+                    f"Transition guard references predicate index >= {n_preds}, "
+                    f"but only {n_preds} predicates provided."
+                )
 
     @property
     def sink_state(self) -> int:
@@ -83,9 +100,10 @@ class LDBA:
 
         m_eligible = jax.vmap(ft.partial(Transition.is_eligible, state=state_safe, label=label))(self.transitions)
         has_eligible = jnp.any(m_eligible)
-        # There should only be at most one eligible, since we extract the epsilon transitions out.
+        # There should be at most one eligible, since we extract the epsilon transitions out.
         idx = jnp.argmax(m_eligible)
-        next_state = jnp.where(has_eligible, self.transitions.dst[idx], state)
+        # If there are no eligible, then go to the sink state.
+        next_state = jnp.where(has_eligible, self.transitions.dst[idx], self.sink_state)
 
         # If in sink, stay in sink.
         next_state = jnp.where(is_sink_state, self.sink_state, next_state)
@@ -108,7 +126,7 @@ class LDBA:
     def predicates_to_label(self, predicates: dict[str, jnp.ndarray]) -> jnp.ndarray:
         label = 0
         for i, pred_name in enumerate(self.predicate_order):
-            pred_value = predicates.get(pred_name, jnp.array(False))
+            pred_value = predicates[pred_name]
             label |= jnp.where(pred_value, 1 << i, 0)
         return label
 

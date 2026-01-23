@@ -443,6 +443,18 @@ class GridworldMABase(BaseEnv):
         self.map.show_map(ax)
         # ax.imshow(self.map.map_viz_color.T, origin="lower", alpha=0.7)
 
+    def get_all_states(self) -> GridworldMAState:
+        assert self.n_agents == 1
+        # We want to return states such that the pos has shape (len_x, len_y, n_agents=1, 2)
+        len_x, len_y = self.map.len_x, self.map.len_y
+        xs = jnp.arange(len_x)
+        ys = jnp.arange(len_y)
+        bb_X, bb_Y = jnp.meshgrid(xs, ys, indexing="ij")
+        bb_pos = jnp.stack([bb_X, bb_Y], axis=-1)
+        bb_pos = bb_pos[:, :, None, :]  # (len_x, len_y, n_agents=1, 2)
+        bb_steps = jnp.zeros((len_x, len_y), dtype=jnp.int32)
+        return GridworldMAState(bb_pos, bb_steps)
+
 
 class GridworldMA(StaticTemporalNodeMixin, EnvUsingBase):
     Cfg = GridworldMACfg

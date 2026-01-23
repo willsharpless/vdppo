@@ -20,7 +20,9 @@ from matplotlib.colors import CenteredNorm, to_rgba
 from rraa_rl.collector import RolloutOutput
 from rraa_rl.jax_utils import jax_vmap, rep_vmap
 from rraa_rl.lcrl.lcrl_wrapper import LCRLWrapper
-from rraa_rl.src.env.general_task.env import AugObs
+from rraa_rl.lcrl_mappo import LCRLMAPPOAgent
+from rraa_rl.ldba.ldba import LDBAState
+from rraa_rl.src.env.general_task.env import AugObs, AugObsAutomata
 from rraa_rl.src.env.general_task.gridworld import GridworldMA, GridworldMABase, GridworldMAState
 from rraa_rl.src.rl.utils.utils import get_BuRd_smooth
 from rraa_rl.trainer import CallbackProps
@@ -283,7 +285,7 @@ def animate_eval_trajs_base(p: CallbackProps):
     with iio.imopen(anim_path, "w", plugin="pyav") as writer:
         writer.init_video_stream("libx264", fps=30)
 
-        pbar = tqdm.trange(T_max, unit="frame", desc="Generating eval trajs animation")
+        pbar = tqdm.trange(T_max + 1, unit="frame", desc="Generating eval trajs animation")
         for kk in pbar:
             # restore background
             fig.canvas.restore_region(bg)
@@ -296,11 +298,19 @@ def animate_eval_trajs_base(p: CallbackProps):
                 T_state: LCRLWrapper.State[GridworldMAState] = traj.state_now
                 T_herder_pos = T_state.base.pos[:, :, :2]
 
+                T_state_next: LCRLWrapper.State[GridworldMAState] = traj.state_next
+                T_herder_pos_next = T_state_next.base.pos[:, :, :2]
+
+                is_dead = kk >= T
                 t_idx = min(kk, T - 1)
 
                 circs = agent_collections[ii]
                 for agent_idx, circ in enumerate(circs):
-                    pos = T_herder_pos[t_idx, agent_idx, :]
+
+                    if is_dead:
+                        pos = T_herder_pos_next[-1, agent_idx, :]
+                    else:
+                        pos = T_herder_pos[t_idx, agent_idx, :]
                     circ.center = pos
 
                     if isinstance(T_state, LCRLWrapper.State):
@@ -345,3 +355,62 @@ def animate_eval_trajs_base(p: CallbackProps):
             writer.write_frame(frame_rgb)
 
     plt.close(fig)
+
+
+class VizValues(struct.PyTreeNode):
+    @staticmethod
+    def create():
+        return VizValues()
+
+    @jax.jit
+    def get_value(self, agent: LCRLMAPPOAgent):
+        env: LCRLWrapper = agent.env
+        env_base: GridworldMABase = env.base
+
+        # def get_value_for_automata_state(automata_state: jnp.ndarray):
+        #     bb_ldba_state = LDBAState(jnp.full((len_x, len_y), automata_state), jnp.zeros((len_x, len_y), dtype=bool))
+        #     bb_state = LCRLWrapper.State(bb_ldba_state, bb_state_base)
+        #     bb_obs = jax_vmap(env.get_obs)(bb_state)
+        #     bb_value = agent.network.select("critic")(bb_obs)
+        #     return bb_value
+        #
+        bb_state_base = env_base.get_all_states()
+        len_x, len_y = bb_state_base.pos.shape[:2]
+
+        bb_obs = jax_vmap(env_base.get_obs, rep=2)(bb_state_base)
+        bb_obs_aug = AugObsAutomata(None, bb_obs, None)
+        bbt_V = agent.network.select("critic")(bb_obs_aug)
+        assert bbt_V.shape == (len_x, len_y, env.ldba.n_states)
+
+        return bbt_V
+
+    def __call__(self, p: CallbackProps):
+        if p.env.n_agents > 1:
+            return
+
+        bbt_V = jax.device_get(self.get_value(p.agent))
+
+        env: LCRLWrapper = p.agent.env
+        env_base: GridworldMABase = env.base
+        n_automata_states = env.ldba.n_states
+
+        ncol = n_automata_states
+        figsize = 0.9 * np.array([3 * ncol, 3])
+        fig, axes = plt.subplots(1, ncol, figsize=figsize, layout="constrained")
+
+        for ii, ax in enumerate(axes):
+            im = ax.imshow(
+                bbt_V[:, :, ii].T,
+                origin="lower",
+                cmap="viridis",
+            )
+            env_base.setup_ax(ax)
+            ax.set_title(f"Automata state {ii}")
+
+            cbar = fig.colorbar(im, ax=ax)
+
+        plot_dir = p.run.plots_dir / "V"
+        plot_dir.mkdir(parents=True, exist_ok=True)
+        fig_path = plot_dir / f"V_step{p.train_step}.jpg"
+        fig.savefig(fig_path, bbox_inches="tight", dpi=500)
+        plt.close(fig)
