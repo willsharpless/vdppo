@@ -486,12 +486,9 @@ class VizValues(struct.PyTreeNode):
         figsize = 0.9 * np.array([3 * ncol, 3])
         fig, axes = plt.subplots(1, ncol, figsize=figsize, layout="constrained")
 
+        vmin, vmax = bbt_V.min(), bbt_V.max()
         for ii, ax in enumerate(axes):
-            im = ax.imshow(
-                bbt_V[:, :, ii].T,
-                origin="lower",
-                cmap="viridis",
-            )
+            im = ax.imshow(bbt_V[:, :, ii].T, origin="lower", cmap="viridis", vmin=vmin, vmax=vmax)
             env_base.setup_ax(ax)
             ax.set_title(f"{discrete_state_name} state {ii}")
 

@@ -75,6 +75,7 @@ class SeparateMAMultiDiscretePolicy(nn.Module):
     hidden_dims: Sequence[int]
     n_actions_per_agent: list[list[int]]
     n_out: int
+    p_max: float | None = 0.999
 
     @nn.compact
     def __call__(self, obs) -> tfd.Distribution:
@@ -86,7 +87,7 @@ class SeparateMAMultiDiscretePolicy(nn.Module):
             split_rngs={"params": True},
             axis_size=self.n_out,
         )
-        policy = BatchPolicy(self.hidden_dims, self.n_actions_per_agent)(obs)
+        policy = BatchPolicy(self.hidden_dims, self.n_actions_per_agent, self.p_max)(obs)
         return policy
 
 

@@ -94,6 +94,9 @@ class VDMAPPOAgentCfg(Cfg):
     """Per agent, the maximum probability allowed for an action. We convert this to an entropy and use it to impose a
     minimum entropy constraint."""
 
+    p_max_pol: float = 0.999
+    """Prevent extreme probabilities in the policy, enforced by construction."""
+
     min_entropy_coef: float | None = None
 
 
@@ -151,8 +154,7 @@ class VDMAPPOAgent:
 
         if cfg.actor_shared_trunk:
             actor_def = MAMultiDiscretePolicy(
-                hidden_dims=cfg.actor_hids,
-                n_actions_per_agent=env.n_actions_per_agent,
+                hidden_dims=cfg.actor_hids, n_actions_per_agent=env.n_actions_per_agent, p_max=cfg.p_max_pol
             )
             if cfg.actor_learn_embedding:
                 actor_def = LearnTemporalEmbedding(actor_def, n_temporal_nodes=env.n_temporal_nodes)
@@ -160,7 +162,10 @@ class VDMAPPOAgent:
                 actor_def = BothObs(actor_def)
         else:
             actor_def = SeparateMAMultiDiscretePolicy(
-                hidden_dims=cfg.actor_hids, n_actions_per_agent=env.n_actions_per_agent, n_out=env.n_temporal_nodes
+                hidden_dims=cfg.actor_hids,
+                n_actions_per_agent=env.n_actions_per_agent,
+                n_out=env.n_temporal_nodes,
+                p_max=cfg.p_max_pol,
             )
             actor_def = IndexAtEnd(actor_def, n_out=env.n_temporal_nodes)
 
