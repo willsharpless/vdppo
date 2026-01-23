@@ -372,12 +372,20 @@ class LCRLMAPPOAgent:
         entropy_mean = jnp.mean(b_entropy)
         loss_entropy = -entropy_mean
 
+        bn_logprob_base = bn_logp[:, :-1]
+        b_logprob_base = jnp.mean(bn_logprob_base, axis=1)
+        b_logprob_epsilon = bn_logp[:, -1]
+        b_logprob = jnp.where(b_epsilon_taken, b_logprob_epsilon, b_logprob_base)
+        logprob_mean = jnp.mean(b_logprob)
+
         loss = loss_pg + self.cfg.entropy_coef * loss_entropy
 
         info = {
             "Loss": loss,
             "Loss_pg": loss_pg,
             "Entropy": entropy_mean,
+            "Mean logprob": logprob_mean,
+            "Epsilon Taken Frac": b_epsilon_taken.mean(),
             "Approx KL": approx_kl,
             "Clip Frac": clip_fraction,
         }

@@ -56,7 +56,7 @@ def train(
     collect_cbs: list,
     agent: VDMAPPOAgent | LCRLMAPPOAgent,
 ):
-    wandb_config = {"seed": seed, "cli_env_name": env_name, "agent_tyep": type(agent).__name__}
+    wandb_config = {"seed": seed, "cli_env_name": env_name, "agent_type": type(agent).__name__}
 
     env_name = f"{type(env).__name__}-{env_name}"
     run = Run.create(env_name=env_name, name=name)

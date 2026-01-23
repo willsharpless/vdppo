@@ -26,4 +26,6 @@ def get_lcrl_agent_cfg(env_name: str):
     env_name = env_name.lower()
 
     cfg = LCRLMAPPOAgent.Cfg()
+    cfg.actor_lr = 3e-4
+    cfg.entropy_coef = 1e-2
     return cfg

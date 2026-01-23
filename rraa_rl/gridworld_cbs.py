@@ -194,18 +194,40 @@ def animate_eval_trajs_base(p: CallbackProps):
     env: LCRLWrapper = p.env
     cfg = env.base.cfg
 
-    n_traj_anim = 6
+    n_traj_anim = 8
 
     bT_test_rollouts = p.bT_test_rollouts
 
     bT_states: list[LCRLWrapper.State[GridworldMAState]] = [traj.state_now for traj in bT_test_rollouts]
+    b_pos0 = [T_state.base.pos[0] for T_state in bT_states]
 
+    n_batch = len(b_pos0)
     batch_indices = np.arange(n_traj_anim)
 
-    # Make the first batch index correspond to a trajectory that reaches the goal (predicates["A"] > 0) if it exists.
-    b_reach_goal = np.stack([np.any(traj.predicates_next["A"]) for traj in bT_test_rollouts], axis=0)
-    if np.any(b_reach_goal):
-        batch_indices[0] = np.argmax(b_reach_goal)
+    # Try and make every index correspond to a different base state.
+    pos_seen = []
+    idx_try = 0
+    for ii in range(n_traj_anim):
+        if len(pos_seen) == 0:
+            batch_indices[ii] = idx_try
+            idx_try += 1
+            pos_seen.append(b_pos0[batch_indices[ii]])
+        else:
+            while idx_try < n_batch:
+                pos_candidate = b_pos0[idx_try]
+                is_new = all(not np.allclose(pos_candidate, pos_prev) for pos_prev in pos_seen)
+                if is_new:
+                    batch_indices[ii] = idx_try
+                    idx_try += 1
+                    pos_seen.append(b_pos0[batch_indices[ii]])
+                    break
+                else:
+                    idx_try += 1
+
+    # # Make the first batch index correspond to a trajectory that reaches the goal (predicates["A"] > 0) if it exists.
+    # b_reach_goal = np.stack([np.any(traj.predicates_next["A"]) for traj in bT_test_rollouts], axis=0)
+    # if np.any(b_reach_goal):
+    #     batch_indices[0] = np.argmax(b_reach_goal)
 
     T_max = 0
     for ii in range(n_traj_anim):
