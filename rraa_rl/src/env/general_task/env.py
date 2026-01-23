@@ -119,7 +119,6 @@ class Env:
 
         # root first.
         self.temporal_nodes: list[DAGId] = temporal_nodes_topological(self.dag_nodes, self.dag_root)[::-1]
-        self._augment_obs_names = None
 
         self.node_parent_dict: dict[DAGId, DAGId] = get_node_parent_dict(self.dag_nodes, self.dag_root)
 
@@ -182,42 +181,6 @@ class Env:
 
         return jnp.array(temporal_node_type_list)
 
-    def augment_obs_names(self) -> list[str]:
-        if self._augment_obs_names is None:
-            dummy_state = self.reset(jr.PRNGKey(0))
-            _, obs_names = self._augment_obs_and_names(dummy_state)
-            self._augment_obs_names = obs_names
-        return self._augment_obs_names
-
-    def _augment_obs_and_names(self, state: Any):
-        """Augment the base observation with the (one hot) temporal node idx and (one hot) node type."""
-        if self.n_temporal_nodes > 1:
-            obs_node_idx = jnn.one_hot(state.temporal_node_idx, self.n_temporal_nodes)
-            obs_node_idx_names = [f"nodeidx1h_{ii}" for ii in range(self.n_temporal_nodes)]
-
-            temporal_node_idx_to_node_type = self._temporal_node_idx_to_node_type()
-            node_type = temporal_node_idx_to_node_type[state.temporal_node_idx]
-
-            obs_node_type = jnn.one_hot(node_type, DAGNode.n_temporal_classes())
-            obs_node_type_names = [f"nodetype1h_{ii}" for ii in range(DAGNode.n_temporal_classes())]
-
-            obs_aug = jnp.concatenate([obs_node_idx, obs_node_type], axis=-1)
-            obs_names = [*obs_node_idx_names, *obs_node_type_names]
-        else:
-            obs_aug = jnp.array([], dtype=jnp.float32)
-            obs_names = []
-
-        return obs_aug, obs_names
-
-    def _get_augment_obs(self, state: Any):
-        obs, _ = self._augment_obs_and_names(state)
-        return obs
-
-    def _augment_obs(self, state: Any, obs: jnp.ndarray):
-        raise NotImplementedError("")
-        # obs_aug = self._get_augment_obs(state)
-        # return AugObs(base=obs, temporal=obs_aug)
-
     @property
     def eval_T(self) -> int:
         return self.cfg.eval_T
@@ -249,13 +212,13 @@ class Env:
         return temporal_node_idx_new
 
 
-BaseClass = TypeVar("BaseClass")
+BaseClassState = TypeVar("BaseClassState")
 
 
 @jdc.pytree_dataclass
-class StateWithTemporalNode(Generic[BaseClass]):
+class StateWithTemporalNode(Generic[BaseClassState]):
     temporal_node_idx: int
-    base: BaseClass
+    base: BaseClassState
 
 
 class EnvUsingBase(Env):
@@ -283,29 +246,32 @@ class EnvUsingBase(Env):
     def n_temporal_nodes(self):
         return len(self.temporal_nodes)
 
-    def step(self, state: Any, action: jnp.ndarray):
-        base_step: EnvStep = self.base.step(state.base, action)
-
-        temporal_node_idx = state.temporal_node_idx
-
-        state_new = jdc.replace(state, temporal_node_idx=temporal_node_idx, base=base_step.envstate)
-        obs = self._augment_obs(state_new, base_step.obs)
-        step = base_step._replace(envstate=state_new, obs=obs)
-
-        return step
-
-    def get_obs(self, state: Any) -> Any:
-        base_obs = self.base.get_obs(state.base)
-        return self._augment_obs(state, base_obs)
-
-    def get_obs_names(self) -> list[str]:
-        return self.base.get_obs_names() + self.augment_obs_names()
-
     def get_predicates(self, state: Any) -> dict[str, jnp.ndarray]:
         return self.base.get_predicates(state.base)
 
     def setup_ax(self, ax: plt.Axes):
         return self.base.setup_ax(ax)
+
+
+class AugObs(NamedTuple):
+    """Separate the "base" observation and the observation of the temporal node."""
+
+    temporal_node_idx: int
+    temporal_node_type: int
+    base: jnp.ndarray
+    temporal: jnp.ndarray
+
+    def combine(self, which=jnp):
+        return which.concatenate([self.base, self.temporal], axis=-1)
+
+
+class AugObsAutomata(NamedTuple):
+    automata_idx: jnp.ndarray
+    base: jnp.ndarray
+    automata: jnp.ndarray
+
+    def combine(self, which=jnp):
+        return which.concatenate([self.base, self.temporal], axis=-1)
 
 
 @define(slots=False)
@@ -338,6 +304,26 @@ class StaticTemporalNodeMixin:
             self.cfg.temporal_node_fracs = np.full(self.n_temporal_nodes, 1.0 / self.n_temporal_nodes).tolist()
 
         assert len(self.cfg.temporal_node_fracs) == len(self.temporal_nodes)
+
+        self._augment_obs_names = None
+
+    def step(self: Self | StaticTemporalNodeMixinProtocol, state: Any, action: jnp.ndarray):
+        base_step: EnvStep = self.base.step(state.base, action)
+
+        temporal_node_idx = state.temporal_node_idx
+
+        state_new = jdc.replace(state, temporal_node_idx=temporal_node_idx, base=base_step.envstate)
+        obs = self._augment_obs(state_new, base_step.obs)
+        step = base_step._replace(envstate=state_new, obs=obs)
+
+        return step
+
+    def get_obs(self: Self | StaticTemporalNodeMixinProtocol, state: Any) -> Any:
+        base_obs = self.base.get_obs(state.base)
+        return self._augment_obs(state, base_obs)
+
+    def get_obs_names(self: Self | StaticTemporalNodeMixinProtocol) -> list[str]:
+        return self.base.get_obs_names() + self.augment_obs_names()
 
     @ft.partial(jax.jit, static_argnames=("self",))
     def reset(self: StaticTemporalNodeMixinProtocol, key: PRNGKeyArray) -> StateWithTemporalNode:
@@ -401,17 +387,36 @@ class StaticTemporalNodeMixin:
             temporal_node_idx=temporal_node_idx, temporal_node_type=temporal_node_type, base=obs, temporal=obs_aug
         )
 
+    def augment_obs_names(self) -> list[str]:
+        if self._augment_obs_names is None:
+            dummy_state = self.reset(jr.PRNGKey(0))
+            _, obs_names = self._augment_obs_and_names(dummy_state)
+            self._augment_obs_names = obs_names
+        return self._augment_obs_names
 
-class AugObs(NamedTuple):
-    """Separate the "base" observation and the observation of the temporal node."""
+    def _augment_obs_and_names(self: Env, state: AugObs):
+        """Augment the base observation with the (one hot) temporal node idx and (one hot) node type."""
+        if self.n_temporal_nodes > 1:
+            obs_node_idx = jnn.one_hot(state.temporal_node_idx, self.n_temporal_nodes)
+            obs_node_idx_names = [f"nodeidx1h_{ii}" for ii in range(self.n_temporal_nodes)]
 
-    temporal_node_idx: int
-    temporal_node_type: int
-    base: jnp.ndarray
-    temporal: jnp.ndarray
+            temporal_node_idx_to_node_type = self._temporal_node_idx_to_node_type()
+            node_type = temporal_node_idx_to_node_type[state.temporal_node_idx]
 
-    def combine(self, which=jnp):
-        return which.concatenate([self.base, self.temporal], axis=-1)
+            obs_node_type = jnn.one_hot(node_type, DAGNode.n_temporal_classes())
+            obs_node_type_names = [f"nodetype1h_{ii}" for ii in range(DAGNode.n_temporal_classes())]
+
+            obs_aug = jnp.concatenate([obs_node_idx, obs_node_type], axis=-1)
+            obs_names = [*obs_node_idx_names, *obs_node_type_names]
+        else:
+            obs_aug = jnp.array([], dtype=jnp.float32)
+            obs_names = []
+
+        return obs_aug, obs_names
+
+    def _get_augment_obs(self, state: Any):
+        obs, _ = self._augment_obs_and_names(state)
+        return obs
 
 
 class DAGTransition(NamedTuple):
