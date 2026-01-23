@@ -95,7 +95,7 @@ class VDMAPPOAgentCfg(Cfg):
     """Per agent, the maximum probability allowed for an action. We convert this to an entropy and use it to impose a
     minimum entropy constraint."""
 
-    min_entropy_constr_coef: float = 1e-2
+    min_entropy_constr_coef: float = 5e-1
     """Coefficient on the hinge loss for minimum entropy constraint."""
 
     p_max_pol: float = 0.999

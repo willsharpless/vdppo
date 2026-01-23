@@ -6,11 +6,12 @@ import nltk
 from attrs import define
 from wordfreq import top_n_list
 
+from rraa_rl.cfg_utils import Cfg
 from rraa_rl.path_utils import get_runs_dir
 
 
 @define
-class Run:
+class Run(Cfg):
     start_time: datetime.datetime
 
     noun: str

@@ -222,6 +222,9 @@ class Env(Generic[_EnvState, _Obs]):
 
         return temporal_node_idx_new
 
+    def get_eval_states(self, n_envs: int) -> Any:
+        raise NotImplementedError("")
+
 
 BaseClassState = TypeVar("BaseClassState")
 
@@ -372,15 +375,26 @@ class StaticTemporalNodeMixin:
         )
         return state
 
-    def get_eval_states(self: StaticTemporalNodeMixinProtocol, n_envs: int) -> StateWithTemporalNode:
+    def get_eval_states(
+        self: StaticTemporalNodeMixinProtocol, n_envs: int, root_only: bool = False
+    ) -> StateWithTemporalNode:
+        key = jr.PRNGKey(seed=12345)
+
+        if root_only:
+            # All envs start at the root temporal node (idx 0).
+            m_state_base = self.base.reset_batch(key, n_envs)
+            b_state0 = StateWithTemporalNode(
+                temporal_node_idx=jnp.zeros((n_envs,), dtype=jnp.int32),
+                base=m_state_base,
+            )
+            return b_state0
+
         # Assign envs evenly to each temporal node.
         n_envs_per_node = np.full((self.n_temporal_nodes,), n_envs // self.n_temporal_nodes)
         n_envs_per_node[0] = n_envs - n_envs_per_node[1:].sum()
 
-        key = jr.PRNGKey(seed=12345)
         max_n_envs_per_node = n_envs_per_node.max()
         m_state_base = self.base.reset_batch(key, max_n_envs_per_node)
-
         states = []
         for ii, n_envs_this in enumerate(n_envs_per_node):
             state_base = jtu.tree_map(lambda x: x[:n_envs_this], m_state_base)

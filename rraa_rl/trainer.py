@@ -97,6 +97,7 @@ class Trainer:
         cfg_to_save = {
             "agent": self.agent.cfg.asdict(),
             "trainer": self.cfg.asdict(),
+            "run": run.asdict(),
         }
         # Save as yaml.
         yaml_path = run.run_dir / "config.yaml"
