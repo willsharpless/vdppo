@@ -216,7 +216,7 @@ class Trainer:
         trajs = extract_rollouts_eval(bT_rollout)
 
         info = {}
-        if isinstance(trajs[0], StateWithTemporalNode):
+        if isinstance(trajs[0].state_now, StateWithTemporalNode):
             # Evaluate the LTL satisfaction over each trajectory.
             temporal_node_values_l: dict[int, list[float]] = {}
             for traj in trajs:
