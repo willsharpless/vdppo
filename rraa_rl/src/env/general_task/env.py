@@ -2,6 +2,7 @@ import copy
 import functools as ft
 from typing import Any, Generic, NamedTuple, Protocol, Self, TypeVar
 
+import flax.linen as nn
 import jax
 import jax.nn as jnn
 import jax.random as jr
@@ -37,6 +38,9 @@ class BaseEnv(Generic[_EnvState, _Obs]):
     def __init__(self):
         self._obs_names = None
         self.active_predicates: list[str] | None = None
+
+    def add_obs_preprocessor(self, module: nn.Module):
+        return module
 
     def is_predicate_active(self, predicate_name: str) -> bool:
         if self.active_predicates is None:
@@ -121,6 +125,9 @@ class Env(Generic[_EnvState, _Obs]):
         self.temporal_nodes: list[DAGId] = temporal_nodes_topological(self.dag_nodes, self.dag_root)[::-1]
 
         self.node_parent_dict: dict[DAGId, DAGId] = get_node_parent_dict(self.dag_nodes, self.dag_root)
+
+    def add_obs_preprocessor(self, module: nn.Module):
+        return module
 
     def step(self, state: _EnvState, action: Any) -> EnvStep[_EnvState, _Obs]:
         raise NotImplementedError("")
@@ -230,6 +237,9 @@ class EnvUsingBase(Env):
         super().__init__(cfg, specification)
         self.base = base_env
 
+    def add_obs_preprocessor(self, module: nn.Module):
+        return self.base.add_obs_preprocessor(module)
+
     @property
     def n_agents(self) -> int:
         return self.base.n_agents
@@ -265,6 +275,9 @@ class AugObs(NamedTuple):
     base: jnp.ndarray
     temporal: jnp.ndarray
 
+    def base_is_array(self) -> bool:
+        return isinstance(self.base, (jnp.ndarray, np.ndarray))
+
     def combine(self, which=jnp):
         return which.concatenate([self.base, self.temporal], axis=-1)
 
@@ -273,6 +286,9 @@ class AugObsAutomata(NamedTuple):
     automata_idx: jnp.ndarray
     base: jnp.ndarray
     automata: jnp.ndarray
+
+    def base_is_array(self) -> bool:
+        return isinstance(self.base, (jnp.ndarray, np.ndarray))
 
     def combine(self, which=jnp):
         return which.concatenate([self.base, self.temporal], axis=-1)

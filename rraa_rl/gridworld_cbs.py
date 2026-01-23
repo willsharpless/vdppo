@@ -23,7 +23,7 @@ from rraa_rl.jax_utils import jax_vmap, rep_vmap
 from rraa_rl.lcrl.lcrl_wrapper import LCRLWrapper
 from rraa_rl.lcrl_mappo import LCRLMAPPOAgent
 from rraa_rl.ldba.ldba import LDBAState
-from rraa_rl.src.env.general_task.env import AugObs, AugObsAutomata
+from rraa_rl.src.env.general_task.env import AugObs, AugObsAutomata, StateWithTemporalNode
 from rraa_rl.src.env.general_task.gridworld import GridworldMA, GridworldMABase, GridworldMAState
 from rraa_rl.src.rl.utils.utils import get_BuRd_smooth
 from rraa_rl.trainer import CallbackProps
@@ -386,17 +386,47 @@ class VizValues(struct.PyTreeNode):
         return VizValues()
 
     @jax.jit
-    def get_value(self, agent: LCRLMAPPOAgent):
+    def get_value_vd(self, agent: VDMAPPOAgent):
+        env: GridworldMA = agent.env
+        env_base: GridworldMABase = env.base
+
+        bb_state_base = env_base.get_all_states()
+        len_x, len_y = bb_state_base.pos.shape[:2]
+
+        bb_obs = jax_vmap(env_base.get_obs, rep=2)(bb_state_base)
+        bb_obs_aug = AugObs(None, None, bb_obs, None)
+        bbt_V = agent.network.select("critic")(bb_obs_aug)
+        assert bbt_V.shape == (len_x, len_y, env.n_temporal_nodes)
+
+        def get_actions(temporal_idx: jnp.ndarray):
+            bb_temporal_idx = jnp.full((len_x, len_y), temporal_idx)
+            bb_state = StateWithTemporalNode(bb_temporal_idx, bb_state_base)
+            bb_obs_ = jax_vmap(env.get_obs, rep=2)(bb_state)
+
+            def get_mode_and_prob(obs_):
+                act_dist: tfd.JointDistributionSequential = agent.network.select("actor")(obs_)
+                n_act = act_dist.mode()
+                n_log_probs = act_dist.log_prob_parts(n_act)
+                entropies_list = [dist.entropy() for dist in act_dist.model]
+                n_entropy = jnp.stack(entropies_list, axis=0)
+                n_probs = jnp.array([jnp.exp(lp).squeeze() for lp in n_log_probs])
+                assert n_probs.shape == (env.n_agents,)
+                return n_act, n_probs, n_entropy
+
+            bbn_act, bbn_probs, bbn_entropy = jax_vmap(get_mode_and_prob, rep=2)(bb_obs_)
+            return bbn_act, bbn_probs, bbn_entropy
+
+        t_temporal_idx = jnp.arange(env.n_temporal_nodes)
+        bbtn_act, bbtn_probs, bbtn_entropy = jax.vmap(get_actions, out_axes=2)(t_temporal_idx)
+        assert bbtn_probs.shape == (len_x, len_y, env.n_temporal_nodes, env.n_agents)
+
+        return bbt_V, bbtn_act, bbtn_probs, bbtn_entropy
+
+    @jax.jit
+    def get_value_lcrl(self, agent: LCRLMAPPOAgent):
         env: LCRLWrapper = agent.env
         env_base: GridworldMABase = env.base
 
-        # def get_value_for_automata_state(automata_state: jnp.ndarray):
-        #     bb_ldba_state = LDBAState(jnp.full((len_x, len_y), automata_state), jnp.zeros((len_x, len_y), dtype=bool))
-        #     bb_state = LCRLWrapper.State(bb_ldba_state, bb_state_base)
-        #     bb_obs = jax_vmap(env.get_obs)(bb_state)
-        #     bb_value = agent.network.select("critic")(bb_obs)
-        #     return bb_value
-        #
         bb_state_base = env_base.get_all_states()
         len_x, len_y = bb_state_base.pos.shape[:2]
 
@@ -415,29 +445,42 @@ class VizValues(struct.PyTreeNode):
                 act_dist: tfd.JointDistributionSequential = agent.network.select("actor")(obs_)
                 n_act = act_dist.mode()
                 n_log_probs = act_dist.log_prob_parts(n_act)[:-1]
+                entropies_list = [dist.entropy() for dist in act_dist.model]
+                n_entropy = jnp.stack(entropies_list[:-1], axis=0)
                 n_probs = jnp.array([jnp.exp(lp).squeeze() for lp in n_log_probs])
                 assert n_probs.shape == (env.n_agents,)
-                return n_act, n_probs
+                return n_act, n_probs, n_entropy
 
-            bbn_act, bbn_probs = jax_vmap(get_mode_and_prob, rep=2)(bb_obs_)
-            return bbn_act, bbn_probs
+            bbn_act, bbn_probs, bbn_entropy = jax_vmap(get_mode_and_prob, rep=2)(bb_obs_)
+            return bbn_act, bbn_probs, bbn_entropy
 
         t_automata_idx = jnp.arange(env.ldba.n_states)
-        bbtn_act, bbtn_probs = jax.vmap(get_actions, out_axes=2)(t_automata_idx)
+        bbtn_act, bbtn_probs, bbtn_entropy = jax.vmap(get_actions, out_axes=2)(t_automata_idx)
         assert bbtn_probs.shape == (len_x, len_y, env.ldba.n_states, env.n_agents)
 
-        return bbt_V, bbtn_act, bbtn_probs
+        return bbt_V, bbtn_act, bbtn_probs, bbtn_entropy
 
     def __call__(self, p: CallbackProps):
         if p.env.n_agents > 1:
             return
 
-        bbtn_act: list[jnp.ndarray] # list for each agent.
-        bbt_V, bbtn_act, bbtn_probs = jax.device_get(self.get_value(p.agent))
+        bbtn_act: list[jnp.ndarray]  # list for each agent.
 
-        env: LCRLWrapper = p.agent.env
+        match p.agent:
+            case LCRLMAPPOAgent():
+                env: LCRLWrapper = p.agent.env
+                bbt_V, bbtn_act, bbtn_probs, bbtn_entropy = jax.device_get(self.get_value_lcrl(p.agent))
+                n_automata_states = env.ldba.n_states
+                discrete_state_name = "Automata"
+            case VDMAPPOAgent():
+                env: GridworldMA = p.agent.env
+                bbt_V, bbtn_act, bbtn_probs, bbtn_entropy = jax.device_get(self.get_value_vd(p.agent))
+                n_automata_states = env.n_temporal_nodes
+                discrete_state_name = "Temporal"
+            case _:
+                raise NotImplementedError("")
+
         env_base: GridworldMABase = env.base
-        n_automata_states = env.ldba.n_states
 
         ncol = n_automata_states
         figsize = 0.9 * np.array([3 * ncol, 3])
@@ -450,7 +493,7 @@ class VizValues(struct.PyTreeNode):
                 cmap="viridis",
             )
             env_base.setup_ax(ax)
-            ax.set_title(f"Automata state {ii}")
+            ax.set_title(f"{discrete_state_name} state {ii}")
 
             cbar = fig.colorbar(im, ax=ax)
 
@@ -465,18 +508,22 @@ class VizValues(struct.PyTreeNode):
             return
 
         bbt_probs = bbtn_probs.squeeze(3)
+        bbt_entropy = bbtn_entropy.squeeze(3)
         bbt_act = bbtn_act[0]
 
         ncol = n_automata_states
-        figsize = 0.9 * np.array([3 * ncol, 3])
-        fig, axes = plt.subplots(1, ncol, figsize=figsize, layout="constrained")
+        nrow = 2
+        figsize = 0.9 * np.array([3 * ncol, 3 * nrow])
+        fig, axes = plt.subplots(2, ncol, figsize=figsize, layout="constrained")
 
         action_to_str = ["⋅", "↑", "↓", "→", "←"]
 
-        for ii, ax in enumerate(axes):
+        # first row: plot probabilities
+        for ii, ax in enumerate(axes[0, :]):
             im = ax.imshow(bbt_probs[:, :, ii].T, origin="lower", cmap="viridis", vmin=0, vmax=1)
             env_base.setup_ax(ax)
-            ax.set_title(f"Automata state {ii}")
+            ax.set_title(f"{discrete_state_name} state {ii}")
+            cbar = fig.colorbar(im, ax=ax)
 
             # For each cell, annotate with the action mode.
             for (x, y), prob in np.ndenumerate(bbt_probs[:, :, ii]):
@@ -492,6 +539,17 @@ class VizValues(struct.PyTreeNode):
                     va="center",
                 )
 
+        # second row: plot entropies.
+        vmin, vmax = bbt_entropy.min(), bbt_entropy.max()
+        for ii, ax in enumerate(axes[1, :]):
+            bb_entropy = bbt_entropy[:, :, ii]
+            im = ax.imshow(bb_entropy.T, origin="lower", cmap="viridis", vmin=vmin, vmax=vmax)
+            env_base.setup_ax(ax)
+            ax.set_title(
+                f"{discrete_state_name} {ii} Entropy ∈ [{bb_entropy.min():.1e}, {bb_entropy.max():.1e}]",
+                fontsize="small",
+                fontfamily="DejaVu Sans",
+            )
             cbar = fig.colorbar(im, ax=ax)
 
         plot_dir = p.run.plots_dir / "pol"

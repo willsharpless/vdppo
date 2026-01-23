@@ -30,7 +30,7 @@ from rraa_rl.gae import BellmanGUSingle, BellmanMax, BellmanMaxMin, BellmanMin, 
 from rraa_rl.jax_types import FloatScalar, bFloat
 from rraa_rl.nn_modules import (BaseObsOnly, BothObs, IndexAtEnd, LearnTemporalEmbedding, MAMultiDiscretePolicy,
                                 SeparateMAMultiDiscretePolicy, VDValue, VDValueShared)
-from rraa_rl.src.env.general_task.env import Env, EnvStep, StateWithTemporalNode
+from rraa_rl.src.env.general_task.env import AugObs, AugObsAutomata, Env, EnvStep, StateWithTemporalNode
 from rraa_rl.train_state import ModuleDict, Params, TrainState
 from rraa_rl.train_utils import compute_norm_and_clip, has_any_nan_or_inf, tree_where
 
@@ -84,11 +84,17 @@ class VDMAPPOAgentCfg(Cfg):
     value_shared_trunk: bool = False
     """If true, the values for all agents share a trunk"""
 
-    actor_shared_trunk: bool = True
+    actor_shared_trunk: bool = False
     """If true, the policies for all agents share a trunk"""
 
     actor_learn_embedding: bool = False
     """If true, and actor_shared_trunk is true, then add an additional linear layer to learn per-node embeddings."""
+
+    max_prob: float = 0.99
+    """Per agent, the maximum probability allowed for an action. We convert this to an entropy and use it to impose a
+    minimum entropy constraint."""
+
+    min_entropy_coef: float | None = None
 
 
 class VDMAPPOStatic:
@@ -125,7 +131,7 @@ class VDMAPPOAgent:
         key, init_key = jr.split(jr.key(seed))
 
         # Dummy data for network initialization.
-        dummy_obs = env.get_dummy_obs()
+        dummy_obs: AugObs | AugObsAutomata = env.get_dummy_obs()
 
         # Define networks.
         if cfg.value_shared_trunk:
@@ -157,6 +163,10 @@ class VDMAPPOAgent:
                 hidden_dims=cfg.actor_hids, n_actions_per_agent=env.n_actions_per_agent, n_out=env.n_temporal_nodes
             )
             actor_def = IndexAtEnd(actor_def, n_out=env.n_temporal_nodes)
+
+        if not dummy_obs.base_is_array():
+            critic_def = env.add_obs_preprocessor(critic_def)
+            actor_def = env.add_obs_preprocessor(actor_def)
 
         network_info = dict(
             critic=(critic_def, (dummy_obs,)),

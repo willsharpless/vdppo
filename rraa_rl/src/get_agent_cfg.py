@@ -16,6 +16,8 @@ def get_vd_agent_cfg(env_name: str):
     if env_name == "herdos":
         pass
 
+    if env_name == "gridworld_map1":
+        cfg.entropy_coef = 1.5e-2
     if env_name == "gridworld_map5":
         cfg.entropy_coef = 3e-2
 

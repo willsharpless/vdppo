@@ -1,7 +1,8 @@
 import functools as ft
-from typing import Any
+from typing import Any, NamedTuple
 
 import einops as ei
+import flax.linen as nn
 import jax
 import jax.numpy as jnp
 import jax.random as jr
@@ -18,8 +19,9 @@ from rraa_rl.emoji_util import plot_emoji
 from rraa_rl.geometry import AABB, LineSegment, dist_pt_to_aabb, segment_intersects_aabb
 from rraa_rl.jax_types import BoolScalar
 from rraa_rl.jax_utils import softmaximum, softminimum, tree_stack
-from rraa_rl.src.env.general_task.env import (BaseEnv, Env, EnvCfg, EnvStep, EnvUsingBase, StateWithTemporalNode,
-                                              StaticTemporalNodeMixin, StaticTemporalNodeMixinCfg)
+from rraa_rl.src.env.general_task.env import (AugObs, BaseEnv, Env, EnvCfg, EnvStep, EnvUsingBase,
+                                              StateWithTemporalNode, StaticTemporalNodeMixin,
+                                              StaticTemporalNodeMixinCfg)
 from rraa_rl.src.env.general_task.herd_base import (HerdBase, HerdBaseCfg, HerdBasePlay, HerdBasePlayCfg, HerdingHerd,
                                                     HerdingHerdCfg)
 from rraa_rl.train_utils import tree_where
@@ -69,6 +71,11 @@ class GridworldPredicateCfg:
 
     delta: float = 0.1
     # The n-hop neighbors are -eps - (n-1) * delta, clipped at -1.
+
+
+class GridworldObs(NamedTuple):
+    # (n_agent, 2)
+    n_pos: jnp.ndarray
 
 
 class GridworldMap:
@@ -387,19 +394,23 @@ class GridworldMABase(BaseEnv):
         info = {"age": state_new.steps}
         return EnvStep(state_new, obs_new, predicates, term, trunc, info)
 
-    def get_obs_and_names(self, state: GridworldMAState) -> tuple[jnp.ndarray, list[str]]:
+    def add_obs_preprocessor(self, module: nn.Module):
+        return GridworldLearnedEmbed(module, self.n_agents, self.map.len_x, self.map.len_y)
+
+    def get_obs_and_names(self, state: GridworldMAState) -> tuple[GridworldObs, list[str]]:
         if self.n_agents > 1:
             raise NotImplementedError("Multi-agent observations not implemented yet.")
 
-        # For a single agent and a small map, just do a one-hot encoding.
-        len_x, len_y = self.map.len_x, self.map.len_y
-        # (n_agents, 2) -> (2,)
-        agent_pos = state.pos.squeeze(0)
-
-        obs = jnp.zeros((len_x, len_y), dtype=jnp.float32)
-        obs = obs.at[agent_pos[0], agent_pos[1]].set(1.0)
-        obs = obs.flatten()
-        obs_names = [f"cell_{x}_{y}" for x in range(len_x) for y in range(len_y)]
+        obs = GridworldObs(n_pos=state.pos)
+        # # For a single agent and a small map, just do a one-hot encoding.
+        # len_x, len_y = self.map.len_x, self.map.len_y
+        # # (n_agents, 2) -> (2,)
+        # agent_pos = state.pos.squeeze(0)
+        #
+        # obs = jnp.zeros((len_x, len_y), dtype=jnp.float32)
+        # obs = obs.at[agent_pos[0], agent_pos[1]].set(1.0)
+        # obs = obs.flatten()
+        obs_names = []
         return obs, obs_names
 
     def get_predicates(self, state: GridworldMAState) -> dict[str, jnp.ndarray]:
@@ -520,3 +531,36 @@ def annotate_cell(
                     ha="center",
                     va="center",
                 )
+
+
+class GridworldLearnedEmbed(nn.Module):
+    nn: nn.Module
+    n_agents: int
+    len_x: int
+    len_y: int
+    n_feat: int = 32
+
+    @nn.compact
+    def __call__(self, obs: AugObs):
+        base_obs = obs.base
+        assert isinstance(base_obs, GridworldObs)
+
+        n_pos = base_obs.n_pos
+        assert n_pos.shape[-2:] == (self.n_agents, 2)
+
+        # Learn an embedding for each cell in the grid.
+        cell_embed = self.param("cell_embed", nn.initializers.xavier_uniform(), (self.len_x, self.len_y, self.n_feat))
+        n_feats = cell_embed[n_pos[..., 0], n_pos[..., 1], :]
+        assert n_feats.shape[-2:] == (self.n_agents, self.n_feat)
+
+        # Also add in the position normalized to [-1, 1].
+        pos_max = jnp.array([self.len_x - 1, self.len_y - 1], dtype=jnp.float32)
+        # [0, pos_max] -> [0, 1] -> [-1, 1]
+        n_pos_norm = (n_pos / pos_max) * 2.0 - 1.0
+        n_feats = jnp.concatenate([n_feats, n_pos_norm], axis=-1)
+
+        # Allow arbitrary batch dimensions
+        combined_obs = ei.rearrange(n_feats, "... n_agents n_feat -> ... (n_agents n_feat)")
+
+        obs_new = obs._replace(base=combined_obs)
+        return self.nn(obs_new)

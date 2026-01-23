@@ -85,7 +85,8 @@ def get_env_and_cbs(env_name: str, agent_name: str) -> tuple[Env, list, list]:
 
     elif env_name == "gridworld_map1":
         map5 = GridworldMap.Map1()
-        spec = "F A"
+        # spec = "F A"
+        spec = "F A && F B && G( !w )"
         cfg = GridworldMACfg(specification=spec, map=map5)
 
         env = GridworldMA(cfg)
