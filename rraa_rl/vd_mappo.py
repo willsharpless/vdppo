@@ -25,6 +25,7 @@ from valtr.reachability import (DAGAvoid, DAGConst, DAGGUMinN, DAGGUSingle, DAGI
 from rraa_rl.cfg_utils import Cfg
 from rraa_rl.collector import Collector, RolloutOutput
 from rraa_rl.distribution import tfd
+from rraa_rl.distribution_utils import get_multidiscrete_min_entropy
 from rraa_rl.evaluate_dag import evaluate_dag
 from rraa_rl.gae import BellmanGUSingle, BellmanMax, BellmanMaxMin, BellmanMin, gae_generalized
 from rraa_rl.jax_types import FloatScalar, bFloat
@@ -90,14 +91,15 @@ class VDMAPPOAgentCfg(Cfg):
     actor_learn_embedding: bool = False
     """If true, and actor_shared_trunk is true, then add an additional linear layer to learn per-node embeddings."""
 
-    max_prob: float = 0.99
+    max_prob: float | None = 0.9
     """Per agent, the maximum probability allowed for an action. We convert this to an entropy and use it to impose a
     minimum entropy constraint."""
 
+    min_entropy_constr_coef: float = 1e-2
+    """Coefficient on the hinge loss for minimum entropy constraint."""
+
     p_max_pol: float = 0.999
     """Prevent extreme probabilities in the policy, enforced by construction."""
-
-    min_entropy_coef: float | None = None
 
 
 class VDMAPPOStatic:
@@ -683,9 +685,29 @@ class VDMAPPOAgent:
             "Loss": loss,
             "Loss_pg": loss_pg,
             "Entropy": entropy_mean,
+            "Entropy Min": jnp.min(bn_entropy),
             "Approx KL": approx_kl,
             "Clip Frac": clip_fraction,
         }
+
+        if self.cfg.max_prob is not None:
+            # Impose a state-wise minimum entropy constraint, for each agent.
+
+            # The entropy of a Multi-Discrete distribution, where for each dimension, one action has probability p_max,
+            # and the rest share the remaining probability mass equally.
+            n_min_entropy = np.array(
+                [
+                    get_multidiscrete_min_entropy(n_actions, self.cfg.max_prob)
+                    for n_actions in self.env.n_actions_per_agent
+                ]
+            )
+            # Positive loss if bn_entropy < n_min_entropy
+            bn_loss_min_entropy = jnp.maximum(0.0, n_min_entropy - bn_entropy)
+            loss_min_entropy = bn_loss_min_entropy.mean()
+
+            loss = loss + self.cfg.min_entropy_constr_coef * loss_min_entropy
+
+            info["Loss Min Entropy"] = loss_min_entropy
 
         # Compute the fraction of maximum entropy, if available, to make it easier to interpret.
         max_entropy = self.env.max_entropy
