@@ -1,4 +1,6 @@
 import time
+from pathlib import Path
+from typing import Callable
 
 import einops as ei
 import imageio.v2 as imageio
@@ -35,6 +37,72 @@ def animate_eval_trajs(p: CallbackProps):
         animate_eval_trajs_vd(p)
     else:
         animate_eval_trajs_base(p)
+
+
+def save_animation_blit(
+    fig: plt.Figure,
+    animated_artists: list,
+    anim_path: Path,
+    T_max: int,
+    update_fn: Callable[[int], None],
+    fps: int = 30,
+    desc: str = "Generating animation",
+):
+    """
+    Run an animation loop with blitting and write frames to a video file.
+
+    Args:
+        fig: The matplotlib figure to animate.
+        animated_artists: List of artists that are animated (will have set_animated(True) called).
+        anim_path: Path to save the output video.
+        T_max: Number of frames to render.
+        update_fn: Callback function that takes the frame index and updates the artists.
+        fps: Frames per second for the output video.
+        desc: Description for the progress bar.
+    """
+    for artist in animated_artists:
+        artist.set_animated(True)
+
+    fig.canvas.draw()
+    bg = fig.canvas.copy_from_bbox(fig.bbox)
+
+    with iio.imopen(anim_path, "w", plugin="pyav") as writer:
+        writer.init_video_stream("libx264", fps=fps)
+
+        pbar = tqdm.trange(T_max, unit="frame", desc=desc)
+        for kk in pbar:
+            # Restore background
+            fig.canvas.restore_region(bg)
+
+            # Update artists via callback
+            update_fn(kk)
+
+            # Draw only animated artists onto the restored background
+            for artist in animated_artists:
+                artist.axes.draw_artist(artist)
+
+            # Update the buffer
+            fig.canvas.blit(fig.bbox)
+
+            # Grab frame (ensure contiguous uint8 RGB)
+            frame_rgba = np.asarray(fig.canvas.buffer_rgba(), dtype=np.uint8)
+            frame_rgb = np.ascontiguousarray(frame_rgba[..., :3])
+
+            # If the frame dimensions are not divisible by 16, pad for libx264 compatibility
+            h, w, _ = frame_rgb.shape
+            h_pad = (16 - (h % 16)) % 16
+            w_pad = (16 - (w % 16)) % 16
+            if h_pad > 0 or w_pad > 0:
+                frame_rgb = np.pad(
+                    frame_rgb,
+                    ((0, h_pad), (0, w_pad), (0, 0)),
+                    mode="constant",
+                    constant_values=0,
+                )
+
+            writer.write_frame(frame_rgb)
+
+    plt.close(fig)
 
 
 def animate_eval_trajs_vd(p: CallbackProps):
@@ -116,78 +184,37 @@ def animate_eval_trajs_vd(p: CallbackProps):
 
     fig.tight_layout()
 
-    for circ in all_circs:
-        circ.set_animated(True)
-    kk_text.set_animated(True)
+    def update_fn(kk: int):
+        kk_text.set_text(f"Step {kk: 3}")
+        for ii in range(n_traj_anim):
+            for jj in range(n_temporal_nodes):
+                batch_idx = batch_idxs[ii, jj]
+                traj = bT_test_rollouts[batch_idx]
+                (T,) = traj.shape
+                T_state: GridworldMA.State = traj.state_now
+                T_herder_pos = T_state.base.pos[:, :, :2]
 
-    fig.canvas.draw()
-    bg = fig.canvas.copy_from_bbox(fig.bbox)
+                t_idx = min(kk, T - 1)
+
+                circs = agent_collections[(ii, jj)]
+                for agent_idx, circ in enumerate(circs):
+                    pos = T_herder_pos[t_idx, agent_idx, :]
+                    circ.center = pos
+
+                    temporal_node_idx = T_state.temporal_node_idx[t_idx]
+                    circ.set_facecolor(colors_temporal_node[temporal_node_idx])
+
+                    if kk < T:
+                        circ.set_edgecolor(color_alive)
+                    else:
+                        circ.set_edgecolor(color_dead)
 
     plot_dir = plots_dir / "eval_trajs_anim"
     plot_dir.mkdir(parents=True, exist_ok=True)
     anim_path = plot_dir / f"eval_trajs_step{p.train_step}.mp4"
 
-    with iio.imopen(anim_path, "w", plugin="pyav") as writer:
-        writer.init_video_stream("libx264", fps=30)
-
-        pbar = tqdm.trange(T_max, unit="frame", desc="Generating eval trajs animation")
-        for kk in pbar:
-            # restore background
-            fig.canvas.restore_region(bg)
-
-            # update artists (your existing update body, but do NOT return artists)
-            kk_text.set_text(f"Step {kk: 3}")
-            for ii in range(n_traj_anim):
-                for jj in range(n_temporal_nodes):
-
-                    batch_idx = batch_idxs[ii, jj]
-                    traj = bT_test_rollouts[batch_idx]
-                    (T,) = traj.shape
-                    T_state: GridworldMA.State = traj.state_now
-                    T_herder_pos = T_state.base.pos[:, :, :2]
-
-                    t_idx = min(kk, T - 1)
-
-                    circs = agent_collections[(ii, jj)]
-                    for agent_idx, circ in enumerate(circs):
-                        pos = T_herder_pos[t_idx, agent_idx, :]
-                        circ.center = pos
-
-                        temporal_node_idx = T_state.temporal_node_idx[t_idx]
-                        circ.set_facecolor(colors_temporal_node[temporal_node_idx])
-
-                        if kk < T:
-                            circ.set_edgecolor(color_alive)
-                        else:
-                            circ.set_edgecolor(color_dead)
-
-            # draw only animated artists onto the restored background
-            for a in all_circs:
-                a.axes.draw_artist(a)
-            kk_text.axes.draw_artist(kk_text)
-
-            # IMPORTANT: update the buffer
-            fig.canvas.blit(fig.bbox)
-
-            # Grab frame (ensure contiguous uint8 RGB)
-            frame_rgba = np.asarray(fig.canvas.buffer_rgba(), dtype=np.uint8)
-            frame_rgb = np.ascontiguousarray(frame_rgba[..., :3])
-
-            # If the frame dimensions are not divisible by 16, then pad until they are.
-            h, w, _ = frame_rgb.shape
-            h_pad = (16 - (h % 16)) % 16
-            w_pad = (16 - (w % 16)) % 16
-            if h_pad > 0 or w_pad > 0:
-                frame_rgb = np.pad(
-                    frame_rgb,
-                    ((0, h_pad), (0, w_pad), (0, 0)),
-                    mode="constant",
-                    constant_values=0,
-                )
-
-            writer.write_frame(frame_rgb)
-
-    plt.close(fig)
+    animated_artists = all_circs + [kk_text]
+    save_animation_blit(fig, animated_artists, anim_path, T_max, update_fn)
 
 
 def animate_eval_trajs_base(p: CallbackProps):
@@ -225,11 +252,6 @@ def animate_eval_trajs_base(p: CallbackProps):
                 else:
                     idx_try += 1
 
-    # # Make the first batch index correspond to a trajectory that reaches the goal (predicates["A"] > 0) if it exists.
-    # b_reach_goal = np.stack([np.any(traj.predicates_next["A"]) for traj in bT_test_rollouts], axis=0)
-    # if np.any(b_reach_goal):
-    #     batch_indices[0] = np.argmax(b_reach_goal)
-
     T_max = 0
     for ii in range(n_traj_anim):
         traj = bT_test_rollouts[batch_indices[ii]]
@@ -247,7 +269,7 @@ def animate_eval_trajs_base(p: CallbackProps):
     # The grid cells are 1x1
     agent_radius = 0.2
 
-    agent_collections: dict[tuple[int, int], list[plt.Circle]] = {}
+    agent_collections: dict[int, list[plt.Circle]] = {}
     for ii in range(n_traj_anim):
         ax = axes[ii]
         env.setup_ax(ax)
@@ -292,92 +314,47 @@ def animate_eval_trajs_base(p: CallbackProps):
 
     fig.tight_layout()
 
-    for circ in all_circs:
-        circ.set_animated(True)
-    for text in misc_texts.values():
-        text.set_animated(True)
-    kk_text.set_animated(True)
+    def update_fn(kk: int):
+        kk_text.set_text(f"Step {kk: 3}")
+        for ii in range(n_traj_anim):
+            traj = bT_test_rollouts[batch_indices[ii]]
+            (T,) = traj.shape
+            T_state: LCRLWrapper.State[GridworldMAState] = traj.state_now
+            T_herder_pos = T_state.base.pos[:, :, :2]
 
-    fig.canvas.draw()
-    bg = fig.canvas.copy_from_bbox(fig.bbox)
+            T_state_next: LCRLWrapper.State[GridworldMAState] = traj.state_next
+            T_herder_pos_next = T_state_next.base.pos[:, :, :2]
+
+            is_dead = kk >= T
+            t_idx = min(kk, T - 1)
+
+            circs = agent_collections[ii]
+            for agent_idx, circ in enumerate(circs):
+                if is_dead:
+                    pos = T_herder_pos_next[-1, agent_idx, :]
+                else:
+                    pos = T_herder_pos[t_idx, agent_idx, :]
+                circ.center = pos
+
+                if isinstance(T_state, LCRLWrapper.State):
+                    automata_state = T_state.ldba_state.state[t_idx]
+                    circ.set_facecolor(colors_automata[automata_state])
+
+                if kk < T:
+                    circ.set_edgecolor(color_alive)
+                else:
+                    circ.set_edgecolor(color_dead)
+
+            if isinstance(T_state, LCRLWrapper.State):
+                automata_state = T_state.ldba_state.state[t_idx]
+                misc_texts[ii].set_text(f"Automata: {automata_state}")
 
     plot_dir = plots_dir / "eval_trajs_anim"
     plot_dir.mkdir(parents=True, exist_ok=True)
     anim_path = plot_dir / f"eval_trajs_step{p.train_step}.mp4"
 
-    with iio.imopen(anim_path, "w", plugin="pyav") as writer:
-        writer.init_video_stream("libx264", fps=30)
-
-        pbar = tqdm.trange(T_max + 1, unit="frame", desc="Generating eval trajs animation")
-        for kk in pbar:
-            # restore background
-            fig.canvas.restore_region(bg)
-
-            # update artists (your existing update body, but do NOT return artists)
-            kk_text.set_text(f"Step {kk: 3}")
-            for ii in range(n_traj_anim):
-                traj = bT_test_rollouts[batch_indices[ii]]
-                (T,) = traj.shape
-                T_state: LCRLWrapper.State[GridworldMAState] = traj.state_now
-                T_herder_pos = T_state.base.pos[:, :, :2]
-
-                T_state_next: LCRLWrapper.State[GridworldMAState] = traj.state_next
-                T_herder_pos_next = T_state_next.base.pos[:, :, :2]
-
-                is_dead = kk >= T
-                t_idx = min(kk, T - 1)
-
-                circs = agent_collections[ii]
-                for agent_idx, circ in enumerate(circs):
-
-                    if is_dead:
-                        pos = T_herder_pos_next[-1, agent_idx, :]
-                    else:
-                        pos = T_herder_pos[t_idx, agent_idx, :]
-                    circ.center = pos
-
-                    if isinstance(T_state, LCRLWrapper.State):
-                        automata_state = T_state.ldba_state.state[t_idx]
-                        circ.set_facecolor(colors_automata[automata_state])
-
-                    if kk < T:
-                        circ.set_edgecolor(color_alive)
-                    else:
-                        circ.set_edgecolor(color_dead)
-
-                if isinstance(T_state, LCRLWrapper.State):
-                    automata_state = T_state.ldba_state.state[t_idx]
-                    misc_texts[ii].set_text(f"Automata: {automata_state}")
-
-            # draw only animated artists onto the restored background
-            for a in all_circs:
-                a.axes.draw_artist(a)
-            for text in misc_texts.values():
-                text.axes.draw_artist(text)
-            kk_text.axes.draw_artist(kk_text)
-
-            # IMPORTANT: update the buffer
-            fig.canvas.blit(fig.bbox)
-
-            # Grab frame (ensure contiguous uint8 RGB)
-            frame_rgba = np.asarray(fig.canvas.buffer_rgba(), dtype=np.uint8)
-            frame_rgb = np.ascontiguousarray(frame_rgba[..., :3])
-
-            # If the frame dimensions are not divisible by 16, then pad until they are.
-            h, w, _ = frame_rgb.shape
-            h_pad = (16 - (h % 16)) % 16
-            w_pad = (16 - (w % 16)) % 16
-            if h_pad > 0 or w_pad > 0:
-                frame_rgb = np.pad(
-                    frame_rgb,
-                    ((0, h_pad), (0, w_pad), (0, 0)),
-                    mode="constant",
-                    constant_values=0,
-                )
-
-            writer.write_frame(frame_rgb)
-
-    plt.close(fig)
+    animated_artists = all_circs + [kk_text] + list(misc_texts.values())
+    save_animation_blit(fig, animated_artists, anim_path, T_max + 1, update_fn)
 
 
 class VizValues(struct.PyTreeNode):
