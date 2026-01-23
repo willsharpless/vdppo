@@ -1,40 +1,33 @@
 import pathlib
 import pickle
-from typing import Protocol
 
 import cyclopts
 import flax
 import ipdb
 import jax
 import jax.random as jr
+import jax.tree_util as jtu
 import matplotlib.pyplot as plt
 import numpy as np
-import tqdm
 import yaml
-from attrs import define
 from loguru import logger
 from matplotlib.colors import to_rgba
 
-import wandb
-from rraa_rl import herd_os_cbs
-from rraa_rl.collector import Collector, RolloutOutput, extract_info_from_rollout
-from rraa_rl.distribution import tfd
+from rraa_rl.collector import Collector
 from rraa_rl.gridworld_cbs import save_animation_blit
-from rraa_rl.rollout_temporal_analysis import evaluate_ltl_finite, evaluate_triggers
+from rraa_rl.rollout_temporal_analysis import evaluate_ltl_finite
 from rraa_rl.rollout_utils import extract_rollouts_eval
 from rraa_rl.run import Run
 from rraa_rl.src.env.general_task.env import StateWithTemporalNode
 from rraa_rl.src.env.general_task.get_env import get_env_and_cbs
 from rraa_rl.src.env.general_task.gridworld import GridworldMA, GridworldMAState
-from rraa_rl.src.env.general_task.herd_os import HerdOs
-from rraa_rl.trainer import Trainer
 from rraa_rl.vd_mappo import VDMAPPOAgent
 
 app = cyclopts.App()
 
 
 @app.default()
-def main(run_path: pathlib.Path, n_env: int = 256):
+def main(run_path: pathlib.Path, n_env: int = 256, step: int | None = None):
     # Load the configs.
     yaml_path = run_path / "config.yaml"
     with open(yaml_path, "r") as f:
@@ -51,10 +44,16 @@ def main(run_path: pathlib.Path, n_env: int = 256):
     agent = VDMAPPOAgent.create(123, agent_cfg, env)
 
     ckpts_path = run_path / "ckpts"
-    latest_ckpt = sorted(ckpts_path.glob("params_*.pkl"))
-    assert latest_ckpt, f"No checkpoints found in {ckpts_path}"
+    if step is None:
+        latest_ckpt = sorted(ckpts_path.glob("params_*.pkl"))
+        assert latest_ckpt, f"No checkpoints found in {ckpts_path}"
 
-    load_path = latest_ckpt[-1]
+        load_path = latest_ckpt[-1]
+    else:
+        load_path = ckpts_path / f"params_{step:09}.pkl"
+        if not load_path.exists():
+            available = sorted(ckpts_path.glob("params_*.pkl"))
+            raise FileNotFoundError(f"Checkpoint not found: {load_path}. Available: {available}")
     logger.info(f"Restoring from {load_path}")
 
     with load_path.open("rb") as f:
@@ -83,7 +82,7 @@ def main(run_path: pathlib.Path, n_env: int = 256):
 
     b_values = []
     for ii, traj in enumerate(b_trajs):
-        debug = (ii == 64)
+        debug = ii == 64
         dag_value = evaluate_ltl_finite(env, traj.predicates_next, which=np)[env.dag_root]
         b_values.append(dag_value)
     b_values = np.array(b_values)
@@ -174,9 +173,49 @@ def main(run_path: pathlib.Path, n_env: int = 256):
 
     plot_dir = run_path / "eval_plots"
     plot_dir.mkdir(parents=True, exist_ok=True)
-    anim_path = plot_dir / f"eval.mp4"
+    anim_path = plot_dir / f"eval_{step:09}.mp4"
     animated_artists = circs + [kk_text, misc_text]
     save_animation_blit(fig, animated_artists, anim_path, T_max + 1, update_fn)
+    # ------------------------------------------
+
+    # Find the first kk where it is unsafe, i.e., predicates_next["w"] > 0.0
+    T_wall = traj.predicates_next["w"].squeeze(1)  # (T, n_agents)
+    kk = np.argmax(T_wall)
+
+    T_state: StateWithTemporalNode[GridworldMAState] = traj.state_now
+    T_state_next: StateWithTemporalNode[GridworldMAState] = traj.state_next
+
+    pos_1 = T_state.base.pos[kk, 0, :2]
+    pos_2 = T_state.base.pos[kk + 1, 0, :2]
+    pos_3 = T_state.base.pos[kk + 2, 0, :2]
+
+    pos_n_1 = T_state_next.base.pos[kk, 0, :2]
+    pos_n_2 = T_state_next.base.pos[kk + 1, 0, :2]
+    pos_n_3 = T_state_next.base.pos[kk + 2, 0, :2]
+
+    t_idx_1 = T_state.temporal_node_idx[kk]
+    t_idx_2 = T_state.temporal_node_idx[kk + 1]
+    t_idx_3 = T_state.temporal_node_idx[kk + 2]
+
+    a_1 = traj.act[0][kk]
+    a_2 = traj.act[0][kk + 1]
+    a_3 = traj.act[0][kk + 2]
+
+    obs_1 = jtu.tree_map(lambda arr: arr[kk], traj.obs_now)
+    obs_2 = jtu.tree_map(lambda arr: arr[kk + 1], traj.obs_now)
+    obs_3 = jtu.tree_map(lambda arr: arr[kk + 2], traj.obs_now)
+
+    logger.info(f"[{kk}] pos: {pos_1}, temporal: {t_idx_1}, action: {a_1}")
+    logger.info(f"[{kk+1}] pos: {pos_2}, temporal: {t_idx_2}, action: {a_2}")
+    logger.info(f"[{kk+2}] pos: {pos_3}, temporal: {t_idx_3}, action: {a_3}")
+
+    assert np.all(pos_1 == pos_3)
+    assert t_idx_1 == t_idx_3
+
+    # state = env.reset(jr.PRNGKey(0))
+    # with jdc.copy_and_mutate(state) as state:
+    #     state.temporal_node_idx = 3
+    #     state.base.
 
     ipdb.set_trace()
 

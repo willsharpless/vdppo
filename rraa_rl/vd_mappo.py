@@ -857,5 +857,7 @@ class VDMAPPOAgent:
 
         with jdc.copy_and_mutate(state_next) as envstate_new:
             envstate_new.temporal_node_idx = temporal_node_idx_new
-        step_new = step._replace(envstate=envstate_new)
+
+        obs_new = env.get_obs(envstate_new)
+        step_new = step._replace(envstate=envstate_new, obs=obs_new)
         return step_new
