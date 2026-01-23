@@ -125,7 +125,7 @@ class LCRLMAPPOAgent:
         critic_def = BaseObsOnly(critic_def)
 
         actor_def = SeparateMAMultiDiscretePolicy(
-            hidden_dims=cfg.actor_hids, n_actions_per_agent=env.n_actions_per_agent, n_out=env.ldba.n_states, p_max=0.95
+            hidden_dims=cfg.actor_hids, n_actions_per_agent=env.n_actions_per_agent, n_out=env.ldba.n_states, p_max=0.98
         )
         actor_def = IndexAtEnd(actor_def, n_out=env.ldba.n_states)
 
