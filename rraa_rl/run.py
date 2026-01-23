@@ -15,7 +15,7 @@ class Run(Cfg):
     start_time: datetime.datetime
 
     noun: str
-    name: str
+    name: str | None
     folder_suffix: str
     env_name: str
     agent_name: str
