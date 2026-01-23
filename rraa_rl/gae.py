@@ -145,7 +145,7 @@ def sum_gae(
     T_next_diff: jnp.ndarray,
     T_rew: jnp.ndarray,
     gamma: float,
-    gae_lambd: float,
+    gae_lambda: float,
 ):
     """Standard GAE implementation. Correctly handles truncations."""
     T = len(T_V_next)
@@ -155,7 +155,7 @@ def sum_gae(
 
     def body(gae_next, inp):
         delta, next_same_ep = inp
-        gae = delta + gamma * gae_lambd * next_same_ep * gae_next
+        gae = delta + gamma * gae_lambda * next_same_ep * gae_next
         return gae, gae
 
     T_next_same_ep = 1.0 - T_next_diff

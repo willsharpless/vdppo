@@ -2,11 +2,12 @@ from typing import Sequence
 
 import flax.linen as nn
 import jax.numpy as jnp
+import jax.tree_util as jtu
 
 from rraa_rl.distribution import BlockwiseWithMode, tfd
 from rraa_rl.mlp import MLP
 from rraa_rl.nn_utils import default_nn_init, scaled_init
-from rraa_rl.src.env.general_task.env import AugObs
+from rraa_rl.src.env.general_task.env import AugObs, AugObsAutomata
 
 
 class MAMultiDiscretePolicy(nn.Module):
@@ -156,8 +157,22 @@ class IndexAtEnd(nn.Module):
     n_out: int
 
     @nn.compact
-    def __call__(self, obs: AugObs):
+    def __call__(self, obs: AugObs | AugObsAutomata):
         n_out = self.nn(obs.base)
-        assert n_out.shape[-1] == n_out
-        out = n_out[..., obs.temporal_node_idx]
+
+        def check_dim(arr):
+            assert arr.shape[-1] == self.n_out
+            return arr
+
+        jtu.tree_map(check_dim, n_out)
+
+        match obs:
+            case AugObsAutomata(automata_idx=automata_index):
+                index = automata_index
+            case AugObs(temporal_node_idx=temporal_node_index):
+                index = temporal_node_index
+            case _:
+                raise ValueError(f"Unexpected obs type: {type(obs)}")
+
+        out = jtu.tree_map(lambda arr: arr[..., index], n_out)
         return out

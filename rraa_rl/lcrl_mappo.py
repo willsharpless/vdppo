@@ -30,7 +30,7 @@ from rraa_rl.train_utils import compute_norm_and_clip, has_any_nan_or_inf, tree_
 
 @struct.dataclass
 class LCRLData:
-    state: Any
+    # state: Any
     act: Any
     obs: jnp.ndarray
     logp: jnp.ndarray
@@ -182,7 +182,9 @@ class LCRLMAPPOAgent:
         # Next step is from a different episode (due to reset) if either terminate or truncate
         bT_next_diff = bT_term | bT_trunc
 
-        bT_A, bT_Q = jax.vmap(sum_gae)(bT_V, bT_V_next, bT_term, bT_next_diff, bT_rew)
+        gamma, gae_lambda = self.cfg.gamma, self.cfg.gae_lambda
+        gae_fn = ft.partial(sum_gae, gamma=gamma, gae_lambda=gae_lambda)
+        bT_A, bT_Q = jax.vmap(gae_fn)(bT_V, bT_V_next, bT_term, bT_next_diff, bT_rew)
         return bT_A, bT_Q
 
     def get_Tb_data(self, Tb_rollout: RolloutOutput) -> LCRLData:
@@ -423,7 +425,8 @@ class LCRLMAPPOAgent:
         logp_list = act_dist.log_prob_parts(act)
         assert isinstance(logp_list, list)
         logp = jnp.stack(logp_list, axis=0)
-        assert logp.shape == (self.env.n_agents,)
+        # Last one is for the epsilon action.
+        assert logp.shape == (self.env.n_agents + 1,)
         return act, logp
 
     def det_action(self, obs: Any) -> Any:

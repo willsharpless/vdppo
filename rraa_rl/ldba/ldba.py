@@ -1,5 +1,4 @@
 import functools as ft
-from loguru import logger
 import re
 from typing import NamedTuple
 
@@ -7,6 +6,7 @@ import jax
 import jax.numpy as jnp
 import jax_dataclasses as jdc
 from attrs import define
+from loguru import logger
 
 
 class Guard(NamedTuple):
@@ -84,15 +84,19 @@ class LDBA:
         has_eligible = jnp.any(m_eligible)
         # There should only be at most one eligible, since we extract the epsilon transitions out.
         idx = jnp.argmax(m_eligible)
-        next_state = jnp.where(has_eligible, self.transitions[idx].dst, state)
+        next_state = jnp.where(has_eligible, self.transitions.dst[idx], state)
 
         # If in sink, stay in sink.
         next_state = jnp.where(is_sink_state, self.sink_state, next_state)
         return next_state
 
     def step(self, state: jnp.ndarray, label: jnp.ndarray, epsilon_action: jnp.ndarray):
-        next_state_epsilon, epsilon_taken = self.step_epsilon(state, epsilon_action)
         next_state_noepsilon = self.step_noepsilon(state, label)
+
+        if self.n_epsilon_transitions == 0:
+            return next_state_noepsilon, jnp.array(False)
+
+        next_state_epsilon, epsilon_taken = self.step_epsilon(state, epsilon_action)
 
         # If we tried to take epsilon (epsilon != 0) but it was not eligible, then we fall back to no-epsilon step.
         try_take_epsilon = epsilon_action != 0
@@ -112,6 +116,7 @@ class LDBA:
         # 1: Find which accepting sets contain the current state.
         # (n_accepting_sets, ), 1 if the set contains the state.
         accepting_sets = self.accepting_sets[:, state]
+        assert accepting_sets.dtype == bool
 
         # 2: Update the frontier mask. If the set i is in the frontier, then frontier_mask[i] = 1
         satisfied_sets = frontier_mask | accepting_sets
@@ -121,7 +126,12 @@ class LDBA:
 
         # 3: If all sets are satisfied, then reset.
         all_satisfied = jnp.all(satisfied_sets)
-        new_frontier_mask = jnp.where(all_satisfied, jnp.zeros_like(frontier_mask), satisfied_sets)
+        new_frontier_mask = jnp.where(all_satisfied, jnp.zeros_like(frontier_mask, dtype=bool), satisfied_sets)
+
+        assert frontier_mask.dtype == bool
+        assert frontier_mask.shape == (self.n_accepting_sets,)
+        assert new_frontier_mask.dtype == bool
+        assert new_frontier_mask.shape == (self.n_accepting_sets,)
 
         return new_frontier_mask, has_changed
 

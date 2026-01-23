@@ -1,12 +1,12 @@
 import ipdb
 from cyclopts import App
 
-from rraa_rl.lcrl.lcrl_wrapper import LCRLWrapper, LCRLEnvCfg
+from rraa_rl.lcrl.lcrl_wrapper import LCRLEnvCfg, LCRLWrapper
 from rraa_rl.lcrl_mappo import LCRLMAPPOAgent
 from rraa_rl.run import Run
 from rraa_rl.src.env.general_task.env import Env, EnvUsingBase
 from rraa_rl.src.env.general_task.get_env import get_env_and_cbs
-from rraa_rl.src.get_agent_cfg import get_agent_cfg, get_lcrl_agent_cfg, get_vd_agent_cfg
+from rraa_rl.src.get_agent_cfg import get_lcrl_agent_cfg, get_vd_agent_cfg
 from rraa_rl.trainer import Trainer, TrainerCfg
 from rraa_rl.vd_mappo import VDMAPPOAgent
 
@@ -36,11 +36,11 @@ def lcrl(
     seed: int = 123,
     trainer_cfg: TrainerCfg = TrainerCfg(),
 ):
-    env: EnvUsingBase
+    env: LCRLWrapper
     env, eval_cbs, collect_cbs = get_env_and_cbs(env_name, agent_name="lcrl")
 
     agent_cfg = get_lcrl_agent_cfg(env_name)
-    agent = VDMAPPOAgent.create(seed, agent_cfg, env)
+    agent = LCRLMAPPOAgent.create(seed, agent_cfg, env)
 
     return train(name, debug, env_name, seed, trainer_cfg, env, eval_cbs, collect_cbs, agent)
 
@@ -56,7 +56,7 @@ def train(
     collect_cbs: list,
     agent: VDMAPPOAgent | LCRLMAPPOAgent,
 ):
-    wandb_config = {"seed": seed, "cli_env_name": env_name}
+    wandb_config = {"seed": seed, "cli_env_name": env_name, "agent_tyep": type(agent).__name__}
 
     env_name = f"{type(env).__name__}-{env_name}"
     run = Run.create(env_name=env_name, name=name)

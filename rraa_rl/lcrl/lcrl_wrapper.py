@@ -57,6 +57,8 @@ class LCRLWrapper(EnvUsingBase):
         frontier_mask_new, has_changed = self.ldba.update_frontier(
             state.ldba_state.accepting_frontier_mask, automata_state_new
         )
+        assert state.ldba_state.accepting_frontier_mask.dtype == bool
+        assert frontier_mask_new.dtype == bool
 
         ldba_state_new = LDBAState(automata_state_new, frontier_mask_new)
         state_new = LCRLState(ldba_state=ldba_state_new, base=base_state)
@@ -80,7 +82,8 @@ class LCRLWrapper(EnvUsingBase):
     def reset(self, key: PRNGKeyArray) -> LCRLState:
         base_state = self.base.reset(key)
         accepting_frontier_mask = jnp.zeros(self.ldba.n_accepting_sets, dtype=bool)
-        ldba_state = LDBAState(automaton_state=0, accepting_frontier_mask=accepting_frontier_mask)
+        automata_state0 = jnp.array(0, dtype=jnp.int32)
+        ldba_state = LDBAState(automata_state0, accepting_frontier_mask)
         return LCRLState(ldba_state, base_state)
 
     def get_eval_states(self, n_envs: int) -> LCRLState:

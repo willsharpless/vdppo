@@ -140,8 +140,8 @@ def get_env_and_cbs(env_name: str, agent_name: str) -> tuple[Env, list, list]:
             epsilon_src = jnp.array([], dtype=jnp.int32)
             epsilon_dst = jnp.array([], dtype=jnp.int32)
 
-            # (n_accepting_sets=1, n_states=2). Only state 1 is accepting.
-            accepting_sets = jnp.array([[0, 1]], dtype=jnp.int32)
+            # (n_accepting_sets=1, n_states=2). Only state 1 is accepting (True).
+            accepting_sets = jnp.array([[0, 1]], dtype=jnp.bool)
 
             ldba = LDBA(transitions, epsilon_src, epsilon_dst, accepting_sets, n_states, predicate_order)
             env = LCRLWrapper(lcrl_env_cfg, base, ldba)
