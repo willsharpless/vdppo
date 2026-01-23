@@ -13,10 +13,11 @@ from loguru import logger
 import wandb
 from rraa_rl.cfg_utils import Cfg
 from rraa_rl.collector import Collector, RolloutOutput, extract_info_from_rollout
+from rraa_rl.lcrl_mappo import LCRLMAPPOAgent
 from rraa_rl.rollout_temporal_analysis import evaluate_ltl_finite
 from rraa_rl.rollout_utils import extract_rollouts_eval
 from rraa_rl.run import Run
-from rraa_rl.src.env.general_task.env import Env
+from rraa_rl.src.env.general_task.env import Env, StateWithTemporalNode
 from rraa_rl.vd_mappo import VDMAPPOAgent
 
 
@@ -55,9 +56,9 @@ class TrainerCfg(Cfg):
 class Trainer:
     Cfg = TrainerCfg
 
-    agent: VDMAPPOAgent
+    agent: VDMAPPOAgent | LCRLMAPPOAgent
 
-    def __init__(self, agent: VDMAPPOAgent, cfg: TrainerCfg):
+    def __init__(self, agent: VDMAPPOAgent | LCRLMAPPOAgent, cfg: TrainerCfg):
         self.cfg = cfg
         self.agent = agent
         self.b_state0 = None
@@ -69,6 +70,7 @@ class Trainer:
         eval_cbs: list[Callback] = None,
         collect_cbs: list[Callback] = None,
         debug: bool = False,
+        wandb_config: dict | None = None,
     ):
         eval_cbs = eval_cbs if eval_cbs is not None else []
 
@@ -78,11 +80,13 @@ class Trainer:
         n_envs_train = self.agent.cfg.n_envs_train
         n_envs_test = 128
 
+        logger.debug("Constructing collector...")
         collector = Collector.create(
             key=key_collector,
             env=env,
             cfg=Collector.Cfg(n_envs=n_envs_train),
         )
+        logger.debug("Constructing collector_eval...")
         collector_eval = Collector.create(
             key=key_collector,
             env=env,
@@ -93,6 +97,7 @@ class Trainer:
         cfg_to_save = {
             "agent": self.agent.cfg.asdict(),
             "trainer": self.cfg.asdict(),
+            "run": run.asdict(),
         }
         # Save as yaml.
         yaml_path = run.run_dir / "config.yaml"
@@ -103,7 +108,14 @@ class Trainer:
         n_train_steps = 100_000
 
         if not debug:
-            wandb.init(project="vd_mappo", name=run.wandb_name)
+            wandb_config = wandb_config if wandb_config is not None else {}
+            wandb_config = {
+                "env": run.env_name,
+                "noun": run.noun,
+                "name": run.name,
+                "spec": env.specification,
+            } | wandb_config
+            wandb.init(project="vd_mappo", name=run.wandb_name, config=wandb_config)
 
         cb_props = CallbackProps(run, -1, self.agent, None, None, None, None, collector, None, None)
 
@@ -113,7 +125,7 @@ class Trainer:
                 pbar.set_description(f"Eval at step {train_step}")
                 trajs, bT_rollout, trigger_dict, info_eval = self.eval(collector_eval, key_eval)
 
-                temporal_values_dict = info_eval.pop("debug/temporal_values_dict")
+                temporal_values_dict = info_eval.pop("debug/temporal_values_dict", {})
 
                 cb_props.train_step = train_step
                 cb_props.agent = self.agent
@@ -190,8 +202,12 @@ class Trainer:
         if self.b_state0 is None:
             self.b_state0 = env.get_eval_states(collector.cfg.n_envs)
 
+        collect_opts = {}
+        if isinstance(self.agent, VDMAPPOAgent):
+            collect_opts["temporal_transitions"] = True
+
         Tb_rollout, info_collect = self.agent.collect_eval_with_states(
-            collector, self.b_state0, env.eval_T, temporal_transitions=True
+            collector, self.b_state0, env.eval_T, **collect_opts
         )
         Tb_rollout = jax.device_get(Tb_rollout)
         bT_rollout = Tb_rollout.switch01()
@@ -199,35 +215,59 @@ class Trainer:
         # Extract each rollout
         trajs = extract_rollouts_eval(bT_rollout)
 
-        # Evaluate the LTL satisfaction over each trajectory.
-        temporal_node_values_l: dict[int, list[float]] = {}
-        for traj in trajs:
-            T_temporal_node_idx: np.ndarray = traj.temporal_node_idx
-            temporal_node_idx = T_temporal_node_idx[0]
-            dag_node_idx = env.temporal_nodes[temporal_node_idx]
-            dag_value = evaluate_ltl_finite(env, traj.predicates_next, which=np)[dag_node_idx]
+        info = {}
+        if isinstance(trajs[0].state_now, StateWithTemporalNode):
+            # Evaluate the LTL satisfaction over each trajectory.
+            temporal_node_values_l: dict[int, list[float]] = {}
+            for traj in trajs:
+                T_temporal_node_idx: np.ndarray = traj.temporal_node_idx
+                temporal_node_idx = int(T_temporal_node_idx[0])
+                dag_node_idx = env.temporal_nodes[temporal_node_idx]
+                dag_value = evaluate_ltl_finite(env, traj.predicates_next, which=np)[dag_node_idx]
 
-            temporal_node_value = temporal_node_values_l.get(temporal_node_idx, [])
-            temporal_node_value.append(dag_value)
-            temporal_node_values_l[temporal_node_idx] = temporal_node_value
-        temporal_node_values: dict[int, np.ndarray] = {k: np.array(v) for k, v in temporal_node_values_l.items()}
+                c_temporal_value = temporal_node_values_l.get(temporal_node_idx, [])
+                c_temporal_value.append(dag_value)
+                temporal_node_values_l[temporal_node_idx] = c_temporal_value
+            temporal_node_values_dict: dict[int, np.ndarray] = {
+                k: np.array(v) for k, v in temporal_node_values_l.items()
+            }
 
-        # Compute the average satisfaction rate for each temporal node
-        info_satisfaction = {}
-        for temporal_node_idx, temporal_node_value in temporal_node_values.items():
-            node_name = env.temporal_node_names[temporal_node_idx]
-            # Satisfy if positive.
-            info_satisfaction[f"Eval/Satisfy/{node_name}"] = float(np.mean(temporal_node_value > 0.1))
+            # Compute the average satisfaction rate for each temporal node
+            info_satisfaction = {}
+            for temporal_node_idx, c_temporal_value in temporal_node_values_dict.items():
+                node_name = env.temporal_node_names[temporal_node_idx]
+                # Satisfy if positive.
+                c_satisfied = c_temporal_value > 0.1
+                satisfy_prob = np.mean(c_satisfied)
+                info_satisfaction[f"Eval/Satisfy/{node_name}"] = satisfy_prob
+                logger.debug(
+                    "Temporal Idx {}: {} / {} ({:.1%})".format(
+                        temporal_node_idx, c_satisfied.sum(), len(c_satisfied), satisfy_prob
+                    )
+                )
 
-        # # Evaluate the satisfaction of each temporal node.
-        # trigger_dict = evaluate_triggers(env, trajs)
-        # # Compute the average satisfaction rate for each trigger
-        # info_trigger = {f"Eval/Triggers/{k[0]}->{k[1]}": float(np.mean(v)) for k, v in trigger_dict.items()}
-        trigger_dict = {}
-        info = info_satisfaction
+                if temporal_node_idx == 0:
+                    info_satisfaction[f"Eval/Satisfy/Root"] = satisfy_prob
 
-        # info = info_trigger | info_satisfaction
+            info = info | info_satisfaction
 
-        info["debug/temporal_values_dict"] = temporal_node_values
+            # # Evaluate the satisfaction of each temporal node.
+            # trigger_dict = evaluate_triggers(env, trajs)
+            # # Compute the average satisfaction rate for each trigger
+            # info_trigger = {f"Eval/Triggers/{k[0]}->{k[1]}": float(np.mean(v)) for k, v in trigger_dict.items()}
+            trigger_dict = {}
+
+            # info = info_trigger | info_satisfaction
+            info["debug/temporal_values_dict"] = temporal_node_values_dict
+        else:
+            dag_values = []
+            for traj in trajs:
+                dag_value = evaluate_ltl_finite(env, traj.predicates_next, which=np)[env.dag_root]
+                dag_values.append(dag_value)
+
+            info_satisfaction = {"Eval/Satisfy/Root": float(np.mean(np.array(dag_values) > 0.1))}
+            info = info | info_satisfaction
+
+            trigger_dict = {}
 
         return trajs, bT_rollout, trigger_dict, info

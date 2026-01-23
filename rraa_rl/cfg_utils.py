@@ -2,6 +2,7 @@ import functools as ft
 
 import cattrs
 from attrs import astuple, define
+from cattrs.preconf.pyyaml import make_converter
 from cattrs.strategies import configure_tagged_union, include_subclasses
 
 
@@ -9,7 +10,7 @@ from cattrs.strategies import configure_tagged_union, include_subclasses
 class Cfg:
     @staticmethod
     def get_converter():
-        converter = cattrs.Converter()
+        converter = make_converter()
         union_strategy = ft.partial(configure_tagged_union)
         include_subclasses(Cfg, converter, union_strategy=union_strategy)
 

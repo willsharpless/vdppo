@@ -1,12 +1,14 @@
 from typing import Sequence
 
 import flax.linen as nn
+import jax.nn as jnn
 import jax.numpy as jnp
+import jax.tree_util as jtu
 
 from rraa_rl.distribution import BlockwiseWithMode, tfd
 from rraa_rl.mlp import MLP
 from rraa_rl.nn_utils import default_nn_init, scaled_init
-from rraa_rl.src.env.general_task.env import AugObs
+from rraa_rl.src.env.general_task.env import AugObs, AugObsAutomata
 
 
 class MAMultiDiscretePolicy(nn.Module):
@@ -17,6 +19,10 @@ class MAMultiDiscretePolicy(nn.Module):
     n_actions_per_agent: list[list[int]]
 
     scale_final: float = 0.01
+
+    p_max: float | None = 0.999
+    """Prevent extreme probabilities, analogous to min_std for Gaussian policies.
+    Do this by doing a mixture of the probabilities, which is equiv to logaddexp the logits."""
 
     @property
     def total_n_logits(self) -> int:
@@ -38,6 +44,18 @@ class MAMultiDiscretePolicy(nn.Module):
             for n_actions in agent_n_actions_multi:
                 end_idx = start_idx + n_actions
                 logits_this_action_dim = logits[..., start_idx:end_idx]
+
+                if self.p_max is not None:
+                    # Adjust the logits to prevent extreme probabilities.
+                    eps = 1 - self.p_max
+                    logp_this_dim = jnn.log_softmax(logits_this_action_dim, axis=-1)
+                    # log( (1-eps) * p) = log( 1-eps) + logp
+                    logp_a = jnp.log1p(-eps) + logp_this_dim
+                    # log( eps * 1 / n_actions ) = log(eps) - log(n_actions)
+                    logp_b = jnp.log(eps) - jnp.log(n_actions)
+                    # log p' = log( (1-eps) * p + eps * 1/n_actions )
+                    logits_this_action_dim = jnp.logaddexp(logp_a, logp_b)
+
                 dist = tfd.Categorical(logits=logits_this_action_dim)
                 agent_dists.append(dist)
                 start_idx = end_idx
@@ -57,6 +75,7 @@ class SeparateMAMultiDiscretePolicy(nn.Module):
     hidden_dims: Sequence[int]
     n_actions_per_agent: list[list[int]]
     n_out: int
+    p_max: float | None = 0.999
 
     @nn.compact
     def __call__(self, obs) -> tfd.Distribution:
@@ -68,7 +87,7 @@ class SeparateMAMultiDiscretePolicy(nn.Module):
             split_rngs={"params": True},
             axis_size=self.n_out,
         )
-        policy = BatchPolicy(self.hidden_dims, self.n_actions_per_agent)(obs)
+        policy = BatchPolicy(self.hidden_dims, self.n_actions_per_agent, self.p_max)(obs)
         return policy
 
 
@@ -156,8 +175,22 @@ class IndexAtEnd(nn.Module):
     n_out: int
 
     @nn.compact
-    def __call__(self, obs: AugObs):
+    def __call__(self, obs: AugObs | AugObsAutomata):
         n_out = self.nn(obs.base)
-        assert n_out.shape[-1] == n_out
-        out = n_out[..., obs.temporal_node_idx]
+
+        def check_dim(arr):
+            assert arr.shape[-1] == self.n_out
+            return arr
+
+        jtu.tree_map(check_dim, n_out)
+
+        match obs:
+            case AugObsAutomata(automata_idx=automata_index):
+                index = automata_index
+            case AugObs(temporal_node_idx=temporal_node_index):
+                index = temporal_node_index
+            case _:
+                raise ValueError(f"Unexpected obs type: {type(obs)}")
+
+        out = jtu.tree_map(lambda arr: arr[..., index], n_out)
         return out

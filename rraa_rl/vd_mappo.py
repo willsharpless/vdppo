@@ -25,12 +25,13 @@ from valtr.reachability import (DAGAvoid, DAGConst, DAGGUMinN, DAGGUSingle, DAGI
 from rraa_rl.cfg_utils import Cfg
 from rraa_rl.collector import Collector, RolloutOutput
 from rraa_rl.distribution import tfd
+from rraa_rl.distribution_utils import get_multidiscrete_min_entropy
 from rraa_rl.evaluate_dag import evaluate_dag
 from rraa_rl.gae import BellmanGUSingle, BellmanMax, BellmanMaxMin, BellmanMin, gae_generalized
 from rraa_rl.jax_types import FloatScalar, bFloat
-from rraa_rl.nn_modules import (BaseObsOnly, BothObs, IndexAtEnd, MAMultiDiscretePolicy, SeparateMAMultiDiscretePolicy,
-                                VDValue, VDValueShared, LearnTemporalEmbedding)
-from rraa_rl.src.env.general_task.env import Env, EnvStep, StateWithTemporalNode
+from rraa_rl.nn_modules import (BaseObsOnly, BothObs, IndexAtEnd, LearnTemporalEmbedding, MAMultiDiscretePolicy,
+                                SeparateMAMultiDiscretePolicy, VDValue, VDValueShared)
+from rraa_rl.src.env.general_task.env import AugObs, AugObsAutomata, Env, EnvStep, StateWithTemporalNode
 from rraa_rl.train_state import ModuleDict, Params, TrainState
 from rraa_rl.train_utils import compute_norm_and_clip, has_any_nan_or_inf, tree_where
 
@@ -84,11 +85,22 @@ class VDMAPPOAgentCfg(Cfg):
     value_shared_trunk: bool = False
     """If true, the values for all agents share a trunk"""
 
-    actor_shared_trunk: bool = True
+    actor_shared_trunk: bool = False
     """If true, the policies for all agents share a trunk"""
 
     actor_learn_embedding: bool = False
     """If true, and actor_shared_trunk is true, then add an additional linear layer to learn per-node embeddings."""
+
+    max_prob: float | None = 0.9
+    """Per agent, the maximum probability allowed for an action. We convert this to an entropy and use it to impose a
+    minimum entropy constraint."""
+
+    min_entropy_constr_coef: float = 5e-1
+    """Coefficient on the hinge loss for minimum entropy constraint."""
+
+    p_max_pol: float = 0.999
+    """Prevent extreme probabilities in the policy, enforced by construction."""
+
 
 class VDMAPPOStatic:
     def __init__(self, temporal_node_alloc: np.ndarray | None = None):
@@ -105,6 +117,10 @@ class VDMAPPOAgent:
     static: VDMAPPOStatic = struct.field(pytree_node=False)
     cfg: VDMAPPOAgentCfg = struct.field(pytree_node=False)
 
+    @staticmethod
+    def get_agent_name() -> str:
+        return "VD"
+
     def to_state_dict(self):
         """For saving to disk."""
         return flax.serialization.to_state_dict(self)
@@ -120,7 +136,7 @@ class VDMAPPOAgent:
         key, init_key = jr.split(jr.key(seed))
 
         # Dummy data for network initialization.
-        dummy_obs = env.get_dummy_obs()
+        dummy_obs: AugObs | AugObsAutomata = env.get_dummy_obs()
 
         # Define networks.
         if cfg.value_shared_trunk:
@@ -140,8 +156,7 @@ class VDMAPPOAgent:
 
         if cfg.actor_shared_trunk:
             actor_def = MAMultiDiscretePolicy(
-                hidden_dims=cfg.actor_hids,
-                n_actions_per_agent=env.n_actions_per_agent,
+                hidden_dims=cfg.actor_hids, n_actions_per_agent=env.n_actions_per_agent, p_max=cfg.p_max_pol
             )
             if cfg.actor_learn_embedding:
                 actor_def = LearnTemporalEmbedding(actor_def, n_temporal_nodes=env.n_temporal_nodes)
@@ -149,9 +164,16 @@ class VDMAPPOAgent:
                 actor_def = BothObs(actor_def)
         else:
             actor_def = SeparateMAMultiDiscretePolicy(
-                hidden_dims=cfg.actor_hids, n_actions_per_agent=env.n_actions_per_agent, n_out=env.n_temporal_nodes
+                hidden_dims=cfg.actor_hids,
+                n_actions_per_agent=env.n_actions_per_agent,
+                n_out=env.n_temporal_nodes,
+                p_max=cfg.p_max_pol,
             )
             actor_def = IndexAtEnd(actor_def, n_out=env.n_temporal_nodes)
+
+        if not dummy_obs.base_is_array():
+            critic_def = env.add_obs_preprocessor(critic_def)
+            actor_def = env.add_obs_preprocessor(actor_def)
 
         network_info = dict(
             critic=(critic_def, (dummy_obs,)),
@@ -663,9 +685,30 @@ class VDMAPPOAgent:
             "Loss": loss,
             "Loss_pg": loss_pg,
             "Entropy": entropy_mean,
+            "Entropy Min": jnp.min(bn_entropy),
             "Approx KL": approx_kl,
             "Clip Frac": clip_fraction,
         }
+
+        if self.cfg.max_prob is not None:
+            # Impose a state-wise minimum entropy constraint, for each agent.
+
+            # The entropy of a Multi-Discrete distribution, where for each dimension, one action has probability p_max,
+            # and the rest share the remaining probability mass equally.
+            n_min_entropy = np.array(
+                [
+                    get_multidiscrete_min_entropy(n_actions, self.cfg.max_prob)
+                    for n_actions in self.env.n_actions_per_agent
+                ]
+            )
+            # Positive loss if bn_entropy < n_min_entropy
+            bn_loss_min_entropy = jnp.maximum(0.0, n_min_entropy - bn_entropy)
+            loss_min_entropy = bn_loss_min_entropy.mean()
+
+            loss = loss + self.cfg.min_entropy_constr_coef * loss_min_entropy
+
+            info["Loss Min Entropy"] = loss_min_entropy
+            info["Min Entropy Violate Frac"] = jnp.mean(bn_entropy < n_min_entropy)
 
         # Compute the fraction of maximum entropy, if available, to make it easier to interpret.
         max_entropy = self.env.max_entropy
@@ -814,5 +857,7 @@ class VDMAPPOAgent:
 
         with jdc.copy_and_mutate(state_next) as envstate_new:
             envstate_new.temporal_node_idx = temporal_node_idx_new
-        step_new = step._replace(envstate=envstate_new)
+
+        obs_new = env.get_obs(envstate_new)
+        step_new = step._replace(envstate=envstate_new, obs=obs_new)
         return step_new

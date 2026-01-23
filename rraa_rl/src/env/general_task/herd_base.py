@@ -2,6 +2,7 @@ import functools as ft
 from typing import Any
 
 import einops as ei
+import ipdb
 import jax
 import jax.numpy as jnp
 import jax.random as jr
@@ -112,19 +113,7 @@ class HerdBase(BaseEnv):
             n_actions_per_agent.append([3, 3])
         return n_actions_per_agent
 
-    @property
-    def max_entropy(self) -> float:
-        # Sum of log of number of actions, per dimension, per agent.
-        n_actions_per_agent = self.n_actions_per_agent
-        agent_entropies = []
-        for actions_per_agent in n_actions_per_agent:
-            actions_per_agent = np.array(actions_per_agent)
-            agent_entropy = np.log(actions_per_agent).sum()
-            agent_entropies.append(agent_entropy)
-
-        return np.sum(np.array(agent_entropies))
-
-    def _action_to_controls(self, action: jnp.ndarray):
+    def _action_to_controls(self, action: list[jnp.ndarray]):
         """Convert discrete action to continuous accelerations."""
         n_herders = self.cfg.n_herders
         accs = []
@@ -245,7 +234,7 @@ class HerdBase(BaseEnv):
 
         return predicates
 
-    def step(self, state: HerdBaseState, action: jnp.ndarray):
+    def step(self, state: HerdBaseState, action: list[jnp.ndarray]):
         controls = self._action_to_controls(action)
         state_new, info_dyn = self.next_state(state, controls)
         obs_new = self.get_obs(state_new)
@@ -346,10 +335,6 @@ class HerdBase(BaseEnv):
                 *obs_dist_names,
             ]
         return obs, obs_names
-
-    def get_obs(self, state: HerdBaseState):
-        obs, _ = self.get_obs_and_names(state)
-        return obs
 
     def reset(self, key: PRNGKeyArray):
         n_herd = self.cfg.n_herd

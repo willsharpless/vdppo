@@ -2,11 +2,13 @@ import copy
 import functools as ft
 from typing import Any, Generic, NamedTuple, Protocol, Self, TypeVar
 
+import flax.linen as nn
 import jax
 import jax.nn as jnn
 import jax.random as jr
 import jax.tree_util as jtu
 import jax_dataclasses as jdc
+import matplotlib.pyplot as plt
 import numpy as np
 from attrs import define
 from jax import numpy as jnp
@@ -19,20 +21,26 @@ from valtr.valtr import to_dag
 from rraa_rl.evaluate_dag import evaluate_dag
 from rraa_rl.jax_utils import tree_cat
 
+_EnvState = TypeVar("_EnvState")
+_Obs = TypeVar("_Obs")
 
-class EnvStep(NamedTuple):
-    envstate: Any
-    obs: Any
+
+class EnvStep(NamedTuple, Generic[_EnvState, _Obs]):
+    envstate: _EnvState
+    obs: _Obs
     predicates: dict
     term: bool
     trunc: bool
     info: dict
 
 
-class BaseEnv:
+class BaseEnv(Generic[_EnvState, _Obs]):
     def __init__(self):
         self._obs_names = None
         self.active_predicates: list[str] | None = None
+
+    def add_obs_preprocessor(self, module: nn.Module):
+        return module
 
     def is_predicate_active(self, predicate_name: str) -> bool:
         if self.active_predicates is None:
@@ -40,7 +48,7 @@ class BaseEnv:
 
         return predicate_name in self.active_predicates
 
-    def step(self, state: Any, action: jnp.ndarray):
+    def step(self, state: _EnvState, action: jnp.ndarray) -> EnvStep[_EnvState, _Obs]:
         raise NotImplementedError("")
 
     def reset(self, key: PRNGKeyArray) -> Any:
@@ -71,10 +79,19 @@ class BaseEnv:
 
     @property
     def max_entropy(self) -> float:
-        raise NotImplementedError("")
+        # Sum of log of number of actions, per dimension, per agent.
+        n_actions_per_agent = self.n_actions_per_agent
+        agent_entropies = []
+        for actions_per_agent in n_actions_per_agent:
+            actions_per_agent = np.array(actions_per_agent)
+            agent_entropy = np.log(actions_per_agent).sum()
+            agent_entropies.append(agent_entropy)
 
-    def get_obs(self, state: Any) -> Any:
-        raise NotImplementedError("")
+        return np.sum(np.array(agent_entropies))
+
+    def get_obs(self, state: _EnvState):
+        obs, _ = self.get_obs_and_names(state)
+        return obs
 
     def get_obs_and_names(self, state: Any) -> tuple[jnp.ndarray, list[str]]:
         raise NotImplementedError("")
@@ -95,7 +112,7 @@ class EnvCfg:
     eval_T: int = 200
 
 
-class Env:
+class Env(Generic[_EnvState, _Obs]):
     def __init__(self, cfg: EnvCfg, specification: str):
         self.cfg = cfg
         dag_builder, dag_root = to_dag(specification, ir_filename="dags/herd_os_ir", dag_filename="dags/herd_os_dag")
@@ -106,11 +123,13 @@ class Env:
 
         # root first.
         self.temporal_nodes: list[DAGId] = temporal_nodes_topological(self.dag_nodes, self.dag_root)[::-1]
-        self._augment_obs_names = None
 
         self.node_parent_dict: dict[DAGId, DAGId] = get_node_parent_dict(self.dag_nodes, self.dag_root)
 
-    def step(self, state: Any, action: Any) -> EnvStep:
+    def add_obs_preprocessor(self, module: nn.Module):
+        return module
+
+    def step(self, state: _EnvState, action: Any) -> EnvStep[_EnvState, _Obs]:
         raise NotImplementedError("")
 
     @property
@@ -157,6 +176,10 @@ class Env:
     def n_actions_per_agent(self) -> list[list[int]]:
         raise NotImplementedError("")
 
+    @property
+    def max_entropy(self) -> float:
+        raise NotImplementedError("")
+
     def _temporal_node_idx_to_node_type(self):
         """Map from temporal node idx to node type (as index)"""
         temporal_node_types = DAGNode.get_temporal_classes_sorted()
@@ -168,42 +191,6 @@ class Env:
             temporal_node_type_list.append(node_type)
 
         return jnp.array(temporal_node_type_list)
-
-    def augment_obs_names(self) -> list[str]:
-        if self._augment_obs_names is None:
-            dummy_state = self.reset(jr.PRNGKey(0))
-            _, obs_names = self._augment_obs_and_names(dummy_state)
-            self._augment_obs_names = obs_names
-        return self._augment_obs_names
-
-    def _augment_obs_and_names(self, state: Any):
-        """Augment the base observation with the (one hot) temporal node idx and (one hot) node type."""
-        if self.n_temporal_nodes > 1:
-            obs_node_idx = jnn.one_hot(state.temporal_node_idx, self.n_temporal_nodes)
-            obs_node_idx_names = [f"nodeidx1h_{ii}" for ii in range(self.n_temporal_nodes)]
-
-            temporal_node_idx_to_node_type = self._temporal_node_idx_to_node_type()
-            node_type = temporal_node_idx_to_node_type[state.temporal_node_idx]
-
-            obs_node_type = jnn.one_hot(node_type, DAGNode.n_temporal_classes())
-            obs_node_type_names = [f"nodetype1h_{ii}" for ii in range(DAGNode.n_temporal_classes())]
-
-            obs_aug = jnp.concatenate([obs_node_idx, obs_node_type], axis=-1)
-            obs_names = [*obs_node_idx_names, *obs_node_type_names]
-        else:
-            obs_aug = jnp.array([], dtype=jnp.float32)
-            obs_names = []
-
-        return obs_aug, obs_names
-
-    def _get_augment_obs(self, state: Any):
-        obs, _ = self._augment_obs_and_names(state)
-        return obs
-
-    def _augment_obs(self, state: Any, obs: jnp.ndarray):
-        raise NotImplementedError("")
-        # obs_aug = self._get_augment_obs(state)
-        # return AugObs(base=obs, temporal=obs_aug)
 
     @property
     def eval_T(self) -> int:
@@ -235,20 +222,26 @@ class Env:
 
         return temporal_node_idx_new
 
+    def get_eval_states(self, n_envs: int) -> Any:
+        raise NotImplementedError("")
 
-BaseClass = TypeVar("BaseClass")
+
+BaseClassState = TypeVar("BaseClassState")
 
 
 @jdc.pytree_dataclass
-class StateWithTemporalNode(Generic[BaseClass]):
+class StateWithTemporalNode(Generic[BaseClassState]):
     temporal_node_idx: int
-    base: BaseClass
+    base: BaseClassState
 
 
 class EnvUsingBase(Env):
     def __init__(self, cfg: EnvCfg, specification: str, base_env: BaseEnv):
         super().__init__(cfg, specification)
         self.base = base_env
+
+    def add_obs_preprocessor(self, module: nn.Module):
+        return self.base.add_obs_preprocessor(module)
 
     @property
     def n_agents(self) -> int:
@@ -270,37 +263,38 @@ class EnvUsingBase(Env):
     def n_temporal_nodes(self):
         return len(self.temporal_nodes)
 
-    def step(self, state: Any, action: jnp.ndarray):
-        base_step: EnvStep = self.base.step(state.base, action)
-
-        temporal_node_idx = state.temporal_node_idx
-
-        state_new = jdc.replace(state, temporal_node_idx=temporal_node_idx, base=base_step.envstate)
-        obs = self._augment_obs(state_new, base_step.obs)
-        step = base_step._replace(envstate=state_new, obs=obs)
-
-        return step
-    
-    def step_control(self, state: Any, control: jnp.ndarray):
-        base_step: EnvStep = self.base.step_control(state.base, control)
-
-        temporal_node_idx = state.temporal_node_idx
-
-        state_new = jdc.replace(state, temporal_node_idx=temporal_node_idx, base=base_step.envstate)
-        obs = self._augment_obs(state_new, base_step.obs)
-        step = base_step._replace(envstate=state_new, obs=obs)
-
-        return step
-
-    def get_obs(self, state: Any) -> Any:
-        base_obs = self.base.get_obs(state.base)
-        return self._augment_obs(state, base_obs)
-
-    def get_obs_names(self) -> list[str]:
-        return self.base.get_obs_names() + self.augment_obs_names()
-
     def get_predicates(self, state: Any) -> dict[str, jnp.ndarray]:
         return self.base.get_predicates(state.base)
+
+    def setup_ax(self, ax: plt.Axes):
+        return self.base.setup_ax(ax)
+
+
+class AugObs(NamedTuple):
+    """Separate the "base" observation and the observation of the temporal node."""
+
+    temporal_node_idx: int
+    temporal_node_type: int
+    base: jnp.ndarray
+    temporal: jnp.ndarray
+
+    def base_is_array(self) -> bool:
+        return isinstance(self.base, (jnp.ndarray, np.ndarray))
+
+    def combine(self, which=jnp):
+        return which.concatenate([self.base, self.temporal], axis=-1)
+
+
+class AugObsAutomata(NamedTuple):
+    automata_idx: jnp.ndarray
+    base: jnp.ndarray
+    automata: jnp.ndarray
+
+    def base_is_array(self) -> bool:
+        return isinstance(self.base, (jnp.ndarray, np.ndarray))
+
+    def combine(self, which=jnp):
+        return which.concatenate([self.base, self.temporal], axis=-1)
 
 
 @define(slots=False)
@@ -334,6 +328,26 @@ class StaticTemporalNodeMixin:
 
         assert len(self.cfg.temporal_node_fracs) == len(self.temporal_nodes)
 
+        self._augment_obs_names = None
+
+    def step(self: Self | StaticTemporalNodeMixinProtocol, state: Any, action: jnp.ndarray):
+        base_step: EnvStep = self.base.step(state.base, action)
+
+        temporal_node_idx = state.temporal_node_idx
+
+        state_new = jdc.replace(state, temporal_node_idx=temporal_node_idx, base=base_step.envstate)
+        obs = self._augment_obs(state_new, base_step.obs)
+        step = base_step._replace(envstate=state_new, obs=obs)
+
+        return step
+
+    def get_obs(self: Self | StaticTemporalNodeMixinProtocol, state: Any) -> Any:
+        base_obs = self.base.get_obs(state.base)
+        return self._augment_obs(state, base_obs)
+
+    def get_obs_names(self: Self | StaticTemporalNodeMixinProtocol) -> list[str]:
+        return self.base.get_obs_names() + self.augment_obs_names()
+
     @ft.partial(jax.jit, static_argnames=("self",))
     def reset(self: StaticTemporalNodeMixinProtocol, key: PRNGKeyArray) -> StateWithTemporalNode:
         key_base, key_node = jr.split(key)
@@ -361,15 +375,26 @@ class StaticTemporalNodeMixin:
         )
         return state
 
-    def get_eval_states(self: StaticTemporalNodeMixinProtocol, n_envs: int) -> StateWithTemporalNode:
+    def get_eval_states(
+        self: StaticTemporalNodeMixinProtocol, n_envs: int, root_only: bool = False
+    ) -> StateWithTemporalNode:
+        key = jr.PRNGKey(seed=12345)
+
+        if root_only:
+            # All envs start at the root temporal node (idx 0).
+            m_state_base = self.base.reset_batch(key, n_envs)
+            b_state0 = StateWithTemporalNode(
+                temporal_node_idx=jnp.zeros((n_envs,), dtype=jnp.int32),
+                base=m_state_base,
+            )
+            return b_state0
+
         # Assign envs evenly to each temporal node.
         n_envs_per_node = np.full((self.n_temporal_nodes,), n_envs // self.n_temporal_nodes)
         n_envs_per_node[0] = n_envs - n_envs_per_node[1:].sum()
 
-        key = jr.PRNGKey(seed=12345)
         max_n_envs_per_node = n_envs_per_node.max()
         m_state_base = self.base.reset_batch(key, max_n_envs_per_node)
-
         states = []
         for ii, n_envs_this in enumerate(n_envs_per_node):
             state_base = jtu.tree_map(lambda x: x[:n_envs_this], m_state_base)
@@ -396,17 +421,36 @@ class StaticTemporalNodeMixin:
             temporal_node_idx=temporal_node_idx, temporal_node_type=temporal_node_type, base=obs, temporal=obs_aug
         )
 
+    def augment_obs_names(self) -> list[str]:
+        if self._augment_obs_names is None:
+            dummy_state = self.reset(jr.PRNGKey(0))
+            _, obs_names = self._augment_obs_and_names(dummy_state)
+            self._augment_obs_names = obs_names
+        return self._augment_obs_names
 
-class AugObs(NamedTuple):
-    """Separate the "base" observation and the observation of the temporal node."""
+    def _augment_obs_and_names(self: Env, state: AugObs):
+        """Augment the base observation with the (one hot) temporal node idx and (one hot) node type."""
+        if self.n_temporal_nodes > 1:
+            obs_node_idx = jnn.one_hot(state.temporal_node_idx, self.n_temporal_nodes)
+            obs_node_idx_names = [f"nodeidx1h_{ii}" for ii in range(self.n_temporal_nodes)]
 
-    temporal_node_idx: int
-    temporal_node_type: int
-    base: jnp.ndarray
-    temporal: jnp.ndarray
+            temporal_node_idx_to_node_type = self._temporal_node_idx_to_node_type()
+            node_type = temporal_node_idx_to_node_type[state.temporal_node_idx]
 
-    def combine(self, which=jnp):
-        return which.concatenate([self.base, self.temporal], axis=-1)
+            obs_node_type = jnn.one_hot(node_type, DAGNode.n_temporal_classes())
+            obs_node_type_names = [f"nodetype1h_{ii}" for ii in range(DAGNode.n_temporal_classes())]
+
+            obs_aug = jnp.concatenate([obs_node_idx, obs_node_type], axis=-1)
+            obs_names = [*obs_node_idx_names, *obs_node_type_names]
+        else:
+            obs_aug = jnp.array([], dtype=jnp.float32)
+            obs_names = []
+
+        return obs_aug, obs_names
+
+    def _get_augment_obs(self, state: Any):
+        obs, _ = self._augment_obs_and_names(state)
+        return obs
 
 
 class DAGTransition(NamedTuple):
@@ -462,6 +506,17 @@ def get_triggers(
 
         value = jnp.minimum(value, stay_value)
         return [DAGTransition(parent_idx, node_idx, value)]
+    elif isinstance(node, DAGGUMinN):
+        # Transition to the first child, using the min of the GU children.
+        values_child = []
+        for child_dag_id in node.args:
+            child_node = dag_nodes[child_dag_id]
+            assert isinstance(child_node, DAGGUSingle)
+            values_child.append(V_dict[child_dag_id])
+        values_child = which.stack(values_child, axis=-1)
+        value = which.min(values_child, axis=-1)
+        first_child_dag_id = node.args[0]
+        return [DAGTransition(parent_idx, first_child_dag_id, value)]
 
     elif not has_temporal_children(node_idx, dag_nodes):
         # No temporal children, so doesn't transition to anything.
@@ -554,11 +609,10 @@ def get_rules(
             case DAGReach(reach=reach_id):
                 triggers = get_triggers(
                     dag_nodes,
-                    temporal_nodes,
                     node_idx,
                     reach_id,
                     predicates,
-                    t_value,
+                    V_dict,
                     scratch,
                     which=which,
                 )

@@ -33,7 +33,7 @@ class HerdOs(StaticTemporalNodeMixin, EnvUsingBase):
     """
 
     Cfg = HerdOsCfg
-    State = StateWithTemporalNode
+    State = StateWithTemporalNode[HerdingHerd.State]
 
     def __init__(self, cfg: HerdOsCfg = HerdOsCfg()):
         self.cfg = cfg
@@ -42,19 +42,13 @@ class HerdOs(StaticTemporalNodeMixin, EnvUsingBase):
         StaticTemporalNodeMixin.__init__(self, cfg)
         self.base = base_env
 
-    @staticmethod
-    def create(cfg: HerdOsCfg) -> "HerdOs":
-        return HerdOs(cfg)
-
     def reset_batch(self, key: PRNGKeyArray, batch_size: int, init: bool = False) -> StateWithTemporalNode:
         key_reset, key_steps = jr.split(key)
-        b_state = super().reset_batch(key, batch_size)
+        b_state: StateWithTemporalNode[HerdingHerd.State] = super().reset_batch(key, batch_size)
 
         if init:
             # Randomize the initial timestep.
             with jdc.copy_and_mutate(b_state) as b_state_new:
-                # b_state_new_base: HerdingHerd.State = b_state_new.base
-                # b_state_new_base.steps = jr.randint(key_steps, (batch_size,), 0, self.base.cfg.trunc_steps)
                 b_state_new.base.steps = jr.randint(key_steps, (batch_size,), 0, self.base.cfg.trunc_steps)
         else:
             b_state_new = b_state
