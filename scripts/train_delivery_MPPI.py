@@ -85,11 +85,13 @@ def main(
     run = Run.create(env_name=env_name, name=name)
 
     mppi = MPPI(env=env, cfg=mppi_cfg, key=seed)
-    # trainer.train(run, env, eval_cbs=eval_cbs, collect_cbs=collect_cbs, debug=debug)
 
     key_base = jr.PRNGKey(124521)
     _, _, key_eval = jr.split(key_base, 3)
-    mppi.eval(run=run, key_eval=key_eval, eval_cbs=eval_cbs)
+    mppi.eval(
+        run=run, key_eval=key_eval, eval_cbs=eval_cbs,
+        debug=debug,
+    )
 
 if __name__ == "__main__":
     # with ipdb.launch_ipdb_on_exception():

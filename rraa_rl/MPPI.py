@@ -114,15 +114,19 @@ class MPPICfg(Cfg):
     log_every: int = 100
     save_every: int = 5_000
 
-    n_envs: int = 128
+    n_envs: int = 10
 
     # mppi_samples: int = 1_000
     # mppi_horizon_H: int = 10
     # mppi_iterations: int = 50
 
-    mppi_samples: int = 2
-    mppi_horizon_H: int = 2
+    mppi_samples: int = 100
+    mppi_horizon_H: int = 10
     mppi_iterations: int = 2
+
+    # mppi_samples: int = 1000
+    # mppi_horizon_H: int = 20
+    # mppi_iterations: int = 3
 
     mppi_noise_sd_init: float = 0.1
     mppi_lambda_init: float = 50.
@@ -258,23 +262,164 @@ class MPPI:
         carry_out, both_Tb_rollouts = lax.scan(rollout, carry0, xs=None, length=T)
 
         return both_Tb_rollouts
+    
+    ## DEBUG versions (looping instead of scanning for plots)
+
+    def step_single_fn_mppi_debug(self, state: Any, control_guess: Any, key:jr.PRNGKey):
+        control, updated_control_guess, JHK_rollout_imag = self.mppi_policy_debug(
+            state, control_guess, key
+        )
+        step_result = self.env.step_control(state, control)
+        return step_result, control, updated_control_guess, JHK_rollout_imag
+
+    def mppi_policy_debug(self, state:Any, control_guess_traj: Any, key:jr.PRNGKey) -> Any:
+        """MPPI control policy: 
+        iter:
+            1. sample noise, add to control guess
+            2. roll out
+            3. compute cost (neg robustness score)
+            4. compute weights, w_k = exp(-S^(k) / lambda)
+            5. update control_guess_traj with weighted noise average
+            6. shrink 
+        out: use first control, shift control_guess_traj
+        """
+
+        def mppi_iter_body(key, control_guess_traj, noise_sd_curr, lambda_curr):
+            # Sample K control perturbations
+            key, new_key = jr.split(key)
+            KHNA_sample_control_perturbation = jax.random.normal(key, (self.cfg.mppi_samples, *control_guess_traj.shape)) * noise_sd_curr
+            KHNA_control_guess_traj_repeated = jnp.broadcast_to(control_guess_traj, (self.cfg.mppi_samples, *control_guess_traj.shape))
+            KHNA_perturbed_control_traj = KHNA_control_guess_traj_repeated + KHNA_sample_control_perturbation
+
+            # Bound sampled control inputs
+            KHNA_perturbed_control_traj = jnp.clip(KHNA_perturbed_control_traj, jnp.array(self.env.base.control_lim_lo), jnp.array(self.env.base.control_lim_hi))
+
+            def expand_state_for_samples(b_state: StateWithTemporalNode, k_samples: int) -> StateWithTemporalNode:
+                return jtu.tree_map(
+                    lambda x: jnp.broadcast_to(x[None, ...], (k_samples, *x.shape)),
+                    b_state
+                )
+            K_state_0 = expand_state_for_samples(state, self.cfg.mppi_samples)
+
+            # rollout the k batch
+            def imag_rollout(hk_state, hk_control):
+                hk_step_result, _ = jax.vmap(self.step_single_fn)(hk_state, hk_control)
+                hk_obs = jax.vmap(self.env.get_obs)(hk_state)
+                out = RolloutOutput.from_rollout(hk_state, hk_obs, hk_step_result, hk_control)
+                return hk_step_result.envstate, out
+
+            HKNA_perturbed_control_traj = jnp.swapaxes(KHNA_perturbed_control_traj, 0, 1)
+            _, HK_rollout_imag = lax.scan(imag_rollout, K_state_0, HKNA_perturbed_control_traj)
+
+            # Compute costs as negative robustness score
+            KH_rollout_imag = HK_rollout_imag.switch01()
+            K_robustness = jax.vmap(
+                lambda predicates_next: evaluate_ltl_finite(self.env, predicates_next, which=jnp)
+            )(KH_rollout_imag.predicates_next)
+            costs = -1 * K_robustness[0] # TODOD FIXME which node, first or last?
+
+            # Compute weights
+            weights = jnp.exp(-costs / lambda_curr)
+            # weights = jnp.exp(-(costs - costs.min(axis=0)) / mppi_lambda_curr) # TODO test: advantage-based, best (Althoff)
+            # weights = jnp.exp(-(costs - jnp.mean(costs, axis=0)) / mppi_lambda_curr) # TODO test: advantage-based, mean
+            weights = weights / jnp.sum(weights)
+
+            updated_control_guess = control_guess_traj + jnp.sum(weights[:, None, None, None] * KHNA_perturbed_control_traj, axis=0)
+
+            # Bound updated control guess
+            updated_control_guess = jnp.clip(updated_control_guess, jnp.array(self.env.base.control_lim_lo), jnp.array(self.env.base.control_lim_hi))
+
+            # Anneal lambda and noise sd
+            lambda_curr = lambda_curr * self.cfg.mppi_shrink_factor
+            noise_sd_curr = noise_sd_curr * self.cfg.mppi_shrink_factor
+
+            return new_key, updated_control_guess, noise_sd_curr, lambda_curr, KH_rollout_imag
+
+        # Python for loop instead of scan - outputs moved to device between iterations
+        noise_sd_curr = self.cfg.mppi_noise_sd_init
+        lambda_curr = self.cfg.mppi_lambda_init
+        rollout_imags = []
+        
+        for _ in range(self.cfg.mppi_iterations):
+            print("    mppi iter", _)
+            key, control_guess_traj, noise_sd_curr, lambda_curr, KH_rollout_imag = mppi_iter_body(
+                key, control_guess_traj, noise_sd_curr, lambda_curr
+            )
+            # Move to CPU immediately to free GPU memory
+            rollout_imags.append(jax.device_get(KH_rollout_imag))
+
+        # Stack the collected rollouts: list of KH -> JKH
+        JKH_rollout_imag = jtu.tree_map(lambda *xs: jnp.stack(xs, axis=0), *rollout_imags)
+
+        control = control_guess_traj[0, ...]
+        updated_control_guess_shifted = jnp.roll(control_guess_traj, shift=-1, axis=0)
+        return control, updated_control_guess_shifted, JKH_rollout_imag
+
+    def collect_full_traj_debug(
+        self,
+        b_state_0: Any,
+        T: int,
+        n_envs: int,
+        key_eval: jr.PRNGKey,
+    ) -> tuple[Self, RolloutOutput, dict]:
+
+        control_guess_0 = jnp.zeros((n_envs, self.cfg.mppi_horizon_H, self.env.n_agents, self.env.base.action_dim))
+
+        b_state = b_state_0
+        b_control_guess_traj = control_guess_0
+        key = key_eval
+        
+        rollout_outputs = []
+        mppi_rollouts = []
+        
+        for _ in range(T):
+            print("iter", _)
+            key, new_key = jr.split(key)
+            b_keys = jr.split(key, n_envs)
+
+            b_obs = jax.vmap(self.env.get_obs)(b_state)
+            b_step_result, b_act, b_updated_control_guess_traj, BJHK_rollout_imag = jax.vmap(self.step_single_fn_mppi_debug)(b_state, b_control_guess_traj, b_keys)
+            
+            rollout_out = RolloutOutput.from_rollout(b_state, b_obs, b_step_result, b_act)
+            
+            # Move to CPU immediately
+            rollout_outputs.append(jax.device_get(rollout_out))
+            mppi_rollouts.append(jax.device_get(BJHK_rollout_imag))
+            
+            b_state = b_step_result.envstate
+            b_control_guess_traj = b_updated_control_guess_traj
+            key = new_key
+
+        # Stack: list of b -> Tb
+        Tb_rollout = jtu.tree_map(lambda *xs: jnp.stack(xs, axis=0), *rollout_outputs)
+        TBJKH_rollout_mppi = jtu.tree_map(lambda *xs: jnp.stack(xs, axis=0), *mppi_rollouts)
+
+        return Tb_rollout, TBJKH_rollout_mppi
 
     def eval(
         self, 
         run: Run, 
         key_eval: jr.PRNGKey,
-        eval_cbs: list[Callback] = None
+        eval_cbs: list[Callback] = None,
+        debug: bool = False,
     ):
         env = self.env
+        eval_T = 10 if debug else env.eval_T
+        eval_n_envs = 1 if debug else self.cfg.n_envs
 
         if self.b_state0 is None:
-            self.b_state0 = env.get_eval_states(self.cfg.n_envs)
+            self.b_state0 = env.get_eval_states(eval_n_envs)
 
-        both_Tb_rollouts = self.collect_full_traj(
-            self.b_state0, env.eval_T, key_eval
-        )
+        if debug:
+            both_Tb_rollouts = self.collect_full_traj_debug(
+                self.b_state0, eval_T, eval_n_envs, key_eval
+            )
+        else:
+            both_Tb_rollouts = self.collect_full_traj(
+                self.b_state0, eval_T, key_eval
+            )
+            
 
-        # TBJKH_rollout_imag = both_Tb_rollouts[1], but # TODO FIXME need to use tree_index or smth
         Tb_rollout, TBJKH_rollout_mppi = both_Tb_rollouts
 
         Tb_rollout = jax.device_get(Tb_rollout)
@@ -346,5 +491,3 @@ class MPPI:
             cb_name = cb.__name__ if hasattr(cb, "__name__") else str(type(cb))
             print(f"Running eval callback {cb_name}")
             cb(cb_props)
-
-        # can export Tb_rollout_imagss for debug too

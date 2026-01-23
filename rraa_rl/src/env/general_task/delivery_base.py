@@ -64,7 +64,8 @@ class DeliveryBaseCfg:
     """If True, pretend the herd agents don't exist."""
 
     trunc_steps: int = 100
-    eval_steps: int = 500
+    # eval_steps: int = 500
+    eval_steps: int = 200
 
     herded_radius: float = 1.0  # Radius within which herd agents are considered herded.
 
@@ -883,7 +884,7 @@ class DeliveryBase(BaseEnv):
     @property
     def eval_T(self) -> int:
         # return self.cfg.trunc_steps
-        return self.cfg.eval_steps
+        return self.cfg.base.eval_steps
 
     def setup_ax(self, ax: plt.Axes):
         cfg = self.cfg
