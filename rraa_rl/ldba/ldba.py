@@ -2,6 +2,7 @@ import functools as ft
 import re
 from typing import NamedTuple
 
+import ipdb
 import jax
 import jax.numpy as jnp
 import jax_dataclasses as jdc

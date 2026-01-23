@@ -45,9 +45,15 @@ class LCRLWrapper(EnvUsingBase):
         action_epsilon = action[-1]
 
         base_step: EnvStep = self.base.step(state.base, action_base)
-        predicates = base_step.predicates
+        predicates_float = base_step.predicates
 
-        label = self.ldba.predicates_to_label(predicates)
+        predicates_bool = {k: v > 0.5 for k, v in predicates_float.items()}
+
+        # Make sure these are bool predicates.
+        for k, v in predicates_bool.items():
+            assert v.dtype == bool, f"Predicate {k} is not bool, but {v.dtype}"
+
+        label = self.ldba.predicates_to_label(predicates_bool)
         automata_state_new, epsilon_taken = self.ldba.step(state.ldba_state.state, label, action_epsilon)
 
         # If we take the epsilon, then we don't take the base.step

@@ -196,21 +196,28 @@ def animate_eval_trajs_base(p: CallbackProps):
 
     bT_test_rollouts = p.bT_test_rollouts
 
-    bT_states: list[LCRLWrapper.State] = [traj.state_now for traj in bT_test_rollouts]
+    bT_states: list[LCRLWrapper.State[GridworldMAState]] = [traj.state_now for traj in bT_test_rollouts]
+
+    batch_indices = np.arange(n_traj_anim)
+
+    # Make the first batch index correspond to a trajectory that reaches the goal (predicates["A"] > 0) if it exists.
+    b_reach_goal = np.stack([np.any(traj.predicates_next["A"]) for traj in bT_test_rollouts], axis=0)
+    if np.any(b_reach_goal):
+        batch_indices[0] = np.argmax(b_reach_goal)
 
     T_max = 0
-    batch_idxs: dict[int, int] = {}
     for ii in range(n_traj_anim):
-        traj = bT_test_rollouts[ii]
+        traj = bT_test_rollouts[batch_indices[ii]]
         T_max = max(T_max, len(traj.term))
 
     ncol = n_traj_anim
 
+    colors_automata = plt.get_cmap("tab20", env.ldba.n_states).colors
     color_alive = to_rgba("C0", 0.0)
     color_dead = np.array(to_rgba("C0"))
 
     figsize = 0.9 * np.array([3 * ncol, 3])
-    fig, axes = plt.subplots(1, ncol, figsize=figsize, dpi=80, layout="none")
+    fig, axes = plt.subplots(1, ncol, figsize=figsize, dpi=150, layout="none")
 
     # The grid cells are 1x1
     agent_radius = 0.2
@@ -243,10 +250,27 @@ def animate_eval_trajs_base(p: CallbackProps):
         bbox=dict(facecolor="black", alpha=0.5, pad=2),
     )
 
+    misc_texts = {}
+    for ii in range(n_traj_anim):
+        # bottom right.
+        misc_texts[ii] = axes[ii].text(
+            0.98,
+            0.02,
+            "",
+            transform=axes[ii].transAxes,
+            verticalalignment="bottom",
+            horizontalalignment="right",
+            color="white",
+            fontsize=8,
+            bbox=dict(facecolor="black", alpha=0.5, pad=2),
+        )
+
     fig.tight_layout()
 
     for circ in all_circs:
         circ.set_animated(True)
+    for text in misc_texts.values():
+        text.set_animated(True)
     kk_text.set_animated(True)
 
     fig.canvas.draw()
@@ -267,9 +291,9 @@ def animate_eval_trajs_base(p: CallbackProps):
             # update artists (your existing update body, but do NOT return artists)
             kk_text.set_text(f"Step {kk: 3}")
             for ii in range(n_traj_anim):
-                traj = bT_test_rollouts[ii]
+                traj = bT_test_rollouts[batch_indices[ii]]
                 (T,) = traj.shape
-                T_state: GridworldMA.State = traj.state_now
+                T_state: LCRLWrapper.State[GridworldMAState] = traj.state_now
                 T_herder_pos = T_state.base.pos[:, :, :2]
 
                 t_idx = min(kk, T - 1)
@@ -279,14 +303,24 @@ def animate_eval_trajs_base(p: CallbackProps):
                     pos = T_herder_pos[t_idx, agent_idx, :]
                     circ.center = pos
 
+                    if isinstance(T_state, LCRLWrapper.State):
+                        automata_state = T_state.ldba_state.state[t_idx]
+                        circ.set_facecolor(colors_automata[automata_state])
+
                     if kk < T:
                         circ.set_edgecolor(color_alive)
                     else:
                         circ.set_edgecolor(color_dead)
 
+                if isinstance(T_state, LCRLWrapper.State):
+                    automata_state = T_state.ldba_state.state[t_idx]
+                    misc_texts[ii].set_text(f"Automata: {automata_state}")
+
             # draw only animated artists onto the restored background
             for a in all_circs:
                 a.axes.draw_artist(a)
+            for text in misc_texts.values():
+                text.axes.draw_artist(text)
             kk_text.axes.draw_artist(kk_text)
 
             # IMPORTANT: update the buffer

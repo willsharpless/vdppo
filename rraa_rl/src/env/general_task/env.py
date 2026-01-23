@@ -108,7 +108,7 @@ class EnvCfg:
     eval_T: int = 200
 
 
-class Env:
+class Env(Generic[_EnvState, _Obs]):
     def __init__(self, cfg: EnvCfg, specification: str):
         self.cfg = cfg
         dag_builder, dag_root = to_dag(specification, ir_filename="dags/herd_os_ir", dag_filename="dags/herd_os_dag")
@@ -122,7 +122,7 @@ class Env:
 
         self.node_parent_dict: dict[DAGId, DAGId] = get_node_parent_dict(self.dag_nodes, self.dag_root)
 
-    def step(self, state: Any, action: Any) -> EnvStep:
+    def step(self, state: _EnvState, action: Any) -> EnvStep[_EnvState, _Obs]:
         raise NotImplementedError("")
 
     @property
