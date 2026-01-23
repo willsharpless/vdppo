@@ -60,7 +60,7 @@ def get_env_and_cbs(env_name: str, agent_name: str) -> tuple[Env, list, list]:
     herd_collect_cbs = []
 
     gridworld_eval_cbs = [gridworld_cbs.animate_eval_trajs, gridworld_cbs.VizValues.create()]
-    gridworld_collect_cbs = []
+    gridworld_collect_cbs = [gridworld_cbs.collect_cb]
 
     if env_name == "herdosplay":
         env = HerdOsPlay()

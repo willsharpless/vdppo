@@ -414,3 +414,25 @@ class VizValues(struct.PyTreeNode):
         fig_path = plot_dir / f"V_step{p.train_step}.jpg"
         fig.savefig(fig_path, bbox_inches="tight", dpi=500)
         plt.close(fig)
+
+
+def collect_cb(p: CallbackProps):
+    if not isinstance(p.agent, LCRLMAPPOAgent):
+        return
+
+    # # Count how many of each automata state is present in the rollout.
+    # Tb_rollout: RolloutOutput = jax.device_get(p.Tb_rollout)
+    # Tb_state_now: LCRLWrapper.State[GridworldMAState] = Tb_rollout.state_now
+    # Tb_automata_idx = Tb_state_now.ldba_state.state
+    #
+    # idx_min, idx_max = np.min(Tb_automata_idx), np.max(Tb_automata_idx)
+    # assert idx_min >= 0
+    # assert idx_max < p.env.ldba.n_states
+    #
+    # counts = np.array([np.sum(Tb_automata_idx == ii) for ii in range(p.env.ldba.n_states)])
+    # # logger.info("Automata state counts: {}".format(counts))
+    #
+    # if counts[-1] == 0:
+    #     return
+    # else:
+    #     logger.success("Reached ".format(counts))

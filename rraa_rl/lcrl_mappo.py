@@ -75,6 +75,9 @@ class LCRLMAPPOAgentCfg(Cfg):
     unsat_penalty: float = 0.0
     """Penalty for not changing the frontier in LCRL."""
 
+    sink_penalty: float = -1.0
+    """Penalty for entering the sink state in LCRL."""
+
     # Network parameters.
     actor_hids: tuple[int, ...] = (128, 128)
     critic_hids: tuple[int, ...] = (128, 128)
@@ -143,8 +146,11 @@ class LCRLMAPPOAgent:
         network = TrainState.create(network_def, network_params, tx=network_tx)
         return cls(network=network, env=env, cfg=cfg)
 
-    def get_LCRL_reward(self, frontier_changed: jnp.ndarray):
-        return jnp.where(frontier_changed, 1.0, self.cfg.unsat_penalty)
+    def get_LCRL_reward(self, frontier_changed: jnp.ndarray, into_sink: jnp.ndarray):
+        rew_frontier = jnp.where(frontier_changed, 1.0, self.cfg.unsat_penalty)
+        rew_into_sink = jnp.where(into_sink, self.cfg.sink_penalty, 0.0)
+        rew = rew_frontier + rew_into_sink
+        return rew
 
     def compute_A_Q(self, Tb_rollout: RolloutOutput):
         """Compute GAE advantages and Q-values from rollout."""
@@ -161,7 +167,10 @@ class LCRLMAPPOAgent:
         Tb_frontier_changed = Tb_rollout.info["has_frontier_changed"]
         bT_frontier_changed = Tb_frontier_changed.T
 
-        bT_rew = self.get_LCRL_reward(bT_frontier_changed)
+        Tb_into_sink = Tb_rollout.info["into_sink"]
+        bT_into_sink = Tb_into_sink.T
+
+        bT_rew = self.get_LCRL_reward(bT_frontier_changed, bT_into_sink)
 
         # (batch, T, n_automata)
         Tbt_V = self.network.select("critic")(Tb_rollout.obs_now, params=self.network.params)

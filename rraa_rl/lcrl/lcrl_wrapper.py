@@ -69,12 +69,12 @@ class LCRLWrapper(EnvUsingBase):
         ldba_state_new = LDBAState(automata_state_new, frontier_mask_new)
         state_new = LCRLState(ldba_state=ldba_state_new, base=base_state)
 
-        info_aug = {"epsilon_taken": epsilon_taken, "has_frontier_changed": has_changed}
-        info = base_step.info | info_aug
-
         # If we reach the sink state, we terminate.
         in_sink_state = automata_state_new == self.ldba.sink_state
         term = base_step.term | in_sink_state
+
+        info_aug = {"epsilon_taken": epsilon_taken, "has_frontier_changed": has_changed, "into_sink": in_sink_state}
+        info = base_step.info | info_aug
 
         obs = self._augment_obs(state_new, base_step.obs)
         step = base_step._replace(envstate=state_new, obs=obs, info=info, term=term)
@@ -89,6 +89,7 @@ class LCRLWrapper(EnvUsingBase):
         base_state = self.base.reset(key)
         accepting_frontier_mask = jnp.zeros(self.ldba.n_accepting_sets, dtype=bool)
         automata_state0 = jnp.array(0, dtype=jnp.int32)
+        # automata_state0 = jnp.array(1, dtype=jnp.int32)
         ldba_state = LDBAState(automata_state0, accepting_frontier_mask)
         return LCRLState(ldba_state, base_state)
 
