@@ -246,7 +246,7 @@ class Trainer:
                     )
                 )
 
-                if temporal_node_idx == env.dag_root:
+                if temporal_node_idx == 0:
                     info_satisfaction[f"Eval/Satisfy/Root"] = satisfy_prob
 
             info = info | info_satisfaction
