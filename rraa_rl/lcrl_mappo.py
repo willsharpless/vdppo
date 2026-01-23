@@ -78,6 +78,9 @@ class LCRLMAPPOAgentCfg(Cfg):
     sink_penalty: float = -1.0
     """Penalty for entering the sink state in LCRL."""
 
+    random_automata_init: bool = False
+    """Sets the corresponding parameter in LCRLWrapper."""
+
     # Network parameters.
     actor_hids: tuple[int, ...] = (128, 128)
     critic_hids: tuple[int, ...] = (128, 128)
@@ -361,16 +364,21 @@ class LCRLMAPPOAgent:
         bn_loss1 = -bn_is_ratio * b_A[:, None]
         bn_loss2 = -bn_is_ratio_clip * b_A[:, None]
         bn_loss = jnp.maximum(bn_loss1, bn_loss2)
+        assert bn_loss.shape == (batch_size, self.env.n_agents + 1)
 
         # If epsilon was taken, only update the epsilon actor (last one), i.e.,
         bn_loss_base = bn_loss[:, :-1]
+        assert bn_loss_base.shape == (batch_size, self.env.n_agents)
+
         b_loss_pg_base = jnp.mean(bn_loss_base, axis=1)
         b_loss_pg_epsilon = bn_loss[:, -1]
         b_loss_pg = jnp.where(b_epsilon_taken, b_loss_pg_epsilon, b_loss_pg_base)
         loss_pg = jnp.mean(b_loss_pg)
 
         bn_entropy_base = bn_entropy[:, :-1]
+        assert bn_entropy_base.shape == (batch_size, self.env.n_agents)
         b_entropy_base = jnp.mean(bn_entropy_base, axis=1)
+        assert b_entropy_base.shape == (batch_size,)
         b_entropy_epsilon = bn_entropy[:, -1]
         b_entropy = jnp.where(b_epsilon_taken, b_entropy_epsilon, b_entropy_base)
         entropy_mean = jnp.mean(b_entropy)

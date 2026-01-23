@@ -41,6 +41,9 @@ def lcrl(
 
     agent_cfg = get_lcrl_agent_cfg(env_name)
     agent = LCRLMAPPOAgent.create(seed, agent_cfg, env)
+    # agent_cfg.random_automata_init = True
+
+    env.cfg.random_automata_init = agent_cfg.random_automata_init
 
     return train(name, debug, env_name, seed, trainer_cfg, env, eval_cbs, collect_cbs, agent)
 
