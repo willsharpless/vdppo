@@ -1,8 +1,14 @@
+import jax.numpy as jnp
+
+from rraa_rl import delivery_cbs, gridworld_cbs, herd_os_cbs
+from rraa_rl.jax_utils import tree_stack
+from rraa_rl.lcrl.lcrl_wrapper import LCRLEnvCfg, LCRLWrapper
+from rraa_rl.ldba.ldba import LDBA, Guard, Transition, parse_ltl2ldba
 from rraa_rl.src.env.general_task.env import Env
 from rraa_rl.src.env.general_task.gridworld import GridworldMA, GridworldMACfg, GridworldMap
-from rraa_rl import herd_os_cbs, delivery_cbs, gridworld_cbs
 from rraa_rl.src.env.general_task.herd_base import HerdingHerdCfg
 from rraa_rl.src.env.general_task.herd_os import HerdOs, HerdOsPlay
+
 
 def get_cfg_herdos():
     # specification = "F G herd_herded && G !herder_oob"
@@ -43,7 +49,7 @@ def get_cfg_herdos():
     return cfg
 
 
-def get_env_and_cbs(env_name: str) -> tuple[Env, list, list]:
+def get_env_and_cbs(env_name: str, agent_name: str) -> tuple[Env, list, list]:
     env_name = env_name.lower()
 
     herd_eval_cbs = [
@@ -53,19 +59,19 @@ def get_env_and_cbs(env_name: str) -> tuple[Env, list, list]:
     ]
     herd_collect_cbs = []
 
-    gridworld_eval_cbs = [
-        gridworld_cbs.animate_eval_trajs
-    ]
+    gridworld_eval_cbs = [gridworld_cbs.animate_eval_trajs]
     gridworld_collect_cbs = []
 
     if env_name == "herdosplay":
-        return HerdOsPlay(), herd_eval_cbs, herd_collect_cbs
+        env = HerdOsPlay()
+        cbs = herd_eval_cbs, herd_collect_cbs
 
-    if env_name == "herdos":
+    elif env_name == "herdos":
         cfg = get_cfg_herdos()
-        return HerdOs(cfg), herd_eval_cbs, herd_collect_cbs
+        env = HerdOs(cfg)
+        cbs = herd_eval_cbs, herd_collect_cbs
 
-    if env_name == "herdos_dbg":
+    elif env_name == "herdos_dbg":
         cfg = get_cfg_herdos()
 
         # 1 herder, 1 herd for easy viz.
@@ -74,20 +80,88 @@ def get_env_and_cbs(env_name: str) -> tuple[Env, list, list]:
         cfg.base.acc_maxs = [2.0]
         cfg.base.vel_maxs = [1.0]
 
-        return HerdOs(cfg), herd_eval_cbs, herd_collect_cbs
+        env = HerdOs(cfg)
+        cbs = herd_eval_cbs, herd_collect_cbs
 
-    if env_name == "gridworld_map5":
+    elif env_name == "gridworld_map1":
+        map5 = GridworldMap.Map1()
+        spec = "F A"
+        cfg = GridworldMACfg(specification=spec, map=map5)
+
+        env = GridworldMA(cfg)
+        cbs = gridworld_eval_cbs, gridworld_collect_cbs
+
+        if agent_name == "lcrl":
+            base = env.base
+            lcrl_env_cfg = LCRLEnvCfg(specification=spec)
+
+            # Acceptance: 1 Inf(0)
+            # AP: 1 "goal"
+            # --BODY--
+            # State: 0
+            # [!0] 0
+            # [0] 1
+            # State: 1
+            # [t] 1 {0}
+
+            # hoa_text = """
+            # HOA: v1
+            # tool: "owl ltl2ldba" "21.0"
+            # name: "Automaton for F(goal)"
+            # owlArgs: "ltl2ldba" "-f" "F goal"
+            # Start: 0
+            # acc-name: Buchi
+            # Acceptance: 1 Inf(0)
+            # properties: trans-acc no-univ-branch
+            # properties: deterministic unambiguous
+            # properties: complete
+            # AP: 1 "goal"
+            # --BODY--
+            # State: 0
+            # [!0] 0
+            # [0] 1
+            # State: 1
+            # [t] 1 {0}
+            # --END--
+            # """
+            # ldba = parse_ltl2ldba(hoa_text)
+
+            predicate_order = ["A"]
+            n_states = 2
+            BIT_A = 1 << 0
+            guard = Guard(pos_mask=jnp.array(0b0, dtype=jnp.int32), neg_mask=jnp.array(BIT_A, dtype=jnp.int32))
+            t0 = Transition(src=0, dst=0, guard=guard)
+
+            guard = Guard(pos_mask=jnp.array(BIT_A, dtype=jnp.int32), neg_mask=jnp.array(0b0, dtype=jnp.int32))
+            t1 = Transition(src=0, dst=1, guard=guard)
+
+            transitions = tree_stack([t0, t1], axis=0)
+
+            epsilon_src = jnp.array([], dtype=jnp.int32)
+            epsilon_dst = jnp.array([], dtype=jnp.int32)
+
+            # (n_accepting_sets=1, n_states=2). Only state 1 is accepting.
+            accepting_sets = jnp.array([[0, 1]], dtype=jnp.int32)
+
+            ldba = LDBA(transitions, epsilon_src, epsilon_dst, accepting_sets, n_states, predicate_order)
+            env = LCRLWrapper(lcrl_env_cfg, base, ldba)
+
+    elif env_name == "gridworld_map5":
         map5 = GridworldMap.Map5()
         spec = "F A && F B && !D U K && G( !w )"
         cfg = GridworldMACfg(specification=spec, map=map5)
 
-        return GridworldMA(cfg), gridworld_eval_cbs, gridworld_collect_cbs
+        env = GridworldMA(cfg)
+        cbs = gridworld_eval_cbs, gridworld_collect_cbs
 
-    if env_name == "gridworld_map6":
+    elif env_name == "gridworld_map6":
         map6 = GridworldMap.Map6()
         spec = "F( C && F G ( (q U (A && q )) && (q U (B && q )) ) )"
         cfg = GridworldMACfg(specification=spec, map=map6)
 
-        return GridworldMA(cfg), gridworld_eval_cbs, gridworld_collect_cbs
+        env = GridworldMA(cfg)
+        cbs = gridworld_eval_cbs, gridworld_collect_cbs
+    else:
+        raise ValueError(f"Unknown environment name: {env_name}")
 
-    raise ValueError(f"Unknown environment name: {env_name}")
+    return env, cbs[0], cbs[1]

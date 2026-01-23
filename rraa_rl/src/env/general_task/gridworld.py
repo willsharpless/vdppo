@@ -123,6 +123,38 @@ class GridworldMap:
         return self._len_y
 
     @staticmethod
+    def Map1() -> "GridworldMap":
+        map_str = """
+            | A#    |
+            | ## ## |
+            |    #B |
+        """
+        d_raw, len_x, len_y = GridworldMap.parse_room_str(map_str, boundary="|")
+
+        predicates = {
+            "A": d_raw["A"],
+            "B": d_raw["B"],
+            "w": d_raw["#"],
+        }
+
+        predicate_expr = {
+            "A": AnyAgent(),
+            "B": AnyAgent(),
+            "w": AnyAgent(),
+        }
+
+        color_dict = {
+            "#": "C3",
+        }
+
+        label_dict = {
+            "A": "A",
+            "B": "B",
+        }
+
+        return GridworldMap(len_x, len_y, predicates, predicate_expr, d_raw, color_dict, label_dict)
+
+    @staticmethod
     def Map5() -> "GridworldMap":
         map_str = """
             |   #    |

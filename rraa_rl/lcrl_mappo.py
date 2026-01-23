@@ -72,7 +72,7 @@ class LCRLMAPPOAgentCfg(Cfg):
 
     norm_adv: bool = True
 
-    unsat_penalty: float = -0.3
+    unsat_penalty: float = 0.0
     """Penalty for not changing the frontier in LCRL."""
 
     # Network parameters.

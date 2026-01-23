@@ -64,8 +64,12 @@ class LCRLWrapper(EnvUsingBase):
         info_aug = {"epsilon_taken": epsilon_taken, "has_frontier_changed": has_changed}
         info = base_step.info | info_aug
 
+        # If we reach the sink state, we terminate.
+        in_sink_state = automata_state_new == self.ldba.sink_state
+        term = base_step.term | in_sink_state
+
         obs = self._augment_obs(state_new, base_step.obs)
-        step = base_step._replace(envstate=state_new, obs=obs, info=info)
+        step = base_step._replace(envstate=state_new, obs=obs, info=info, term=term)
         return step
 
     @property

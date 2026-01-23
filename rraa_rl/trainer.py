@@ -13,6 +13,7 @@ from loguru import logger
 import wandb
 from rraa_rl.cfg_utils import Cfg
 from rraa_rl.collector import Collector, RolloutOutput, extract_info_from_rollout
+from rraa_rl.lcrl_mappo import LCRLMAPPOAgent
 from rraa_rl.rollout_temporal_analysis import evaluate_ltl_finite
 from rraa_rl.rollout_utils import extract_rollouts_eval
 from rraa_rl.run import Run
@@ -55,9 +56,9 @@ class TrainerCfg(Cfg):
 class Trainer:
     Cfg = TrainerCfg
 
-    agent: VDMAPPOAgent
+    agent: VDMAPPOAgent | LCRLMAPPOAgent
 
-    def __init__(self, agent: VDMAPPOAgent, cfg: TrainerCfg):
+    def __init__(self, agent: VDMAPPOAgent | LCRLMAPPOAgent, cfg: TrainerCfg):
         self.cfg = cfg
         self.agent = agent
         self.b_state0 = None
@@ -199,8 +200,12 @@ class Trainer:
         if self.b_state0 is None:
             self.b_state0 = env.get_eval_states(collector.cfg.n_envs)
 
+        collect_opts = {}
+        if isinstance(self.agent, VDMAPPOAgent):
+            collect_opts["temporal_transitions"] = True
+
         Tb_rollout, info_collect = self.agent.collect_eval_with_states(
-            collector, self.b_state0, env.eval_T, temporal_transitions=True
+            collector, self.b_state0, env.eval_T, **collect_opts
         )
         Tb_rollout = jax.device_get(Tb_rollout)
         bT_rollout = Tb_rollout.switch01()
