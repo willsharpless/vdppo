@@ -112,7 +112,7 @@ class Trainer:
                 "env": run.env_name,
                 "noun": run.noun,
                 "name": run.name,
-                "spec": env.specification
+                "spec": env.specification,
             } | wandb_config
             wandb.init(project="vd_mappo", name=run.wandb_name, config=wandb_config)
 
@@ -234,7 +234,11 @@ class Trainer:
             for temporal_node_idx, temporal_node_value in temporal_node_values.items():
                 node_name = env.temporal_node_names[temporal_node_idx]
                 # Satisfy if positive.
-                info_satisfaction[f"Eval/Satisfy/{node_name}"] = float(np.mean(temporal_node_value > 0.1))
+                satisfy_prob = float(np.mean(temporal_node_value > 0.1))
+                info_satisfaction[f"Eval/Satisfy/{node_name}"] = satisfy_prob
+
+                if temporal_node_idx == env.dag_root:
+                    info_satisfaction[f"Eval/Satisfy/Root"] = satisfy_prob
 
             info = info | info_satisfaction
 
@@ -249,7 +253,7 @@ class Trainer:
         else:
             dag_values = []
             for traj in trajs:
-                dag_value = evaluate_ltl_finite(env, traj.predicates_next, which=np)[0]
+                dag_value = evaluate_ltl_finite(env, traj.predicates_next, which=np)[env.dag_root]
                 dag_values.append(dag_value)
 
             info_satisfaction = {"Eval/Satisfy/Root": float(np.mean(np.array(dag_values) > 0.1))}
