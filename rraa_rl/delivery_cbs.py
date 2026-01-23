@@ -22,7 +22,6 @@ from rraa_rl.collector import RolloutOutput
 from rraa_rl.jax_utils import jax_vmap, rep_vmap
 from rraa_rl.src.env.general_task.delivery import Delivery
 from rraa_rl.src.env.general_task.env import AugObs
-from rraa_rl.src.env.general_task.herd_os import HerdOs
 from rraa_rl.src.rl.utils.utils import get_BuRd_smooth
 from rraa_rl.trainer import CallbackProps
 from rraa_rl.vd_mappo import PPOData, VDMAPPOAgent
@@ -147,7 +146,7 @@ def plot_eval_trajs(p: CallbackProps):
     n_temporal_nodes = env.n_temporal_nodes
     ncol = n_temporal_nodes
 
-    bT_states: list[HerdOs.State] = [traj.state_now for traj in p.bT_test_rollouts]
+    bT_states: list[Delivery.State] = [traj.state_now for traj in p.bT_test_rollouts]
     b_temporal_idx = np.array([T_state.temporal_node_idx[0] for T_state in bT_states])
 
     # Count how many trajectories each temporal node has.
@@ -182,7 +181,7 @@ def plot_eval_trajs(p: CallbackProps):
         for traj in p.bT_test_rollouts[start_idx:end_idx]:
             (T,) = traj.shape
 
-            T_state: HerdOs.State = traj.state_now
+            T_state: Delivery.State = traj.state_now
             T_herder_pos = T_state.base.herder_state[:, 0, :2]
             assert T_herder_pos.shape == (T, 2)
 
@@ -214,7 +213,7 @@ def plot_eval_trajs(p: CallbackProps):
 
 
 def animate_eval_trajs(p: CallbackProps):
-    env: HerdOs = p.env
+    env: Delivery = p.env
     if env.n_agents == 1:
         animate_eval_trajs_single_agent(p)
     else:
@@ -228,7 +227,7 @@ def animate_eval_trajs_single_agent(p: CallbackProps):
     n_temporal_nodes = env.n_temporal_nodes
     ncol = n_temporal_nodes
 
-    bT_states: list[HerdOs.State] = [traj.state_now for traj in p.bT_test_rollouts]
+    bT_states: list[Delivery.State] = [traj.state_now for traj in p.bT_test_rollouts]
     b_temporal_idx = np.array([T_state.temporal_node_idx[0] for T_state in bT_states])
 
     T_max = max(traj.shape[0] for traj in p.bT_test_rollouts)
@@ -456,7 +455,7 @@ def animate_eval_trajs_multi_agent(p: CallbackProps):
 
     bT_test_rollouts = p.bT_test_rollouts
 
-    bT_states: list[HerdOs.State] = [traj.state_now for traj in bT_test_rollouts]
+    bT_states: list[Delivery.State] = [traj.state_now for traj in bT_test_rollouts]
     b_temporal_idx = np.array([T_state.temporal_node_idx[0] for T_state in bT_states])
 
     temporal_node_count = np.array([np.sum(b_temporal_idx == ii) for ii in range(n_temporal_nodes)])
@@ -745,7 +744,7 @@ class PlotRootTrajPreds(struct.PyTreeNode):
                 T_reach_vals = bTt_reach_vals[bb, :traj_len, ii]
                 ax.plot(T_reach_vals)
 
-            T_state: HerdOs.State = trajs[bb].state_now
+            T_state: Delivery.State = trajs[bb].state_now
             T_temporal_node_idx = T_state.temporal_node_idx
 
             ax = axes[-1]
@@ -790,13 +789,13 @@ def viz_collect_data(p: CallbackProps):
     cfg_agent = agent.cfg
 
     # Find rollouts where the target is larger than 2, figure out why...
-    Tb_state: HerdOs.State = Tb_rollout.state_now
+    Tb_state: Delivery.State = Tb_rollout.state_now
     bT_A, bT_Q, bT_temporal_idx = agent.compute_A_Q(Tb_rollout, debug=True)
 
     b_Q = b_data.Q
     n_temporal_nodes = env.n_temporal_nodes
     # ---------------------------------------------------------------
-    b_state: HerdOs.State = b_data.state
+    b_state: Delivery.State = b_data.state
     b_pos = b_state.base.herder_state[:, 0, :2]
 
     b_temporal_idx = b_state.temporal_node_idx

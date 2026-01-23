@@ -8,8 +8,10 @@ from rraa_rl.run import Run
 from rraa_rl.src.env.general_task.delivery import Delivery
 from rraa_rl.src.env.general_task.delivery_base import DeliveryBaseCfg
 from rraa_rl.src.env.general_task.env import Env
-from rraa_rl.trainer import Trainer, TrainerCfg
+from rraa_rl.MPPI import MPPI, MPPICfg
+# from rraa_rl.trainer import Trainer, TrainerCfg
 from rraa_rl.vd_mappo import VDMAPPOAgent
+import jax.random as jr
 
 app = App()
 
@@ -56,7 +58,7 @@ def get_env(env_name: str) -> Env:
         # base_cfg.acc_maxs = [2.0, 2.0, 1.0]
         # base_cfg.vel_maxs = [1.0, 1.0, 0.1]
         # base_cfg.dynamic_targets = True
-        # base_cfg.update_targets = False
+        # base_cfg.update_targets = True
 
         cfg = Delivery.Cfg(specification=specification, base=base_cfg)
         return Delivery(cfg)
@@ -70,29 +72,26 @@ def main(
     debug: bool = False,
     env_name: str = "delivery",
     seed: int = 123,
-    trainer_cfg: TrainerCfg = TrainerCfg(),
+    mppi_cfg: MPPI.Cfg = MPPI.Cfg(),
 ):
     env = get_env(env_name)
 
-    cfg = VDMAPPOAgent.Cfg()
-    agent = VDMAPPOAgent.create(seed, cfg, env)
-
     eval_cbs = [
         delivery_cbs.animate_eval_trajs,
-        delivery_cbs.PlotRootTrajPreds.create(),
-        delivery_cbs.plot_eval_trajs,
-        delivery_cbs.VizValues.create(),
+        # delivery_cbs.animate_eval_trajs_mppi, # TODO plot the iteration for debug
     ]
-    # eval_cbs = [herd_os_cbs.plot_eval_trajs, VizValues.create()]
-    collect_cbs = [delivery_cbs.viz_collect_data, delivery_cbs.viz_obs_histogram]
 
     env_name = type(env).__name__
     run = Run.create(env_name=env_name, name=name)
-    trainer = Trainer(agent, cfg=trainer_cfg)
-    trainer.train(run, env, eval_cbs=eval_cbs, collect_cbs=collect_cbs, debug=debug)
 
+    mppi = MPPI(env=env, cfg=mppi_cfg, key=seed)
+    # trainer.train(run, env, eval_cbs=eval_cbs, collect_cbs=collect_cbs, debug=debug)
+
+    key_base = jr.PRNGKey(124521)
+    _, _, key_eval = jr.split(key_base, 3)
+    mppi.eval(run=run, key_eval=key_eval, eval_cbs=eval_cbs)
 
 if __name__ == "__main__":
-    with ipdb.launch_ipdb_on_exception():
-        app()
-    # app()
+    # with ipdb.launch_ipdb_on_exception():
+    #     app()
+    app()
