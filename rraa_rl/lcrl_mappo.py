@@ -129,6 +129,10 @@ class LCRLMAPPOAgent:
         )
         actor_def = IndexAtEnd(actor_def, n_out=env.ldba.n_states)
 
+        if not dummy_obs.base_is_array():
+            critic_def = env.add_obs_preprocessor(critic_def)
+            actor_def = env.add_obs_preprocessor(actor_def)
+
         network_info = dict(
             critic=(critic_def, (dummy_obs,)),
             actor=(actor_def, (dummy_obs,)),
