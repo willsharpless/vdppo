@@ -18,6 +18,7 @@ from matplotlib.collections import EllipseCollection
 from matplotlib.colors import CenteredNorm, to_rgba
 
 from rraa_rl.collector import RolloutOutput
+from rraa_rl.distribution import tfd, tfp
 from rraa_rl.jax_utils import jax_vmap, rep_vmap
 from rraa_rl.lcrl.lcrl_wrapper import LCRLWrapper
 from rraa_rl.lcrl_mappo import LCRLMAPPOAgent
@@ -404,13 +405,35 @@ class VizValues(struct.PyTreeNode):
         bbt_V = agent.network.select("critic")(bb_obs_aug)
         assert bbt_V.shape == (len_x, len_y, env.ldba.n_states)
 
-        return bbt_V
+        def get_actions(automata_idx: jnp.ndarray):
+            bb_automata_idx = jnp.full((len_x, len_y), automata_idx)
+            bb_ldba_state = LDBAState(bb_automata_idx, jnp.zeros((len_x, len_y), dtype=bool))
+            bb_state = LCRLWrapper.State(bb_ldba_state, bb_state_base)
+            bb_obs_ = jax_vmap(env.get_obs, rep=2)(bb_state)
+
+            def get_mode_and_prob(obs_):
+                act_dist: tfd.JointDistributionSequential = agent.network.select("actor")(obs_)
+                n_act = act_dist.mode()
+                n_log_probs = act_dist.log_prob_parts(n_act)[:-1]
+                n_probs = jnp.array([jnp.exp(lp).squeeze() for lp in n_log_probs])
+                assert n_probs.shape == (env.n_agents,)
+                return n_act, n_probs
+
+            bbn_act, bbn_probs = jax_vmap(get_mode_and_prob, rep=2)(bb_obs_)
+            return bbn_act, bbn_probs
+
+        t_automata_idx = jnp.arange(env.ldba.n_states)
+        bbtn_act, bbtn_probs = jax.vmap(get_actions, out_axes=2)(t_automata_idx)
+        assert bbtn_probs.shape == (len_x, len_y, env.ldba.n_states, env.n_agents)
+
+        return bbt_V, bbtn_act, bbtn_probs
 
     def __call__(self, p: CallbackProps):
         if p.env.n_agents > 1:
             return
 
-        bbt_V = jax.device_get(self.get_value(p.agent))
+        bbtn_act: list[jnp.ndarray] # list for each agent.
+        bbt_V, bbtn_act, bbtn_probs = jax.device_get(self.get_value(p.agent))
 
         env: LCRLWrapper = p.agent.env
         env_base: GridworldMABase = env.base
@@ -434,6 +457,46 @@ class VizValues(struct.PyTreeNode):
         plot_dir = p.run.plots_dir / "V"
         plot_dir.mkdir(parents=True, exist_ok=True)
         fig_path = plot_dir / f"V_step{p.train_step}.jpg"
+        fig.savefig(fig_path, bbox_inches="tight", dpi=500)
+        plt.close(fig)
+
+        # -----------------------------------------
+        if env.n_agents > 1:
+            return
+
+        bbt_probs = bbtn_probs.squeeze(3)
+        bbt_act = bbtn_act[0]
+
+        ncol = n_automata_states
+        figsize = 0.9 * np.array([3 * ncol, 3])
+        fig, axes = plt.subplots(1, ncol, figsize=figsize, layout="constrained")
+
+        action_to_str = ["⋅", "↑", "↓", "→", "←"]
+
+        for ii, ax in enumerate(axes):
+            im = ax.imshow(bbt_probs[:, :, ii].T, origin="lower", cmap="viridis", vmin=0, vmax=1)
+            env_base.setup_ax(ax)
+            ax.set_title(f"Automata state {ii}")
+
+            # For each cell, annotate with the action mode.
+            for (x, y), prob in np.ndenumerate(bbt_probs[:, :, ii]):
+                action_mode = bbt_act[x, y, ii][0]
+                ax.text(
+                    x,
+                    y,
+                    action_to_str[action_mode],
+                    color="white" if prob < 0.5 else "black",  # viridis is dark blue to yellow
+                    fontfamily="DejaVu Sans Mono",
+                    fontsize=8,
+                    ha="center",
+                    va="center",
+                )
+
+            cbar = fig.colorbar(im, ax=ax)
+
+        plot_dir = p.run.plots_dir / "pol"
+        plot_dir.mkdir(parents=True, exist_ok=True)
+        fig_path = plot_dir / f"pol_step{p.train_step}.jpg"
         fig.savefig(fig_path, bbox_inches="tight", dpi=500)
         plt.close(fig)
 

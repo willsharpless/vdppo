@@ -56,10 +56,11 @@ def train(
     collect_cbs: list,
     agent: VDMAPPOAgent | LCRLMAPPOAgent,
 ):
-    wandb_config = {"seed": seed, "cli_env_name": env_name, "agent_type": type(agent).__name__}
+    agent_name = agent.get_agent_name()
+    wandb_config = {"seed": seed, "cli_env_name": env_name, "agent_name": agent_name}
 
     env_name = f"{type(env).__name__}-{env_name}"
-    run = Run.create(env_name=env_name, name=name)
+    run = Run.create(env_name=env_name, agent_name=agent_name, name=name)
     trainer = Trainer(agent, trainer_cfg)
     trainer.train(run, env, eval_cbs=eval_cbs, collect_cbs=collect_cbs, debug=debug, wandb_config=wandb_config)
 

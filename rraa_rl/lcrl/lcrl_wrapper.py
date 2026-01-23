@@ -18,6 +18,7 @@ BaseClassState = TypeVar("BaseClassState")
 @define(slots=False)
 class LCRLEnvCfg(EnvCfg):
     specification: str = "F G herd_herded"
+    random_automata_init: bool = False
 
 
 @jdc.pytree_dataclass
@@ -88,8 +89,10 @@ class LCRLWrapper(EnvUsingBase):
     def reset(self, key: PRNGKeyArray) -> LCRLState:
         base_state = self.base.reset(key)
         accepting_frontier_mask = jnp.zeros(self.ldba.n_accepting_sets, dtype=bool)
-        automata_state0 = jnp.array(0, dtype=jnp.int32)
-        # automata_state0 = jnp.array(1, dtype=jnp.int32)
+        if self.cfg.random_automata_init:
+            automata_state0 = jr.randint(key, (), 0, self.ldba.n_states, dtype=jnp.int32)
+        else:
+            automata_state0 = jnp.array(0, dtype=jnp.int32)
         ldba_state = LDBAState(automata_state0, accepting_frontier_mask)
         return LCRLState(ldba_state, base_state)
 

@@ -17,6 +17,7 @@ class Run:
     name: str
     folder_suffix: str
     env_name: str
+    agent_name: str
     run_dir_: pathlib.Path
 
     @property
@@ -25,7 +26,7 @@ class Run:
         return f"{stamp}_{self.folder_suffix}"
 
     @staticmethod
-    def create(env_name: str, name: str | None = None):
+    def create(env_name: str, agent_name: str, name: str | None = None):
         now = datetime.datetime.now()
         runs_dir = get_runs_dir()
 
@@ -38,13 +39,14 @@ class Run:
         stamp = now.strftime("%Y%m%d-%H%M%S")
         folder_name = f"{stamp}_{folder_suffix}"
 
-        run_dir = runs_dir / env_name / folder_name
+        run_dir = runs_dir / env_name / agent_name / folder_name
         return Run(
             start_time=now,
             noun=noun,
             name=name,
             folder_suffix=folder_suffix,
             env_name=env_name,
+            agent_name=agent_name,
             run_dir_=run_dir,
         )
 

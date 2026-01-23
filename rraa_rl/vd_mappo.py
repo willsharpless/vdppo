@@ -28,8 +28,8 @@ from rraa_rl.distribution import tfd
 from rraa_rl.evaluate_dag import evaluate_dag
 from rraa_rl.gae import BellmanGUSingle, BellmanMax, BellmanMaxMin, BellmanMin, gae_generalized
 from rraa_rl.jax_types import FloatScalar, bFloat
-from rraa_rl.nn_modules import (BaseObsOnly, BothObs, IndexAtEnd, MAMultiDiscretePolicy, SeparateMAMultiDiscretePolicy,
-                                VDValue, VDValueShared, LearnTemporalEmbedding)
+from rraa_rl.nn_modules import (BaseObsOnly, BothObs, IndexAtEnd, LearnTemporalEmbedding, MAMultiDiscretePolicy,
+                                SeparateMAMultiDiscretePolicy, VDValue, VDValueShared)
 from rraa_rl.src.env.general_task.env import Env, EnvStep, StateWithTemporalNode
 from rraa_rl.train_state import ModuleDict, Params, TrainState
 from rraa_rl.train_utils import compute_norm_and_clip, has_any_nan_or_inf, tree_where
@@ -90,6 +90,7 @@ class VDMAPPOAgentCfg(Cfg):
     actor_learn_embedding: bool = False
     """If true, and actor_shared_trunk is true, then add an additional linear layer to learn per-node embeddings."""
 
+
 class VDMAPPOStatic:
     def __init__(self, temporal_node_alloc: np.ndarray | None = None):
         self.temporal_node_alloc = temporal_node_alloc
@@ -104,6 +105,10 @@ class VDMAPPOAgent:
     # Class containing static (non-pytree) data.
     static: VDMAPPOStatic = struct.field(pytree_node=False)
     cfg: VDMAPPOAgentCfg = struct.field(pytree_node=False)
+
+    @staticmethod
+    def get_agent_name() -> str:
+        return "VD"
 
     def to_state_dict(self):
         """For saving to disk."""

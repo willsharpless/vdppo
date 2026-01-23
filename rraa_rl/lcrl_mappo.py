@@ -92,6 +92,10 @@ class LCRLMAPPOAgent:
     # Class containing static (non-pytree) data.
     cfg: LCRLMAPPOAgentCfg = struct.field(pytree_node=False)
 
+    @staticmethod
+    def get_agent_name() -> str:
+        return "LCRL"
+
     def to_state_dict(self):
         """For saving to disk."""
         return flax.serialization.to_state_dict(self)
