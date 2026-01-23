@@ -169,6 +169,10 @@ class Env:
     def n_actions_per_agent(self) -> list[list[int]]:
         raise NotImplementedError("")
 
+    @property
+    def max_entropy(self) -> float:
+        raise NotImplementedError("")
+
     def _temporal_node_idx_to_node_type(self):
         """Map from temporal node idx to node type (as index)"""
         temporal_node_types = DAGNode.get_temporal_classes_sorted()

@@ -136,3 +136,30 @@ def gae_generalized(
     carry_final, _ = jax.lax.scan(body, carry0, None, length=T)
     T_Q_avg = carry_final[0]
     return T_Q_avg
+
+
+def sum_gae(
+    T_V: jnp.ndarray,
+    T_V_next: jnp.ndarray,
+    T_term: jnp.ndarray,
+    T_next_diff: jnp.ndarray,
+    T_rew: jnp.ndarray,
+    gamma: float,
+    gae_lambd: float,
+):
+    """Standard GAE implementation. Correctly handles truncations."""
+    T = len(T_V_next)
+    assert len(T_V_next) == len(T_term) == len(T_next_diff) == len(T_rew) == T
+
+    T_delta = T_rew + gamma * T_V_next * (1.0 - T_term) - T_V
+
+    def body(gae_next, inp):
+        delta, next_same_ep = inp
+        gae = delta + gamma * gae_lambd * next_same_ep * gae_next
+        return gae, gae
+
+    T_next_same_ep = 1.0 - T_next_diff
+    T_inp = (T_delta, T_next_same_ep)
+    _, T_A_gae = jax.lax.scan(body, 0.0, T_inp, length=T, reverse=True)
+    T_Q_gae = T_A_gae + T_V
+    return T_A_gae, T_Q_gae

@@ -27,6 +27,8 @@ class LCRLState(Generic[BaseClassState]):
 
 
 class LCRLWrapper(EnvUsingBase):
+    State = LCRLState
+
     def __init__(self, cfg: LCRLEnvCfg, base: BaseEnv, ldba: LDBA):
         self.cfg = cfg
         EnvUsingBase.__init__(self, cfg, self.specification, base_env=base)
@@ -59,8 +61,11 @@ class LCRLWrapper(EnvUsingBase):
         ldba_state_new = LDBAState(automata_state_new, frontier_mask_new)
         state_new = LCRLState(ldba_state=ldba_state_new, base=base_state)
 
+        info_aug = {"epsilon_taken": epsilon_taken, "has_frontier_changed": has_changed}
+        info = base_step.info | info_aug
+
         obs = self._augment_obs(state_new, base_step.obs)
-        step = base_step._replace(envstate=state_new, obs=obs)
+        step = base_step._replace(envstate=state_new, obs=obs, info=info)
         return step
 
     @property
