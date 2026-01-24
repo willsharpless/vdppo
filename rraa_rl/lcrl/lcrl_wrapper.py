@@ -98,7 +98,11 @@ class LCRLWrapper(EnvUsingBase):
 
     def get_eval_states(self, n_envs: int) -> LCRLState:
         key = jr.PRNGKey(seed=12345)
-        return self.reset_batch(key, n_envs)
+        states: LCRLState = self.reset_batch(key, n_envs)
+        # Override the automata state to be the initial state.
+        with jdc.copy_and_mutate(states) as states:
+            states.ldba_state.state = jnp.zeros((n_envs,), dtype=jnp.int32)
+        return states
 
     def get_obs(self, state: LCRLState) -> AugObsAutomata:
         base_obs = self.base.get_obs(state.base)

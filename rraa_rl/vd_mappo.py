@@ -101,6 +101,9 @@ class VDMAPPOAgentCfg(Cfg):
     p_max_pol: float = 0.999
     """Prevent extreme probabilities in the policy, enforced by construction."""
 
+    terminate_on_reach: bool = False
+    """If true, instead of truncating on reach, we terminate so that we don't bootstrap."""
+
 
 class VDMAPPOStatic:
     def __init__(self, temporal_node_alloc: np.ndarray | None = None):

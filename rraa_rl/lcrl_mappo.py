@@ -78,8 +78,10 @@ class LCRLMAPPOAgentCfg(Cfg):
     sink_penalty: float = -1.0
     """Penalty for entering the sink state in LCRL."""
 
-    random_automata_init: bool = False
+    random_automata_init: bool = True
     """Sets the corresponding parameter in LCRLWrapper."""
+
+    actor_p_max: float = 0.95
 
     # Network parameters.
     actor_hids: tuple[int, ...] = (128, 128)
@@ -125,7 +127,10 @@ class LCRLMAPPOAgent:
         critic_def = BaseObsOnly(critic_def)
 
         actor_def = SeparateMAMultiDiscretePolicy(
-            hidden_dims=cfg.actor_hids, n_actions_per_agent=env.n_actions_per_agent, n_out=env.ldba.n_states, p_max=0.98
+            hidden_dims=cfg.actor_hids,
+            n_actions_per_agent=env.n_actions_per_agent,
+            n_out=env.ldba.n_states,
+            p_max=cfg.actor_p_max,
         )
         actor_def = IndexAtEnd(actor_def, n_out=env.ldba.n_states)
 
