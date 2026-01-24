@@ -7,7 +7,7 @@ from rraa_rl.ldba.ldba import LDBA, Guard, Transition, parse_ltl2ldba
 from rraa_rl.src.env.general_task.env import Env
 from rraa_rl.src.env.general_task.gridworld import GridworldMA, GridworldMACfg, GridworldMap
 from rraa_rl.src.env.general_task.herd_base import HerdingHerdCfg
-from rraa_rl.src.env.general_task.herd_os import HerdOs, HerdOsPlay
+from rraa_rl.src.env.general_task.herd_os import HerdOs
 
 
 def get_cfg_herdos():
@@ -62,11 +62,7 @@ def get_env_and_cbs(env_name: str, agent_name: str) -> tuple[Env, list, list]:
     gridworld_eval_cbs = [gridworld_cbs.animate_eval_trajs, gridworld_cbs.VizValues.create()]
     gridworld_collect_cbs = [gridworld_cbs.collect_cb]
 
-    if env_name == "herdosplay":
-        env = HerdOsPlay()
-        cbs = herd_eval_cbs, herd_collect_cbs
-
-    elif env_name == "herdos":
+    if env_name == "herdos":
         cfg = get_cfg_herdos()
         env = HerdOs(cfg)
         cbs = herd_eval_cbs, herd_collect_cbs

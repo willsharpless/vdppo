@@ -9,8 +9,7 @@ from loguru import logger
 from rraa_rl.jax_types import BoolScalar
 from rraa_rl.src.env.general_task.env import (EnvCfg, EnvUsingBase, StateWithTemporalNode, StaticTemporalNodeMixin,
                                               StaticTemporalNodeMixinCfg)
-from rraa_rl.src.env.general_task.herd_base import (HerdBase, HerdBaseCfg, HerdBasePlay, HerdBasePlayCfg, HerdingHerd,
-                                                    HerdingHerdCfg)
+from rraa_rl.src.env.general_task.herd_base import HerdBase, HerdBaseCfg, HerdingHerd, HerdingHerdCfg
 
 
 @define(slots=False)
@@ -69,36 +68,36 @@ class HerdOs(StaticTemporalNodeMixin, EnvUsingBase):
         return should_term
 
 
-@define(slots=False)
-class HerdOsPlayCfg(EnvCfg, StaticTemporalNodeMixinCfg):
-    specification: str = "F herder_c1 && F herder_c2 && G(!herder_oob) && G(!herder_collide)"
-
-    base: HerdBasePlayCfg = HerdBasePlayCfg()
-
-
-class HerdOsPlay(StaticTemporalNodeMixin, EnvUsingBase):
-    """HerdOs but for playing around."""
-
-    Cfg = HerdOsCfg
-    State = StateWithTemporalNode
-
-    def __init__(self, cfg: HerdOsPlayCfg = HerdOsPlayCfg()):
-        self.cfg = cfg
-        base_env = HerdBasePlay(cfg.base, should_term_fn=self.should_terminate)
-        EnvUsingBase.__init__(self, cfg, self.specification, base_env)
-        StaticTemporalNodeMixin.__init__(self, cfg)
-
-    @property
-    def specification(self):
-        # return "F(G(herd_herded)) && G( !herder_collide ) && G( !herder_oob )"
-        # return "( !herder_collide && ! herder_oob ) U ( G(herd_herded && !herder_collide && ! herder_oob) )"
-        return self.cfg.specification
-
-    def should_terminate(self, predicates: dict[str, jnp.ndarray]) -> BoolScalar:
-        eps = 0.1
-
-        # Terminate when leaving the allowed area.
-        is_oob = predicates["herder_oob"] > eps
-        should_term = is_oob
-
-        return should_term
+# @define(slots=False)
+# class HerdOsPlayCfg(EnvCfg, StaticTemporalNodeMixinCfg):
+#     specification: str = "F herder_c1 && F herder_c2 && G(!herder_oob) && G(!herder_collide)"
+#
+#     base: HerdBasePlayCfg = HerdBasePlayCfg()
+#
+#
+# class HerdOsPlay(StaticTemporalNodeMixin, EnvUsingBase):
+#     """HerdOs but for playing around."""
+#
+#     Cfg = HerdOsCfg
+#     State = StateWithTemporalNode
+#
+#     def __init__(self, cfg: HerdOsPlayCfg = HerdOsPlayCfg()):
+#         self.cfg = cfg
+#         base_env = HerdBasePlay(cfg.base, should_term_fn=self.should_terminate)
+#         EnvUsingBase.__init__(self, cfg, self.specification, base_env)
+#         StaticTemporalNodeMixin.__init__(self, cfg)
+#
+#     @property
+#     def specification(self):
+#         # return "F(G(herd_herded)) && G( !herder_collide ) && G( !herder_oob )"
+#         # return "( !herder_collide && ! herder_oob ) U ( G(herd_herded && !herder_collide && ! herder_oob) )"
+#         return self.cfg.specification
+#
+#     def should_terminate(self, predicates: dict[str, jnp.ndarray]) -> BoolScalar:
+#         eps = 0.1
+#
+#         # Terminate when leaving the allowed area.
+#         is_oob = predicates["herder_oob"] > eps
+#         should_term = is_oob
+#
+#         return should_term

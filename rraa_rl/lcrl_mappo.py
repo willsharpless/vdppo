@@ -81,7 +81,7 @@ class LCRLMAPPOAgentCfg(Cfg):
     random_automata_init: bool = True
     """Sets the corresponding parameter in LCRLWrapper."""
 
-    actor_p_max: float = 0.95
+    actor_p_max: float = 0.9
 
     # Network parameters.
     actor_hids: tuple[int, ...] = (128, 128)

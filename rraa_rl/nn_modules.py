@@ -87,7 +87,7 @@ class SeparateMAMultiDiscretePolicy(nn.Module):
             split_rngs={"params": True},
             axis_size=self.n_out,
         )
-        policy = BatchPolicy(self.hidden_dims, self.n_actions_per_agent, self.p_max)(obs)
+        policy = BatchPolicy(self.hidden_dims, self.n_actions_per_agent, p_max=self.p_max)(obs)
         return policy
 
 
