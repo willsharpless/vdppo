@@ -72,7 +72,7 @@ def get_env(env_name: str) -> Env:
 @app.default()
 def main(
     name: str | None = None,
-    debug: bool = True,
+    debug: bool = False,
     env_name: str = "delivery",
     seed: int = 123,
     mppi_cfg: MPPI.Cfg = MPPI.Cfg(),
@@ -81,7 +81,6 @@ def main(
 
     eval_cbs = [
         delivery_cbs.animate_eval_trajs,
-        # delivery_cbs.animate_eval_trajs_mppi, # TODO plot the iteration for debug
     ]
 
     env_name = type(env).__name__

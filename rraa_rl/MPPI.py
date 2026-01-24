@@ -116,7 +116,7 @@ class MPPICfg(Cfg):
     log_every: int = 100
     save_every: int = 5_000
 
-    n_envs: int = 10
+    n_envs: int = 128
 
     # mppi_samples: int = 1_000
     # mppi_horizon_H: int = 10
@@ -153,11 +153,11 @@ class MPPI:
         return self_new
 
     def step_single_fn_mppi(self, state: Any, control_guess: Any, key:jr.PRNGKey):
-        control, updated_control_guess, JHK_rollout_imag = self.mppi_policy(
+        control, updated_control_guess = self.mppi_policy(
             state, control_guess, key
         )
         step_result = self.env.step_control(state, control)
-        return step_result, control, updated_control_guess, JHK_rollout_imag
+        return step_result, control, updated_control_guess
     
     def step_single_fn(self, state: Any, control: Any):
         step_result = self.env.step_control(state, control)
@@ -214,7 +214,7 @@ class MPPI:
                 lambda predicates_next: evaluate_ltl_finite(self.env, predicates_next, which=jnp)
             )(KH_rollout_imag.predicates_next)
 
-            # Compute weights
+            # Compute weights (DOESNT WORK)
             # costs = 1. * K_robustness[0]
             # costs = K_robustness[0]
             # weights = jnp.exp(-costs / lambda_curr)
@@ -224,8 +224,7 @@ class MPPI:
             # updated_control_guess = control_guess_traj + jnp.sum(weights[:, None, None, None] * KHNA_sample_control_perturbation, axis=0)
 
             # Take the best sample
-            top_node = jnp.array(list(K_robustness.keys())).max().item()
-            updated_control_guess = KHNA_perturbed_control_traj[jnp.argmax(K_robustness[top_node]), ...]  # Take the best sample
+            updated_control_guess = KHNA_perturbed_control_traj[jnp.argmax(K_robustness[self.env.dag_root]), ...]  # Take the best sample
 
             # Bound updated control guess
             updated_control_guess = jnp.clip(updated_control_guess, jnp.array(self.env.base.control_lim_lo), jnp.array(self.env.base.control_lim_hi))
@@ -234,14 +233,14 @@ class MPPI:
             lambda_curr = lambda_curr * self.cfg.mppi_shrink_factor
             noise_sd_curr = noise_sd_curr * self.cfg.mppi_shrink_factor
 
-            return (new_key, updated_control_guess, noise_sd_curr, lambda_curr), KH_rollout_imag
+            return (new_key, updated_control_guess, noise_sd_curr, lambda_curr), None
 
         carry0 = (key, control_guess_traj, self.cfg.mppi_noise_sd_init, self.cfg.mppi_lambda_init)
-        (_, updated_control_guess, _, _), JKH_rollout_imag = lax.scan(mppi_iter, carry0, xs=None, length=self.cfg.mppi_iterations)
+        (_, updated_control_guess, _, _), _ = lax.scan(mppi_iter, carry0, xs=None, length=self.cfg.mppi_iterations)
 
         control = updated_control_guess[0, ...]  # Take the first control in the trajectory
         updated_control_guess_shifted = jnp.roll(updated_control_guess, shift=-1, axis=0)
-        return control, updated_control_guess_shifted, JKH_rollout_imag
+        return control, updated_control_guess_shifted
 
     def collect_full_traj(
         self,
@@ -256,8 +255,8 @@ class MPPI:
             b_keys = jr.split(key, self.cfg.n_envs)
 
             b_obs = jax.vmap(self.env.get_obs)(b_state)
-            b_step_result, b_act, b_updated_control_guess_traj, BJHK_rollout_imag = jax.vmap(self.step_single_fn_mppi)(b_state, b_control_guess_traj, b_keys)
-            out = (RolloutOutput.from_rollout(b_state, b_obs, b_step_result, b_act), BJHK_rollout_imag)
+            b_step_result, b_act, b_updated_control_guess_traj = jax.vmap(self.step_single_fn_mppi)(b_state, b_control_guess_traj, b_keys)
+            out = RolloutOutput.from_rollout(b_state, b_obs, b_step_result, b_act)
 
             carry_new = (b_step_result.envstate, b_updated_control_guess_traj, new_key)
             return carry_new, out
@@ -265,10 +264,10 @@ class MPPI:
         control_guess_0 = jnp.zeros((self.cfg.n_envs, self.cfg.mppi_horizon_H, self.env.n_agents, self.env.base.action_dim))
         # TODO could also try random
         carry0 = (b_state_0, control_guess_0, key_eval)
-        carry_out, both_Tb_rollouts = lax.scan(rollout, carry0, xs=None, length=T)
+        carry_out, Tb_rollout = lax.scan(rollout, carry0, xs=None, length=T)
 
-        return both_Tb_rollouts
-    
+        return Tb_rollout
+
     ## DEBUG versions (looping instead of scanning for plots)
 
     def step_single_fn_mppi_debug(self, state: Any, control_guess: Any, key:jr.PRNGKey):
@@ -421,22 +420,15 @@ class MPPI:
 
         mppi_rollouts = None
         if debug:
-            both_Tb_rollouts = self.collect_full_traj_debug(
+            Tb_rollout, mppi_rollouts = self.collect_full_traj_debug(
                 self.b_state0, eval_T, eval_n_envs, key_eval
             )
-
-            # Tb_rollout, mppi_rollouts = both_Tb_rollouts
-            # mppi_rollouts = jax.device_get(mppi_rollouts)
+            mppi_rollouts = jax.device_get(mppi_rollouts)
             
         else:
-            # TODO remove the mppi rollout bug
-            # Tb_rollout = self.collect_full_traj(
-            both_Tb_rollouts = self.collect_full_traj(
+            Tb_rollout = self.collect_full_traj(
                 self.b_state0, eval_T, key_eval
             )
-        
-        Tb_rollout, mppi_rollouts = both_Tb_rollouts
-        mppi_rollouts = jax.device_get(mppi_rollouts)
             
         Tb_rollout = jax.device_get(Tb_rollout)
         bT_rollout = Tb_rollout.switch01()
