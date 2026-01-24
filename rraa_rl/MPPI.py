@@ -112,23 +112,18 @@ class Callback(Protocol):
 @Parameter("*", group="MPPI")
 @define
 class MPPICfg(Cfg):
+    mode: str = "planned"  # "rhc" or "planned"
+
     eval_every: int = 5_000
     log_every: int = 100
     save_every: int = 5_000
 
     n_envs: int = 128
 
-    # mppi_samples: int = 1_000
-    # mppi_horizon_H: int = 10
-    # mppi_iterations: int = 50
-
+    # Works for one-shot or rhc, F target_dense0 & G(!obstacles) & G(!oob)
     mppi_samples: int = 1_000
-    mppi_horizon_H: int = 50
-    mppi_iterations: int = 10
-
-    # mppi_samples: int = 1000
-    # mppi_horizon_H: int = 20
-    # mppi_iterations: int = 3
+    mppi_horizon_H: int = 100
+    mppi_iterations: int = 20
 
     mppi_noise_sd_init: float = 10.
     mppi_lambda_init: float = 50.
@@ -152,17 +147,19 @@ class MPPI:
 
         return self_new
 
-    def step_single_fn_mppi(self, state: Any, control_guess: Any, key:jr.PRNGKey):
-        control, updated_control_guess = self.mppi_policy(
-            state, control_guess, key
-        )
+    def step_single_fn_mppi_rhc(self, state: Any, control_guess: Any, key:jr.PRNGKey):
+        control, updated_control_guess = self.mppi_policy(state, control_guess, key)
         step_result = self.env.step_control(state, control)
-        return step_result, control, updated_control_guess
+        return step_result, control, jnp.roll(updated_control_guess, shift=-1, axis=0)
     
+    def step_single_fn_mppi_planned(self, state: Any, control_plan: Any, key:jr.PRNGKey):
+        step_result = self.env.step_control(state, control_plan[0, ...])
+        return step_result, control_plan[0, ...], jnp.roll(control_plan, shift=-1, axis=0)
+
     def step_single_fn(self, state: Any, control: Any):
         step_result = self.env.step_control(state, control)
         return step_result, control
-
+    
     def mppi_policy(self, state:Any, control_guess_traj: Any, key:jr.PRNGKey) -> Any:
         """MPPI control policy: 
         iter:
@@ -239,8 +236,7 @@ class MPPI:
         (_, updated_control_guess, _, _), _ = lax.scan(mppi_iter, carry0, xs=None, length=self.cfg.mppi_iterations)
 
         control = updated_control_guess[0, ...]  # Take the first control in the trajectory
-        updated_control_guess_shifted = jnp.roll(updated_control_guess, shift=-1, axis=0)
-        return control, updated_control_guess_shifted
+        return control, updated_control_guess
 
     def collect_full_traj(
         self,
@@ -249,28 +245,45 @@ class MPPI:
         key_eval: jr.PRNGKey,
     ) -> tuple[Self, RolloutOutput, dict]:
         
+        # Compute Receding Horizon Style MPPI 
+        if self.cfg.mode == "rhc":
+            step_fn = self.step_single_fn_mppi_rhc
+            control_traj_0 = jnp.zeros((self.cfg.n_envs, self.cfg.mppi_horizon_H, self.env.n_agents, self.env.base.action_dim))
+
+        # One-shot MPPI Trajectory Optimization
+        elif self.cfg.mode == "planned":
+            step_fn = self.step_single_fn_mppi_planned
+
+            # Plan MPPI control traj
+            control_guess_0 = jnp.zeros((self.cfg.n_envs, self.cfg.mppi_horizon_H, self.env.n_agents, self.env.base.action_dim))
+            key, new_key = jr.split(key_eval)
+            b_keys = jr.split(key, self.cfg.n_envs)
+            _, control_traj_0 = jax.vmap(self.mppi_policy)(b_state_0, control_guess_0, b_keys)
+
+        else:
+            raise ValueError(f"Unknown MPPI mode: {self.cfg.mode}")
+
         def rollout(carry, _):
             (b_state, b_control_guess_traj, key) = carry
             key, new_key = jr.split(key)
             b_keys = jr.split(key, self.cfg.n_envs)
 
             b_obs = jax.vmap(self.env.get_obs)(b_state)
-            b_step_result, b_act, b_updated_control_guess_traj = jax.vmap(self.step_single_fn_mppi)(b_state, b_control_guess_traj, b_keys)
+            b_step_result, b_act, b_updated_control_guess_traj = jax.vmap(step_fn)(b_state, b_control_guess_traj, b_keys)
             out = RolloutOutput.from_rollout(b_state, b_obs, b_step_result, b_act)
 
             carry_new = (b_step_result.envstate, b_updated_control_guess_traj, new_key)
             return carry_new, out
-
-        control_guess_0 = jnp.zeros((self.cfg.n_envs, self.cfg.mppi_horizon_H, self.env.n_agents, self.env.base.action_dim))
+        
         # TODO could also try random
-        carry0 = (b_state_0, control_guess_0, key_eval)
+        carry0 = (b_state_0, control_traj_0, key_eval)
         carry_out, Tb_rollout = lax.scan(rollout, carry0, xs=None, length=T)
 
         return Tb_rollout
 
     ## DEBUG versions (looping instead of scanning for plots)
 
-    def step_single_fn_mppi_debug(self, state: Any, control_guess: Any, key:jr.PRNGKey):
+    def step_single_fn_mppi_rhc_debug(self, state: Any, control_guess: Any, key:jr.PRNGKey):
         control, updated_control_guess, JHK_rollout_imag = self.mppi_policy_debug(
             state, control_guess, key
         )
@@ -386,7 +399,7 @@ class MPPI:
             b_keys = jr.split(key, n_envs)
 
             b_obs = jax.vmap(self.env.get_obs)(b_state)
-            b_step_result, b_act, b_updated_control_guess_traj, BJHK_rollout_imag = jax.vmap(self.step_single_fn_mppi_debug)(b_state, b_control_guess_traj, b_keys)
+            b_step_result, b_act, b_updated_control_guess_traj, BJHK_rollout_imag = jax.vmap(self.step_single_fn_mppi_rhc_debug)(b_state, b_control_guess_traj, b_keys)
             
             rollout_out = RolloutOutput.from_rollout(b_state, b_obs, b_step_result, b_act)
             
