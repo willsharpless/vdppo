@@ -35,6 +35,7 @@ class CallbackProps:
     collector_train: Collector
     Tb_rollout: RolloutOutput
     info_update: dict
+    mppi_rollouts: list[RolloutOutput] = None
 
     @property
     def env(self):

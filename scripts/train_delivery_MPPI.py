@@ -23,7 +23,10 @@ def get_env(env_name: str) -> Env:
     env_name = env_name.lower()
 
     if env_name == "delivery":
-        specification = "F target0 && G(!obstacles) && G(!oob)"
+        # specification = "F target0 && G(!obstacles) && G(!oob)"
+        specification = "F target0_dense && G(!obstacles) && G(!oob)"
+        # specification = "F target0_dense"
+
         # specification = "F target0 && F target1 && G(!obstacles) && G(!oob)"
         # specification = "F target0 && F target1 && G(!obstacles) && G(!oob) && G(!collide)"
         # specification = "F target0 && F target1 && G(!obstacles) && G(!oob) && G(F(ags_to_base_agent))"
@@ -69,7 +72,7 @@ def get_env(env_name: str) -> Env:
 @app.default()
 def main(
     name: str | None = None,
-    debug: bool = False,
+    debug: bool = True,
     env_name: str = "delivery",
     seed: int = 123,
     mppi_cfg: MPPI.Cfg = MPPI.Cfg(),
@@ -82,7 +85,7 @@ def main(
     ]
 
     env_name = type(env).__name__
-    run = Run.create(env_name=env_name, name=name)
+    run = Run.create(env_name=env_name, name=name, agent_name="MPPI")
 
     mppi = MPPI(env=env, cfg=mppi_cfg, key=seed)
 
@@ -92,6 +95,7 @@ def main(
         run=run, key_eval=key_eval, eval_cbs=eval_cbs,
         debug=debug,
     )
+    print("done")
 
 if __name__ == "__main__":
     # with ipdb.launch_ipdb_on_exception():

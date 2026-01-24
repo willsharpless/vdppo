@@ -340,7 +340,18 @@ class StaticTemporalNodeMixin:
         step = base_step._replace(envstate=state_new, obs=obs)
 
         return step
+    
+    def step_control(self, state: Any, control: jnp.ndarray):
+        base_step: EnvStep = self.base.step_control(state.base, control)
 
+        temporal_node_idx = state.temporal_node_idx
+
+        state_new = jdc.replace(state, temporal_node_idx=temporal_node_idx, base=base_step.envstate)
+        obs = self._augment_obs(state_new, base_step.obs)
+        step = base_step._replace(envstate=state_new, obs=obs)
+
+        return step
+    
     def get_obs(self: Self | StaticTemporalNodeMixinProtocol, state: Any) -> Any:
         base_obs = self.base.get_obs(state.base)
         return self._augment_obs(state, base_obs)

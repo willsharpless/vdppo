@@ -28,6 +28,8 @@ from rraa_rl.run import Run
 from rraa_rl.src.env.general_task.env import Env, EnvStep, StateWithTemporalNode
 from rraa_rl.vd_mappo import VDMAPPOAgent
 from rraa_rl.jax_utils import switch01, tree_where_dim0
+from rraa_rl.src.get_agent_cfg import get_lcrl_agent_cfg, get_vd_agent_cfg
+from rraa_rl.trainer import CallbackProps
 
 @struct.dataclass
 class RolloutOutput:
@@ -84,24 +86,24 @@ class RolloutOutput:
         assert hasattr(self.state_now, "temporal_node_idx")
         return self.state_now.temporal_node_idx
 
-@define
-class CallbackProps:
-    run: Run
+# @define
+# class CallbackProps:
+#     run: Run
 
-    train_step: int
-    agent: VDMAPPOAgent
-    bT_test_rollouts: list[RolloutOutput]
-    bT_test_rollout: RolloutOutput
-    test_trigger_dict: dict[tuple[str, str], np.ndarray]
-    temporal_values_dict: dict[int, np.ndarray]
+#     train_step: int
+#     agent: VDMAPPOAgent
+#     bT_test_rollouts: list[RolloutOutput]
+#     bT_test_rollout: RolloutOutput
+#     test_trigger_dict: dict[tuple[str, str], np.ndarray]
+#     temporal_values_dict: dict[int, np.ndarray]
 
-    collector_train: Collector
-    Tb_rollout: RolloutOutput
-    info_update: dict
+#     collector_train: Collector
+#     Tb_rollout: RolloutOutput
+#     info_update: dict
 
-    @property
-    def env(self):
-        return self.agent.env
+#     @property
+#     def env(self):
+#         return self.agent.env
 
 
 class Callback(Protocol):
@@ -120,17 +122,17 @@ class MPPICfg(Cfg):
     # mppi_horizon_H: int = 10
     # mppi_iterations: int = 50
 
-    mppi_samples: int = 100
-    mppi_horizon_H: int = 10
-    mppi_iterations: int = 2
+    mppi_samples: int = 1_000
+    mppi_horizon_H: int = 50
+    mppi_iterations: int = 10
 
     # mppi_samples: int = 1000
     # mppi_horizon_H: int = 20
     # mppi_iterations: int = 3
 
-    mppi_noise_sd_init: float = 0.1
+    mppi_noise_sd_init: float = 10.
     mppi_lambda_init: float = 50.
-    mppi_shrink_factor: float = 0.5
+    mppi_shrink_factor: float = 0.6
 
 class MPPI:
     Cfg = MPPICfg
@@ -211,15 +213,19 @@ class MPPI:
             K_robustness = jax.vmap(
                 lambda predicates_next: evaluate_ltl_finite(self.env, predicates_next, which=jnp)
             )(KH_rollout_imag.predicates_next)
-            costs = -1 * K_robustness[0] # TODOD FIXME which node, first or last?
 
             # Compute weights
-            weights = jnp.exp(-costs / lambda_curr)
+            # costs = 1. * K_robustness[0]
+            # costs = K_robustness[0]
+            # weights = jnp.exp(-costs / lambda_curr)
             # weights = jnp.exp(-(costs - costs.min(axis=0)) / mppi_lambda_curr) # TODO test: advantage-based, best (Althoff)
             # weights = jnp.exp(-(costs - jnp.mean(costs, axis=0)) / mppi_lambda_curr) # TODO test: advantage-based, mean
-            weights = weights / jnp.sum(weights)
+            # weights = weights / jnp.sum(weights)
+            # updated_control_guess = control_guess_traj + jnp.sum(weights[:, None, None, None] * KHNA_sample_control_perturbation, axis=0)
 
-            updated_control_guess = control_guess_traj + jnp.sum(weights[:, None, None, None] * KHNA_perturbed_control_traj, axis=0)
+            # Take the best sample
+            top_node = jnp.array(list(K_robustness.keys())).max().item()
+            updated_control_guess = KHNA_perturbed_control_traj[jnp.argmax(K_robustness[top_node]), ...]  # Take the best sample
 
             # Bound updated control guess
             updated_control_guess = jnp.clip(updated_control_guess, jnp.array(self.env.base.control_lim_lo), jnp.array(self.env.base.control_lim_hi))
@@ -316,15 +322,18 @@ class MPPI:
             K_robustness = jax.vmap(
                 lambda predicates_next: evaluate_ltl_finite(self.env, predicates_next, which=jnp)
             )(KH_rollout_imag.predicates_next)
-            costs = -1 * K_robustness[0] # TODOD FIXME which node, first or last?
 
-            # Compute weights
-            weights = jnp.exp(-costs / lambda_curr)
-            # weights = jnp.exp(-(costs - costs.min(axis=0)) / mppi_lambda_curr) # TODO test: advantage-based, best (Althoff)
-            # weights = jnp.exp(-(costs - jnp.mean(costs, axis=0)) / mppi_lambda_curr) # TODO test: advantage-based, mean
-            weights = weights / jnp.sum(weights)
+            # # Compute weights
+            # costs = -1. * K_robustness[1]
+            # weights = jnp.exp(-costs / lambda_curr)
+            # # weights = jnp.exp(-(costs - costs.min(axis=0)) / mppi_lambda_curr) # TODO test: advantage-based, best (Althoff)
+            # # weights = jnp.exp(-(costs - jnp.mean(costs, axis=0)) / mppi_lambda_curr) # TODO test: advantage-based, mean
+            # weights = weights / jnp.sum(weights)
+            # updated_control_guess = control_guess_traj + jnp.sum(weights[:, None, None, None] * KHNA_sample_control_perturbation, axis=0)
 
-            updated_control_guess = control_guess_traj + jnp.sum(weights[:, None, None, None] * KHNA_perturbed_control_traj, axis=0)
+            # Take the best sample
+            top_node = jnp.array(list(K_robustness.keys())).max().item()
+            updated_control_guess = KHNA_perturbed_control_traj[jnp.argmax(K_robustness[top_node]), ...]  # Take the best sample
 
             # Bound updated control guess
             updated_control_guess = jnp.clip(updated_control_guess, jnp.array(self.env.base.control_lim_lo), jnp.array(self.env.base.control_lim_hi))
@@ -404,28 +413,33 @@ class MPPI:
         debug: bool = False,
     ):
         env = self.env
-        eval_T = 10 if debug else env.eval_T
+        eval_T = 3 if debug else env.eval_T
         eval_n_envs = 1 if debug else self.cfg.n_envs
 
         if self.b_state0 is None:
             self.b_state0 = env.get_eval_states(eval_n_envs)
 
+        mppi_rollouts = None
         if debug:
             both_Tb_rollouts = self.collect_full_traj_debug(
                 self.b_state0, eval_T, eval_n_envs, key_eval
             )
+
+            # Tb_rollout, mppi_rollouts = both_Tb_rollouts
+            # mppi_rollouts = jax.device_get(mppi_rollouts)
+            
         else:
+            # TODO remove the mppi rollout bug
+            # Tb_rollout = self.collect_full_traj(
             both_Tb_rollouts = self.collect_full_traj(
                 self.b_state0, eval_T, key_eval
             )
+        
+        Tb_rollout, mppi_rollouts = both_Tb_rollouts
+        mppi_rollouts = jax.device_get(mppi_rollouts)
             
-
-        Tb_rollout, TBJKH_rollout_mppi = both_Tb_rollouts
-
         Tb_rollout = jax.device_get(Tb_rollout)
         bT_rollout = Tb_rollout.switch01()
-
-        TBJKH_rollout_mppi = jax.device_get(TBJKH_rollout_mppi)
 
         # Extract each rollout
         trajs = extract_rollouts_eval(bT_rollout)
@@ -473,8 +487,15 @@ class MPPI:
             yaml.dump(cfg_to_save, f)
         logger.success("Saved config to {}".format(yaml_path))
 
-        ag_cfg = VDMAPPOAgent.Cfg()
-        dummy_agent = VDMAPPOAgent.create(0, ag_cfg, env)
+        agent_cfg = VDMAPPOAgent.Cfg()
+        # agent_cfg = get_vd_agent_cfg("Delivery")
+        # dummy_agent = VDMAPPOAgent.create(0, agent_cfg, env)
+        class DummyAgent:
+            def __init__(self, agent_cfg, env):
+                self.seed = 0
+                self.cfg = agent_cfg
+                self.env = env
+        dummy_agent = DummyAgent(agent_cfg, env)
 
         cb_props = CallbackProps(run, -1, dummy_agent, None, None, None, None, None, None, None)
         cb_props.train_step = 0
@@ -485,7 +506,8 @@ class MPPI:
         cb_props.temporal_values_dict = temporal_node_values
         cb_props.collector_train = None
 
-        # cb_props.TBJKH_rollout_mppi = TBJKH_rollout_mppi # for plotting MPPI its
+        if debug:  # for plotting MPPI its
+            cb_props.mppi_rollouts = mppi_rollouts
 
         for cb in eval_cbs:
             cb_name = cb.__name__ if hasattr(cb, "__name__") else str(type(cb))

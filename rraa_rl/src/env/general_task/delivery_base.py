@@ -469,9 +469,9 @@ class DeliveryBase(BaseEnv):
         return pred
 
     def get_predicates_float(self, state: DeliveryBaseState):
-        # pred_herder_circs = self.pred_herder_circs(state)
-        # return {"herder_c1": pred_herder_circs[0], "herder_c2": pred_herder_circs[1]}
-        return {}
+        pred_herder_circs = self.pred_herder_circs(state)
+        return {"target0_dense": pred_herder_circs[0], "target1_dense": pred_herder_circs[1]}
+        # return {}
 
     def get_predicates(self, state: DeliveryBaseState):
         predicates_bool = self.get_predicates_bool(state)

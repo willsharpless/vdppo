@@ -275,12 +275,16 @@ def animate_eval_trajs_single_agent(p: CallbackProps):
         node_ix = env.temporal_nodes[node_idx]
         pred_info = collect_predicate_info(env.dag_nodes, node_ix)
         node_idx_to_predicates.append(pred_info.predicates)
-    plot_predicates = ['target0', 'target1', 'oob', 'obstacles']
+    plot_predicates = ['target0', 'target1', 'target0_dense', 'target1_dense', 'oob', 'obstacles']
     if cfg.dynamic_targets:
         plot_predicates = ['oob', 'obstacles']
 
+    # Check if MPPI rollouts are available
+    has_mppi = hasattr(p, 'mppi_rollouts') and p.mppi_rollouts is not None
+
     circ_collections = []
     target_circs = []
+    mppi_line_collections = []  # Store line collections for MPPI trajectories
     start_idxs, end_idxs = [], []
     start_idx = 0
     for ii, ax in enumerate(axes):
@@ -327,6 +331,19 @@ def animate_eval_trajs_single_agent(p: CallbackProps):
         ax.add_collection(ec)
         circ_collections.append(ec)
 
+        # Add MPPI trajectory lines if available
+        if has_mppi:
+            # Create line objects for each MPPI sample trajectory
+            # We'll update these during animation
+            mppi_lines_ax = []
+            # Get number of MPPI samples from the rollouts (K dimension)
+            # mppi_rollouts shape: (T, B, J, K, H) for the state
+            n_mppi_samples = p.mppi_rollouts.state_now.base.herder_state.shape[3]
+            for _ in range(n_mppi_samples):
+                line, = ax.plot([], [], color='black', alpha=0.05, lw=0.5, animated=True)
+                mppi_lines_ax.append(line)
+            mppi_line_collections.append(mppi_lines_ax)
+
     kk_text = ax.text(
         0.02,
         0.98,
@@ -347,6 +364,10 @@ def animate_eval_trajs_single_agent(p: CallbackProps):
         for target_circs_ax in target_circs:
             for circ in target_circs_ax:
                 circ.set_animated(True)
+    if has_mppi:
+        for mppi_lines_ax in mppi_line_collections:
+            for line in mppi_lines_ax:
+                line.set_animated(True)
     kk_text.set_animated(True)
 
     # Prime the renderer + background
@@ -411,6 +432,25 @@ def animate_eval_trajs_single_agent(p: CallbackProps):
                 circ_collections[ii].set_facecolor(facecolors)
                 circ_collections[ii].set_edgecolor(edgecolors)
 
+                # Update MPPI trajectory lines if available
+                if has_mppi and n_traj > 0:
+                    # mppi_rollouts shape: (T, B, J, K, H) for state_now.base.herder_state
+                    # Get the first trajectory in this temporal node group
+                    batch_idx = start_idx
+                    # Get MPPI rollouts for this timestep, last iteration (-1 on J dim)
+                    mppi_state = p.mppi_rollouts.state_now.base.herder_state
+                    t_idx = min(kk, mppi_state.shape[0] - 1)
+                    # (K, H, 2) - positions for all K samples over H horizon steps
+                    KH_pos = mppi_state[t_idx, batch_idx, -1, :, :, 0, :2]
+                    n_mppi_samples = KH_pos.shape[0]
+                    
+                    for k_idx, line in enumerate(mppi_line_collections[ii]):
+                        if k_idx < n_mppi_samples:
+                            H_pos = KH_pos[k_idx]  # (H, 2)
+                            line.set_data(H_pos[:, 0], H_pos[:, 1])
+                        else:
+                            line.set_data([], [])
+
             # Draw only animated artists
             for ec in circ_collections:
                 ec.axes.draw_artist(ec)
@@ -418,6 +458,10 @@ def animate_eval_trajs_single_agent(p: CallbackProps):
                 for target_circs_ax in target_circs:
                     for circ in target_circs_ax:
                         circ.axes.draw_artist(circ)
+            if has_mppi:
+                for mppi_lines_ax in mppi_line_collections:
+                    for line in mppi_lines_ax:
+                        line.axes.draw_artist(line)
             kk_text.axes.draw_artist(kk_text)
 
             # Blit + grab frame
