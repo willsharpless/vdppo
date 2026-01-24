@@ -8,6 +8,7 @@ from rraa_rl.src.env.general_task.env import Env
 from rraa_rl.src.env.general_task.gridworld import GridworldMA, GridworldMACfg, GridworldMap
 from rraa_rl.src.env.general_task.herd_base import HerdingHerdCfg
 from rraa_rl.src.env.general_task.herd_os import HerdOs, HerdOsPlay
+from rraa_rl.src.env.general_task.delivery import DeliveryBase, DeliveryBaseCfg, Delivery, DeliveryCfg
 
 
 def get_cfg_herdos():
@@ -61,6 +62,15 @@ def get_env_and_cbs(env_name: str, agent_name: str) -> tuple[Env, list, list]:
 
     gridworld_eval_cbs = [gridworld_cbs.animate_eval_trajs, gridworld_cbs.VizValues.create()]
     gridworld_collect_cbs = [gridworld_cbs.collect_cb]
+
+    delivery_eval_cbs = [
+        delivery_cbs.animate_eval_trajs,
+        delivery_cbs.PlotRootTrajPreds.create(),
+        delivery_cbs.plot_eval_trajs,
+        delivery_cbs.VizValues.create(),
+    ]
+    # eval_cbs = [herd_os_cbs.plot_eval_trajs, VizValues.create()]
+    delivery_collect_cbs = [delivery_cbs.viz_collect_data, delivery_cbs.viz_obs_histogram]
 
     if env_name == "herdosplay":
         env = HerdOsPlay()
@@ -262,6 +272,52 @@ def get_env_and_cbs(env_name: str, agent_name: str) -> tuple[Env, list, list]:
 
         env = GridworldMA(cfg)
         cbs = gridworld_eval_cbs, gridworld_collect_cbs
+
+    elif env_name == "delivery":
+        # specification = "F target0 && G(!oob)"
+        # specification = "G(F target0) && G(!oob)"
+        # specification = "F target0 && G(!obstacles) && G(!oob)"
+
+        # specification = "F target0 && G(!obstacles) && G(!oob)"
+        # specification = "F target0 && F target1 && G(!obstacles) && G(!oob)"
+        # specification = "F target0 && F target1 && G(!obstacles) && G(!oob) && G(!collide)"
+        # specification = "F target0 && F target1 && G(!obstacles) && G(!oob) && G(F(ags_to_base_agent))"
+        
+        # specification = "G(F target0) && G(F target1) && G(!oob) && G(F(ags_to_base_agent))"
+        specification = "G(F target0 && F target1) && G(!obstacles) && G(!oob) && G(!aerial_collide) && G(F herder0_base && F herder1_base)"
+
+        # to come
+        # specification = "F target0 && F target1 && G(!obstacles) && G(!oob) && G(ag_at_target => ag_to_base_agent)"
+        # specification = "G(F target0 && F target1) && G(!obstacles && !oob) && G(!ag_at_target || ag_to_base_agent)"
+        # specification = "G(F target0 && F target1) && G(!obstacles && !oob) && G(!ag1_at_target || ag1_to_base_agent) && G(!ag2_at_target || ag2_to_base_agent)"
+
+        ## TODO add !collide !!!
+        base_cfg = DeliveryBaseCfg()
+
+        ## 1 agent test
+        # base_cfg.n_herders = 1
+        # base_cfg.n_herd = 1
+        # base_cfg.acc_maxs = [1.0]
+        # base_cfg.vel_maxs = [0.5]
+
+        # base_cfg.n_herders = 2
+        # base_cfg.n_herd = 2
+        # base_cfg.acc_maxs = [3.0, 3.0]
+        # base_cfg.vel_maxs = [1.0, 1.0]
+
+        # 3 agent test with base agent (last agent)
+        base_cfg.base_agent = True
+        base_cfg.n_herders = 3
+        base_cfg.n_herd = 3
+        base_cfg.acc_maxs = [2.0, 2.0, 1.0]
+        base_cfg.vel_maxs = [1.0, 1.0, 0.1]
+        base_cfg.dynamic_targets = True
+        base_cfg.update_targets = True
+
+        cfg = Delivery.Cfg(specification=specification, base=base_cfg)
+        env = Delivery(cfg)
+
+        cbs = delivery_eval_cbs, delivery_collect_cbs
     else:
         raise ValueError(f"Unknown environment name: {env_name}")
 

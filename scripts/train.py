@@ -17,7 +17,7 @@ app = App()
 def vd(
     name: str | None = None,
     debug: bool = False,
-    env_name: str = "HerdOs",
+    env_name: str = "Delivery",
     seed: int = 123,
     trainer_cfg: TrainerCfg = TrainerCfg(),
 ):

@@ -524,6 +524,7 @@ def animate_eval_trajs_multi_agent(p: CallbackProps):
     # Use facecolor to indicate the current temporal node.
     colors_temporal_node = ["C0", "C1", "C2", "C4", "C5", "C6"]  # C3 is grey.
     pred_colors = {name: f"C{ii}" for ii, name in enumerate(env.pred_info.predicates)}
+    relevant_targets = [idx for idx in range(len(cfg.centers)) if f'target{idx}' in env.pred_info.predicates]
 
     # Use edgecolor to indicate alive vs dead.
     color_alive = to_rgba("C0", 0.0)
@@ -597,7 +598,7 @@ def animate_eval_trajs_multi_agent(p: CallbackProps):
             # Add target circles
             if cfg.dynamic_targets:
                 circs = []
-                for target_idx in range(len(cfg.centers)):
+                for target_idx in relevant_targets:
                     circ = plt.Circle((0, 0), cfg.radiuses[target_idx], 
                                     facecolor=pred_colors[f'target{target_idx}'], 
                                     edgecolor='none', alpha=0.5, animated=True)
@@ -701,6 +702,7 @@ def animate_eval_trajs_multi_agent(p: CallbackProps):
                     if cfg.dynamic_targets:
                         T_centers = T_state.base.centers
                         circs = target_circs[(ii, jj)]
+                        # ipdb.set_trace()
                         for target_idx, circ in enumerate(circs):
                             pos = T_centers[t_idx, target_idx, :]
                             assert pos.shape == (2,)

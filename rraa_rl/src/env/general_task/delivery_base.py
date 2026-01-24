@@ -1,5 +1,6 @@
 import functools as ft
 from typing import Any
+import ipdb
 
 import jax
 import jax.numpy as jnp
@@ -363,6 +364,21 @@ class DeliveryBase(BaseEnv):
             for j in range(i + 1, n_herders):
                 collide = collide | check_pair(i, j)
         return collide
+    
+    def is_just_herders_collide(self, state: DeliveryBaseState):
+        herder_pos = state.herder_state[:-1, 0:2]
+        n_herders = herder_pos.shape[0]
+
+        def check_pair(i: int, j: int):
+            dist = jnp.linalg.norm(herder_pos[i] - herder_pos[j])
+            collide = dist < 2 * self.cfg.agent_radius
+            return collide
+
+        collide = False
+        for i in range(n_herders):
+            for j in range(i + 1, n_herders):
+                collide = collide | check_pair(i, j)
+        return collide
 
     def is_herder_oob(self, state: DeliveryBaseState):
         herder_pos = state.herder_state[:, 0:2]
@@ -398,13 +414,13 @@ class DeliveryBase(BaseEnv):
         c_is_herder_inside = jnp.any(c_dists < (obst_radii - self.cfg.agent_radius))
         return c_is_herder_inside
 
-    def is_herder_in_target(self, state: DeliveryBaseState, which=jnp, center=[0., 0.], radius=0.25):
+    def is_herder_in_target(self, state: DeliveryBaseState, which=jnp, center=[0., 0.], radius=0.5):
         h_pos = state.herder_state[..., :, 0:2]
         ch_dists = which.linalg.norm(h_pos - which.array(center), axis=-1)
         c_is_herder_inside = which.any(ch_dists < (which.array(radius) - self.cfg.agent_radius))
         return c_is_herder_inside
 
-    def is_herder_in_dyn_target(self, state: DeliveryBaseState, which=jnp, center_ix=0, radius=0.25):
+    def is_herder_in_dyn_target(self, state: DeliveryBaseState, which=jnp, center_ix=0, radius=0.5):
         h_pos = state.herder_state[..., :, 0:2]
         ch_dists = which.linalg.norm(h_pos - state.centers[center_ix], axis=-1)
         c_is_herder_inside = which.any(ch_dists < (which.array(radius) - self.cfg.agent_radius))
@@ -426,16 +442,37 @@ class DeliveryBase(BaseEnv):
         ch_dists = which.linalg.norm(h_pos - base_ag_pos, axis=-1)
         c_all_herder_inside = which.all(ch_dists < self.cfg.agent_radius)
         return c_all_herder_inside
+    
+    def is_herderX_at_base_ag(self, state: DeliveryBaseState, herder_ix:int, which=jnp):
+        h_pos = state.herder_state[..., herder_ix, 0:2]
+        base_ag_pos = state.herder_state[-1, 0:2]
+        ch_dists = which.linalg.norm(h_pos - base_ag_pos, axis=-1)
+        c_all_herder_inside = which.all(ch_dists < self.cfg.agent_radius)
+        return c_all_herder_inside
+    
+    def is_herderX_circs(self, state: DeliveryBaseState, herder_ix:int, center_ix:int, which=jnp, radius=0.5):
+        assert self.cfg.dynamic_targets == True
+        h_pos = state.herder_state[..., herder_ix, 0:2]
+        ch_dists = which.linalg.norm(h_pos - state.centers[center_ix], axis=-1)
+        c_is_herder_inside = which.any(ch_dists < (which.array(radius) - self.cfg.agent_radius))
+        return c_is_herder_inside
 
     def get_predicates_bool(self, state: DeliveryBaseState):
         predicates = {
             "collide": self.is_herder_collide(state),
+            "aerial_collide": self.is_just_herders_collide(state),
             "oob": self.is_herder_oob(state),
             # "herd_herded": self.is_herd_herded(state),
             "obstacles": self.is_herder_in_obstacles(state),
             "target0": self.is_herder_in_target(state, center=self.cfg.centers[0], radius=self.cfg.radiuses[0]),
             "target1": self.is_herder_in_target(state, center=self.cfg.centers[1], radius=self.cfg.radiuses[1]),
             "ags_to_base_agent": self.is_herder_at_base_ag(state),
+            "herder0_target0": self.is_herderX_circs(state, herder_ix=0, center_ix=0),
+            "herder1_target0": self.is_herderX_circs(state, herder_ix=1, center_ix=0),
+            "herder0_target1": self.is_herderX_circs(state, herder_ix=0, center_ix=1),
+            "herder1_target1": self.is_herderX_circs(state, herder_ix=1, center_ix=1),
+            "herder0_base": self.is_herderX_at_base_ag(state, herder_ix=0),
+            "herder1_base": self.is_herderX_at_base_ag(state, herder_ix=1),
         }
         if self.cfg.dynamic_targets:
             predicates["target0"] = self.is_herder_in_dyn_target(state, center_ix=0)
