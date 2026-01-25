@@ -23,7 +23,6 @@ from absl import app, flags
 from jax import numpy as jp
 from mujoco import mjx
 
-from rraa_rl.envs.manipspace.manipspace_env_jax import ManipSpaceEnvJax
 
 _VIEWER_GLOBAL_STATE = {
     "running": True,
