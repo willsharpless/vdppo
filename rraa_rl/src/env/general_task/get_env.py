@@ -284,7 +284,11 @@ def get_env_and_cbs(env_name: str, agent_name: str) -> tuple[Env, list, list]:
         # specification = "F target0 && F target1 && G(!obstacles) && G(!oob) && G(F(ags_to_base_agent))"
         
         # specification = "G(F target0) && G(F target1) && G(!oob) && G(F(ags_to_base_agent))"
-        specification = "G(F target0 && F target1) && G(!obstacles) && G(!oob) && G(!aerial_collide) && G(F herder0_base && F herder1_base)"
+        # specification = "G(F target0) && G(F target1) && G(!oob) && G(!aerial_collide) && G(F ag0_base) && G(F ag1_base)"
+        # specification = "G(F ag0_target0) && G(F ag1_target1) && G(!oob) && G(!aerial_collide) && G(F ag0_base) && G(F ag1_base)"
+        # specification = "G(F ag0_target0) && G(F ag1_target1) && G(!obstacles) && G(!oob) && G(!aerial_collide) && G(F ag0_base) && G(F ag1_base)"
+        # specification = "G(F target0_dense) && G(F target1_dense) && G(!oob) && G(!aerial_collide) && G(F ag0_base) && G(F ag1_base)"
+        specification = "G(F target0) && G(F target1) && G(!obstacles) && G(!oob) && G(!aerial_collide) && G(F ag0_base) && G(F ag1_base)"
 
         # to come
         # specification = "F target0 && F target1 && G(!obstacles) && G(!oob) && G(ag_at_target => ag_to_base_agent)"
@@ -313,6 +317,8 @@ def get_env_and_cbs(env_name: str, agent_name: str) -> tuple[Env, list, list]:
         base_cfg.vel_maxs = [1.0, 1.0, 0.1]
         base_cfg.dynamic_targets = True
         base_cfg.update_targets = True
+        base_cfg.update_cond_fn = 'agent_in_respective_target' if 'ag0_target0' in specification else 'any_agent_in_target'
+        # base_cfg.update_cond_fn = 'agent_in_respective_target'
 
         cfg = Delivery.Cfg(specification=specification, base=base_cfg)
         env = Delivery(cfg)

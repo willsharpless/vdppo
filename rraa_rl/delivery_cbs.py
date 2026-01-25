@@ -524,7 +524,9 @@ def animate_eval_trajs_multi_agent(p: CallbackProps):
     # Use facecolor to indicate the current temporal node.
     colors_temporal_node = ["C0", "C1", "C2", "C4", "C5", "C6"]  # C3 is grey.
     pred_colors = {name: f"C{ii}" for ii, name in enumerate(env.pred_info.predicates)}
-    relevant_targets = [idx for idx in range(len(cfg.centers)) if f'target{idx}' in env.pred_info.predicates]
+    # relevant_targets = [idx for idx in range(len(cfg.centers)) if (f'target{idx}' in env.pred_info.predicates or f'target{idx}_dense' in env.pred_info.predicates)]
+    relevant_targets = [pred for pred in env.pred_info.predicates if "target" in pred]
+    # relevant_centers = [int(pred.replace("target", "").replace("_dense", "")) for pred in relevant_targets]
 
     # Use edgecolor to indicate alive vs dead.
     color_alive = to_rgba("C0", 0.0)
@@ -555,7 +557,7 @@ def animate_eval_trajs_multi_agent(p: CallbackProps):
         node_ix = env.temporal_nodes[node_idx]
         pred_info = collect_predicate_info(env.dag_nodes, node_ix)
         node_idx_to_predicates.append(pred_info.predicates)
-    plot_predicates = ['target0', 'target1', 'oob', 'obstacles']
+    plot_predicates = ['target0', 'target1', 'target0_dense', 'target1_dense', 'oob', 'obstacles']
     if cfg.dynamic_targets:
         plot_predicates = ['oob', 'obstacles']
 
@@ -598,9 +600,9 @@ def animate_eval_trajs_multi_agent(p: CallbackProps):
             # Add target circles
             if cfg.dynamic_targets:
                 circs = []
-                for target_idx in relevant_targets:
-                    circ = plt.Circle((0, 0), cfg.radiuses[target_idx], 
-                                    facecolor=pred_colors[f'target{target_idx}'], 
+                for pred in relevant_targets:
+                    circ = plt.Circle((0, 0), cfg.radiuses[int(pred.split('target')[1].replace("_dense", ""))], 
+                                    facecolor=pred_colors[pred], 
                                     edgecolor='none', alpha=0.5, animated=True)
                     ax.add_patch(circ)
                     circs.append(circ)

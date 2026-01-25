@@ -149,6 +149,7 @@ class DeliveryBaseCfg:
 
     reset_targets_fn = sample_center_outside_obst
     update_targets_fn = sample_center_outside_obst # random jump
+    update_cond_fn = 'any_agent_in_target'
 
 class DeliveryBase(BaseEnv):
     """
@@ -174,6 +175,8 @@ class DeliveryBase(BaseEnv):
 
         self.cfg = cfg
         assert len(cfg.acc_maxs) == len(cfg.vel_maxs) == cfg.n_herders
+
+        self.cfg.update_cond_fn = getattr(self, self.cfg.update_cond_fn)
 
         if should_term_fn is None:
             should_term_fn = self._should_term
@@ -296,6 +299,16 @@ class DeliveryBase(BaseEnv):
         n_herd_vel = jax.vmap(get_vel_single)(n_idxs)
 
         return n_herd_vel
+    
+    def any_agent_in_target(self, state):
+        def check_target_ix(center_ix):
+            return self.is_herder_in_dyn_target(state, which=jnp, center_ix=center_ix)
+        return jax.vmap(check_target_ix)(jnp.arange(len(self.cfg.centers)))
+    
+    def agent_in_respective_target(self, state):
+        def check_target_ix(center_ix):
+            return self.is_herderX_circs(state, herder_ix=center_ix, center_ix=center_ix)
+        return jax.vmap(check_target_ix)(jnp.arange(len(self.cfg.centers)))
 
     def next_state(self, state: DeliveryBaseState, control: jnp.ndarray):
         """Compute next state given current state and control inputs."""
@@ -339,9 +352,7 @@ class DeliveryBase(BaseEnv):
         # Update targets
         if self.cfg.dynamic_targets and self.cfg.update_targets:
             centers_new = self.cfg.update_targets_fn(jr.PRNGKey(state.steps))
-            def check_target(center_ix):
-                return self.is_herder_in_dyn_target(state, which=jnp, center_ix=center_ix)            
-            update_cond = jax.vmap(check_target)(jnp.arange(len(self.cfg.centers)))
+            update_cond = self.cfg.update_cond_fn(state)
             centers = jnp.where(update_cond[:, None], centers_new, state.centers)
         else:
             centers = state.centers
@@ -467,12 +478,12 @@ class DeliveryBase(BaseEnv):
             "target0": self.is_herder_in_target(state, center=self.cfg.centers[0], radius=self.cfg.radiuses[0]),
             "target1": self.is_herder_in_target(state, center=self.cfg.centers[1], radius=self.cfg.radiuses[1]),
             "ags_to_base_agent": self.is_herder_at_base_ag(state),
-            "herder0_target0": self.is_herderX_circs(state, herder_ix=0, center_ix=0),
-            "herder1_target0": self.is_herderX_circs(state, herder_ix=1, center_ix=0),
-            "herder0_target1": self.is_herderX_circs(state, herder_ix=0, center_ix=1),
-            "herder1_target1": self.is_herderX_circs(state, herder_ix=1, center_ix=1),
-            "herder0_base": self.is_herderX_at_base_ag(state, herder_ix=0),
-            "herder1_base": self.is_herderX_at_base_ag(state, herder_ix=1),
+            "ag0_target0": self.is_herderX_circs(state, herder_ix=0, center_ix=0),
+            "ag1_target0": self.is_herderX_circs(state, herder_ix=1, center_ix=0),
+            "ag0_target1": self.is_herderX_circs(state, herder_ix=0, center_ix=1),
+            "ag1_target1": self.is_herderX_circs(state, herder_ix=1, center_ix=1),
+            "ag0_base": self.is_herderX_at_base_ag(state, herder_ix=0),
+            "ag1_base": self.is_herderX_at_base_ag(state, herder_ix=1),
         }
         if self.cfg.dynamic_targets:
             predicates["target0"] = self.is_herder_in_dyn_target(state, center_ix=0)
@@ -504,11 +515,31 @@ class DeliveryBase(BaseEnv):
         pred = jnp.where(c_dist_to_circ <= 0, 1.0, -eps + coef * c_dist_to_circ)
         pred = jnp.clip(pred, -1.0, 1.0)
         return pred
+    
+    def pred_herder_circs_dyn(self, state: DeliveryBaseState, which=jnp, center_ix=0, radius=0.5):
+        """
+        Inside the circle is +1.
+        Outside the circle is negative.
+        - Linearly scale from -1 when distance=edge to -eps when distance=0
+        """
+        h_pos = state.herder_state[..., :, 0:2]
+        ch_dists = which.linalg.norm(h_pos - state.centers[center_ix], axis=-1).min(axis=-1)
+        c_dist_to_circ = ch_dists - (which.array(radius) - self.cfg.agent_radius)
+        eps = 0.1
+        val_at_edge = -1.0
+        edge = 2 * which.array(self.cfg.halfsize).max() - which.array(radius)
+        coef = (val_at_edge + eps) / edge
+        pred = jnp.where(c_dist_to_circ <= 0, 1.0, -eps + coef * c_dist_to_circ)
+        pred = jnp.clip(pred, -1.0, 1.0)
+        return pred
 
     def get_predicates_float(self, state: DeliveryBaseState):
         pred_herder_circs = self.pred_herder_circs(state)
-        return {"target0_dense": pred_herder_circs[0], "target1_dense": pred_herder_circs[1]}
-        # return {}
+        predicates = {"target0_dense": pred_herder_circs[0], "target1_dense": pred_herder_circs[1]}
+        if self.cfg.dynamic_targets:
+            predicates["target0_dense"] = self.pred_herder_circs_dyn(state, center_ix=0)
+            predicates["target1_dense"] = self.pred_herder_circs_dyn(state, center_ix=1)
+        return predicates
 
     def get_predicates(self, state: DeliveryBaseState):
         predicates_bool = self.get_predicates_bool(state)
