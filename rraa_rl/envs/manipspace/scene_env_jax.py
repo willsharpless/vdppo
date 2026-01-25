@@ -206,12 +206,17 @@ class SceneEnvJax:
         self._button_joint_qpos_addrs = [
             self.mj_model.joint(f"buttonbox_joint_{i}").qposadr.item() for i in range(self.config.num_buttons)
         ]
+        self._button_joint_dof_addrs = [
+            self.mj_model.joint(f"buttonbox_joint_{i}").dofadr.item() for i in range(self.config.num_buttons)
+        ]
 
         # Drawer and window joint IDs
         self._drawer_joint_id = self.mj_model.joint("drawer_slide").id
         self._drawer_joint_qpos_addr = self.mj_model.joint("drawer_slide").qposadr.item()
+        self._drawer_joint_dof_addr = self.mj_model.joint("drawer_slide").dofadr.item()
         self._window_joint_id = self.mj_model.joint("window_slide").id
         self._window_joint_qpos_addr = self.mj_model.joint("window_slide").qposadr.item()
+        self._window_joint_dof_addr = self.mj_model.joint("window_slide").dofadr.item()
 
         # Site IDs
         self._drawer_site_id = self.mj_model.site("drawer_handle_center").id
@@ -692,7 +697,7 @@ class SceneEnvJax:
         for i in range(config.num_buttons):
             button_state_onehot = jax.nn.one_hot(state.button_states[i], config.num_button_states)
             button_pos = mjx_data.qpos[self._button_joint_qpos_addrs[i] : self._button_joint_qpos_addrs[i] + 1]
-            button_vel = mjx_data.qvel[self._button_joint_qpos_addrs[i] : self._button_joint_qpos_addrs[i] + 1]
+            button_vel = mjx_data.qvel[self._button_joint_dof_addrs[i] : self._button_joint_dof_addrs[i] + 1]
             obs_parts.extend(
                 [
                     button_state_onehot,
@@ -703,7 +708,7 @@ class SceneEnvJax:
 
         # Drawer observations
         drawer_pos = mjx_data.qpos[self._drawer_joint_qpos_addr : self._drawer_joint_qpos_addr + 1]
-        drawer_vel = mjx_data.qvel[self._drawer_joint_qpos_addr : self._drawer_joint_qpos_addr + 1]
+        drawer_vel = mjx_data.qvel[self._drawer_joint_dof_addr : self._drawer_joint_dof_addr + 1]
         obs_parts.extend(
             [
                 drawer_pos * config.drawer_scaler,
@@ -713,7 +718,7 @@ class SceneEnvJax:
 
         # Window observations
         window_pos = mjx_data.qpos[self._window_joint_qpos_addr : self._window_joint_qpos_addr + 1]
-        window_vel = mjx_data.qvel[self._window_joint_qpos_addr : self._window_joint_qpos_addr + 1]
+        window_vel = mjx_data.qvel[self._window_joint_dof_addr : self._window_joint_dof_addr + 1]
         obs_parts.extend(
             [
                 window_pos * config.window_scaler,

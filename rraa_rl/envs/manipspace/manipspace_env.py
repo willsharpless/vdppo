@@ -9,6 +9,8 @@ from gymnasium.spaces import Box
 from ogbench.manipspace import controllers, lie, mjcf_utils
 from ogbench.manipspace.envs.env import CustomMuJoCoEnv
 
+from rraa_rl.envs.manipspace.diff_ik import DiffIKController
+
 
 class ManipSpaceEnv(CustomMuJoCoEnv):
     """ManipSpace environment.
@@ -61,7 +63,7 @@ class ManipSpaceEnv(CustomMuJoCoEnv):
         )
 
         # Define constants.
-        self._desc_dir = Path(__file__).resolve().parent / '..' / 'descriptions'
+        self._desc_dir = Path(__file__).resolve().parent / 'descriptions'
         self._home_qpos = np.asarray([-np.pi / 2, -np.pi / 2, np.pi / 2, -np.pi / 2, -np.pi / 2, 0])
         self._effector_down_rotation = lie.SO3(np.asarray([0.0, 1.0, 0.0, 0.0]))
         self._workspace_bounds = np.asarray([[0.25, -0.35, 0.02], [0.6, 0.35, 0.35]])
@@ -108,7 +110,7 @@ class ManipSpaceEnv(CustomMuJoCoEnv):
         assets = mjcf_utils.get_assets(ik_mjcf)
         ik_model = mujoco.MjModel.from_xml_string(xml_str, assets)
 
-        self._ik = controllers.DiffIKController(model=ik_model, sites=['attachment_site'])
+        self._ik = DiffIKController(model=ik_model, sites=['attachment_site'])
 
         # Define action space.
         action_range = np.array([0.05, 0.05, 0.05, 0.3, 1.0])

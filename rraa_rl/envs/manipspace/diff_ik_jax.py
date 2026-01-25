@@ -189,21 +189,13 @@ class DiffIKControllerJax:
 
         qpos = curr_qpos
 
-        # def body_fn(carry):
-        #     qpos, i = carry
-        #     new_qpos, errs = self._solve_jit(qpos, pos, quat)
-        #     return (new_qpos, i + 1)
-        #
-        # def cond_fn(carry):
-        #     qpos, i = carry
-        #     _, errs = self._solve_jit(qpos, pos, quat)
-        #     converged = (errs[0] <= pos_thresh) & (errs[1] <= ori_thresh)
-        #     return ~converged & (i < max_iters)
-        #
-        # # Run IK loop
-        # qpos, _ = jax.lax.while_loop(cond_fn, body_fn, (qpos, 0))
+        # Use fori_loop for fixed number of iterations (more JIT-friendly than while_loop)
+        def body_fn(i, qpos):
+            new_qpos, errs = self._solve_jit(qpos, pos, quat)
+            return new_qpos
 
-        qpos, _ = self._solve_jit(qpos, pos, quat)
+        # Run IK loop for max_iters iterations
+        qpos = jax.lax.fori_loop(0, max_iters, body_fn, qpos)
 
         return qpos
 
