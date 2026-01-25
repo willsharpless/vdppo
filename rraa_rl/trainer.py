@@ -114,6 +114,7 @@ class Trainer:
                 "noun": run.noun,
                 "name": run.name,
                 "spec": env.specification,
+                "wandb_name": run.wandb_name
             } | wandb_config
             wandb.init(project="vd_mappo", name=run.wandb_name, config=wandb_config)
 
