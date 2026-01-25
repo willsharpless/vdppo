@@ -4,6 +4,12 @@
 
 *rraa_rl.egg-info
 
+# Ignore more stuff - 01/25/26
+/.emoji_cache*
+/plots_discrete*
+/sol_pkls*
+/valtr/paper/plots/*
+
 # Ignore all experiments
 /rraa_rl/model/hopper_avoid_ceiling/**
 # /model/*

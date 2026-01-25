@@ -26,6 +26,7 @@ from rraa_rl.src.env.general_task.herd_base import (HerdBase, HerdBaseCfg, HerdB
                                                     HerdingHerdCfg)
 from rraa_rl.train_utils import tree_where
 
+plt.style.use("seaborn-v0_8-darkgrid")
 
 class BoolExpression:
     """So that we can specify either ANY agent or ALL agents"""
@@ -191,16 +192,23 @@ class GridworldMap:
         }
 
         color_dict = {
-            "#": "C3",
-            "K": to_rgba("C1", alpha=0.8),
-            "D": to_rgba("C1", alpha=0.8),
+            "#": to_rgba([0.028, 0.62, 0.59], alpha=0.),
+            "K": to_rgba("C1", alpha=0.),
+            "D": to_rgba("C1", alpha=0.),
         }
 
+        # label_dict = {
+        #     "A": "A",
+        #     "B": "B",
+        #     "K": ":key:",
+        #     "D": ":door:",
+        # }
         label_dict = {
-            "A": "A",
-            "B": "B",
-            "K": ":key:",
-            "D": ":door:",
+            "A": "a",
+            "B": "b",
+            "K": "k",
+            "D": "d",
+            "#": "w",
         }
 
         return GridworldMap(len_x, len_y, predicates, predicate_expr, d_raw, color_dict, label_dict)
@@ -387,7 +395,7 @@ class GridworldMABase(BaseEnv):
     def step(self, state: GridworldMAState, action: list[jnp.ndarray]):
         state_new = self.next_state(state, action)
         obs_new = self.get_obs(state_new)
-        predicates = self.get_predicates(state_new)
+        predicates = self.get_predicates(state)
         term = False
         trunc = state_new.steps >= self.cfg.trunc_steps
 
@@ -430,25 +438,34 @@ class GridworldMABase(BaseEnv):
         return self.cfg.trunc_steps
 
     def setup_ax(self, ax: plt.Axes):
+        plt.style.use("seaborn-v0_8-darkgrid")
         len_x, len_y = self.map.len_x, self.map.len_y
         ax.set_xlim(-0.5, len_x - 0.5)
         ax.set_ylim(-0.5, len_y - 0.5)
 
-        # Integer ticks at cell centers
-        ax.set_xticks(np.arange(len_x))
-        ax.set_yticks(np.arange(len_y))
+        # # Integer ticks at cell centers
+        # ax.set_xticks(np.arange(len_x))
+        # ax.set_yticks(np.arange(len_y))
 
-        # Grid lines at half-integers
-        ax.set_xticks(np.arange(-0.5, len_x, 1), minor=True)
-        ax.set_yticks(np.arange(-0.5, len_y, 1), minor=True)
+        # # Grid lines at half-integers
+        # ax.set_xticks(np.arange(-0.5, len_x, 1), minor=True)
+        # ax.set_yticks(np.arange(-0.5, len_y, 1), minor=True)
 
-        # No major grid, white minor grid.
-        ax.grid(False, which="major")
-        ax.grid(which="minor", color="white", linewidth=1)
+        # # No major grid, white minor grid.
+        # ax.grid(False, which="major")
+        ax.grid(which="major", color="white", linewidth=1)
 
-        ax.tick_params(which="minor", bottom=True, left=True)
-        ax.tick_params(which="minor", color="black", labelcolor="black", length=3, width=1)
+        # ax.tick_params(which="minor", bottom=True, left=True)
+        # ax.tick_params(which="minor", color="black", labelcolor="black", length=3, width=1)
         # ax.tick_params(which="major", color="black", labelcolor="black", length=3, width=1)
+
+        ax.set_xticks(np.arange(len_x + 1) - 0.5)
+        ax.set_yticks(np.arange(len_y + 1) - 0.5)
+        ax.tick_params(axis="both", which="both", length=0, labelbottom=False, labelleft=False)
+
+        for spine in ax.spines.values():
+            spine.set_edgecolor("black")
+            spine.set_linewidth(2)
 
         # Visualize the map.
         self.map.show_map(ax)

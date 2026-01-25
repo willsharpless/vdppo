@@ -84,7 +84,8 @@ dependencies:
 
       - cattrs
       - emoji
-      
+      - cairosvg
+
       # Git repositories (install these last)
       - git+ssh://git@github.com/oswinso/lovely_histogram.git
       - git+ssh://git@github.com/willsharpless/valtr.git
