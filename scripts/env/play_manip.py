@@ -42,7 +42,7 @@ def main():
     # impl = "warp"
     # env = ManipSpaceEnvJax.create()
     env = SceneEnvJax()
-    # state, obs = env.reset(jr.PRNGKey(0))
+    state, obs = env.reset(jr.PRNGKey(0))
 
     print(f"Default backend: {jax.default_backend()}")
     step_fn = mjx.step
@@ -64,15 +64,15 @@ def main():
 
     d = mujoco.MjData(m)
     # dx = mjx.put_data(m, d, impl="warp", naconmax=None, njmax=None)
-    dx = mjx.make_data(m, impl="warp", naconmax=None, njmax=None)
-    # dx = state.mjx_data
+    # dx = mjx.make_data(m, impl="warp", naconmax=None, njmax=None)
+    dx = state.mjx_data
 
     start = time.time()
     # step_fn = jax.jit(step_fn, donate_argnums=(1,), keep_unused=True).lower(mx, dx).compile()
 
     action = jnp.array(env.config.action_high)
     env_step_fn = env.step
-    # env_step_fn = jax.jit(env_step_fn, keep_unused=True).lower(state, action).compile()
+    env_step_fn = jax.jit(env_step_fn, keep_unused=True).lower(state, action).compile()
     elapsed = time.time() - start
     print(f"Compilation took {elapsed}s.")
     # set_model_fn = (
@@ -95,9 +95,9 @@ def main():
     #     )
     # else:
 
-    idx = 0
+    idx = 2
     action = jnp.array([0.0, 0.0, 0.0, 0.0, 0.0])
-    # action = action.at[idx].set(env.config.action_high[idx])
+    action = action.at[idx].set(0.01 * env.config.action_high[idx])
 
     with viewer:
         opt = copy.copy(m.opt)
@@ -107,7 +107,7 @@ def main():
             start = time.time()
 
             dx = set_data_fn(dx, d.ctrl, d.act, d.xfrc_applied, d.qpos, d.qvel, d.time)
-            # state = state._replace(mjx_data=dx)
+            state = state._replace(mjx_data=dx)
 
             # if m.opt != opt:
             #     opt = copy.copy(m.opt)
@@ -116,12 +116,12 @@ def main():
             if _VIEWER_GLOBAL_STATE["running"]:
                 print("Running!")
 
-                dx = step_fn(mx, dx)
+                # dx = step_fn(mx, dx)
 
-                # # dx = step_fn(mx, dx)
-                # out: ManipStep = env_step_fn(state, action)
-                # dx = out.next_state.mjx_data
-                # state = out.next_state
+                # dx = step_fn(mx, dx)
+                out: ManipStep = env_step_fn(state, action)
+                dx = out.next_state.mjx_data
+                state = out.next_state
 
             # Copy only the fields needed for visualization to avoid shape mismatch
             # errors with sparse flex fields (flexedge_J has shape (0, nv) in MJX
@@ -134,7 +134,7 @@ def main():
 
             elapsed = time.time() - start
             if elapsed < m.opt.timestep:
-                time.sleep(m.opt.timestep - elapsed)
+                time.sleep(5 * m.opt.timestep - elapsed)
 
             n_iters += 1
 

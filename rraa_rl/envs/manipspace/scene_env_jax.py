@@ -478,15 +478,15 @@ class SceneEnvJax:
         # Compute target orientation
         target_ori = quat_multiply(_quat_from_z_radians(target_yaw), self.config.effector_down_quat)
 
-        # # Solve IK for target joint positions
-        # curr_qpos = mjx_data.qpos[:6]
-        # qpos_target = self._solve_ik(target_pos, target_ori, curr_qpos)
+        # Solve IK for target joint positions
+        curr_qpos = mjx_data.qpos[:6]
+        qpos_target = self._solve_ik(target_pos, target_ori, curr_qpos)
 
-        # # Set control
-        # ctrl = mjx_data.ctrl
-        # ctrl = ctrl.at[self._arm_actuator_ids].set(qpos_target)
-        # ctrl = ctrl.at[self._gripper_actuator_ids].set(255.0 * target_gripper)
-        # mjx_data = mjx_data.replace(ctrl=ctrl)
+        # Set control
+        ctrl = mjx_data.ctrl
+        ctrl = ctrl.at[self._arm_actuator_ids].set(qpos_target)
+        ctrl = ctrl.at[self._gripper_actuator_ids].set(255.0 * target_gripper)
+        mjx_data = mjx_data.replace(ctrl=ctrl)
 
         # Save previous state
         prev_qpos = mjx_data.qpos
@@ -546,18 +546,18 @@ class SceneEnvJax:
     def _step_physics(self, mjx_data: mjx.Data) -> mjx.Data:
         """Step the physics simulation."""
 
-        # def step_fn(data, _):
-        #     return mjx.step(self.mjx_model, data), None
-        #
-        # mjx_data, _ = jax.lax.scan(step_fn, mjx_data, None, length=self.config.n_steps)
+        def step_fn(data, _):
+            return mjx.step(self.mjx_model, data), None
 
-        for ii in range(self.config.n_steps):
-            logger.debug("ii={}, qpos={}".format(ii, mjx_data.qpos))
-            mjx_data_new = mjx.step(self.mjx_model, mjx_data)
-            if jnp.any(jnp.isnan(mjx_data_new.qpos)):
-                ipdb.set_trace()
-            mjx_data = mjx_data_new
-        logger.debug("done, qpos={}".format(mjx_data.qpos))
+        mjx_data, _ = jax.lax.scan(step_fn, mjx_data, None, length=self.config.n_steps)
+        #
+        # for ii in range(self.config.n_steps):
+        #     logger.debug("ii={}, qpos={}".format(ii, mjx_data.qpos))
+        #     mjx_data_new = mjx.step(self.mjx_model, mjx_data)
+        #     if jnp.any(jnp.isnan(mjx_data_new.qpos)):
+        #         ipdb.set_trace()
+        #     mjx_data = mjx_data_new
+        # logger.debug("done, qpos={}".format(mjx_data.qpos))
 
         return mjx_data
 

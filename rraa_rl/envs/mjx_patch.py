@@ -70,7 +70,7 @@ def _com_pos_shim(
 
 def _com_pos_jax_impl(m: types.Model, d: types.Data):
     output_dims = {
-        "cdof": d.cdof.shape,
+        "cdof": d._impl.cdof.shape,
         "cinert": d._impl.cinert.shape,
         "subtree_com": d.subtree_com.shape,
         "xanchor": d.xanchor.shape,
@@ -108,7 +108,7 @@ def _com_pos_jax_impl(m: types.Model, d: types.Data):
         m.jnt_bodyid,
         m.jnt_dofadr,
         m.jnt_type,
-        d.cdof,
+        d._impl.cdof,
         d._impl.cinert,
         d.subtree_com,
         d.xanchor,
@@ -119,7 +119,7 @@ def _com_pos_jax_impl(m: types.Model, d: types.Data):
     )
     d = d.tree_replace(
         {
-            "cdof": out[0],
+            "_impl.cdof": out[0],
             "_impl.cinert": out[1],
             "subtree_com": out[2],
             "xanchor": out[3],
