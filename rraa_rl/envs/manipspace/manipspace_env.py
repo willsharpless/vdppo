@@ -5,6 +5,7 @@ import mujoco
 import numpy as np
 from dm_control import mjcf
 from gymnasium.spaces import Box
+from loguru import logger
 
 from ogbench.manipspace import controllers, lie, mjcf_utils
 from ogbench.manipspace.envs.env import CustomMuJoCoEnv
@@ -323,9 +324,20 @@ class ManipSpaceEnv(CustomMuJoCoEnv):
             reward = self.compute_reward()
 
         action = np.array(action)
-        self.set_control(action)
+        info = self.set_control(action)
         self.pre_step()
         mujoco.mj_step(self._model, self._data, nstep=self._n_steps)
+        # logger.debug(f"np0 qpos: {self._data.qpos}")
+        # logger.debug(f"np0 qvel: {self._data.qvel}")
+        # mujoco.mj_step(self._model, self._data, nstep=1)
+        # logger.debug(f"np1 qpos: {self._data.qpos}")
+        # logger.debug(f"np1 qvel: {self._data.qvel}")
+        #
+        # mujoco.mj_step(self._model, self._data, nstep=self._n_steps - 1)
+        #
+        # logger.debug(f"npn qpos: {self._data.qpos}")
+        # logger.debug(f"npn qvel: {self._data.qvel}")
+
         mujoco.mj_rnePostConstraint(self._model, self._data)  # Compute contact forces.
         self.post_step()
 
@@ -336,7 +348,7 @@ class ManipSpaceEnv(CustomMuJoCoEnv):
 
         truncated = self.truncate_episode()
         ob = self.compute_observation()
-        info = self.get_step_info()
+        info = self.get_step_info() | info
 
         info['success'] = success
 
@@ -407,16 +419,25 @@ class ManipSpaceEnv(CustomMuJoCoEnv):
         )
         T_wa = self._target_effector_pose @ self._T_pa
 
+        curr_qpos = self._data.qpos[self._arm_joint_ids]
+
+        # logger.debug(f"tgt_eff tran: {target_effector_translation}")
+        # logger.debug(f"np curr_qpos: {curr_qpos}")
+        # logger.debug(f"np T_pa     : {self._T_pa}")
+
         # Solve for the desired joint positions.
         qpos_target = self._ik.solve(
             pos=T_wa.translation(),
             quat=T_wa.rotation().wxyz,
-            curr_qpos=self._data.qpos[self._arm_joint_ids],
+            curr_qpos=curr_qpos,
         )
 
         # Set the desired joint positions for the underlying PD controller.
         self._data.ctrl[self._arm_actuator_ids] = qpos_target
         self._data.ctrl[self._gripper_actuator_ids] = 255.0 * target_gripper_opening
+        logger.debug(f"np ctrl: {self._data.ctrl}")
+
+        return {"qpos_target": qpos_target, "target_gripper": target_gripper_opening}
 
     def pre_step(self):
         self._prev_qpos = self._data.qpos.copy()

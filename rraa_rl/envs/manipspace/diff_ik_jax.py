@@ -5,6 +5,9 @@ from __future__ import annotations
 from functools import partial
 from typing import Tuple
 
+import ipdb
+from loguru import logger
+
 import jax
 import jax.numpy as jnp
 import mujoco
@@ -59,9 +62,9 @@ class DiffIKControllerJax:
         self._damping = damping_coeff * jnp.eye(6 * self._ns)
         self._nv = model.nv
 
-        # JIT compile the solve function
-        # self._solve_jit = jax.jit(partial(self._solve_step, self._mj_model, self._mjx_model))
-        self._solve_jit = partial(self._solve_step, self._mj_model, self._mjx_model)
+        # # JIT compile the solve function
+        # # self._solve_jit = jax.jit(partial(self._solve_step, self._mj_model, self._mjx_model))
+        # self._solve_jit = partial(self._solve_step, self._mj_model, self._mjx_model)
 
     def _forward_kinematics(self, mjx_model: mjx.Model, mjx_data: mjx.Data) -> mjx.Data:
         """Perform forward kinematics to update site positions."""
@@ -112,8 +115,6 @@ class DiffIKControllerJax:
 
     def _solve_step(
         self,
-        mj_model: mujoco.MjModel,
-        mjx_model: mjx.Model,
         qpos: jax.Array,
         target_pos: jax.Array,
         target_quat: jax.Array,
@@ -124,43 +125,58 @@ class DiffIKControllerJax:
             Updated qpos and error magnitude
         """
         # Create data and set qpos
-        mjx_data = mjx.make_data(mj_model, impl=self.impl)
+        mjx_data = mjx.make_data(self._mj_model, impl=self.impl)
         mjx_data = mjx_data.replace(qpos=qpos)
 
         # Forward kinematics
-        mjx_data = self._forward_kinematics(mjx_model, mjx_data)
+        mjx_data = self._forward_kinematics(self._mjx_model, mjx_data)
 
         # Compute error
         err = self._compute_error(mjx_data, target_pos, target_quat)
         err_reshaped = err.reshape(self._ns, 6)
 
         # Compute Jacobian
-        jac = self._compute_jacobian(mjx_model, mjx_data)
+        jac = self._compute_jacobian(self._mjx_model, mjx_data)
+
+        # print(f"[{ii}] err: {err_reshaped}")
+        # print(f"[{ii}] jac: {jac}")
 
         # Solve using damped least squares
         H = jac @ jac.T + self._damping
         update = jac.T @ jnp.linalg.solve(H, err)
 
+        # logger.debug(f"jax err: {err}")
+        # logger.debug(f"jax jac:\n{jac}")
+        # logger.debug(f"jax H:\n{H}")
+        # logger.debug(f"jax x: {update}")
+
         # Apply null-space control if qpos0 is specified
+        assert self._qpos0 is None
         if self._qpos0 is not None:
             jac_pinv = jnp.linalg.pinv(H)
             q_err = angle_diff(self._qpos0, qpos)
             null_proj = jnp.eye(self._nv) - (jac.T @ jac_pinv) @ jac
             update = update + null_proj @ q_err
 
+        # logger.debug(f"jax x out: {update}")
+
         # Scale update to respect max angle change
         update_max = jnp.max(jnp.abs(update))
         scale = jnp.where(update_max > self._max_angle_change, self._max_angle_change / update_max, 1.0)
         update = update * scale
 
+        # logger.debug(f"jax update: {update}")
+
         # Integrate update
         new_qpos = qpos + update
 
-        # Compute error magnitude
-        pos_err = jnp.linalg.norm(err_reshaped[:, :3])
-        ori_err = jnp.linalg.norm(err_reshaped[:, 3:])
+        # # Compute error magnitude
+        # pos_err = jnp.linalg.norm(err_reshaped[:, :3])
+        # ori_err = jnp.linalg.norm(err_reshaped[:, 3:])
 
-        return new_qpos, jnp.array([pos_err, ori_err])
+        # logger.debug(f"jax ik out: {new_qpos}")
+
+        return new_qpos, err_reshaped
 
     def solve(
         self,
@@ -184,18 +200,39 @@ class DiffIKControllerJax:
         Returns:
             Joint positions that achieve the target pose
         """
+
+        # logger.debug("FORCING MAX_ITERS=1 FOR DEBUG")
+        # max_iters = 1
+
+        # logger.debug(f"tgt pos : {pos}")
+        # logger.debug(f"tgt quat: {quat}")
+        # logger.debug(f"qpos    : {curr_qpos}")
         pos = jnp.atleast_2d(pos)
         quat = jnp.atleast_2d(quat)
 
         qpos = curr_qpos
+        # print(f"qpos init: {qpos}")
+        # print(f"tgt_pos  : {pos}")
+        # print(f"quat     : {quat}")
 
-        # Use fori_loop for fixed number of iterations (more JIT-friendly than while_loop)
-        def body_fn(i, qpos):
-            new_qpos, errs = self._solve_jit(qpos, pos, quat)
-            return new_qpos
+        # Manual for loop for debugging.
+        for ii in range(max_iters):
+            # qpos, _ = self._solve_step(qpos, pos, quat)
+            qpos, error = self._solve_step(qpos, pos, quat)
+            # print(f"[{ii}] qpos: {qpos}")
 
-        # Run IK loop for max_iters iterations
-        qpos = jax.lax.fori_loop(0, max_iters, body_fn, qpos)
+        jax.debug.print("final err: {}", error, ordered=True)
+
+        # # Use fori_loop for fixed number of iterations (more JIT-friendly than while_loop)
+        # def body_fn(i, qpos):
+        #     new_qpos, errs = self._solve_jit(qpos, pos, quat)
+        #     return new_qpos
+        #
+        # # Run IK loop for max_iters iterations
+        # qpos = jax.lax.fori_loop(0, max_iters, body_fn, qpos)
+        # qpos, _ = self._solve_jit(qpos, pos, quat)
+
+        # print(f"jax ik out: {qpos}")
 
         return qpos
 

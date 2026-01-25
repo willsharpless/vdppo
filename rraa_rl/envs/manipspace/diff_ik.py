@@ -76,12 +76,21 @@ class DiffIKController:
     def _solve(self) -> np.ndarray:
         """Solve for joint velocities using damped least squares."""
         H = self._jac @ self._jac.T + self._damping
-        logger.debug("jac.shape: {}, damping.shape: {}".format(self._jac.shape, self._damping.shape))
+        # logger.debug("jac.shape: {}, damping.shape: {}".format(self._jac.shape, self._damping.shape))
         x = self._jac.T @ np.linalg.solve(H, self._err.ravel())
+
+        # logger.debug(f"np err: {self._err.ravel()}")
+        # logger.debug(f"np jac:\n{self._jac}")
+        # logger.debug(f"np H:\n{H}")
+        # logger.debug(f"np x: {x}")
+
+        assert self._qp0 is None
         if self._qp0 is not None:
             jac_pinv = np.linalg.pinv(H)
             q_err = angle_diff(self._qp0, self._data.qpos)
             x += (self._eye - (self._jac.T @ jac_pinv) @ self._jac) @ q_err
+
+        # logger.debug(f"np x out: {x}")
         return x
 
     def _scale_update(self, update: np.ndarray) -> np.ndarray:
@@ -102,16 +111,37 @@ class DiffIKController:
     ) -> np.ndarray:
         self._data.qpos = curr_qpos
 
-        for _ in range(max_iters):
+        # logger.debug(f"tgt pos : {pos}")
+        # logger.debug(f"tgt quat: {quat}")
+        # logger.debug(f"qpos    : {curr_qpos}")
+        # logger.debug("FORCING MAX_ITERS=1 FOR DEBUG")
+        # max_iters = 1
+
+        # print(f"qpos init: {self._data.qpos}")
+        # print(f"tgt_pos  : {pos}")
+        # print(f"quat     : {quat}")
+
+        for ii in range(max_iters):
             self._forward_kinematics()
 
             self._compute_translational_error(np.atleast_2d(pos))
             self._compute_rotational_error(np.atleast_2d(quat))
-            if self._error_threshold_reached(pos_thresh, ori_thresh):
-                break
+            # if self._error_threshold_reached(pos_thresh, ori_thresh):
+            #     break
 
             self._compute_jacobian()
+
+            # print(f"[{ii}] err: {self._err}")
+            # print(f"[{ii}] jac: {self._jac}")
+
             update = self._scale_update(self._solve())
+            # logger.debug(f"np update: {update}")
             self._integrate(update)
 
-        return self._data.qpos.copy()
+            # print(f"[{ii}] qpos: {self._data.qpos}")
+
+        print(f"final err: {self._err}")
+
+        out = self._data.qpos.copy()
+        # print(f"ik out: {out}")
+        return out

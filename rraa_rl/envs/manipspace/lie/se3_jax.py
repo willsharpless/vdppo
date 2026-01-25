@@ -69,6 +69,16 @@ class SE3(NamedTuple):
             self.translation()
         )
 
+    def fix_quat_sign(self) -> SE3:
+        """Ensure the quaternion has a non-negative scalar part."""
+        wxyz = self.wxyz_xyz[:4]
+        if wxyz[0] < 0:
+            wxyz = -wxyz
+        return SE3.from_rotation_and_translation(
+            SO3(wxyz=wxyz),
+            self.translation()
+        )
+
     def apply(self, target: jax.Array) -> jax.Array:
         """Apply transformation to a 3D point."""
         return quat_rotate(self.rotation().wxyz, target) + self.translation()

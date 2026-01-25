@@ -242,6 +242,7 @@ class SceneEnvJax:
         pinch_pose = SE3.from_rotation_and_translation(SO3(wxyz=jnp.asarray(pinch_quat)), jnp.asarray(pinch_pos))
         attach_pose = SE3.from_rotation_and_translation(SO3(wxyz=jnp.asarray(attach_quat)), jnp.asarray(attach_pos))
         T_pa = pinch_pose.inverse().multiply(attach_pose)
+        T_pa = T_pa.fix_quat_sign()
         self._T_pa_wxyz_xyz = T_pa.wxyz_xyz
 
         # Initialize inverse kinematics controller (same approach as ManipSpaceEnv)
@@ -252,7 +253,7 @@ class SceneEnvJax:
         self._ik = DiffIKControllerJax(
             model=ik_model,
             sites=["attachment_site"],
-            qpos0=home_qpos,
+            # qpos0=home_qpos,
         )
 
     @staticmethod
@@ -443,7 +444,9 @@ class SceneEnvJax:
     def step(
         self,
         state: SceneEnvState,
-        action: jax.Array,
+        # action: jax.Array,
+        qpos_target,
+        target_gripper
     ) -> ManipStep[SceneEnvState]:
         """Take a step in the environment.
 
@@ -454,43 +457,49 @@ class SceneEnvJax:
         Returns:
             Tuple of (next_state, observation, reward, done, info)
         """
-        # Unnormalize action
-        action = self._unnormalize_action(action)
-        a_pos, a_ori, a_gripper = action[:3], action[3], action[4]
-
-        # Get current effector state
         mjx_data = state.mjx_data
-        effector_pos = mjx_data.site_xpos[self._pinch_site_id]
-        effector_mat = mjx_data.site_xmat[self._pinch_site_id].reshape(3, 3)
-        effector_quat = mat_to_quat(effector_mat)
-        effector_yaw = _compute_yaw_from_quat(effector_quat)
-        gripper_opening = jnp.clip(mjx_data.qpos[self._gripper_opening_joint_id] / 0.8, 0, 1)
 
-        # Compute target pose
-        target_pos = effector_pos + a_pos
-        target_yaw = effector_yaw + a_ori
-        target_gripper = gripper_opening + a_gripper
-
-        # Clip to workspace bounds
-        target_pos = jnp.clip(
-            target_pos,
-            self.config.workspace_bounds[0],
-            self.config.workspace_bounds[1],
-        )
-        target_yaw = jnp.clip(target_yaw, -jnp.pi, jnp.pi)
-        target_gripper = jnp.clip(target_gripper, 0.0, 1.0)
-
-        # Compute target orientation
-        target_ori = quat_multiply(_quat_from_z_radians(target_yaw), self.config.effector_down_quat)
-
-        # Solve IK for target joint positions
-        curr_qpos = mjx_data.qpos[:6]
-        qpos_target = self._solve_ik(target_pos, target_ori, curr_qpos)
+        # # Unnormalize action
+        # action = self._unnormalize_action(action)
+        # a_pos, a_ori, a_gripper = action[:3], action[3], action[4]
+        #
+        # # Get current effector state
+        # mjx_data = state.mjx_data
+        # effector_pos = mjx_data.site_xpos[self._pinch_site_id]
+        # effector_mat = mjx_data.site_xmat[self._pinch_site_id].reshape(3, 3)
+        # effector_quat = mat_to_quat(effector_mat)
+        # effector_yaw = _compute_yaw_from_quat(effector_quat)
+        # gripper_opening = jnp.clip(mjx_data.qpos[self._gripper_opening_joint_id] / 0.8, 0, 1)
+        #
+        # # Compute target pose
+        # target_pos = effector_pos + a_pos
+        # target_yaw = effector_yaw + a_ori
+        # target_gripper = gripper_opening + a_gripper
+        #
+        # logger.debug(f"tgt_eff tran: {target_pos}")
+        #
+        # # Clip to workspace bounds
+        # target_pos = jnp.clip(
+        #     target_pos,
+        #     self.config.workspace_bounds[0],
+        #     self.config.workspace_bounds[1],
+        # )
+        # target_yaw = jnp.clip(target_yaw, -jnp.pi, jnp.pi)
+        # target_gripper = jnp.clip(target_gripper, 0.0, 1.0)
+        #
+        # # Compute target orientation
+        # target_ori = quat_multiply(_quat_from_z_radians(target_yaw), self.config.effector_down_quat)
+        #
+        # # Solve IK for target joint positions
+        # curr_qpos = mjx_data.qpos[:6]
+        # logger.debug("jax curr_qpos: {}".format(curr_qpos))
+        # qpos_target = self._solve_ik(target_pos, target_ori, curr_qpos)
 
         # Set control
         ctrl = mjx_data.ctrl
         ctrl = ctrl.at[self._arm_actuator_ids].set(qpos_target)
         ctrl = ctrl.at[self._gripper_actuator_ids].set(255.0 * target_gripper)
+        logger.debug("jax ctrl: {}".format(ctrl))
         mjx_data = mjx_data.replace(ctrl=ctrl)
 
         # Save previous state
@@ -551,11 +560,22 @@ class SceneEnvJax:
     def _step_physics(self, mjx_data: mjx.Data) -> mjx.Data:
         """Step the physics simulation."""
 
+        # logger.debug(f"jax0 qpos: {mjx_data.qpos}")
+        # logger.debug(f"jax0 qvel: {mjx_data.qvel}")
+        # mjx_data = mjx.step(self.mjx_model, mjx_data)
+        # logger.debug(f"jax1 qpos: {mjx_data.qpos}")
+        # logger.debug(f"jax1 qvel: {mjx_data.qvel}")
+
+        # for ii in range(self.config.n_steps - 1):
+        #     mjx_data = mjx.step(self.mjx_model, mjx_data)
+        #     # logger.debug(f"jax{ii+2} qpos: {mjx_data.qpos}")
+        #     # logger.debug(f"jax{ii+2} qvel: {mjx_data.qvel}")
+
         def step_fn(data, _):
             return mjx.step(self.mjx_model, data), None
 
         mjx_data, _ = jax.lax.scan(step_fn, mjx_data, None, length=self.config.n_steps)
-        #
+
         # for ii in range(self.config.n_steps):
         #     logger.debug("ii={}, qpos={}".format(ii, mjx_data.qpos))
         #     mjx_data_new = mjx.step(self.mjx_model, mjx_data)
@@ -563,6 +583,9 @@ class SceneEnvJax:
         #         ipdb.set_trace()
         #     mjx_data = mjx_data_new
         # logger.debug("done, qpos={}".format(mjx_data.qpos))
+
+        # logger.debug(f"jaxn qpos: {mjx_data.qpos}")
+        # logger.debug(f"jaxn qvel: {mjx_data.qvel}")
 
         return mjx_data
 
@@ -638,6 +661,8 @@ class SceneEnvJax:
 
         target_attach_pos = T_wa.translation()
         target_attach_quat = T_wa.rotation().wxyz
+
+        logger.debug(f"jax T_pa     : {T_pa}")
 
         # Solve IK using the controller
         return self._ik.solve(
