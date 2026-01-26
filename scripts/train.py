@@ -20,8 +20,11 @@ def vd(
     env_name: str = "Delivery",
     seed: int = 123,
     trainer_cfg: TrainerCfg = TrainerCfg(),
+    n_agent: int = 1,
+    n_spec: int = 1,
+    dense: bool = False
 ):
-    env, eval_cbs, collect_cbs = get_env_and_cbs(env_name, agent_name="vd")
+    env, eval_cbs, collect_cbs = get_env_and_cbs(env_name, agent_name="vd", n_agent=n_agent, n_spec=n_spec, dense=dense)
     agent_cfg = get_vd_agent_cfg(env_name)
     agent = VDMAPPOAgent.create(seed, agent_cfg, env)
 
@@ -35,9 +38,12 @@ def lcrl(
     env_name: str = "HerdOs",
     seed: int = 123,
     trainer_cfg: TrainerCfg = TrainerCfg(),
+    n_agent: int = 1,
+    n_spec: int = 1,
+    dense: bool = False
 ):
     env: LCRLWrapper
-    env, eval_cbs, collect_cbs = get_env_and_cbs(env_name, agent_name="lcrl")
+    env, eval_cbs, collect_cbs = get_env_and_cbs(env_name, agent_name="lcrl", n_agent=n_agent, n_spec=n_spec, dense=dense)
 
     agent_cfg = get_lcrl_agent_cfg(env_name)
     agent = LCRLMAPPOAgent.create(seed, agent_cfg, env)

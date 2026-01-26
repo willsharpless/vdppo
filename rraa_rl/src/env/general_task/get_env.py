@@ -50,7 +50,7 @@ def get_cfg_herdos():
     return cfg
 
 
-def get_env_and_cbs(env_name: str, agent_name: str) -> tuple[Env, list, list]:
+def get_env_and_cbs(env_name:str, agent_name:str, n_agent:int = 1, n_spec:int = 1, dense:bool=False) -> tuple[Env, list, list]:
     env_name = env_name.lower()
 
     herd_eval_cbs = [
@@ -294,9 +294,9 @@ def get_env_and_cbs(env_name: str, agent_name: str) -> tuple[Env, list, list]:
         # specification = "G(F target0) && G(F target1) && G(!oob) && G(F(ags_to_base_agent))"
         # specification = "G(F target0) && G(F target1) && G(!oob) && G(!aerial_collide) && G(F ag0_base) && G(F ag1_base)"
         # specification = "G(F ag0_target0) && G(F ag1_target1) && G(!oob) && G(!aerial_collide) && G(F ag0_base) && G(F ag1_base)"
-        # specification = "G(F ag0_target0) && G(F ag1_target1) && G(!obstacles) && G(!oob) && G(!aerial_collide) && G(F ag0_base) && G(F ag1_base)"
+        specification = "G(F ag0_target0) && G(F ag1_target1) && G(!obstacles) && G(!oob) && G(!aerial_collide) && G(F ag0_base) && G(F ag1_base)"
         # specification = "G(F target0_dense) && G(F target1_dense) && G(!oob) && G(!aerial_collide) && G(F ag0_base) && G(F ag1_base)"
-        specification = "G(F target0) && G(F target1) && G(!obstacles) && G(!oob) && G(!aerial_collide) && G(F ag0_base) && G(F ag1_base)"
+        # specification = "G(F target0) && G(F target1) && G(!obstacles) && G(!oob) && G(!aerial_collide) && G(F ag0_base) && G(F ag1_base)"
 
         # to come
         # specification = "F target0 && F target1 && G(!obstacles) && G(!oob) && G(ag_at_target => ag_to_base_agent)"
@@ -332,6 +332,37 @@ def get_env_and_cbs(env_name: str, agent_name: str) -> tuple[Env, list, list]:
         env = Delivery(cfg)
 
         cbs = delivery_eval_cbs, delivery_collect_cbs
+
+    elif env_name == "ablation":
+        ## N spec and N agent Ablation Env (Double Integrator)
+
+        specification = "G(!oob) && G(!obstacles)"
+        for i in range(n_spec):
+            specification += f" && F target{i}" if not dense else f" && F target{i}_dense"
+
+        base_cfg = DeliveryBaseCfg()
+
+        base_cfg.n_herders = n_agent
+        base_cfg.n_herd = n_agent
+        base_cfg.acc_maxs = [2.0] * n_agent
+        base_cfg.vel_maxs = [1.0] * n_agent
+        base_cfg.dynamic_targets = False
+        base_cfg.update_targets = False
+
+        base_cfg.centers = [
+            [-2.0, 0.0],
+            [3.0, 1.0],
+            [1.5, -2.0],
+            [-4.0, -4.0],
+            [0.0, 3.0],
+        ]
+        base_cfg.radiuses = [0.5] * 5
+
+        cfg = Delivery.Cfg(specification=specification, base=base_cfg)
+        env = Delivery(cfg)
+
+        cbs = delivery_eval_cbs, delivery_collect_cbs
+
     else:
         raise ValueError(f"Unknown environment name: {env_name}")
 

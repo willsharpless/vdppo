@@ -141,9 +141,9 @@ class DeliveryBaseCfg:
             return valid_center
 
         valid_centers = jax.vmap(sample_valid_for_ag)(jr.split(key, n_targets), jnp.arange(n_targets))
-        assert valid_centers.shape == (2, 1, 2)
+        # assert valid_centers.shape == (2, 1, 2)
         valid_centers = valid_centers.squeeze(1)
-        assert valid_centers.shape == (2, 2)
+        # assert valid_centers.shape == (2, 2)
 
         return valid_centers
 
@@ -462,7 +462,7 @@ class DeliveryBase(BaseEnv):
         return c_all_herder_inside
     
     def is_herderX_circs(self, state: DeliveryBaseState, herder_ix:int, center_ix:int, which=jnp, radius=0.5):
-        assert self.cfg.dynamic_targets == True
+        # assert self.cfg.dynamic_targets == True
         h_pos = state.herder_state[..., herder_ix, 0:2]
         ch_dists = which.linalg.norm(h_pos - state.centers[center_ix], axis=-1)
         c_is_herder_inside = which.any(ch_dists < (which.array(radius) - self.cfg.agent_radius))
@@ -477,6 +477,9 @@ class DeliveryBase(BaseEnv):
             "obstacles": self.is_herder_in_obstacles(state),
             "target0": self.is_herder_in_target(state, center=self.cfg.centers[0], radius=self.cfg.radiuses[0]),
             "target1": self.is_herder_in_target(state, center=self.cfg.centers[1], radius=self.cfg.radiuses[1]),
+            "target2": self.is_herder_in_target(state, center=self.cfg.centers[2], radius=self.cfg.radiuses[2]),
+            "target3": self.is_herder_in_target(state, center=self.cfg.centers[3], radius=self.cfg.radiuses[3]),
+            "target4": self.is_herder_in_target(state, center=self.cfg.centers[4], radius=self.cfg.radiuses[4]),
             "ags_to_base_agent": self.is_herder_at_base_ag(state),
             "ag0_target0": self.is_herderX_circs(state, herder_ix=0, center_ix=0),
             "ag1_target0": self.is_herderX_circs(state, herder_ix=1, center_ix=0),
@@ -535,7 +538,13 @@ class DeliveryBase(BaseEnv):
 
     def get_predicates_float(self, state: DeliveryBaseState):
         pred_herder_circs = self.pred_herder_circs(state)
-        predicates = {"target0_dense": pred_herder_circs[0], "target1_dense": pred_herder_circs[1]}
+        predicates = {
+            "target0_dense": pred_herder_circs[0],
+            "target1_dense": pred_herder_circs[1],
+            "target2_dense": pred_herder_circs[2],
+            "target3_dense": pred_herder_circs[3],
+            "target4_dense": pred_herder_circs[4]
+        }
         if self.cfg.dynamic_targets:
             predicates["target0_dense"] = self.pred_herder_circs_dyn(state, center_ix=0)
             predicates["target1_dense"] = self.pred_herder_circs_dyn(state, center_ix=1)
@@ -789,8 +798,6 @@ class DeliveryBase(BaseEnv):
             centers = self.cfg.reset_targets_fn(key)
         else:
             centers = jnp.array(self.cfg.centers)
-
-        assert centers.shape == (2, 2)
 
         return DeliveryBaseState(herd_state=herd_pos, herder_state=herder_state, steps=0, centers=centers)
 
