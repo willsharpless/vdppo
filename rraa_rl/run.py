@@ -27,9 +27,9 @@ class Run(Cfg):
         return f"{stamp}_{self.folder_suffix}"
 
     @staticmethod
-    def create(env_name: str, agent_name: str, name: str | None = None):
+    def create(env_name: str, agent_name: str, name: str | None = None, debug: bool = False):
         now = datetime.datetime.now()
-        runs_dir = get_runs_dir()
+        runs_dir = get_runs_dir(debug=debug)
 
         noun = get_random_noun(n_letters=5)
         if name is None:

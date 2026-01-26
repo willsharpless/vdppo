@@ -224,3 +224,7 @@
 # # PyPI configuration file
 # .pypirc
 /runs/
+/runs*
+/datadrive/vd*
+/runs_old*
+/runs_debug/
