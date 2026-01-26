@@ -1,30 +1,19 @@
-import functools as ft
 from typing import Any, NamedTuple
 
 import einops as ei
 import flax.linen as nn
-import jax
 import jax.numpy as jnp
 import jax.random as jr
-import jax.tree_util as jtu
 import jax_dataclasses as jdc
 import matplotlib.pyplot as plt
 import numpy as np
 from attrs import define
 from jaxtyping import PRNGKeyArray
-from loguru import logger
 from matplotlib.colors import to_rgba
 
 from rraa_rl.emoji_util import plot_emoji
-from rraa_rl.geometry import AABB, LineSegment, dist_pt_to_aabb, segment_intersects_aabb
-from rraa_rl.jax_types import BoolScalar
-from rraa_rl.jax_utils import softmaximum, softminimum, tree_stack
-from rraa_rl.src.env.general_task.env import (AugObs, BaseEnv, Env, EnvCfg, EnvStep, EnvUsingBase,
-                                              StateWithTemporalNode, StaticTemporalNodeMixin,
-                                              StaticTemporalNodeMixinCfg)
-from rraa_rl.src.env.general_task.herd_base import (HerdBase, HerdBaseCfg, HerdBasePlay, HerdBasePlayCfg, HerdingHerd,
-                                                    HerdingHerdCfg)
-from rraa_rl.train_utils import tree_where
+from rraa_rl.src.env.general_task.env import (AugObs, BaseEnv, EnvCfg, EnvStep, EnvUsingBase, StateWithTemporalNode,
+                                              StaticTemporalNodeMixin, StaticTemporalNodeMixinCfg)
 
 plt.style.use("seaborn-v0_8-darkgrid")
 

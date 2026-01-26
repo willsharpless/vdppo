@@ -29,8 +29,8 @@ class EnvStep(NamedTuple, Generic[_EnvState, _Obs]):
     envstate: _EnvState
     obs: _Obs
     predicates: dict
-    term: bool
-    trunc: bool
+    term: jnp.ndarray | bool
+    trunc: jnp.ndarray | bool
     info: dict
 
 
@@ -41,6 +41,12 @@ class BaseEnv(Generic[_EnvState, _Obs]):
 
     def add_obs_preprocessor(self, module: nn.Module):
         return module
+
+    def to_minstate(self, state: _EnvState) -> Any:
+        return state
+
+    def from_minstate(self, minstate: Any) -> _EnvState:
+        return minstate
 
     def is_predicate_active(self, predicate_name: str) -> bool:
         if self.active_predicates is None:
@@ -63,6 +69,24 @@ class BaseEnv(Generic[_EnvState, _Obs]):
     )
     def reset_batch(self, key: PRNGKeyArray, batch_size: int) -> Any:
         b_key = jr.split(key, batch_size)
+        return jax.vmap(self.reset)(b_key)
+
+    @ft.partial(
+        jax.jit,
+        static_argnames=(
+            "self",
+            "pattern",
+        ),
+    )
+    def reset_batch_with_pattern(self, key: PRNGKeyArray, pattern: tuple[int, ...]) -> Any:
+        """Used for get_eval_states."""
+        max_n_env = max(pattern)
+        m_key = jr.split(key, max_n_env)
+
+        keys_list = []
+        for num in pattern:
+            keys_list.append(m_key[:num])
+        b_key = jnp.concatenate(keys_list, axis=0)
         return jax.vmap(self.reset)(b_key)
 
     @property
@@ -128,6 +152,12 @@ class Env(Generic[_EnvState, _Obs]):
 
     def add_obs_preprocessor(self, module: nn.Module):
         return module
+
+    def to_minstate(self, state: _EnvState) -> _EnvState:
+        return state
+
+    def from_minstate(self, minstate: _EnvState) -> _EnvState:
+        return minstate
 
     def step(self, state: _EnvState, action: Any) -> EnvStep[_EnvState, _Obs]:
         raise NotImplementedError("")
@@ -340,7 +370,7 @@ class StaticTemporalNodeMixin:
         step = base_step._replace(envstate=state_new, obs=obs)
 
         return step
-    
+
     def step_control(self, state: Any, control: jnp.ndarray):
         base_step: EnvStep = self.base.step_control(state.base, control)
 
@@ -351,7 +381,19 @@ class StaticTemporalNodeMixin:
         step = base_step._replace(envstate=state_new, obs=obs)
 
         return step
-    
+
+    def to_minstate(self: StaticTemporalNodeMixinProtocol, state: StateWithTemporalNode) -> StateWithTemporalNode:
+        # validate=False because we are changing the structure.
+        with jdc.copy_and_mutate(state, validate=False) as state_new:
+            state_new.base = self.base.to_minstate(state.base)
+        return state_new
+
+    def from_minstate(self: StaticTemporalNodeMixinProtocol, minstate: StateWithTemporalNode) -> StateWithTemporalNode:
+        # validate=False because we are changing the structure.
+        with jdc.copy_and_mutate(minstate, validate=False) as state_new:
+            state_new.base = self.base.from_minstate(minstate.base)
+        return state_new
+
     def get_obs(self: Self | StaticTemporalNodeMixinProtocol, state: Any) -> Any:
         base_obs = self.base.get_obs(state.base)
         return self._augment_obs(state, base_obs)
@@ -404,18 +446,33 @@ class StaticTemporalNodeMixin:
         n_envs_per_node = np.full((self.n_temporal_nodes,), n_envs // self.n_temporal_nodes)
         n_envs_per_node[0] = n_envs - n_envs_per_node[1:].sum()
 
-        max_n_envs_per_node = n_envs_per_node.max()
-        m_state_base = self.base.reset_batch(key, max_n_envs_per_node)
-        states = []
-        for ii, n_envs_this in enumerate(n_envs_per_node):
-            state_base = jtu.tree_map(lambda x: x[:n_envs_this], m_state_base)
-            state = StateWithTemporalNode(
-                temporal_node_idx=jnp.full((n_envs_this,), ii),
-                base=state_base,
-            )
-            states.append(state)
+        # max_n_envs_per_node = n_envs_per_node.max()
+        # m_state_base = self.base.reset_batch(key, max_n_envs_per_node)
 
-        b_state0 = tree_cat(states, axis=0)
+        # Do this because manipulating warp state is very problematic. Not all fields should be batched.
+        b_state_base = self.base.reset_batch_with_pattern(key, tuple(n_envs_per_node))
+
+        b_temporal_node_idx = []
+        for ii, n_envs_this in enumerate(n_envs_per_node):
+            b_temporal_node_idx.append(jnp.full((n_envs_this,), ii))
+        b_temporal_node_idx = jnp.concatenate(b_temporal_node_idx, axis=0)
+
+        b_state0 = StateWithTemporalNode(
+            temporal_node_idx=b_temporal_node_idx,
+            base=b_state_base,
+        )
+
+        # states = []
+        # for ii, n_envs_this in enumerate(n_envs_per_node):
+        #     state_base = jtu.tree_map(lambda x: x[:n_envs_this], m_state_base)
+        #     state = StateWithTemporalNode(
+        #         temporal_node_idx=jnp.full((n_envs_this,), ii),
+        #         base=state_base,
+        #     )
+        #     states.append(state)
+        #
+        # b_state0 = tree_cat(states, axis=0)
+
         return b_state0
 
     def _augment_obs(self: StaticTemporalNodeMixinProtocol, state: StateWithTemporalNode, obs: jnp.ndarray):

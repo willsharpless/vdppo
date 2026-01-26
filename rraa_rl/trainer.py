@@ -1,3 +1,4 @@
+import copy
 import pickle
 from typing import Protocol
 
@@ -81,16 +82,22 @@ class Trainer:
         n_envs_train = self.agent.cfg.n_envs_train
         n_envs_test = 128
 
+        if hasattr(env.base, "n_envs"):
+            env.base.n_envs = n_envs_train
         logger.debug("Constructing collector...")
         collector = Collector.create(
             key=key_collector,
             env=env,
             cfg=Collector.Cfg(n_envs=n_envs_train),
         )
+
         logger.debug("Constructing collector_eval...")
+        env_test = copy.deepcopy(env)
+        if hasattr(env_test.base, "n_envs"):
+            env_test.base.n_envs = n_envs_test
         collector_eval = Collector.create(
             key=key_collector,
-            env=env,
+            env=env_test,
             cfg=Collector.Cfg(n_envs=n_envs_test, auto_reset=False, ignore_trunc=True),
         )
 
@@ -115,6 +122,7 @@ class Trainer:
                 "noun": run.noun,
                 "name": run.name,
                 "spec": env.specification,
+                "wandb_name": run.wandb_name,
             } | wandb_config
             wandb.init(project="vd_mappo", name=run.wandb_name, config=wandb_config)
 

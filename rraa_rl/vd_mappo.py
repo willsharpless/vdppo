@@ -101,6 +101,9 @@ class VDMAPPOAgentCfg(Cfg):
     p_max_pol: float = 0.999
     """Prevent extreme probabilities in the policy, enforced by construction."""
 
+    terminate_on_reach: bool = False
+    """If true, instead of truncating on reach, we terminate so that we don't bootstrap."""
+
 
 class VDMAPPOStatic:
     def __init__(self, temporal_node_alloc: np.ndarray | None = None):
@@ -168,8 +171,9 @@ class VDMAPPOAgent:
                 n_actions_per_agent=env.n_actions_per_agent,
                 n_out=env.n_temporal_nodes,
                 p_max=cfg.p_max_pol,
+                out_axes=-2,
             )
-            actor_def = IndexAtEnd(actor_def, n_out=env.n_temporal_nodes)
+            actor_def = IndexAtEnd(actor_def, n_out=env.n_temporal_nodes, index_pos=-2)
 
         if not dummy_obs.base_is_array():
             critic_def = env.add_obs_preprocessor(critic_def)
@@ -771,11 +775,17 @@ class VDMAPPOAgent:
         act = act_dist.mode()
         return act
 
-    @ft.partial(jax.jit, static_argnums=(2,))
-    def collect_batch(self, collector: Collector, rollout_T: int) -> tuple[Collector, RolloutOutput, dict]:
+    @ft.partial(jax.jit, static_argnames=("rollout_T", "agent_truncate"), donate_argnames=("collector",))
+    def collect_batch(
+        self, collector: Collector, rollout_T: int, agent_truncate: bool = True
+    ) -> tuple[Collector, RolloutOutput, dict]:
         """Collect a batch of data using stochastic policy."""
         logger.debug("jitting collect_batch...")
-        out = collector.collect_batch(self.sample_action, rollout_T, reset_fn=None, truncate_fn=self.should_truncate)
+        if agent_truncate:
+            truncate_fn = self.should_truncate
+        else:
+            truncate_fn = None
+        out = collector.collect_batch(self.sample_action, rollout_T, reset_fn=None, truncate_fn=truncate_fn)
         logger.debug("done jitting collect_batch.")
         return out
 

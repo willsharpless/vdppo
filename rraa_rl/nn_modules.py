@@ -49,12 +49,17 @@ class MAMultiDiscretePolicy(nn.Module):
                     # Adjust the logits to prevent extreme probabilities.
                     eps = 1 - self.p_max
                     logp_this_dim = jnn.log_softmax(logits_this_action_dim, axis=-1)
+                    assert logp_this_dim.shape == logits_this_action_dim.shape
+
                     # log( (1-eps) * p) = log( 1-eps) + logp
                     logp_a = jnp.log1p(-eps) + logp_this_dim
                     # log( eps * 1 / n_actions ) = log(eps) - log(n_actions)
                     logp_b = jnp.log(eps) - jnp.log(n_actions)
+
                     # log p' = log( (1-eps) * p + eps * 1/n_actions )
-                    logits_this_action_dim = jnp.logaddexp(logp_a, logp_b)
+                    logits_this_action_dim_new = jnp.logaddexp(logp_a, logp_b)
+                    assert logits_this_action_dim_new.shape == logits_this_action_dim.shape
+                    logits_this_action_dim = logits_this_action_dim_new
 
                 dist = tfd.Categorical(logits=logits_this_action_dim)
                 agent_dists.append(dist)
@@ -76,18 +81,19 @@ class SeparateMAMultiDiscretePolicy(nn.Module):
     n_actions_per_agent: list[list[int]]
     n_out: int
     p_max: float | None = 0.999
+    out_axes: int = -1
 
     @nn.compact
     def __call__(self, obs) -> tfd.Distribution:
         BatchPolicy = nn.vmap(
             MAMultiDiscretePolicy,
             in_axes=None,
-            out_axes=-1,
+            out_axes=self.out_axes,
             variable_axes={"params": 0},
             split_rngs={"params": True},
             axis_size=self.n_out,
         )
-        policy = BatchPolicy(self.hidden_dims, self.n_actions_per_agent, self.p_max)(obs)
+        policy = BatchPolicy(self.hidden_dims, self.n_actions_per_agent, p_max=self.p_max)(obs)
         return policy
 
 
@@ -173,13 +179,14 @@ class IndexAtEnd(nn.Module):
 
     nn: nn.Module
     n_out: int
+    index_pos: int = -1
 
     @nn.compact
     def __call__(self, obs: AugObs | AugObsAutomata):
         n_out = self.nn(obs.base)
 
         def check_dim(arr):
-            assert arr.shape[-1] == self.n_out
+            assert arr.shape[self.index_pos] == self.n_out
             return arr
 
         jtu.tree_map(check_dim, n_out)
@@ -192,5 +199,11 @@ class IndexAtEnd(nn.Module):
             case _:
                 raise ValueError(f"Unexpected obs type: {type(obs)}")
 
-        out = jtu.tree_map(lambda arr: arr[..., index], n_out)
+        if self.index_pos == -1:
+            out = jtu.tree_map(lambda arr: arr[..., index], n_out)
+        elif self.index_pos == -2:
+            out = jtu.tree_map(lambda arr: arr[..., index, :], n_out)
+        else:
+            raise NotImplementedError("")
+
         return out

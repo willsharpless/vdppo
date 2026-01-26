@@ -3,6 +3,7 @@ import functools as ft
 from typing import Any, Callable, Generic, Protocol, Tuple, TypeVar
 
 import einops as ei
+import ipdb
 import jax
 import jax.lax as lax
 import jax.numpy as jnp
@@ -18,6 +19,7 @@ from typing_extensions import Self
 
 from rraa_rl.jax_utils import switch01, tree_where_dim0
 from rraa_rl.src.env.general_task.env import Env, EnvStep
+from rraa_rl.train_utils import tree_where
 
 _EnvState = TypeVar("_EnvState")
 _Obs = TypeVar("_Obs")
@@ -119,6 +121,9 @@ class CollectorCfg:
     ignore_trunc: bool = False
     """If True, then remove all truncations from the collected data."""
 
+    use_minstate: bool = True
+    """IF True, then use the minstate representation for storage to save memory."""
+
 
 class Collector(struct.PyTreeNode):
     Cfg = CollectorCfg
@@ -130,9 +135,9 @@ class Collector(struct.PyTreeNode):
     cfg: CollectorCfg = struct.field(pytree_node=False)
 
     @classmethod
-    def create(cls, key: PRNGKeyArray, env: Env, cfg: CollectorCfg):
+    def create(cls, key: PRNGKeyArray, env: Env, cfg: CollectorCfg, init: bool = True):
         key, key_init = jr.split(key)
-        b_state = env.reset_batch(key_init, cfg.n_envs, init=True)
+        b_state = env.reset_batch(key_init, cfg.n_envs, init=init)
         b_obs = jax.jit(jax.vmap(env.get_obs))(b_state)
 
         collector_state = CollectorState(b_state=b_state, b_obs=b_obs)
@@ -145,7 +150,7 @@ class Collector(struct.PyTreeNode):
         )
 
     def reset_with_state(self, b_state: Any) -> Self:
-        with jdc.copy_and_mutate(self) as self_new:
+        with jdc.copy_and_mutate(self, validate=False) as self_new:
             self_new.collect_state.b_state = b_state
             self_new.collect_state.b_obs = jax.vmap(self.env.get_obs)(b_state)
 
@@ -194,14 +199,34 @@ class Collector(struct.PyTreeNode):
             # NOTE: Reset DOESN'T change the step, only the colstate.
             out = RolloutOutput.from_rollout(colstate, b_step_result, b_act, b_logprob)
 
+            if self.cfg.use_minstate:
+                # Convert to minstate to save memory.
+                b_state_now = jax.vmap(self.env.to_minstate)(out.state_now)
+                b_state_next = jax.vmap(self.env.to_minstate)(out.state_next)
+                out = out.replace(state_now=b_state_now, state_next=b_state_next)
+
             # Sample new states from the environments for resets
             if self.cfg.auto_reset:
                 b_state_reset = reset_fn(self.env, b_key_reset, colstate.b_state)
                 b_obs_reset = jax.vmap(self.env.get_obs)(b_state_reset)
 
                 b_should_reset = b_step_result.term | b_step_result.trunc
-                b_state_new = tree_where_dim0(b_should_reset, b_state_reset, b_step_result.envstate, which=jnp)
-                b_obs_new = tree_where_dim0(b_should_reset, b_obs_reset, b_step_result.obs, which=jnp)
+
+                # b_state_new = jax.vmap(tree_where)(b_should_reset, b_state_reset, b_step_result.envstate)
+
+                # Warp is jank. I guess this is to avoid tracers interacting with warp data.
+                def where_should_reset(x, y):
+                    if b_should_reset.shape and b_should_reset.shape[0] != x.shape[0]:
+                        return y
+
+                    if b_should_reset.shape:
+                        should_reset = jnp.reshape(b_should_reset, [x.shape[0]] + [1] * (len(x.shape) - 1))
+
+                    return jnp.where(should_reset, x, y)
+
+                b_state_new = jtu.tree_map(where_should_reset, b_state_reset, b_step_result.envstate)
+
+                b_obs_new = jax.vmap(tree_where)(b_should_reset, b_obs_reset, b_step_result.obs)
             else:
                 b_state_new = b_step_result.envstate
                 b_obs_new = b_step_result.obs
@@ -253,14 +278,20 @@ class Collector(struct.PyTreeNode):
             # NOTE: Reset DOESN'T change the step, only the colstate.
             out = RolloutOutput.from_rollout(colstate, b_step_result, b_act, b_logprob)
 
+            if self.cfg.use_minstate:
+                # Convert to minstate to save memory.
+                b_state_now = jax.vmap(self.env.to_minstate)(out.state_now)
+                b_state_next = jax.vmap(self.env.to_minstate)(out.state_next)
+                out = out.replace(state_now=b_state_now, state_next=b_state_next)
+
             # Sample new states from the environments for resets
             if self.cfg.auto_reset:
                 b_state_reset = reset_fn(self.env, b_key_reset, colstate.b_state)
                 b_obs_reset = jax.vmap(self.env.get_obs)(b_state_reset)
 
                 b_should_reset = b_step_result.term | b_step_result.trunc
-                b_state_new = tree_where_dim0(b_should_reset, b_state_reset, b_step_result.envstate, which=jnp)
-                b_obs_new = tree_where_dim0(b_should_reset, b_obs_reset, b_step_result.obs, which=jnp)
+                b_state_new = jax.vmap(tree_where)(b_should_reset, b_state_reset, b_step_result.envstate)
+                b_obs_new = jax.vmap(tree_where)(b_should_reset, b_obs_reset, b_step_result.obs)
             else:
                 b_state_new = b_step_result.envstate
                 b_obs_new = b_step_result.obs

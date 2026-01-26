@@ -1,13 +1,14 @@
 import jax.numpy as jnp
 
 from rraa_rl import delivery_cbs, gridworld_cbs, herd_os_cbs
+from rraa_rl.envs.scene import ManipScene
 from rraa_rl.jax_utils import tree_stack
 from rraa_rl.lcrl.lcrl_wrapper import LCRLEnvCfg, LCRLWrapper
 from rraa_rl.ldba.ldba import LDBA, Guard, Transition, parse_ltl2ldba
 from rraa_rl.src.env.general_task.env import Env
 from rraa_rl.src.env.general_task.gridworld import GridworldMA, GridworldMACfg, GridworldMap
 from rraa_rl.src.env.general_task.herd_base import HerdingHerdCfg
-from rraa_rl.src.env.general_task.herd_os import HerdOs, HerdOsPlay
+from rraa_rl.src.env.general_task.herd_os import HerdOs
 from rraa_rl.src.env.general_task.delivery import DeliveryBase, DeliveryBaseCfg, Delivery, DeliveryCfg
 
 
@@ -72,11 +73,10 @@ def get_env_and_cbs(env_name:str, agent_name:str, n_agent:int = 1, n_spec:int = 
     # eval_cbs = [herd_os_cbs.plot_eval_trajs, VizValues.create()]
     delivery_collect_cbs = [delivery_cbs.viz_collect_data, delivery_cbs.viz_obs_histogram]
 
-    if env_name == "herdosplay":
-        env = HerdOsPlay()
-        cbs = herd_eval_cbs, herd_collect_cbs
+    manip_eval_cbs = []
+    manip_collect_cbs = []
 
-    elif env_name == "herdos":
+    if env_name == "herdos":
         cfg = get_cfg_herdos()
         env = HerdOs(cfg)
         cbs = herd_eval_cbs, herd_collect_cbs
@@ -272,6 +272,11 @@ def get_env_and_cbs(env_name:str, agent_name:str, n_agent:int = 1, n_spec:int = 
 
         env = GridworldMA(cfg)
         cbs = gridworld_eval_cbs, gridworld_collect_cbs
+    elif env_name == "manip_scene":
+        spec = "F( drawer_open && F( cube_in_drawer ))"
+        cfg = ManipScene.Cfg(specification=spec)
+        env = ManipScene(cfg)
+        cbs = manip_eval_cbs, manip_collect_cbs
 
     elif env_name == "gridworld_map7":
         map7 = GridworldMap.Map7()
@@ -290,7 +295,7 @@ def get_env_and_cbs(env_name:str, agent_name:str, n_agent:int = 1, n_spec:int = 
         # specification = "F target0 && F target1 && G(!obstacles) && G(!oob)"
         # specification = "F target0 && F target1 && G(!obstacles) && G(!oob) && G(!collide)"
         # specification = "F target0 && F target1 && G(!obstacles) && G(!oob) && G(F(ags_to_base_agent))"
-        
+
         # specification = "G(F target0) && G(F target1) && G(!oob) && G(F(ags_to_base_agent))"
         # specification = "G(F target0) && G(F target1) && G(!oob) && G(!aerial_collide) && G(F ag0_base) && G(F ag1_base)"
         # specification = "G(F ag0_target0) && G(F ag1_target1) && G(!oob) && G(!aerial_collide) && G(F ag0_base) && G(F ag1_base)"
