@@ -12,7 +12,6 @@ import matplotlib.pyplot as plt
 import numpy as np
 from attrs import define
 from jaxtyping import PRNGKeyArray
-
 from rraa_rl.geometry import AABB, LineSegment, dist_pt_to_aabb, segment_intersects_aabb
 from rraa_rl.jax_types import BoolScalar
 from rraa_rl.jax_utils import softmaximum, softminimum, tree_stack
@@ -65,6 +64,9 @@ class HerdBaseCfg:
     trunc_steps: int = 100
 
     herded_radius: float = 1.0  # Radius within which herd agents are considered herded.
+
+    # Multiplier, ONLY USED FOR VIZ.
+    pos_multiplier: float = 1.0
 
 
 @define(slots=False)
@@ -373,16 +375,17 @@ class HerdBase(BaseEnv):
 
     def setup_ax(self, ax: plt.Axes):
         cfg = self.cfg
-        ax.set_xlim(-1.05 * cfg.halfsize[0], 1.05 * cfg.halfsize[0])
-        ax.set_ylim(-1.05 * cfg.halfsize[1], 1.05 * cfg.halfsize[1])
+        mul = cfg.pos_multiplier
+        ax.set_xlim(-1.05 * cfg.halfsize[0] * mul, 1.05 * cfg.halfsize[0] * mul)
+        ax.set_ylim(-1.05 * cfg.halfsize[1] * mul, 1.05 * cfg.halfsize[1] * mul)
         ax.set_aspect("equal")
 
         # axvspan and axhspan to mark the boundaries.
         opts = dict(color="black", alpha=0.9)
-        ax.axvspan(cfg.halfsize[0], cfg.halfsize[0] + 1.0, **opts)
-        ax.axvspan(-cfg.halfsize[0] - 1.0, -cfg.halfsize[0], **opts)
-        ax.axhspan(cfg.halfsize[1], cfg.halfsize[1] + 1.0, **opts)
-        ax.axhspan(-cfg.halfsize[1] - 1.0, -cfg.halfsize[1], **opts)
+        ax.axvspan(cfg.halfsize[0] * mul, (cfg.halfsize[0] + 1.0) * mul, **opts)
+        ax.axvspan((-cfg.halfsize[0] - 1.0) * mul, -cfg.halfsize[0], **opts)
+        ax.axhspan(cfg.halfsize[1] * mul, (cfg.halfsize[1] + 1.0) * mul, **opts)
+        ax.axhspan((-cfg.halfsize[1] - 1.0) * mul, -cfg.halfsize[1] * mul, **opts)
 
 
 @define(slots=False)
@@ -518,17 +521,18 @@ class HerdBasePlay(HerdBase):
 
     def setup_ax(self, ax: plt.Axes):
         super().setup_ax(ax)
+        mul = self.cfg.pos_multiplier
 
         if self.cfg.test_invariant:
             # Plot the perturbation circles.
-            for ii, center in enumerate(self.centers_perturb):
-                radius = self.radiuses_perturb[ii]
+            for ii, center in enumerate(self.centers_perturb * mul):
+                radius = self.radiuses_perturb[ii] * mul
                 circ = plt.Circle((center[0], center[1]), radius, color="C0", alpha=0.2)
                 ax.add_patch(circ)
 
         # Plot the circles.
-        for ii, center in enumerate(self.centers):
-            radius = self.radiuses[ii]
+        for ii, center in enumerate(self.centers * mul):
+            radius = self.radiuses[ii] * mul
             circ = plt.Circle((center[0], center[1]), radius, color="C5", alpha=0.3)
             ax.add_patch(circ)
 
@@ -932,23 +936,24 @@ class HerdingHerd(HerdBase):
     def setup_ax(self, ax: plt.Axes):
         cfg = self.cfg
         super().setup_ax(ax)
+        mul = self.cfg.pos_multiplier
 
         assert not self.cfg.herd_zero
 
         # Plot the herd circle.
-        herd_circle = plt.Circle(self.herded_center, cfg.herded_radius, color="lightgray", alpha=0.5)
+        herd_circle = plt.Circle(self.herded_center * mul, cfg.herded_radius * mul, color="lightgray", alpha=0.5)
         ax.add_patch(herd_circle)
 
         # Plot the gates if they are active.
         for ii in range(self.n_gates):
             if self.is_predicate_active(f"herd_gate_{ii}"):
-                gate_circle = plt.Circle(self.gates[ii], cfg.herded_radius, color="lightgray", alpha=0.5)
+                gate_circle = plt.Circle(self.gates[ii] * mul, cfg.herded_radius * mul, color="lightgray", alpha=0.5)
                 ax.add_patch(gate_circle)
 
                 # Draw the number of the gate.
                 ax.text(
-                    self.gates[ii][0],
-                    self.gates[ii][1],
+                    self.gates[ii][0] * mul,
+                    self.gates[ii][1] * mul,
                     f"{ii}",
                     color="black",
                     fontsize=12,
@@ -959,16 +964,16 @@ class HerdingHerd(HerdBase):
 
         # Visualize the bottom and top parts of the wall with rectangles.
         wall_bottom = plt.Rectangle(
-            (-self.wall_thick_x / 2, -cfg.halfsize[1]),
-            self.wall_thick_x,
-            self.gap_y - self.gap_halfheight + cfg.halfsize[1],
+            (-self.wall_thick_x / 2 * mul, -cfg.halfsize[1] * mul),
+            self.wall_thick_x * mul,
+            (self.gap_y - self.gap_halfheight + cfg.halfsize[1]) * mul,
             color="black",
             alpha=0.8,
         )
         wall_top = plt.Rectangle(
-            (-self.wall_thick_x / 2, self.gap_y + self.gap_halfheight),
-            self.wall_thick_x,
-            cfg.halfsize[1] - (self.gap_y + self.gap_halfheight),
+            (-self.wall_thick_x / 2 * mul, (self.gap_y + self.gap_halfheight) * mul),
+            self.wall_thick_x * mul,
+            (cfg.halfsize[1] - (self.gap_y + self.gap_halfheight)) * mul,
             color="black",
             alpha=0.8,
         )
