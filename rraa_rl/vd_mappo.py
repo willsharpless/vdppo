@@ -774,11 +774,15 @@ class VDMAPPOAgent:
         act = act_dist.mode()
         return act
 
-    @ft.partial(jax.jit, static_argnums=(2,))
-    def collect_batch(self, collector: Collector, rollout_T: int) -> tuple[Collector, RolloutOutput, dict]:
+    @ft.partial(jax.jit, static_argnames=("rollout_T", "agent_truncate"))
+    def collect_batch(self, collector: Collector, rollout_T: int, agent_truncate: bool = True) -> tuple[Collector, RolloutOutput, dict]:
         """Collect a batch of data using stochastic policy."""
         logger.debug("jitting collect_batch...")
-        out = collector.collect_batch(self.sample_action, rollout_T, reset_fn=None, truncate_fn=self.should_truncate)
+        if agent_truncate:
+            truncate_fn = self.should_truncate
+        else:
+            truncate_fn = None
+        out = collector.collect_batch(self.sample_action, rollout_T, reset_fn=None, truncate_fn=truncate_fn)
         logger.debug("done jitting collect_batch.")
         return out
 

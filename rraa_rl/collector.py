@@ -131,9 +131,9 @@ class Collector(struct.PyTreeNode):
     cfg: CollectorCfg = struct.field(pytree_node=False)
 
     @classmethod
-    def create(cls, key: PRNGKeyArray, env: Env, cfg: CollectorCfg):
+    def create(cls, key: PRNGKeyArray, env: Env, cfg: CollectorCfg, init: bool = True):
         key, key_init = jr.split(key)
-        b_state = env.reset_batch(key_init, cfg.n_envs, init=True)
+        b_state = env.reset_batch(key_init, cfg.n_envs, init=init)
         b_obs = jax.jit(jax.vmap(env.get_obs))(b_state)
 
         collector_state = CollectorState(b_state=b_state, b_obs=b_obs)

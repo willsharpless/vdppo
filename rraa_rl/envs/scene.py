@@ -1,13 +1,14 @@
 from __future__ import annotations
 
-import pickle
-import pathlib
-
 import functools as ft
+import pathlib
+import pickle
 from functools import partial
 from pathlib import Path
 from typing import Any, Dict, NamedTuple, Optional, Tuple
 
+import einops as ei
+import flax.linen as nn
 import ipdb
 import jax
 import jax.numpy as jnp
@@ -16,41 +17,28 @@ import jax.tree_util as jtu
 import jax_dataclasses as jdc
 import matplotlib.pyplot as plt
 import mujoco
+import mujoco.mjx.third_party.mujoco_warp as mjw
 import numpy as np
 from attrs import define
 from dm_control import mjcf
 from jaxtyping import PRNGKeyArray
 from loguru import logger
+from matplotlib.colors import to_rgba
 from mujoco import mjx
 
-from typing import Any, NamedTuple
-
-import einops as ei
-import flax.linen as nn
-import jax.numpy as jnp
-import jax.random as jr
-import jax_dataclasses as jdc
-import matplotlib.pyplot as plt
-import numpy as np
-from attrs import define
-from jaxtyping import PRNGKeyArray
-from matplotlib.colors import to_rgba
-
 from rraa_rl.emoji_util import plot_emoji
-from rraa_rl.src.env.general_task.env import (AugObs, BaseEnv, EnvCfg, EnvStep, EnvUsingBase, StateWithTemporalNode,
-                                              StaticTemporalNodeMixin, StaticTemporalNodeMixinCfg)
-
-
 from rraa_rl.envs import mjx_patch
 from rraa_rl.envs.manipspace import mjcf_utils
 from rraa_rl.envs.manipspace.diff_ik_jax import DiffIKControllerJax
 from rraa_rl.envs.manipspace.lie.se3_jax import SE3
 from rraa_rl.envs.manipspace.lie.so3_jax import SO3, mat_to_quat, quat_multiply, quat_rotate, quat_to_mat, so3_exp
-from rraa_rl.envs.manipspace.scene_env_jax import SceneEnvConfig, SceneEnvJax, compute_yaw_from_quat, quat_from_z_radians
+from rraa_rl.envs.manipspace.scene_env_jax import (SceneEnvConfig, SceneEnvJax, compute_yaw_from_quat,
+                                                   quat_from_z_radians)
 from rraa_rl.geometry import AABB, LineSegment, dist_pt_to_aabb, segment_intersects_aabb
 from rraa_rl.jax_types import BoolScalar
 from rraa_rl.jax_utils import softmaximum, softminimum, tree_stack
-from rraa_rl.src.env.general_task.env import BaseEnv, EnvStep
+from rraa_rl.src.env.general_task.env import (AugObs, BaseEnv, EnvCfg, EnvStep, EnvUsingBase, StateWithTemporalNode,
+                                              StaticTemporalNodeMixin, StaticTemporalNodeMixinCfg)
 
 
 @define(slots=False)
@@ -65,6 +53,7 @@ class SceneBaseCfg(EnvCfg, StaticTemporalNodeMixinCfg):
 
     trunc_steps: int = 400
 
+
 @jdc.pytree_dataclass
 class SceneBaseState:
     mjx_data: mjx.Data
@@ -72,7 +61,7 @@ class SceneBaseState:
     prev_button_pos: jax.Array  # Previous button joint positions for detecting presses
 
     # Current button states (binary), 0 is locked.
-    button_states: jax.Array  
+    button_states: jax.Array
 
     # target_button_states: jax.Array  # Target button states
     # target_drawer_pos: jax.Array  # Target drawer position
@@ -82,16 +71,20 @@ class SceneBaseState:
 
     steps: jnp.ndarray
 
+
 @jdc.pytree_dataclass
 class SceneBaseMinState:
     """SceneBaseState but with only the minimal necessary fields. For saving memory."""
+
     qpos: jnp.ndarray
     qvel: jnp.ndarray
     prev_button_pos: jax.Array  # Previous button joint positions for detecting presses
-    button_states: jax.Array  
+    button_states: jax.Array
     steps: jnp.ndarray
 
+
 _data_source = None
+
 
 class SceneData:
     def __init__(self) -> None:
@@ -124,7 +117,7 @@ class SceneData:
             qvel_all.append(qvel_stack)
         self.qpos_all = np.concatenate(qpos_all, axis=0)
         self.qvel_all = np.concatenate(qvel_all, axis=0)
-    
+
     @property
     def n_total(self) -> int:
         return self.qpos_all.shape[0]
@@ -132,7 +125,7 @@ class SceneData:
     @property
     def qpos_all_jax(self) -> jax.Array:
         return jnp.asarray(self.qpos_all)
-    
+
     @property
     def qvel_all_jax(self) -> jax.Array:
         return jnp.asarray(self.qvel_all)
@@ -149,7 +142,8 @@ class SceneBase(BaseEnv):
     def __init__(self, cfg: SceneBaseCfg = SceneBaseCfg()):
         super().__init__()
 
-        physics_timestep: float = 0.002
+        # physics_timestep: float = 0.002
+        physics_timestep: float = 0.001
         control_timestep: float = 0.05
 
         self.cfg = cfg
@@ -164,6 +158,20 @@ class SceneBase(BaseEnv):
         self.mj_model = mujoco.MjModel.from_xml_string(xml_str, assets)
         self.mj_model.opt.timestep = physics_timestep
 
+        self.make_data_args = dict(njmax=500)
+
+        #
+        # # mujoco.mj_saveLastXML("scene_base.xml", self.mj_model)
+        # buffer_size = mujoco.mj_sizeModel(self.mj_model)
+        # buffer = np.empty(shape=buffer_size, dtype=np.uint8)
+        # mujoco.mj_saveModel(self.mj_model, None, buffer)
+        # # Save buffer to file.
+        # with open("scene_base_model.mjb", "wb") as f:
+        #     f.write(buffer)
+        #
+        # logger.success("Saved scene_base_model.mjb")
+        # exit(0)
+
         # Unlock the drawer joint, lock the window joint.
         self.mj_model.joint("drawer_slide").damping[0] = 2.0
         self.mj_model.joint("window_slide").damping[0] = 1e6
@@ -172,6 +180,25 @@ class SceneBase(BaseEnv):
 
         # Convert to MJX model
         self.mjx_model = mjx.put_model(self.mj_model, impl=self.impl)
+
+        m = self.mjx_model
+        opt = m.opt
+
+        broadphase, filter = (
+            mjw.BroadphaseType(opt._impl.broadphase).name,
+            mjw.BroadphaseFilter(opt._impl.broadphase_filter).name,
+        )
+        solver, cone = mjw.SolverType(opt.solver).name, mjw.ConeType(m.opt.cone).name
+        integrator = mjw.IntegratorType(m.opt.integrator).name
+        iterations, ls_iterations = m.opt.iterations, m.opt.ls_iterations
+        ls_str = f"{'parallel' if m.opt._impl.ls_parallel else 'iterative'} linesearch iterations: {ls_iterations}"
+
+        print(
+            f"  nbody: {m.nbody} nv: {m.nv} ngeom: {m.ngeom} nu: {m.nu} is_sparse: {m.opt._impl.is_sparse}\n"
+            f"  broadphase: {broadphase} broadphase_filter: {filter}\n"
+            f"  solver: {solver} cone: {cone} iterations: {iterations} {ls_str}\n"
+            f"  integrator: {integrator} graph_conditional: {m.opt._impl.graph_conditional}"
+        )
 
         # Compute timesteps
         n_steps = int(round(control_timestep / physics_timestep))
@@ -319,6 +346,9 @@ class SceneBase(BaseEnv):
         n_actions = [cfg.n_actions_px, cfg.n_actions_py, cfg.n_actions_pz, cfg.n_actions_grip, cfg.n_actions_rot]
         return [n_actions]
 
+    def make_data(self):
+        return mjx.make_data(self.mj_model, impl=self.impl, **self.make_data_args)
+
     def to_minstate(self, state: SceneBaseState) -> SceneBaseMinState:
         return SceneBaseMinState(
             qpos=state.mjx_data.qpos,
@@ -327,9 +357,9 @@ class SceneBase(BaseEnv):
             button_states=state.button_states,
             steps=state.steps,
         )
-    
+
     def from_minstate(self, minstate: SceneBaseMinState) -> SceneBaseState:
-        mjx_data = mjx.make_data(self.mj_model, impl=self.impl)
+        mjx_data = self.make_data()
         mjx_data = mjx_data.replace(
             qpos=minstate.qpos,
             qvel=minstate.qvel,
@@ -405,7 +435,7 @@ class SceneBase(BaseEnv):
 
         mjx_data, _ = jax.lax.scan(step_fn, mjx_data, None, length=self.config.n_steps)
         return mjx_data
-    
+
     def get_is_button_pressed(self, qpos: jnp.ndarray, prev_button_pos: jnp.ndarray) -> jnp.ndarray:
         pressed = []
         for i in range(self.config.num_buttons):
@@ -436,7 +466,6 @@ class SceneBase(BaseEnv):
         #     new_state = jnp.where(pressed, (button_states[i] + 1) % self.config.num_button_states, button_states[i])
         #     new_states.append(new_state)
         # return jnp.array(new_states)
-
 
     def next_state(self, state: SceneBaseState, control: jnp.ndarray):
         assert control.shape == (5,)
@@ -491,12 +520,13 @@ class SceneBase(BaseEnv):
             state_new.prev_button_pos = prev_button_pos
             state_new.button_states = new_button_states
             state_new.steps += 1
-        
+
         info_dyn = {}
         return state_new, info_dyn
 
     def step(self, state: SceneBaseState, action: list[jnp.ndarray]) -> EnvStep:
         controls = self._action_to_controls(action)
+        controls = 0.5 * controls
         state_new, info_dyn = self.next_state(state, controls)
         obs_new = self.get_obs(state_new)
 
@@ -506,7 +536,7 @@ class SceneBase(BaseEnv):
 
         info = {"age": state_new.steps} | info_dyn
         return EnvStep(state_new, obs_new, predicates, term, trunc, info)
-    
+
     def get_obs_and_names(self, state: SceneBaseState):
         def fl(lst: list[list[str]]) -> list[str]:
             return [item for sublist in lst for item in sublist]
@@ -635,11 +665,11 @@ class SceneBase(BaseEnv):
         # cube_pos = mjx_data.joint("object_joint_0").qpos[:3]
         cube_pos = mjx_data.qpos[qpos_adr : qpos_adr + 3]
         return cube_pos
-    
+
     def is_cube_in_drawer(self, mjx_data: mjx.Data) -> BoolScalar:
         cube_pos = self.get_cube_pos(mjx_data)
         return self.is_in_drawer(mjx_data, cube_pos)
-    
+
     def get_drawer_predicates(self, mjx_data: mjx.Data):
         drawer_pos = mjx_data.qpos[self._drawer_joint_qpos_addr]
         is_drawer_closed = drawer_pos >= -0.04
@@ -658,7 +688,7 @@ class SceneBase(BaseEnv):
 
     def get_predicates_bool(self, state: SceneBaseState) -> dict[str, BoolScalar]:
         is_drawer_open, is_drawer_closed = self.get_drawer_predicates(state.mjx_data)
-        predicates = { 
+        predicates = {
             # "cube_grasped": self.is_cube_grasped(state.mjx_data),
             "cube_in_drawer": self.is_cube_in_drawer(state.mjx_data),
             "drawer_open": is_drawer_open,
@@ -671,21 +701,21 @@ class SceneBase(BaseEnv):
 
     def get_predicates(self, state: SceneBaseState) -> dict:
         predicates_bool = self.get_predicates_bool(state)
-        predicates = {k: jnp.where(v, 1.0, 0.0) for k, v in predicates_bool.items()}
+        predicates = {k: jnp.where(v, 1.0, -1.0) for k, v in predicates_bool.items()}
         predicates_float = self.get_predicates_float(state)
         return predicates | predicates_float
-    
+
     def get_button_pos(self, mjx_data: mjx.Data) -> jnp.ndarray:
         button_pos = jnp.array(
             [mjx_data.qpos[self._button_joint_qpos_addrs[i]] for i in range(self.config.num_buttons)]
         )
         return button_pos
-    
+
     def reset_uniform(self, key: PRNGKeyArray):
         rng_arm, rng_yaw, rng_cube_xy, rng_cube_yaw, rng_buttons, rng_drawer = jr.split(key, 6)
 
         # Create initial MJX data
-        mjx_data = mjx.make_data(self.mj_model, impl=self.impl)
+        mjx_data = self.make_data()
 
         # Sample initial arm end-effector position
         eff_pos = jr.uniform(
@@ -778,7 +808,7 @@ class SceneBase(BaseEnv):
         qvel_sample = self.scene_data.qvel_all_jax[idx]
 
         # Create initial MJX data
-        mjx_data = mjx.make_data(self.mj_model, impl=self.impl)
+        mjx_data = self.make_data()
         mjx_data = mjx_data.replace(qpos=qpos_sample, qvel=qvel_sample)
 
         if forward:
@@ -796,7 +826,6 @@ class SceneBase(BaseEnv):
             steps=jnp.array(0),
         )
         return state
-
 
     def reset_from_noisy_data(self, key: PRNGKeyArray):
         # First sample from clean data.
@@ -834,9 +863,8 @@ class SceneBase(BaseEnv):
 
         with jdc.copy_and_mutate(state) as state_new:
             state_new.mjx_data = mjx_data
-        
-        return state_new
 
+        return state_new
 
     def reset(self, key: PRNGKeyArray):
         p_reset_data_clean = 0.25
@@ -845,13 +873,14 @@ class SceneBase(BaseEnv):
 
         key_which, key_reset = jr.split(key)
         probs = jnp.array([p_reset_data_clean, p_reset_data_noisy, p_reset_uniform])
-        which_reset = jr.choice( key_which, a=3, p=probs)
+        which_reset = jr.choice(key_which, a=3, p=probs)
 
         state_clean = self.reset_from_clean_data(key_reset)
         # state_noisy = self.reset_from_noisy_data(key_reset)
         # state_uniform = self.reset_uniform(key_reset)
 
         return state_clean
+        # return state_uniform
 
         # stack_list = [ state_clean, state_noisy, state_uniform ]
         # assert len(probs) == len(stack_list)

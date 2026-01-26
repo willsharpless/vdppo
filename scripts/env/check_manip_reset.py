@@ -1,20 +1,20 @@
-import ipdb
-from collections import defaultdict
-import mujoco
-import imageio
-import matplotlib.pyplot as plt
 import pickle
+from collections import defaultdict
 from typing import Protocol
 
+import imageio
+import ipdb
 import jax
-from PIL import Image, ImageDraw, ImageFont
 import jax.random as jr
+import matplotlib.pyplot as plt
+import mujoco
 import numpy as np
 import tqdm
 import yaml
 from attrs import define
 from cyclopts import Parameter
 from loguru import logger
+from PIL import Image, ImageDraw, ImageFont
 
 import wandb
 from rraa_rl.cfg_utils import Cfg
@@ -28,6 +28,7 @@ from rraa_rl.src.env.general_task.env import Env, StateWithTemporalNode
 from rraa_rl.src.get_agent_cfg import get_vd_agent_cfg
 from rraa_rl.vd_mappo import VDMAPPOAgent
 
+
 def main():
     cfg = ManipScene.Cfg()
     env = ManipScene(cfg)
@@ -39,6 +40,7 @@ def main():
         key=key_collector,
         env=env,
         cfg=Collector.Cfg(n_envs=n_envs_train, auto_reset=False),
+        init=False
     )
     agent_cfg = get_vd_agent_cfg("manip-scene")
     agent_cfg.actor_shared_trunk = True
@@ -46,7 +48,7 @@ def main():
 
     rollout_T = 100
     rollout: RolloutOutput
-    collector, Tb_rollout, _ = agent.collect_batch(collector, rollout_T)
+    collector, Tb_rollout, _ = agent.collect_batch(collector, rollout_T, agent_truncate=False)
     Tb_rollout = jax.device_get(Tb_rollout)
     bT_rollout = Tb_rollout.switch01()
 
@@ -61,22 +63,41 @@ def main():
 
     # Count how many predicates are 1 at each time step
     pred_dict = defaultdict(lambda: np.zeros((T_max,)))
+    is_alive = np.zeros((T_max,))
 
-    # Save a trajectory idx where each predicate is true at some point. 
+    # Save a trajectory idx where each predicate is true at some point.
     pred_true_dict = defaultdict(list)
+
+    # Find a trajectory where "cube_in_drawer" starts true, but becomes false later.
+    cube_goes_out_traj_idxs = []
 
     for ii, traj in enumerate(trajs):
         T_preds: dict[str, np.ndarray] = traj.predicates_next
         T = len(traj.term)
+        is_alive[:T] += 1
+
+        T_preds["cube_in_drawer & drawer_closed"] = np.minimum(T_preds["cube_in_drawer"], T_preds["drawer_closed"])
+        T_preds["cube_in_drawer & drawer_open"] = np.minimum(T_preds["cube_in_drawer"], T_preds["drawer_open"])
+        T_preds["!cube_in_drawer & drawer_closed"] = np.minimum(-T_preds["cube_in_drawer"], T_preds["drawer_closed"])
+        T_preds["!cube_in_drawer & drawer_open"] = np.minimum(-T_preds["cube_in_drawer"], T_preds["drawer_open"])
+
+        for k, v in T_preds.items():
+            print("{}: {}".format(k, v))
+
         for k, v in T_preds.items():
             for kk in range(T):
                 if v[kk] > 0.5:
                     pred_dict[k][kk] += 1
-            
+
             if np.any(v[:T] > 0.5):
                 pred_true_dict[k].append(ii)
-            
+
+            if k == "cube_in_drawer":
+                if v[0] > 0.5 and np.any(v[1:] < 0.0):
+                    cube_goes_out_traj_idxs.append(ii)
+
     pred_names = list(pred_dict.keys())
+    logger.info("n cube_goes_out: {}".format(cube_goes_out_traj_idxs))
 
     nrow = len(pred_names)
     figsize = np.array([8, 2 * nrow])
@@ -92,7 +113,7 @@ def main():
     # Show:
     # - The current time step on the top left
     # - Status of each predicate on the top right of the video.
-    env.base.mj_model.vis.global_.offwidth  = 1280
+    env.base.mj_model.vis.global_.offwidth = 1280
     env.base.mj_model.vis.global_.offheight = 720
 
     d = mujoco.MjData(env.base.mj_model)
@@ -100,8 +121,20 @@ def main():
     renderer = mujoco.Renderer(model=env.base.mj_model, height=height, width=width)
     camera = "front"
 
-    for pname, traj_idxs in pred_true_dict.items():
-        traj_idx = traj_idxs[0]
+    pred_animates = {"cube_in_drawer_out": cube_goes_out_traj_idxs} | pred_true_dict
+
+    traj_idx_used = set()
+    for pname, traj_idxs in pred_animates.items():
+        # Use the first trajectory where this predicate is true and we haven't used before yet.
+        traj_idx = None
+        for ti in traj_idxs:
+            if (ti not in traj_idx_used) or pname == "cube_in_drawer_out":
+                traj_idx = ti
+                traj_idx_used.add(ti)
+                break
+        if traj_idx is None:
+            logger.warning(f"All trajectories for predicate '{pname}' have been used. Skipping video.")
+            continue
         traj = trajs[traj_idx]
         T = len(traj.term)
 
@@ -152,8 +185,6 @@ def main():
         imageio.mimwrite(video_path, vid_frames, fps=30)
         logger.info(f"Saved video for predicate '{pname}' at {video_path}")
 
-
-            
 
 if __name__ == "__main__":
     with ipdb.launch_ipdb_on_exception():
