@@ -94,7 +94,7 @@ class HerdBase(BaseEnv):
         assert len(cfg.acc_maxs) == len(cfg.vel_maxs) == cfg.n_herders
 
         if should_term_fn is None:
-            should_term_fn = self._should_term
+            should_term_fn = lambda predicates: False
         self.should_term_fn = should_term_fn
 
     @property
