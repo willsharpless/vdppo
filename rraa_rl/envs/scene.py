@@ -83,6 +83,13 @@ class SceneBaseMinState:
     steps: jnp.ndarray
 
 
+@jdc.pytree_dataclass
+class SceneBaseResetMinimal:
+    qpos: jnp.ndarray
+    qvel: jnp.ndarray
+    button_states: jax.Array
+
+
 _data_source = None
 
 
@@ -346,8 +353,22 @@ class SceneBase(BaseEnv):
         n_actions = [cfg.n_actions_px, cfg.n_actions_py, cfg.n_actions_pz, cfg.n_actions_grip, cfg.n_actions_rot]
         return [n_actions]
 
-    def make_data(self):
-        return mjx.make_data(self.mj_model, impl=self.impl, **self.make_data_args)
+    def make_data(self, qpos=None, qvel=None, forward: bool = True):
+        data = mjx.make_data(self.mj_model, impl=self.impl, **self.make_data_args)
+
+        modified = False
+        if qpos is not None:
+            data = data.replace(qpos=qpos)
+            modified = True
+
+        if qvel is not None:
+            data = data.replace(qvel=qvel)
+            modified = True
+
+        if modified and forward:
+            data = mjx.forward(self.mjx_model, data)
+
+        return data
 
     def to_minstate(self, state: SceneBaseState) -> SceneBaseMinState:
         return SceneBaseMinState(
@@ -526,7 +547,6 @@ class SceneBase(BaseEnv):
 
     def step(self, state: SceneBaseState, action: list[jnp.ndarray]) -> EnvStep:
         controls = self._action_to_controls(action)
-        controls = 0.5 * controls
         state_new, info_dyn = self.next_state(state, controls)
         obs_new = self.get_obs(state_new)
 
@@ -711,11 +731,11 @@ class SceneBase(BaseEnv):
         )
         return button_pos
 
-    def reset_uniform(self, key: PRNGKeyArray):
+    def _reset_uniform(self, key: PRNGKeyArray):
         rng_arm, rng_yaw, rng_cube_xy, rng_cube_yaw, rng_buttons, rng_drawer = jr.split(key, 6)
 
-        # Create initial MJX data
-        mjx_data = self.make_data()
+        qpos = jnp.zeros(self.mjx_model.nq)
+        qvel = jnp.zeros(self.mjx_model.nv)
 
         # Sample initial arm end-effector position
         eff_pos = jr.uniform(
@@ -736,7 +756,7 @@ class SceneBase(BaseEnv):
         qpos_arm = self._solve_ik(eff_pos, eff_ori, self.config.home_qpos)
 
         # Set arm joint positions
-        qpos = mjx_data.qpos.at[:6].set(qpos_arm)
+        qpos = qpos.at[:6].set(qpos_arm)
 
         # Sample cube position and orientation
         cube_xy = jr.uniform(
@@ -769,14 +789,8 @@ class SceneBase(BaseEnv):
         window_pos = 0.0
         qpos = qpos.at[self._window_joint_qpos_addr].set(window_pos)
 
-        # Update mjx_data with new qpos
-        mjx_data = mjx_data.replace(qpos=qpos)
-
-        # Forward kinematics
-        mjx_data = mjx.forward(self.mjx_model, mjx_data)
-
-        # Get initial button positions
-        prev_button_pos = self.get_button_pos(mjx_data)
+        # # Update mjx_data with new qpos
+        # mjx_data = mjx_data.replace(qpos=qpos)
 
         # # Initialize targets (same as current for simplicity - can be overridden)
         # target_button_states = button_states.copy()
@@ -786,20 +800,25 @@ class SceneBase(BaseEnv):
         # target_cube_quat = cube_quat.copy()
 
         # Make sure prev_qpos and prev_qvel are backed by different arrays so we can donate.
-        state = SceneBaseState(
-            mjx_data=mjx_data,
-            prev_button_pos=prev_button_pos,
+        state = SceneBaseResetMinimal(
+            qpos=qpos,
+            qvel=qvel,
             button_states=button_states,
-            # target_button_states=target_button_states,
-            # target_drawer_pos=target_drawer_pos,
-            # target_window_pos=target_window_pos,
-            # target_cube_pos=target_cube_pos,
-            # target_cube_quat=target_cube_quat,
-            steps=jnp.array(0),
         )
+        # state = SceneBaseState(
+        #     mjx_data=mjx_data,
+        #     prev_button_pos=prev_button_pos,
+        #     button_states=button_states,
+        #     # target_button_states=target_button_states,
+        #     # target_drawer_pos=target_drawer_pos,
+        #     # target_window_pos=target_window_pos,
+        #     # target_cube_pos=target_cube_pos,
+        #     # target_cube_quat=target_cube_quat,
+        #     steps=jnp.array(0),
+        # )
         return state
 
-    def reset_from_clean_data(self, key: PRNGKeyArray, forward: bool = True):
+    def _reset_from_clean_data(self, key: PRNGKeyArray):
         # Sample a random qpos and qvel from the clean data.
         n_total = self.scene_data.n_total
         idx = jr.randint(key, shape=(), minval=0, maxval=n_total)
@@ -807,64 +826,70 @@ class SceneBase(BaseEnv):
         qpos_sample = self.scene_data.qpos_all_jax[idx]
         qvel_sample = self.scene_data.qvel_all_jax[idx]
 
-        # Create initial MJX data
-        mjx_data = self.make_data()
-        mjx_data = mjx_data.replace(qpos=qpos_sample, qvel=qvel_sample)
-
-        if forward:
-            # Forward kinematics to populate.
-            mjx_data = mjx.forward(self.mjx_model, mjx_data)
+        # # Create initial MJX data
+        # mjx_data = self.make_data()
+        # mjx_data = mjx_data.replace(qpos=qpos_sample, qvel=qvel_sample)
+        #
+        # if forward:
+        #     # Forward kinematics to populate.
+        #     mjx_data = mjx.forward(self.mjx_model, mjx_data)
 
         # Get initial button positions
         button_states = jnp.array([0, 1])
-        prev_button_pos = self.get_button_pos(mjx_data)
 
-        state = SceneBaseState(
-            mjx_data=mjx_data,
-            prev_button_pos=prev_button_pos,
+        state = SceneBaseResetMinimal(
+            qpos=qpos_sample,
+            qvel=qvel_sample,
             button_states=button_states,
-            steps=jnp.array(0),
         )
         return state
 
-    def reset_from_noisy_data(self, key: PRNGKeyArray):
+    def _reset_from_noisy_data(self, key: PRNGKeyArray):
         # First sample from clean data.
         key_data, key_noise = jr.split(key)
-        state = self.reset_from_clean_data(key_data, forward=False)
+        state = self._reset_from_clean_data(key_data)
+
+        # Create the mjx, since we need to know where the end effector is.
+        mjx_data = self.make_data(state.qpos, state.qvel, forward=True)
 
         # If the end effector is not close to the cube, add noise to the cube position.
-        effector_pos, _, _ = self.get_effector_state(state.mjx_data)
-        cube_pos = self.get_cube_pos(state.mjx_data)
+        effector_pos, _, _ = self.get_effector_state(mjx_data)
+        cube_pos = self.get_cube_pos(mjx_data)
         dist_ee_cube = jnp.linalg.norm(effector_pos - cube_pos)
         is_ee_far = dist_ee_cube > 0.3
 
         # Add noise to qpos and qvel.
-        std_qpos = jnp.full(state.mjx_data.qpos.shape, 1e-3)
+        std_qpos = jnp.full(state.qpos.shape, 1e-3)
 
         # Larger noise to cube position if end effector is far.
         cube_pos_xy_noise = jnp.where(is_ee_far, 0.1, 1e-3)
         for i in range(self.config.num_cubes):
             cube_qpos_addr = self._cube_joint_qpos_addrs[i]
             std_qpos = std_qpos.at[cube_qpos_addr : cube_qpos_addr + 2].set(cube_pos_xy_noise)
-        noise_qpos = jr.normal(key_noise, shape=state.mjx_data.qpos.shape) * std_qpos
+        noise_qpos = jr.normal(key_noise, shape=mjx_data.qpos.shape) * std_qpos
 
-        std_qvel = jnp.full(state.mjx_data.qvel.shape, 1e-2)
+        std_qvel = jnp.full(mjx_data.qvel.shape, 1e-2)
         # Larger noise to drawer joint vel.
         std_qvel = std_qvel.at[self._drawer_joint_dof_addr].set(1e-1)
-        noise_qvel = jr.normal(key_noise, shape=state.mjx_data.qvel.shape) * std_qvel
+        noise_qvel = jr.normal(key_noise, shape=mjx_data.qvel.shape) * std_qvel
 
-        mjx_data = state.mjx_data.replace(
-            qpos=state.mjx_data.qpos + noise_qpos,
-            qvel=state.mjx_data.qvel + noise_qvel,
-        )
-
-        # Forward kinematics to populate.
-        mjx_data = mjx.forward(self.mjx_model, mjx_data)
+        qpos = state.qpos + noise_qpos
+        qvel = state.qvel + noise_qvel
 
         with jdc.copy_and_mutate(state) as state_new:
-            state_new.mjx_data = mjx_data
+            state_new.qpos = qpos
+            state_new.qvel = qvel
 
         return state_new
+
+    def from_reset_minimal(self, state_min: SceneBaseResetMinimal) -> SceneBaseState:
+        mjx_data = self.make_data(state_min.qpos, state_min.qvel, forward=True)
+        return SceneBaseState(
+            mjx_data=mjx_data,
+            prev_button_pos=self.get_button_pos(mjx_data),
+            button_states=state_min.button_states,
+            steps=jnp.array(0),
+        )
 
     def reset(self, key: PRNGKeyArray):
         p_reset_data_clean = 0.25
@@ -875,18 +900,18 @@ class SceneBase(BaseEnv):
         probs = jnp.array([p_reset_data_clean, p_reset_data_noisy, p_reset_uniform])
         which_reset = jr.choice(key_which, a=3, p=probs)
 
-        state_clean = self.reset_from_clean_data(key_reset)
-        # state_noisy = self.reset_from_noisy_data(key_reset)
-        # state_uniform = self.reset_uniform(key_reset)
+        state_clean = self._reset_from_clean_data(key_reset)
+        state_noisy = self._reset_from_noisy_data(key_reset)
+        state_uniform = self._reset_uniform(key_reset)
+        stack_list = [state_clean, state_noisy, state_uniform]
+        assert len(probs) == len(stack_list)
 
-        return state_clean
-        # return state_uniform
+        state_stack = tree_stack(stack_list)
+        state_minimal: SceneBaseResetMinimal = jtu.tree_map(lambda x: x[which_reset], state_stack)
 
-        # stack_list = [ state_clean, state_noisy, state_uniform ]
-        # assert len(probs) == len(stack_list)
-
-        # state_stack = tree_stack(stack_list)
-        # state = jtu.tree_map(lambda x: x[which_reset], state_stack)
+        # We do this to avoid having to index into warp data.
+        state_full = self.from_reset_minimal(state_minimal)
+        return state_full
 
         # return state
 

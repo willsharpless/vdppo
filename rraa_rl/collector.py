@@ -3,6 +3,7 @@ import functools as ft
 from typing import Any, Callable, Protocol, Tuple
 
 import einops as ei
+import ipdb
 import jax
 import jax.lax as lax
 import jax.numpy as jnp
@@ -207,7 +208,22 @@ class Collector(struct.PyTreeNode):
                 b_obs_reset = jax.vmap(self.env.get_obs)(b_state_reset)
 
                 b_should_reset = b_step_result.term | b_step_result.trunc
-                b_state_new = jax.vmap(tree_where)(b_should_reset, b_state_reset, b_step_result.envstate)
+
+                # b_state_new = jax.vmap(tree_where)(b_should_reset, b_state_reset, b_step_result.envstate)
+
+                # Warp is jank. I guess this is to avoid tracers interacting with warp data.
+                def where_should_reset(x, y):
+                    if b_should_reset.shape and b_should_reset.shape[0] != x.shape[0]:
+                        ipdb.set_trace()
+                        return y
+
+                    if b_should_reset.shape:
+                        should_reset = jnp.reshape(b_should_reset, [x.shape[0]] + [1] * (len(x.shape) - 1))
+
+                    return jnp.where(should_reset, x, y)
+
+                b_state_new = where_should_reset(b_state_reset, b_step_result.envstate)
+
                 b_obs_new = jax.vmap(tree_where)(b_should_reset, b_obs_reset, b_step_result.obs)
             else:
                 b_state_new = b_step_result.envstate
