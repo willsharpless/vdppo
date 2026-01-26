@@ -171,8 +171,9 @@ class VDMAPPOAgent:
                 n_actions_per_agent=env.n_actions_per_agent,
                 n_out=env.n_temporal_nodes,
                 p_max=cfg.p_max_pol,
+                out_axes=-2,
             )
-            actor_def = IndexAtEnd(actor_def, n_out=env.n_temporal_nodes)
+            actor_def = IndexAtEnd(actor_def, n_out=env.n_temporal_nodes, index_pos=-2)
 
         if not dummy_obs.base_is_array():
             critic_def = env.add_obs_preprocessor(critic_def)
@@ -775,7 +776,9 @@ class VDMAPPOAgent:
         return act
 
     @ft.partial(jax.jit, static_argnames=("rollout_T", "agent_truncate"))
-    def collect_batch(self, collector: Collector, rollout_T: int, agent_truncate: bool = True) -> tuple[Collector, RolloutOutput, dict]:
+    def collect_batch(
+        self, collector: Collector, rollout_T: int, agent_truncate: bool = True
+    ) -> tuple[Collector, RolloutOutput, dict]:
         """Collect a batch of data using stochastic policy."""
         logger.debug("jitting collect_batch...")
         if agent_truncate:

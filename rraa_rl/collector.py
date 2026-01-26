@@ -147,7 +147,7 @@ class Collector(struct.PyTreeNode):
         )
 
     def reset_with_state(self, b_state: Any) -> Self:
-        with jdc.copy_and_mutate(self) as self_new:
+        with jdc.copy_and_mutate(self, validate=False) as self_new:
             self_new.collect_state.b_state = b_state
             self_new.collect_state.b_obs = jax.vmap(self.env.get_obs)(b_state)
 
@@ -214,7 +214,6 @@ class Collector(struct.PyTreeNode):
                 # Warp is jank. I guess this is to avoid tracers interacting with warp data.
                 def where_should_reset(x, y):
                     if b_should_reset.shape and b_should_reset.shape[0] != x.shape[0]:
-                        ipdb.set_trace()
                         return y
 
                     if b_should_reset.shape:
@@ -222,7 +221,7 @@ class Collector(struct.PyTreeNode):
 
                     return jnp.where(should_reset, x, y)
 
-                b_state_new = where_should_reset(b_state_reset, b_step_result.envstate)
+                b_state_new = jtu.tree_map(where_should_reset, b_state_reset, b_step_result.envstate)
 
                 b_obs_new = jax.vmap(tree_where)(b_should_reset, b_obs_reset, b_step_result.obs)
             else:

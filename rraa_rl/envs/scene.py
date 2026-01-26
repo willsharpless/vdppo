@@ -165,7 +165,10 @@ class SceneBase(BaseEnv):
         self.mj_model = mujoco.MjModel.from_xml_string(xml_str, assets)
         self.mj_model.opt.timestep = physics_timestep
 
-        self.make_data_args = dict(njmax=500)
+        self.njmax = 500
+        # self.naconmax = 512
+        self.nconmax = 64
+        self.n_envs = 1024
 
         #
         # # mujoco.mj_saveLastXML("scene_base.xml", self.mj_model)
@@ -337,6 +340,14 @@ class SceneBase(BaseEnv):
         self.scene_data = SceneData.get()
 
     @property
+    def naconmax(self) -> int:
+        return self.nconmax * self.n_envs
+
+    @property
+    def make_data_args(self):
+        return dict(njmax=self.njmax, naconmax=self.naconmax)
+
+    @property
     def n_agents(self) -> int:
         return 1
 
@@ -367,6 +378,8 @@ class SceneBase(BaseEnv):
 
         if modified and forward:
             data = mjx.forward(self.mjx_model, data)
+
+        logger.debug("[make_data] contact_dim.shape: {}".format(data._impl.contact__dim.shape))
 
         return data
 
@@ -451,8 +464,11 @@ class SceneBase(BaseEnv):
         )
 
     def _step_physics(self, mjx_data: mjx.Data) -> mjx.Data:
-        def step_fn(data, _):
-            return mjx.step(self.mjx_model, data), None
+        def step_fn(data: mjx.Data, _):
+            logger.debug("[step_fn0] contact_dim.shape: {}".format(data._impl.contact__dim.shape))
+            data_out = mjx.step(self.mjx_model, data)
+            logger.debug("[step_fn1] contact_dim.shape: {}".format(data_out._impl.contact__dim.shape))
+            return data_out, None
 
         mjx_data, _ = jax.lax.scan(step_fn, mjx_data, None, length=self.config.n_steps)
         return mjx_data
@@ -526,6 +542,7 @@ class SceneBase(BaseEnv):
         )
 
         # Step physics
+        assert mjx_data._impl.contact__dim.shape == (self.naconmax,)
         mjx_data = self._step_physics(mjx_data)
 
         # Update button states based on button presses
@@ -546,6 +563,7 @@ class SceneBase(BaseEnv):
         return state_new, info_dyn
 
     def step(self, state: SceneBaseState, action: list[jnp.ndarray]) -> EnvStep:
+        assert state.mjx_data._impl.contact__dim.shape == (self.naconmax,)
         controls = self._action_to_controls(action)
         state_new, info_dyn = self.next_state(state, controls)
         obs_new = self.get_obs(state_new)
@@ -553,6 +571,8 @@ class SceneBase(BaseEnv):
         predicates = self.get_predicates(state_new)
         term = False
         trunc = state_new.steps >= self.cfg.trunc_steps
+
+        logger.debug("[step] contact_dim.shape: {}".format(state_new.mjx_data._impl.contact__dim.shape))
 
         info = {"age": state_new.steps} | info_dyn
         return EnvStep(state_new, obs_new, predicates, term, trunc, info)
@@ -911,6 +931,9 @@ class SceneBase(BaseEnv):
 
         # We do this to avoid having to index into warp data.
         state_full = self.from_reset_minimal(state_minimal)
+
+        logger.debug("[reset] contact_dim.shape: {}".format(state_full.mjx_data._impl.contact__dim.shape))
+
         return state_full
 
         # return state
@@ -938,6 +961,8 @@ class ManipScene(StaticTemporalNodeMixin, EnvUsingBase):
                 b_state_new.base.steps = jr.randint(key_steps, (batch_size,), 0, self.base.cfg.trunc_steps)
         else:
             b_state_new = b_state
+
+        logger.debug("[reset_batch] contact_dim.shape: {}".format(b_state_new.base.mjx_data._impl.contact__dim.shape))
 
         return b_state_new
 
