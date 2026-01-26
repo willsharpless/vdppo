@@ -775,7 +775,7 @@ class VDMAPPOAgent:
         act = act_dist.mode()
         return act
 
-    @ft.partial(jax.jit, static_argnames=("rollout_T", "agent_truncate"))
+    @ft.partial(jax.jit, static_argnames=("rollout_T", "agent_truncate"), donate_argnames=("collector",))
     def collect_batch(
         self, collector: Collector, rollout_T: int, agent_truncate: bool = True
     ) -> tuple[Collector, RolloutOutput, dict]:

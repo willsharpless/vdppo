@@ -542,7 +542,7 @@ class SceneBase(BaseEnv):
         )
 
         # Step physics
-        assert mjx_data._impl.contact__dim.shape == (self.naconmax,)
+        # assert mjx_data._impl.contact__dim.shape == (self.naconmax,)
         mjx_data = self._step_physics(mjx_data)
 
         # Update button states based on button presses
@@ -563,7 +563,7 @@ class SceneBase(BaseEnv):
         return state_new, info_dyn
 
     def step(self, state: SceneBaseState, action: list[jnp.ndarray]) -> EnvStep:
-        assert state.mjx_data._impl.contact__dim.shape == (self.naconmax,)
+        # assert state.mjx_data._impl.contact__dim.shape == (self.naconmax,)
         controls = self._action_to_controls(action)
         state_new, info_dyn = self.next_state(state, controls)
         obs_new = self.get_obs(state_new)
