@@ -492,8 +492,8 @@ class VizValues(struct.PyTreeNode):
             # For each cell, annotate with the action mode.
             for (x, y), prob in np.ndenumerate(bbt_probs[:, :, ii]):
                 # if wall #, skip annotation
-                if env_base.map.d_raw['#'][x,y]:
-                    continue
+                # if env_base.map.d_raw['#'][x,y]:
+                #     continue
 
                 if bbt_V[x, y, ii] < 0:
                     continue

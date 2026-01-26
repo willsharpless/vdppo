@@ -273,6 +273,14 @@ def get_env_and_cbs(env_name: str, agent_name: str) -> tuple[Env, list, list]:
         env = GridworldMA(cfg)
         cbs = gridworld_eval_cbs, gridworld_collect_cbs
 
+    elif env_name == "gridworld_map7":
+        map7 = GridworldMap.Map7()
+        spec = "(!q U C) && F( C && F G ( (q U (A && q )) && (q U (B && q )) ) )"
+        cfg = GridworldMACfg(specification=spec, map=map7)
+
+        env = GridworldMA(cfg)
+        cbs = gridworld_eval_cbs, gridworld_collect_cbs
+
     elif env_name == "delivery":
         # specification = "F target0 && G(!oob)"
         # specification = "G(F target0) && G(!oob)"
