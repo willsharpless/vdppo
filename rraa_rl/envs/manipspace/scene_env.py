@@ -1,6 +1,7 @@
 import mujoco
 import numpy as np
 from dm_control import mjcf
+from loguru import logger
 from ogbench.manipspace import lie
 
 from rraa_rl.envs.manipspace.manipspace_env import ManipSpaceEnv
@@ -360,7 +361,7 @@ class SceneEnv(ManipSpaceEnv):
         drawer_high = np.array([0.45, drawer_pos_y - 0.07, 0.15])
         return np.all(drawer_low <= obj_pos) and np.all(obj_pos <= drawer_high)
 
-    def set_new_target(self, return_info=True, p_stack=0.5):
+    def set_new_target(self, return_info=True, p_stack=0.5, force: dict[str, str] = {}):
         """Set a new random target for data collection.
 
         Args:
@@ -387,7 +388,9 @@ class SceneEnv(ManipSpaceEnv):
         # Probability of putting the target block in the drawer when the target task is 'cube'.
         p_put_in_drawer = 0.3
 
-        self._target_task = self.np_random.choice(["cube", "button", "drawer", "window"], p=probs)
+        target_task = self.np_random.choice(["cube", "button", "drawer", "window"], p=probs)
+        target_task = force.get("target_task", target_task)
+        self._target_task = target_task
 
         if self._target_task == "cube":
             # Set cube target.
@@ -415,6 +418,9 @@ class SceneEnv(ManipSpaceEnv):
             put_in_drawer = (
                 self._data.joint("drawer_slide").qpos[0] < -0.12 and self.np_random.uniform() < p_put_in_drawer
             )
+            if "put_in_drawer" in force:
+                put_in_drawer = True
+
             stack = len(top_blocks) >= 2 and self.np_random.uniform() < p_stack
             if put_in_drawer:
                 # Put the target block in the drawer.
@@ -459,10 +465,13 @@ class SceneEnv(ManipSpaceEnv):
                 self._cur_button_states[self._target_button] + 1
             ) % self._num_button_states
         elif self._target_task == "drawer":
+            force_drawer_open = force.get("force_drawer_open", None)
             # Set target drawer position.
-            if self._data.joint("drawer_slide").qpos[0] >= -0.08:  # Drawer closed.
+            if force_drawer_open == "1" or self._data.joint("drawer_slide").qpos[0] >= -0.08:  # Drawer closed.
+                logger.info("drawer closed, opening!")
                 self._target_drawer_pos = -0.16
             else:  # Drawer open.
+                logger.info("drawer open, closing!")
                 self._target_drawer_pos = 0.0
             self._model.site("drawer_handle_center_target").pos[1] = self._target_drawer_pos
         elif self._target_task == "window":

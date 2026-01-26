@@ -215,21 +215,21 @@ class DiffIKControllerJax:
         # print(f"tgt_pos  : {pos}")
         # print(f"quat     : {quat}")
 
-        # Manual for loop for debugging.
-        for ii in range(max_iters):
-            # qpos, _ = self._solve_step(qpos, pos, quat)
-            qpos, error = self._solve_step(qpos, pos, quat)
-            # print(f"[{ii}] qpos: {qpos}")
-
-        jax.debug.print("final err: {}", error, ordered=True)
-
-        # # Use fori_loop for fixed number of iterations (more JIT-friendly than while_loop)
-        # def body_fn(i, qpos):
-        #     new_qpos, errs = self._solve_jit(qpos, pos, quat)
-        #     return new_qpos
+        # # Manual for loop for debugging.
+        # for ii in range(max_iters):
+        #     # qpos, _ = self._solve_step(qpos, pos, quat)
+        #     qpos, error = self._solve_step(qpos, pos, quat)
+        #     # print(f"[{ii}] qpos: {qpos}")
         #
-        # # Run IK loop for max_iters iterations
-        # qpos = jax.lax.fori_loop(0, max_iters, body_fn, qpos)
+        # jax.debug.print("final err: {}", error, ordered=True)
+
+        # Use fori_loop for fixed number of iterations (more JIT-friendly than while_loop)
+        def body_fn(i, qpos):
+            new_qpos, errs = self._solve_step(qpos, pos, quat)
+            return new_qpos
+
+        # Run IK loop for max_iters iterations
+        qpos = jax.lax.fori_loop(0, max_iters, body_fn, qpos)
         # qpos, _ = self._solve_jit(qpos, pos, quat)
 
         # print(f"jax ik out: {qpos}")

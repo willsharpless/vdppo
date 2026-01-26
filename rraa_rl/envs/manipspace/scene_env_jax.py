@@ -6,17 +6,17 @@ that uses MuJoCo's MJX backend for hardware-accelerated physics simulation.
 
 from __future__ import annotations
 
-import ipdb
-from loguru import logger
 from functools import partial
 from pathlib import Path
 from typing import Any, Dict, NamedTuple, Optional, Tuple
 
+import ipdb
 import jax
 import jax.numpy as jnp
 import mujoco
 import numpy as np
 from dm_control import mjcf
+from loguru import logger
 from mujoco import mjx
 
 from rraa_rl.envs import mjx_patch
@@ -363,7 +363,7 @@ class SceneEnvJax:
         yaw = jax.random.uniform(rng_yaw, minval=-jnp.pi, maxval=jnp.pi)
 
         # Compute target orientation
-        yaw_quat = _quat_from_z_radians(yaw)
+        yaw_quat = quat_from_z_radians(yaw)
         eff_ori = quat_multiply(yaw_quat, self.config.effector_down_quat)
 
         # Solve IK for initial arm joint positions
@@ -381,7 +381,7 @@ class SceneEnvJax:
         )
         cube_pos = jnp.array([cube_xy[0], cube_xy[1], 0.02])
         cube_yaw = jax.random.uniform(rng_cube_yaw, minval=0.0, maxval=2 * jnp.pi)
-        cube_quat = _quat_from_z_radians(cube_yaw)
+        cube_quat = quat_from_z_radians(cube_yaw)
 
         # Set cube position (qpos address for object_joint_0)
         cube_qpos_addr = self._cube_joint_qpos_addrs[0]
@@ -444,9 +444,7 @@ class SceneEnvJax:
     def step(
         self,
         state: SceneEnvState,
-        # action: jax.Array,
-        qpos_target,
-        target_gripper
+        action: jax.Array,
     ) -> ManipStep[SceneEnvState]:
         """Take a step in the environment.
 
@@ -457,49 +455,47 @@ class SceneEnvJax:
         Returns:
             Tuple of (next_state, observation, reward, done, info)
         """
-        mjx_data = state.mjx_data
+        # Unnormalize action
+        action = self._unnormalize_action(action)
+        a_pos, a_ori, a_gripper = action[:3], action[3], action[4]
 
-        # # Unnormalize action
-        # action = self._unnormalize_action(action)
-        # a_pos, a_ori, a_gripper = action[:3], action[3], action[4]
-        #
-        # # Get current effector state
-        # mjx_data = state.mjx_data
-        # effector_pos = mjx_data.site_xpos[self._pinch_site_id]
-        # effector_mat = mjx_data.site_xmat[self._pinch_site_id].reshape(3, 3)
-        # effector_quat = mat_to_quat(effector_mat)
-        # effector_yaw = _compute_yaw_from_quat(effector_quat)
-        # gripper_opening = jnp.clip(mjx_data.qpos[self._gripper_opening_joint_id] / 0.8, 0, 1)
-        #
-        # # Compute target pose
-        # target_pos = effector_pos + a_pos
-        # target_yaw = effector_yaw + a_ori
-        # target_gripper = gripper_opening + a_gripper
-        #
+        # Get current effector state
+        mjx_data = state.mjx_data
+        effector_pos = mjx_data.site_xpos[self._pinch_site_id]
+        effector_mat = mjx_data.site_xmat[self._pinch_site_id].reshape(3, 3)
+        effector_quat = mat_to_quat(effector_mat)
+        effector_yaw = compute_yaw_from_quat(effector_quat)
+        gripper_opening = jnp.clip(mjx_data.qpos[self._gripper_opening_joint_id] / 0.8, 0, 1)
+
+        # Compute target pose
+        target_pos = effector_pos + a_pos
+        target_yaw = effector_yaw + a_ori
+        target_gripper = gripper_opening + a_gripper
+
         # logger.debug(f"tgt_eff tran: {target_pos}")
-        #
-        # # Clip to workspace bounds
-        # target_pos = jnp.clip(
-        #     target_pos,
-        #     self.config.workspace_bounds[0],
-        #     self.config.workspace_bounds[1],
-        # )
-        # target_yaw = jnp.clip(target_yaw, -jnp.pi, jnp.pi)
-        # target_gripper = jnp.clip(target_gripper, 0.0, 1.0)
-        #
-        # # Compute target orientation
-        # target_ori = quat_multiply(_quat_from_z_radians(target_yaw), self.config.effector_down_quat)
-        #
-        # # Solve IK for target joint positions
-        # curr_qpos = mjx_data.qpos[:6]
+
+        # Clip to workspace bounds
+        target_pos = jnp.clip(
+            target_pos,
+            self.config.workspace_bounds[0],
+            self.config.workspace_bounds[1],
+        )
+        target_yaw = jnp.clip(target_yaw, -jnp.pi, jnp.pi)
+        target_gripper = jnp.clip(target_gripper, 0.0, 1.0)
+
+        # Compute target orientation
+        target_ori = quat_multiply(quat_from_z_radians(target_yaw), self.config.effector_down_quat)
+
+        # Solve IK for target joint positions
+        curr_qpos = mjx_data.qpos[:6]
         # logger.debug("jax curr_qpos: {}".format(curr_qpos))
-        # qpos_target = self._solve_ik(target_pos, target_ori, curr_qpos)
+        qpos_target = self._solve_ik(target_pos, target_ori, curr_qpos)
 
         # Set control
         ctrl = mjx_data.ctrl
         ctrl = ctrl.at[self._arm_actuator_ids].set(qpos_target)
         ctrl = ctrl.at[self._gripper_actuator_ids].set(255.0 * target_gripper)
-        logger.debug("jax ctrl: {}".format(ctrl))
+        # logger.debug("jax ctrl: {}".format(ctrl))
         mjx_data = mjx_data.replace(ctrl=ctrl)
 
         # Save previous state
@@ -686,7 +682,7 @@ class SceneEnvJax:
         # End-effector yaw
         effector_mat = mjx_data.site_xmat[self._pinch_site_id].reshape(3, 3)
         effector_quat = mat_to_quat(effector_mat)
-        effector_yaw = _compute_yaw_from_quat(effector_quat)
+        effector_yaw = compute_yaw_from_quat(effector_quat)
 
         # Gripper state
         gripper_opening = jnp.clip(mjx_data.qpos[self._gripper_opening_joint_id] / 0.8, 0, 1)
@@ -708,7 +704,7 @@ class SceneEnvJax:
             cube_qpos_addr = self._cube_joint_qpos_addrs[i]
             cube_pos = mjx_data.qpos[cube_qpos_addr : cube_qpos_addr + 3]
             cube_quat = mjx_data.qpos[cube_qpos_addr + 3 : cube_qpos_addr + 7]
-            cube_yaw = _compute_yaw_from_quat(cube_quat)
+            cube_yaw = compute_yaw_from_quat(cube_quat)
             obs_parts.extend(
                 [
                     (cube_pos - config.xyz_center) * config.xyz_scaler,
@@ -802,13 +798,13 @@ class SceneEnvJax:
 
 
 # Helper functions
-def _quat_from_z_radians(theta: jax.Array) -> jax.Array:
+def quat_from_z_radians(theta: jax.Array) -> jax.Array:
     """Create quaternion from rotation around z-axis."""
     half_theta = theta / 2.0
     return jnp.array([jnp.cos(half_theta), 0.0, 0.0, jnp.sin(half_theta)])
 
 
-def _compute_yaw_from_quat(quat: jax.Array) -> jax.Array:
+def compute_yaw_from_quat(quat: jax.Array) -> jax.Array:
     """Compute yaw angle from quaternion."""
     w, x, y, z = quat
     return jnp.arctan2(2 * (w * z + x * y), 1 - 2 * (y * y + z * z))

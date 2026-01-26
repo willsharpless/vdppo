@@ -140,7 +140,7 @@ class DiffIKController:
 
             # print(f"[{ii}] qpos: {self._data.qpos}")
 
-        print(f"final err: {self._err}")
+        # print(f"final err: {self._err}")
 
         out = self._data.qpos.copy()
         # print(f"ik out: {out}")

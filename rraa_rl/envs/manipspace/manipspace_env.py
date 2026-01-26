@@ -435,7 +435,7 @@ class ManipSpaceEnv(CustomMuJoCoEnv):
         # Set the desired joint positions for the underlying PD controller.
         self._data.ctrl[self._arm_actuator_ids] = qpos_target
         self._data.ctrl[self._gripper_actuator_ids] = 255.0 * target_gripper_opening
-        logger.debug(f"np ctrl: {self._data.ctrl}")
+        # logger.debug(f"np ctrl: {self._data.ctrl}")
 
         return {"qpos_target": qpos_target, "target_gripper": target_gripper_opening}
 

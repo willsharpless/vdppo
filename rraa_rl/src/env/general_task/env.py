@@ -29,8 +29,8 @@ class EnvStep(NamedTuple, Generic[_EnvState, _Obs]):
     envstate: _EnvState
     obs: _Obs
     predicates: dict
-    term: bool
-    trunc: bool
+    term: jnp.ndarray | bool
+    trunc: jnp.ndarray | bool
     info: dict
 
 
@@ -41,6 +41,12 @@ class BaseEnv(Generic[_EnvState, _Obs]):
 
     def add_obs_preprocessor(self, module: nn.Module):
         return module
+
+    def to_minstate(self, state: _EnvState) -> Any:
+        return state
+    
+    def from_minstate(self, minstate: Any) -> _EnvState:
+        return minstate
 
     def is_predicate_active(self, predicate_name: str) -> bool:
         if self.active_predicates is None:
@@ -128,6 +134,12 @@ class Env(Generic[_EnvState, _Obs]):
 
     def add_obs_preprocessor(self, module: nn.Module):
         return module
+
+    def to_minstate(self, state: _EnvState) -> _EnvState:
+        return state
+    
+    def from_minstate(self, minstate: _EnvState) -> _EnvState:
+        return minstate
 
     def step(self, state: _EnvState, action: Any) -> EnvStep[_EnvState, _Obs]:
         raise NotImplementedError("")
@@ -340,6 +352,18 @@ class StaticTemporalNodeMixin:
         step = base_step._replace(envstate=state_new, obs=obs)
 
         return step
+
+    def to_minstate(self: StaticTemporalNodeMixinProtocol, state: StateWithTemporalNode) -> StateWithTemporalNode:
+        # validate=False because we are changing the structure.
+        with jdc.copy_and_mutate(state, validate=False) as state_new:
+            state_new.base = self.base.to_minstate(state.base)
+        return state_new
+    
+    def from_minstate(self: StaticTemporalNodeMixinProtocol, minstate: StateWithTemporalNode) -> StateWithTemporalNode:
+        # validate=False because we are changing the structure.
+        with jdc.copy_and_mutate(minstate, validate=False) as state_new:
+            state_new.base = self.base.from_minstate(minstate.base)
+        return state_new
 
     def get_obs(self: Self | StaticTemporalNodeMixinProtocol, state: Any) -> Any:
         base_obs = self.base.get_obs(state.base)
