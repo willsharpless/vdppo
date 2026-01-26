@@ -1,6 +1,7 @@
 import jax.numpy as jnp
 
 from rraa_rl import delivery_cbs, gridworld_cbs, herd_os_cbs
+from rraa_rl.envs.scene import ManipScene
 from rraa_rl.jax_utils import tree_stack
 from rraa_rl.lcrl.lcrl_wrapper import LCRLEnvCfg, LCRLWrapper
 from rraa_rl.ldba.ldba import LDBA, Guard, Transition, parse_ltl2ldba
@@ -61,6 +62,9 @@ def get_env_and_cbs(env_name: str, agent_name: str) -> tuple[Env, list, list]:
 
     gridworld_eval_cbs = [gridworld_cbs.animate_eval_trajs, gridworld_cbs.VizValues.create()]
     gridworld_collect_cbs = [gridworld_cbs.collect_cb]
+
+    manip_eval_cbs = []
+    manip_collect_cbs = []
 
     if env_name == "herdos":
         cfg = get_cfg_herdos()
@@ -258,6 +262,11 @@ def get_env_and_cbs(env_name: str, agent_name: str) -> tuple[Env, list, list]:
 
         env = GridworldMA(cfg)
         cbs = gridworld_eval_cbs, gridworld_collect_cbs
+    elif env_name == "manip_scene":
+        spec = "F( drawer_open && F( cube_in_drawer ))"
+        cfg = ManipScene.Cfg(specification=spec)
+        env = ManipScene(cfg)
+        cbs = manip_eval_cbs, manip_collect_cbs
     else:
         raise ValueError(f"Unknown environment name: {env_name}")
 

@@ -45,9 +45,9 @@ from rraa_rl.src.env.general_task.env import (AugObs, BaseEnv, EnvCfg, EnvStep, 
 class SceneBaseCfg(EnvCfg, StaticTemporalNodeMixinCfg):
     specification: str = "F( drawer_open && F( cube_in_drawer )) && G F( drawer_closed )"
 
-    n_actions_px: int = 5
-    n_actions_py: int = 5
-    n_actions_pz: int = 5
+    n_actions_px: int = 7
+    n_actions_py: int = 7
+    n_actions_pz: int = 7
     n_actions_rot: int = 5
     n_actions_grip: int = 3
 
