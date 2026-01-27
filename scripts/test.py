@@ -15,6 +15,7 @@ from matplotlib.colors import to_rgba
 
 from rraa_rl.collector import Collector
 from rraa_rl.gridworld_cbs import save_animation_blit
+from rraa_rl.load_ckpt import load_ckpt
 from rraa_rl.rollout_temporal_analysis import evaluate_ltl_finite
 from rraa_rl.rollout_utils import extract_rollouts_eval
 from rraa_rl.run import Run
@@ -28,38 +29,39 @@ app = cyclopts.App()
 
 @app.default()
 def main(run_path: pathlib.Path, n_env: int = 256, step: int | None = None):
-    # Load the configs.
-    yaml_path = run_path / "config.yaml"
-    with open(yaml_path, "r") as f:
-        cfg_dict = yaml.safe_load(f)
-
-    run = Run.fromdict(cfg_dict["run"])
-    env_name = run.env_name
-    agent_name = run.agent_name
-
-    env: GridworldMA
-    env, _, _ = get_env_and_cbs(env_name, agent_name=agent_name)
-
-    agent_cfg = VDMAPPOAgent.Cfg.fromdict(cfg_dict["agent"])
-    agent = VDMAPPOAgent.create(123, agent_cfg, env)
-
-    ckpts_path = run_path / "ckpts"
-    if step is None:
-        latest_ckpt = sorted(ckpts_path.glob("params_*.pkl"))
-        assert latest_ckpt, f"No checkpoints found in {ckpts_path}"
-
-        load_path = latest_ckpt[-1]
-    else:
-        load_path = ckpts_path / f"params_{step:09}.pkl"
-        if not load_path.exists():
-            available = sorted(ckpts_path.glob("params_*.pkl"))
-            raise FileNotFoundError(f"Checkpoint not found: {load_path}. Available: {available}")
-    logger.info(f"Restoring from {load_path}")
-
-    with load_path.open("rb") as f:
-        load_dict = pickle.load(f)
-
-    agent: VDMAPPOAgent = flax.serialization.from_state_dict(agent, load_dict["agent"])
+    # # Load the configs.
+    # yaml_path = run_path / "config.yaml"
+    # with open(yaml_path, "r") as f:
+    #     cfg_dict = yaml.safe_load(f)
+    #
+    # run = Run.fromdict(cfg_dict["run"])
+    # env_name = run.env_name
+    # agent_name = run.agent_name
+    #
+    # env: GridworldMA
+    # env, _, _ = get_env_and_cbs(env_name, agent_name=agent_name)
+    #
+    # agent_cfg = VDMAPPOAgent.Cfg.fromdict(cfg_dict["agent"])
+    # agent = VDMAPPOAgent.create(123, agent_cfg, env)
+    #
+    # ckpts_path = run_path / "ckpts"
+    # if step is None:
+    #     latest_ckpt = sorted(ckpts_path.glob("params_*.pkl"))
+    #     assert latest_ckpt, f"No checkpoints found in {ckpts_path}"
+    #
+    #     load_path = latest_ckpt[-1]
+    # else:
+    #     load_path = ckpts_path / f"params_{step:09}.pkl"
+    #     if not load_path.exists():
+    #         available = sorted(ckpts_path.glob("params_*.pkl"))
+    #         raise FileNotFoundError(f"Checkpoint not found: {load_path}. Available: {available}")
+    # logger.info(f"Restoring from {load_path}")
+    #
+    # with load_path.open("rb") as f:
+    #     load_dict = pickle.load(f)
+    #
+    # agent: VDMAPPOAgent = flax.serialization.from_state_dict(agent, load_dict["agent"])
+    run, agent, env, cfg_dict = load_ckpt(run_path, step)
 
     logger.debug("Constructing collector_eval...")
     collector = Collector.create(

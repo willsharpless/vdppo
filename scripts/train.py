@@ -17,11 +17,14 @@ app = App()
 def vd(
     name: str | None = None,
     debug: bool = False,
-    env_name: str = "HerdOs",
+    env_name: str = "Delivery",
     seed: int = 123,
     trainer_cfg: TrainerCfg = TrainerCfg(),
+    n_agent: int = 1,
+    n_spec: int = 1,
+    dense: bool = False
 ):
-    env, eval_cbs, collect_cbs = get_env_and_cbs(env_name, agent_name="vd")
+    env, eval_cbs, collect_cbs = get_env_and_cbs(env_name, agent_name="vd", n_agent=n_agent, n_spec=n_spec, dense=dense)
     agent_cfg = get_vd_agent_cfg(env_name)
 
     if hasattr(env.base, "n_envs"):
@@ -39,9 +42,12 @@ def lcrl(
     env_name: str = "HerdOs",
     seed: int = 123,
     trainer_cfg: TrainerCfg = TrainerCfg(),
+    n_agent: int = 1,
+    n_spec: int = 1,
+    dense: bool = False
 ):
     env: LCRLWrapper
-    env, eval_cbs, collect_cbs = get_env_and_cbs(env_name, agent_name="lcrl")
+    env, eval_cbs, collect_cbs = get_env_and_cbs(env_name, agent_name="lcrl", n_agent=n_agent, n_spec=n_spec, dense=dense)
 
     agent_cfg = get_lcrl_agent_cfg(env_name)
     agent = LCRLMAPPOAgent.create(seed, agent_cfg, env)
@@ -67,7 +73,7 @@ def train(
     wandb_config = {"seed": seed, "cli_env_name": env_name, "agent_name": agent_name}
 
     # env_name = f"{type(env).__name__}-{env_name}"
-    run = Run.create(env_name=env_name.lower(), agent_name=agent_name, name=name)
+    run = Run.create(env_name=env_name.lower(), agent_name=agent_name, name=name, debug=debug)
     trainer = Trainer(agent, trainer_cfg)
     trainer.train(run, env, eval_cbs=eval_cbs, collect_cbs=collect_cbs, debug=debug, wandb_config=wandb_config)
 

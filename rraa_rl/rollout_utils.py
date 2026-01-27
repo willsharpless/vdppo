@@ -1,4 +1,6 @@
 import jax.tree_util as jtu
+import jax.numpy as jnp
+import jax
 import numpy as np
 
 from rraa_rl.collector import RolloutOutput

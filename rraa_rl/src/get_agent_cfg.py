@@ -12,6 +12,7 @@ def get_vd_agent_cfg(env_name: str):
     cfg.entropy_coef = 1.5e-2
     cfg.rollout_T = 30
     cfg.n_envs_train = 4096
+    cfg.actor_shared_trunk = True
 
     if env_name == "herdos":
         pass

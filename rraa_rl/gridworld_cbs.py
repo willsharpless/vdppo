@@ -1,6 +1,7 @@
 import time
 from pathlib import Path
 from typing import Callable
+from colour import hsl2hex
 
 import einops as ei
 import imageio.v2 as imageio
@@ -18,6 +19,7 @@ from lovely_histogram import plot_histogram
 from matplotlib.animation import FFMpegWriter, FuncAnimation
 from matplotlib.collections import EllipseCollection
 from matplotlib.colors import CenteredNorm, to_rgba
+from matplotlib.colors import LinearSegmentedColormap
 
 from rraa_rl.collector import RolloutOutput
 from rraa_rl.distribution import tfd, tfp
@@ -31,6 +33,7 @@ from rraa_rl.src.rl.utils.utils import get_BuRd_smooth
 from rraa_rl.trainer import CallbackProps
 from rraa_rl.vd_mappo import PPOData, VDMAPPOAgent
 
+plt.style.use("seaborn-v0_8-darkgrid")
 
 def animate_eval_trajs(p: CallbackProps):
     if isinstance(p.agent, VDMAPPOAgent):
@@ -460,22 +463,58 @@ class VizValues(struct.PyTreeNode):
         env_base: GridworldMABase = env.base
 
         ncol = n_automata_states
-        figsize = 0.9 * np.array([3 * ncol, 3])
-        fig, axes = plt.subplots(1, ncol, figsize=figsize, layout="constrained")
+        # figsize = 0.9 * np.array([3 * ncol, 3])
+        # fig, axes = plt.subplots(1, ncol, figsize=figsize, layout="constrained")
 
-        vmin, vmax = bbt_V.min(), bbt_V.max()
-        for ii, ax in enumerate(axes):
-            im = ax.imshow(bbt_V[:, :, ii].T, origin="lower", cmap="viridis", vmin=vmin, vmax=vmax)
+        blue = hsl2hex([0.57, 0.5, 0.55])
+        light_blue = hsl2hex([0.4, 1.0, 0.9])
+        red = hsl2hex([0.028, 0.62, 0.59])
+        light_red = hsl2hex([0.2, 1.0, 0.95])
+        white = hsl2hex([0.0, 0.0, 1.0])
+        # sdf_cm = LinearSegmentedColormap.from_list("SDF", [(0, red), (0.4, light_red), (0.5, white), (0.7, light_blue), (1.0, blue)], N=256)
+        sdf_cm = LinearSegmentedColormap.from_list("SDF", [(0, red), (0.4, light_red), (0.5, white), (1.0, blue)], N=256)
+
+        cmap = sdf_cm
+        bbt_probs = bbtn_probs.squeeze(3)
+        bbt_act = bbtn_act[0]
+        action_to_str = [".", "↑", "↓", "→", "←"]
+        plt.style.use("seaborn-v0_8-darkgrid")
+
+        # vmin, vmax = bbt_V.min(), bbt_V.max()
+        vmin, vmax = -1, 1.
+        for ii in range(n_automata_states):
+            fig, ax = plt.subplots(figsize=np.array([6,4]), dpi=400)
+
+            im = ax.imshow(bbt_V[:, :, ii].T, origin="lower", cmap=cmap, vmin=vmin, vmax=vmax)
             env_base.setup_ax(ax)
-            ax.set_title(f"{discrete_state_name} state {ii}")
+            # cbar = fig.colorbar(im, ax=ax)
 
-            cbar = fig.colorbar(im, ax=ax)
+            # For each cell, annotate with the action mode.
+            for (x, y), prob in np.ndenumerate(bbt_probs[:, :, ii]):
+                # if wall #, skip annotation
+                # if env_base.map.d_raw['#'][x,y]:
+                #     continue
 
-        plot_dir = p.run.plots_dir / "V"
-        plot_dir.mkdir(parents=True, exist_ok=True)
-        fig_path = plot_dir / f"V_step{p.train_step}.jpg"
-        fig.savefig(fig_path, bbox_inches="tight", dpi=500)
-        plt.close(fig)
+                if bbt_V[x, y, ii] < 0:
+                    continue
+
+                action_mode = bbt_act[x, y, ii][0]
+                ax.text(
+                    x,
+                    y,
+                    action_to_str[action_mode],
+                    # color="white" if prob < 0.5 else "black",  # viridis is dark blue to yellow
+                    # fontfamily="DejaVu Sans Mono",
+                    fontsize=20,
+                    ha="center",
+                    va="center",
+                )
+
+            plot_dir = p.run.plots_dir / "V" / f"Node{ii}"
+            plot_dir.mkdir(parents=True, exist_ok=True)
+            fig_path = plot_dir / f"V_step{p.train_step}_Node{ii}.png"
+            fig.savefig(fig_path, bbox_inches="tight", dpi=400, pad_inches=1e-2)
+            plt.close(fig)
 
         # -----------------------------------------
         if env.n_agents > 1:
@@ -490,7 +529,7 @@ class VizValues(struct.PyTreeNode):
         figsize = 0.9 * np.array([3 * ncol, 3 * nrow])
         fig, axes = plt.subplots(2, ncol, figsize=figsize, layout="constrained")
 
-        action_to_str = ["⋅", "↑", "↓", "→", "←"]
+        action_to_str = [".", "↑", "↓", "→", "←"]
 
         # first row: plot probabilities
         for ii, ax in enumerate(axes[0, :]):

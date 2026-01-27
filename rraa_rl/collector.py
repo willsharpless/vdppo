@@ -1,6 +1,6 @@
 import functools as ft
 # from typing import Any, Callable, Protocol, Self, Tuple
-from typing import Any, Callable, Protocol, Tuple
+from typing import Any, Callable, Generic, Protocol, Tuple, TypeVar
 
 import mujoco.mjx.third_party.mujoco_warp
 
@@ -22,6 +22,9 @@ from typing_extensions import Self
 from rraa_rl.jax_utils import switch01, tree_where_dim0
 from rraa_rl.src.env.general_task.env import Env, EnvStep
 from rraa_rl.train_utils import tree_where
+
+_EnvState = TypeVar("_EnvState")
+_Obs = TypeVar("_Obs")
 
 
 class SampleActionFn(Protocol):
@@ -55,11 +58,11 @@ class CollectorState:
 
 
 @struct.dataclass
-class RolloutOutput:
-    state_now: Any
-    state_next: Any
-    obs_now: Any
-    obs_next: Any
+class RolloutOutput(Generic[_EnvState, _Obs]):
+    state_now: _EnvState
+    state_next: _EnvState
+    obs_now: _Obs
+    obs_next: _Obs
     act: jnp.ndarray
 
     predicates_next: dict

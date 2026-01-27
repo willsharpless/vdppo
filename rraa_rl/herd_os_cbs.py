@@ -1,3 +1,4 @@
+import pathlib
 import time
 
 import einops as ei
@@ -18,8 +19,10 @@ from matplotlib.collections import EllipseCollection
 from matplotlib.colors import CenteredNorm, to_rgba
 
 from rraa_rl.collector import RolloutOutput
+from rraa_rl.gridworld_cbs import save_animation_blit
 from rraa_rl.jax_utils import jax_vmap, rep_vmap
 from rraa_rl.src.env.general_task.env import AugObs
+from rraa_rl.src.env.general_task.herd_base import HerdingHerd, HerdingHerdCfg
 from rraa_rl.src.env.general_task.herd_os import HerdOs
 from rraa_rl.src.rl.utils.utils import get_BuRd_smooth
 from rraa_rl.trainer import CallbackProps
@@ -743,3 +746,81 @@ def viz_obs_histogram(p: CallbackProps):
     fig_path = plot_dir / f"obs_hist_step{p.train_step}.jpg"
     fig.savefig(fig_path, bbox_inches="tight", dpi=500)
     plt.close(fig)
+
+
+def animate_herding_traj(
+    anim_path: pathlib.Path,
+    cfg: HerdingHerdCfg,
+    T_pos_herd: np.ndarray,
+    T_pos_herder: np.ndarray,
+    T_discr_state: np.ndarray | None = None,
+    T_labels: list[str] | None = None,
+    fps: int = 30,
+):
+    figsize = np.array([4, 3])
+    fig, ax = plt.subplots(figsize=figsize)
+    env_base = HerdingHerd(cfg)
+    mult = cfg.pos_multiplier
+    env_base.setup_ax(ax)
+
+    agent_circs = []
+    for agent_idx in range(env_base.n_agents):
+        circ = plt.Circle((0, 0), cfg.agent_radius * mult, facecolor="C1", edgecolor="none")
+        ax.add_patch(circ)
+        agent_circs.append(circ)
+
+    herd_circs = []
+    for herd_idx in range(cfg.n_herd):
+        circ = plt.Circle((0, 0), cfg.agent_radius * mult, facecolor="C3", edgecolor="none")
+        ax.add_patch(circ)
+        herd_circs.append(circ)
+
+    all_circs = agent_circs + herd_circs
+
+    kk_text = ax.text(
+        0.02,
+        0.98,
+        "",
+        transform=ax.transAxes,
+        verticalalignment="top",
+        horizontalalignment="left",
+        color="white",
+        fontsize=8,
+        bbox=dict(facecolor="black", alpha=0.5, pad=2),
+    )
+    fig.tight_layout()
+
+    def update_fn(kk: int):
+        # T_state: HerdOs.State = traj.state_now
+        # n_pos_herd = T_state.base.herd_state[kk, :, :2]
+        # n_pos_herder = T_state.base.herder_state[kk, :, :2]
+        # temporal_node_idx = T_state.temporal_node_idx[kk]
+        # temporal_node_name = env.temporal_node_names[temporal_node_idx]
+
+        n_pos_herd = T_pos_herd[kk]
+        n_pos_herder = T_pos_herder[kk]
+
+        colors_temporal_node = ["C0", "C1", "C2", "C4", "C5", "C6"]  # C3 is grey.
+        color_temporal_node = None
+        if T_discr_state is not None:
+            discr_state = T_discr_state[kk]
+            color_temporal_node = colors_temporal_node[discr_state]
+
+        for ii, pos_herd in enumerate(n_pos_herd):
+            herd_circs[ii].center = pos_herd
+
+        for ii, pos_herder in enumerate(n_pos_herder):
+            agent_circs[ii].center = pos_herder
+
+            if color_temporal_node is not None:
+                agent_circs[ii].set_facecolor(color_temporal_node)
+
+        text = f"Step: {kk}"
+        if T_labels is not None:
+            text += f"\n{T_labels[kk]}"
+        kk_text.set_text(text)
+
+    T = len(T_pos_herder)
+    assert len(T_pos_herd) == len(T_pos_herder) == T
+    artists = all_circs + [kk_text]
+    save_animation_blit(fig, artists, anim_path, T, fps=fps, update_fn=update_fn)

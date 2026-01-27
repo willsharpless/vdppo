@@ -22,7 +22,6 @@ from rraa_rl.collector import RolloutOutput
 from rraa_rl.jax_utils import jax_vmap, rep_vmap
 from rraa_rl.src.env.general_task.delivery import Delivery
 from rraa_rl.src.env.general_task.env import AugObs
-from rraa_rl.src.env.general_task.herd_os import HerdOs
 from rraa_rl.src.rl.utils.utils import get_BuRd_smooth
 from rraa_rl.trainer import CallbackProps
 from rraa_rl.vd_mappo import PPOData, VDMAPPOAgent
@@ -147,7 +146,7 @@ def plot_eval_trajs(p: CallbackProps):
     n_temporal_nodes = env.n_temporal_nodes
     ncol = n_temporal_nodes
 
-    bT_states: list[HerdOs.State] = [traj.state_now for traj in p.bT_test_rollouts]
+    bT_states: list[Delivery.State] = [traj.state_now for traj in p.bT_test_rollouts]
     b_temporal_idx = np.array([T_state.temporal_node_idx[0] for T_state in bT_states])
 
     # Count how many trajectories each temporal node has.
@@ -182,7 +181,7 @@ def plot_eval_trajs(p: CallbackProps):
         for traj in p.bT_test_rollouts[start_idx:end_idx]:
             (T,) = traj.shape
 
-            T_state: HerdOs.State = traj.state_now
+            T_state: Delivery.State = traj.state_now
             T_herder_pos = T_state.base.herder_state[:, 0, :2]
             assert T_herder_pos.shape == (T, 2)
 
@@ -214,7 +213,7 @@ def plot_eval_trajs(p: CallbackProps):
 
 
 def animate_eval_trajs(p: CallbackProps):
-    env: HerdOs = p.env
+    env: Delivery = p.env
     if env.n_agents == 1:
         animate_eval_trajs_single_agent(p)
     else:
@@ -228,7 +227,7 @@ def animate_eval_trajs_single_agent(p: CallbackProps):
     n_temporal_nodes = env.n_temporal_nodes
     ncol = n_temporal_nodes
 
-    bT_states: list[HerdOs.State] = [traj.state_now for traj in p.bT_test_rollouts]
+    bT_states: list[Delivery.State] = [traj.state_now for traj in p.bT_test_rollouts]
     b_temporal_idx = np.array([T_state.temporal_node_idx[0] for T_state in bT_states])
 
     T_max = max(traj.shape[0] for traj in p.bT_test_rollouts)
@@ -276,12 +275,16 @@ def animate_eval_trajs_single_agent(p: CallbackProps):
         node_ix = env.temporal_nodes[node_idx]
         pred_info = collect_predicate_info(env.dag_nodes, node_ix)
         node_idx_to_predicates.append(pred_info.predicates)
-    plot_predicates = ['target0', 'target1', 'oob', 'obstacles']
+    plot_predicates = ['target0', 'target1', 'target0_dense', 'target1_dense', 'oob', 'obstacles']
     if cfg.dynamic_targets:
         plot_predicates = ['oob', 'obstacles']
 
+    # Check if MPPI rollouts are available
+    has_mppi = hasattr(p, 'mppi_rollouts') and p.mppi_rollouts is not None
+
     circ_collections = []
     target_circs = []
+    mppi_line_collections = []  # Store line collections for MPPI trajectories
     start_idxs, end_idxs = [], []
     start_idx = 0
     for ii, ax in enumerate(axes):
@@ -328,6 +331,19 @@ def animate_eval_trajs_single_agent(p: CallbackProps):
         ax.add_collection(ec)
         circ_collections.append(ec)
 
+        # Add MPPI trajectory lines if available
+        if has_mppi:
+            # Create line objects for each MPPI sample trajectory
+            # We'll update these during animation
+            mppi_lines_ax = []
+            # Get number of MPPI samples from the rollouts (K dimension)
+            # mppi_rollouts shape: (T, B, J, K, H) for the state
+            n_mppi_samples = p.mppi_rollouts.state_now.base.herder_state.shape[3]
+            for _ in range(n_mppi_samples):
+                line, = ax.plot([], [], color='black', alpha=0.05, lw=0.5, animated=True)
+                mppi_lines_ax.append(line)
+            mppi_line_collections.append(mppi_lines_ax)
+
     kk_text = ax.text(
         0.02,
         0.98,
@@ -348,6 +364,10 @@ def animate_eval_trajs_single_agent(p: CallbackProps):
         for target_circs_ax in target_circs:
             for circ in target_circs_ax:
                 circ.set_animated(True)
+    if has_mppi:
+        for mppi_lines_ax in mppi_line_collections:
+            for line in mppi_lines_ax:
+                line.set_animated(True)
     kk_text.set_animated(True)
 
     # Prime the renderer + background
@@ -412,6 +432,25 @@ def animate_eval_trajs_single_agent(p: CallbackProps):
                 circ_collections[ii].set_facecolor(facecolors)
                 circ_collections[ii].set_edgecolor(edgecolors)
 
+                # Update MPPI trajectory lines if available
+                if has_mppi and n_traj > 0:
+                    # mppi_rollouts shape: (T, B, J, K, H) for state_now.base.herder_state
+                    # Get the first trajectory in this temporal node group
+                    batch_idx = start_idx
+                    # Get MPPI rollouts for this timestep, last iteration (-1 on J dim)
+                    mppi_state = p.mppi_rollouts.state_now.base.herder_state
+                    t_idx = min(kk, mppi_state.shape[0] - 1)
+                    # (K, H, 2) - positions for all K samples over H horizon steps
+                    KH_pos = mppi_state[t_idx, batch_idx, -1, :, :, 0, :2]
+                    n_mppi_samples = KH_pos.shape[0]
+                    
+                    for k_idx, line in enumerate(mppi_line_collections[ii]):
+                        if k_idx < n_mppi_samples:
+                            H_pos = KH_pos[k_idx]  # (H, 2)
+                            line.set_data(H_pos[:, 0], H_pos[:, 1])
+                        else:
+                            line.set_data([], [])
+
             # Draw only animated artists
             for ec in circ_collections:
                 ec.axes.draw_artist(ec)
@@ -419,6 +458,10 @@ def animate_eval_trajs_single_agent(p: CallbackProps):
                 for target_circs_ax in target_circs:
                     for circ in target_circs_ax:
                         circ.axes.draw_artist(circ)
+            if has_mppi:
+                for mppi_lines_ax in mppi_line_collections:
+                    for line in mppi_lines_ax:
+                        line.axes.draw_artist(line)
             kk_text.axes.draw_artist(kk_text)
 
             # Blit + grab frame
@@ -456,7 +499,7 @@ def animate_eval_trajs_multi_agent(p: CallbackProps):
 
     bT_test_rollouts = p.bT_test_rollouts
 
-    bT_states: list[HerdOs.State] = [traj.state_now for traj in bT_test_rollouts]
+    bT_states: list[Delivery.State] = [traj.state_now for traj in bT_test_rollouts]
     b_temporal_idx = np.array([T_state.temporal_node_idx[0] for T_state in bT_states])
 
     temporal_node_count = np.array([np.sum(b_temporal_idx == ii) for ii in range(n_temporal_nodes)])
@@ -481,6 +524,9 @@ def animate_eval_trajs_multi_agent(p: CallbackProps):
     # Use facecolor to indicate the current temporal node.
     colors_temporal_node = ["C0", "C1", "C2", "C4", "C5", "C6"]  # C3 is grey.
     pred_colors = {name: f"C{ii}" for ii, name in enumerate(env.pred_info.predicates)}
+    # relevant_targets = [idx for idx in range(len(cfg.centers)) if (f'target{idx}' in env.pred_info.predicates or f'target{idx}_dense' in env.pred_info.predicates)]
+    relevant_targets = [pred for pred in env.pred_info.predicates if "target" in pred]
+    # relevant_centers = [int(pred.replace("target", "").replace("_dense", "")) for pred in relevant_targets]
 
     # Use edgecolor to indicate alive vs dead.
     color_alive = to_rgba("C0", 0.0)
@@ -511,7 +557,7 @@ def animate_eval_trajs_multi_agent(p: CallbackProps):
         node_ix = env.temporal_nodes[node_idx]
         pred_info = collect_predicate_info(env.dag_nodes, node_ix)
         node_idx_to_predicates.append(pred_info.predicates)
-    plot_predicates = ['target0', 'target1', 'oob', 'obstacles']
+    plot_predicates = ['target0', 'target1', 'target0_dense', 'target1_dense', 'oob', 'obstacles']
     if cfg.dynamic_targets:
         plot_predicates = ['oob', 'obstacles']
 
@@ -554,9 +600,9 @@ def animate_eval_trajs_multi_agent(p: CallbackProps):
             # Add target circles
             if cfg.dynamic_targets:
                 circs = []
-                for target_idx in range(len(cfg.centers)):
-                    circ = plt.Circle((0, 0), cfg.radiuses[target_idx], 
-                                    facecolor=pred_colors[f'target{target_idx}'], 
+                for pred in relevant_targets:
+                    circ = plt.Circle((0, 0), cfg.radiuses[int(pred.split('target')[1].replace("_dense", ""))], 
+                                    facecolor=pred_colors[pred], 
                                     edgecolor='none', alpha=0.5, animated=True)
                     ax.add_patch(circ)
                     circs.append(circ)
@@ -658,6 +704,7 @@ def animate_eval_trajs_multi_agent(p: CallbackProps):
                     if cfg.dynamic_targets:
                         T_centers = T_state.base.centers
                         circs = target_circs[(ii, jj)]
+                        # ipdb.set_trace()
                         for target_idx, circ in enumerate(circs):
                             pos = T_centers[t_idx, target_idx, :]
                             assert pos.shape == (2,)
@@ -745,7 +792,7 @@ class PlotRootTrajPreds(struct.PyTreeNode):
                 T_reach_vals = bTt_reach_vals[bb, :traj_len, ii]
                 ax.plot(T_reach_vals)
 
-            T_state: HerdOs.State = trajs[bb].state_now
+            T_state: Delivery.State = trajs[bb].state_now
             T_temporal_node_idx = T_state.temporal_node_idx
 
             ax = axes[-1]
@@ -790,13 +837,13 @@ def viz_collect_data(p: CallbackProps):
     cfg_agent = agent.cfg
 
     # Find rollouts where the target is larger than 2, figure out why...
-    Tb_state: HerdOs.State = Tb_rollout.state_now
+    Tb_state: Delivery.State = Tb_rollout.state_now
     bT_A, bT_Q, bT_temporal_idx = agent.compute_A_Q(Tb_rollout, debug=True)
 
     b_Q = b_data.Q
     n_temporal_nodes = env.n_temporal_nodes
     # ---------------------------------------------------------------
-    b_state: HerdOs.State = b_data.state
+    b_state: Delivery.State = b_data.state
     b_pos = b_state.base.herder_state[:, 0, :2]
 
     b_temporal_idx = b_state.temporal_node_idx

@@ -1,6 +1,6 @@
 import copy
 import functools as ft
-from typing import Any, Generic, NamedTuple, Protocol, Self, TypeVar
+from typing import Any, Generic, NamedTuple, Protocol, TypeVar
 
 import flax.linen as nn
 import jax
@@ -13,19 +13,20 @@ import numpy as np
 from attrs import define
 from jax import numpy as jnp
 from jaxtyping import PRNGKeyArray
+from typing_extensions import Self
 from valtr.reachability import (DAGAvoid, DAGConst, DAGGUMinN, DAGGUSingle, DAGId, DAGMaxN, DAGMinN, DAGNegate, DAGNode,
                                 DAGReach, DAGReachAvoid, DAGVar, collect_predicate_info, get_node_parent_dict,
                                 has_temporal_children, temporal_nodes_topological)
-from valtr.valtr import to_dag
 
 from rraa_rl.evaluate_dag import evaluate_dag
 from rraa_rl.jax_utils import tree_cat
+from valtr.valtr import to_dag
 
 _EnvState = TypeVar("_EnvState")
 _Obs = TypeVar("_Obs")
 
 
-class EnvStep(NamedTuple, Generic[_EnvState, _Obs]):
+class EnvStep_(NamedTuple):
     envstate: _EnvState
     obs: _Obs
     predicates: dict
@@ -33,6 +34,8 @@ class EnvStep(NamedTuple, Generic[_EnvState, _Obs]):
     trunc: jnp.ndarray | bool
     info: dict
 
+class EnvStep(EnvStep_, Generic[_EnvState, _Obs]):
+    pass
 
 class BaseEnv(Generic[_EnvState, _Obs]):
     def __init__(self):
@@ -362,6 +365,17 @@ class StaticTemporalNodeMixin:
 
     def step(self: Self | StaticTemporalNodeMixinProtocol, state: Any, action: jnp.ndarray):
         base_step: EnvStep = self.base.step(state.base, action)
+
+        temporal_node_idx = state.temporal_node_idx
+
+        state_new = jdc.replace(state, temporal_node_idx=temporal_node_idx, base=base_step.envstate)
+        obs = self._augment_obs(state_new, base_step.obs)
+        step = base_step._replace(envstate=state_new, obs=obs)
+
+        return step
+
+    def step_control(self, state: Any, control: jnp.ndarray):
+        base_step: EnvStep = self.base.step_control(state.base, control)
 
         temporal_node_idx = state.temporal_node_idx
 

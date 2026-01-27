@@ -82,10 +82,10 @@ class VDMAPPOAgentCfg(Cfg):
     actor_hids: tuple[int, ...] = (128, 128)
     critic_hids: tuple[int, ...] = (128, 128)
 
-    value_shared_trunk: bool = False
+    value_shared_trunk: bool = True
     """If true, the values for all agents share a trunk"""
 
-    actor_shared_trunk: bool = False
+    actor_shared_trunk: bool = True
     """If true, the policies for all agents share a trunk"""
 
     actor_learn_embedding: bool = False

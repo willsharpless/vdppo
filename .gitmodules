@@ -1,0 +1,3 @@
+[submodule "valtr"]
+	path = valtr
+	url = git@github.com:willsharpless/valtr.git
