@@ -177,7 +177,10 @@ class SceneBase(BaseEnv):
         self.nconmax = 64
         self.n_envs = 1
 
-        #
+        # Unlock the drawer joint, lock the window joint.
+        self.mj_model.joint("drawer_slide").damping[0] = 2.0
+        self.mj_model.joint("window_slide").damping[0] = 1e6
+
         # # mujoco.mj_saveLastXML("scene_base.xml", self.mj_model)
         # buffer_size = mujoco.mj_sizeModel(self.mj_model)
         # buffer = np.empty(shape=buffer_size, dtype=np.uint8)
@@ -188,10 +191,6 @@ class SceneBase(BaseEnv):
         #
         # logger.success("Saved scene_base_model.mjb")
         # exit(0)
-
-        # Unlock the drawer joint, lock the window joint.
-        self.mj_model.joint("drawer_slide").damping[0] = 2.0
-        self.mj_model.joint("window_slide").damping[0] = 1e6
 
         self.impl = "warp"
 
