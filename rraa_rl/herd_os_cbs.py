@@ -755,6 +755,7 @@ def animate_herding_traj(
     T_pos_herder: np.ndarray,
     T_discr_state: np.ndarray | None = None,
     T_labels: list[str] | None = None,
+    fps: int = 30,
 ):
     figsize = np.array([4, 3])
     fig, ax = plt.subplots(figsize=figsize)
@@ -822,4 +823,4 @@ def animate_herding_traj(
     T = len(T_pos_herder)
     assert len(T_pos_herd) == len(T_pos_herder) == T
     artists = all_circs + [kk_text]
-    save_animation_blit(fig, artists, anim_path, T, update_fn=update_fn)
+    save_animation_blit(fig, artists, anim_path, T, fps=fps, update_fn=update_fn)
