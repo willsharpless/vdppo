@@ -22,7 +22,7 @@ def get_vd_agent_cfg(env_name: str):
         cfg.entropy_coef = 3e-2
 
     if env_name == "manip_scene":
-        cfg.n_envs_train = 1024
+        cfg.n_envs_train = 256
 
     return cfg
 

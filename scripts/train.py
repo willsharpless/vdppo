@@ -23,6 +23,10 @@ def vd(
 ):
     env, eval_cbs, collect_cbs = get_env_and_cbs(env_name, agent_name="vd")
     agent_cfg = get_vd_agent_cfg(env_name)
+
+    if hasattr(env.base, "n_envs"):
+        env.base.n_envs = agent_cfg.n_envs_train
+
     agent = VDMAPPOAgent.create(seed, agent_cfg, env)
 
     return train(name, debug, env_name, seed, trainer_cfg, env, eval_cbs, collect_cbs, agent)

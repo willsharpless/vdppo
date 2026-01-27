@@ -168,7 +168,7 @@ class SceneBase(BaseEnv):
         self.njmax = 500
         # self.naconmax = 512
         self.nconmax = 64
-        self.n_envs = 1024
+        self.n_envs = 17
 
         #
         # # mujoco.mj_saveLastXML("scene_base.xml", self.mj_model)
@@ -341,6 +341,9 @@ class SceneBase(BaseEnv):
 
     @property
     def naconmax(self) -> int:
+        if self.n_envs == 17:
+            ipdb.set_trace()
+        logger.info("naconmax = {} x {} = {}".format(self.nconmax, self.n_envs, self.nconmax * self.n_envs))
         return self.nconmax * self.n_envs
 
     @property

@@ -83,6 +83,7 @@ class Trainer:
 
         if hasattr(env.base, "n_envs"):
             env.base.n_envs = n_envs_train
+
         logger.debug("Constructing collector...")
         collector = Collector.create(
             key=key_collector,

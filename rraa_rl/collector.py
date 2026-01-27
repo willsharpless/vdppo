@@ -2,6 +2,8 @@ import functools as ft
 # from typing import Any, Callable, Protocol, Self, Tuple
 from typing import Any, Callable, Protocol, Tuple
 
+import mujoco.mjx.third_party.mujoco_warp
+
 import einops as ei
 import ipdb
 import jax
