@@ -26,7 +26,7 @@ _EnvState = TypeVar("_EnvState")
 _Obs = TypeVar("_Obs")
 
 
-class EnvStep(NamedTuple, Generic[_EnvState, _Obs]):
+class EnvStep_(NamedTuple):
     envstate: _EnvState
     obs: _Obs
     predicates: dict
@@ -34,6 +34,8 @@ class EnvStep(NamedTuple, Generic[_EnvState, _Obs]):
     trunc: jnp.ndarray | bool
     info: dict
 
+class EnvStep(EnvStep_, Generic[_EnvState, _Obs]):
+    pass
 
 class BaseEnv(Generic[_EnvState, _Obs]):
     def __init__(self):
