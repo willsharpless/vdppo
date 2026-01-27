@@ -759,17 +759,18 @@ def animate_herding_traj(
     figsize = np.array([4, 3])
     fig, ax = plt.subplots(figsize=figsize)
     env_base = HerdingHerd(cfg)
+    mult = cfg.pos_multiplier
     env_base.setup_ax(ax)
 
     agent_circs = []
     for agent_idx in range(env_base.n_agents):
-        circ = plt.Circle((0, 0), cfg.agent_radius, facecolor="C1", edgecolor="none")
+        circ = plt.Circle((0, 0), cfg.agent_radius * mult, facecolor="C1", edgecolor="none")
         ax.add_patch(circ)
         agent_circs.append(circ)
 
     herd_circs = []
     for herd_idx in range(cfg.n_herd):
-        circ = plt.Circle((0, 0), cfg.agent_radius, facecolor="C3", edgecolor="none")
+        circ = plt.Circle((0, 0), cfg.agent_radius * mult, facecolor="C3", edgecolor="none")
         ax.add_patch(circ)
         herd_circs.append(circ)
 
