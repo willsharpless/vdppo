@@ -476,16 +476,17 @@ class SceneBase(BaseEnv):
             pos=target_attach_pos,
             quat=target_attach_quat,
             curr_qpos=curr_qpos,
+            max_iters=5
         )
 
     def _step_physics(self, mjx_data: mjx.Data) -> mjx.Data:
         def step_fn(data: mjx.Data, _):
-            logger.debug("[step_fn0] contact_dim.shape: {}".format(data._impl.contact__dim.shape))
+            # logger.debug("[step_fn0] contact_dim.shape: {}".format(data._impl.contact__dim.shape))
             data_out = mjx.step(self.mjx_model, data)
-            logger.debug("[step_fn1] contact_dim.shape: {}".format(data_out._impl.contact__dim.shape))
+            # logger.debug("[step_fn1] contact_dim.shape: {}".format(data_out._impl.contact__dim.shape))
             return data_out, None
 
-        mjx_data, _ = jax.lax.scan(step_fn, mjx_data, None, length=self.config.n_steps)
+        mjx_data, _ = jax.lax.scan(step_fn, mjx_data, None, length=self.config.n_steps, unroll=5)
         return mjx_data
 
     def get_is_button_pressed(self, qpos: jnp.ndarray, prev_button_pos: jnp.ndarray) -> jnp.ndarray:
