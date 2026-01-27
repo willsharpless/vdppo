@@ -224,6 +224,37 @@ def get_env_and_cbs(
 
         cbs = ablation_eval_cbs, ablation_collect_cbs
 
+    elif env_name == "ablation_depth":
+        ## N spec and N agent Ablation Env (Double Integrator)
+
+        spec = "G(!oob) && G(!obstacles)" if n_agent == 1 else "G(!oob) && G(!obstacles) && G(!collide)"
+
+        dense_tag = "_dense" if dense else ""
+        if n_spec == 1:
+            spec += f" && F(target0{dense_tag})"
+        elif n_spec == 2:
+            spec += f" && F(target0{dense_tag} && F(target1{dense_tag}))"
+        elif n_spec == 3:
+            spec += f" && F(target0{dense_tag} && F(target1{dense_tag} && F(target2{dense_tag})))"
+        elif n_spec == 4:
+            spec += f" && F(target0{dense_tag} && F(target1{dense_tag} && F(target2{dense_tag} && F(target3{dense_tag}))))"
+        elif n_spec == 5:
+            spec += f" && F(target0{dense_tag} && F(target1{dense_tag} && F(target2{dense_tag} && F(target3{dense_tag} && F(target4{dense_tag}))))))"
+
+        base_cfg = DeliveryBaseCfg()
+
+        base_cfg.n_herders = n_agent
+        base_cfg.n_herd = n_agent
+        base_cfg.acc_maxs = [2.0] * n_agent
+        base_cfg.vel_maxs = [1.0] * n_agent
+        base_cfg.dynamic_targets = False
+        base_cfg.update_targets = False
+
+        cfg = Delivery.Cfg(specification=spec, base=base_cfg)
+        env = Delivery(cfg)
+
+        cbs = ablation_eval_cbs, ablation_collect_cbs
+
     else:
         raise ValueError(f"Unknown environment name: {env_name}")
     
