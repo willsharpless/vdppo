@@ -1,6 +1,6 @@
 import copy
 import functools as ft
-from typing import Any, Generic, NamedTuple, Protocol, Self, TypeVar
+from typing import Any, Generic, NamedTuple, Protocol, TypeVar
 
 import flax.linen as nn
 import jax
@@ -13,13 +13,14 @@ import numpy as np
 from attrs import define
 from jax import numpy as jnp
 from jaxtyping import PRNGKeyArray
+from typing_extensions import Self
 from valtr.reachability import (DAGAvoid, DAGConst, DAGGUMinN, DAGGUSingle, DAGId, DAGMaxN, DAGMinN, DAGNegate, DAGNode,
                                 DAGReach, DAGReachAvoid, DAGVar, collect_predicate_info, get_node_parent_dict,
                                 has_temporal_children, temporal_nodes_topological)
-from valtr.valtr import to_dag
 
 from rraa_rl.evaluate_dag import evaluate_dag
 from rraa_rl.jax_utils import tree_cat
+from valtr.valtr import to_dag
 
 _EnvState = TypeVar("_EnvState")
 _Obs = TypeVar("_Obs")
