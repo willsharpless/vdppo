@@ -131,8 +131,9 @@ class LCRLMAPPOAgent:
             n_actions_per_agent=env.n_actions_per_agent,
             n_out=env.ldba.n_states,
             p_max=cfg.actor_p_max,
+            out_axes=-2
         )
-        actor_def = IndexAtEnd(actor_def, n_out=env.ldba.n_states)
+        actor_def = IndexAtEnd(actor_def, n_out=env.ldba.n_states, index_pos=-2)
 
         if not dummy_obs.base_is_array():
             critic_def = env.add_obs_preprocessor(critic_def)
