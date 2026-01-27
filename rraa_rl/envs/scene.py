@@ -178,7 +178,7 @@ class SceneBase(BaseEnv):
         # self.njmax = 500
         # self.nconmax = 64
 
-        self.njmax = 64
+        self.njmax = 500
         self.nconmax = 12
 
         self.n_envs = 1
