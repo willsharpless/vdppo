@@ -69,6 +69,7 @@ def get_env_and_cbs(
     gridworld_collect_cbs = [gridworld_cbs.collect_cb]
 
     delivery_eval_cbs = [
+        delivery_cbs.env_layout_plot,
         delivery_cbs.animate_eval_trajs,
         delivery_cbs.PlotRootTrajPreds.create(),
         delivery_cbs.plot_eval_trajs,
