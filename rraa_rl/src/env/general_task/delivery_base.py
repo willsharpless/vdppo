@@ -72,9 +72,12 @@ class DeliveryBaseCfg:
 
     centers: list[list[float]] = [
         [-2.0, 0.0],
-        [3.0, 1.0]
+        [3.0, 1.0],
+        [1.5, -2.0],
+        [-4.0, -4.0],
+        [0.0, 3.0],
     ]
-    radiuses: list[float] = [0.5, 0.5]
+    radiuses: list[float] = [0.5] * len(centers)
 
     obstacle_centers: list[list[float]] = [
         [-2.5, 2.2],

@@ -275,7 +275,9 @@ def animate_eval_trajs_single_agent(p: CallbackProps):
         node_ix = env.temporal_nodes[node_idx]
         pred_info = collect_predicate_info(env.dag_nodes, node_ix)
         node_idx_to_predicates.append(pred_info.predicates)
-    plot_predicates = ['target0', 'target1', 'target0_dense', 'target1_dense', 'oob', 'obstacles']
+    plot_predicates = ['target0', 'target1', 'target2', 'target3', 'target4', 
+                       'target0_dense', 'target1_dense', 'target2_dense', 'target3_dense', 'target4_dense',
+                       'oob', 'obstacles']
     if cfg.dynamic_targets:
         plot_predicates = ['oob', 'obstacles']
 
@@ -557,7 +559,9 @@ def animate_eval_trajs_multi_agent(p: CallbackProps):
         node_ix = env.temporal_nodes[node_idx]
         pred_info = collect_predicate_info(env.dag_nodes, node_ix)
         node_idx_to_predicates.append(pred_info.predicates)
-    plot_predicates = ['target0', 'target1', 'target0_dense', 'target1_dense', 'oob', 'obstacles']
+    plot_predicates = ['target0', 'target1', 'target2', 'target3', 'target4',
+                       'target0_dense', 'target1_dense', 'target2_dense', 'target3_dense', 'target4_dense',
+                       'oob', 'obstacles']
     if cfg.dynamic_targets:
         plot_predicates = ['oob', 'obstacles']
 
