@@ -350,7 +350,7 @@ def get_env_and_cbs(
     elif env_name == "ablation":
         ## N spec and N agent Ablation Env (Double Integrator)
 
-        specification = "G(!oob) && G(!obstacles)"
+        specification = "G(!oob) && G(!obstacles)" if n_agent == 1 else "G(!oob) && G(!obstacles) && G(!collide)"
         for i in range(n_spec):
             specification += f" && F target{i}" if not dense else f" && F target{i}_dense"
 
