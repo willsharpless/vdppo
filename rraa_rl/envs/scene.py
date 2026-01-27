@@ -172,9 +172,15 @@ class SceneBase(BaseEnv):
         self.mj_model = mujoco.MjModel.from_xml_string(xml_str, assets)
         self.mj_model.opt.timestep = physics_timestep
 
-        self.njmax = 500
         # self.naconmax = 512
-        self.nconmax = 64
+
+        # # Used this to train successfully, but slow.
+        # self.njmax = 500
+        # self.nconmax = 64
+
+        self.njmax = 64
+        self.nconmax = 12
+
         self.n_envs = 1
 
         # Unlock the drawer joint, lock the window joint.
