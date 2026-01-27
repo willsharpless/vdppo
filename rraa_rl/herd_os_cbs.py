@@ -211,6 +211,80 @@ def plot_eval_trajs(p: CallbackProps):
     fig.savefig(fig_path, bbox_inches="tight", dpi=500)
     plt.close(fig)
 
+def env_layout_plot(p: CallbackProps):
+    plots_dir = p.run.plots_dir
+    env: HerdOs = p.env
+    cfg = env.base.cfg
+
+    n_temporal_nodes = env.n_temporal_nodes
+
+    bT_test_rollouts = p.bT_test_rollouts
+    batch_idx = 0  # first idx
+    t_idx = 0  # first step
+
+    if p.train_step == 0:
+
+        # Use the same layout as the animation
+        figsize = 0.9 * np.array([6, 4])
+        fig, axes = plt.subplots(1, 1, figsize=figsize, dpi=500, squeeze=False, layout="none")
+
+        agent_collections: dict[tuple[int, int], list[plt.Circle]] = {}
+        herds: dict[tuple[int, int], list[plt.Circle]] = {}
+        for ii in range(1):
+            for jj in range(1):
+                ax = axes[jj, ii]
+                env.base.setup_ax(ax)
+                node_idx = env.temporal_nodes[jj]
+                node = env.dag_nodes[node_idx]
+                node_name = type(node).__name__
+                # ax.set_title(f"Node {jj} ({node_name})")
+                circs = []
+                for agent_idx in range(env.n_agents):
+                    circ = plt.Circle((0, 0), cfg.agent_radius, facecolor="C0", edgecolor="none", alpha=0.9)
+                    if agent_idx == 0:
+                        circ = plt.Circle((0, 0), 0.9 * cfg.agent_radius, facecolor="C0", edgecolor="none", alpha=0.9)
+                        circ.set_facecolor("C9")
+                    ax.add_patch(circ)
+                    circs.append(circ)
+                agent_collections[(ii, jj)] = circs
+                circs = []
+                for herd_idx in range(env.cfg.base.n_herd):
+                    circ = plt.Circle((0, 0), 0.9 * cfg.agent_radius, facecolor="C1", edgecolor="none", alpha=0.9)
+                    ax.add_patch(circ)
+                    circs.append(circ)
+                herds[(ii, jj)] = circs
+
+        batch_idxs: dict[tuple[int, int], int] = {}
+        bT_states: list[HerdOs.State] = [traj.state_now for traj in bT_test_rollouts]
+        b_temporal_idx = np.array([T_state.temporal_node_idx[0] for T_state in bT_states])
+        temporal_node_count = np.array([np.sum(b_temporal_idx == ii) for ii in range(n_temporal_nodes)])
+        offsets = np.array([0, *np.cumsum(temporal_node_count)])
+        for ii in range(1):
+            for jj in range(1):
+                batch_idx = ii + offsets[jj]
+                batch_idxs[ii, jj] = batch_idx
+        for ii in range(1):
+            for jj in range(1):
+                traj = bT_test_rollouts[batch_idx]
+                T_state: HerdOs.State = traj.state_now
+                T_herder_pos = T_state.base.herder_state[:, :, :2]
+                circs = agent_collections[(ii, jj)]
+                for agent_idx, circ in enumerate(circs):
+                    pos = T_herder_pos[t_idx, agent_idx, :]
+                    circ.center = pos
+                circs = herds[(ii, jj)]
+                for herd_idx, circ in enumerate(circs):
+                    pos = T_state.base.herd_state[t_idx, herd_idx, :2]
+                    circ.center = pos
+
+        # set ticks to current values but without labels (fcks up the walls?)
+        # ax.set_xticks(ax.get_xticks(), [''] * len(ax.get_xticks()))
+        # ax.set_yticks(ax.get_yticks(), [''] * len(ax.get_yticks()))
+
+        fig.tight_layout()
+        static_path = plots_dir / f"env_layout_plot.jpg"
+        fig.savefig(static_path, bbox_inches="tight", dpi=500)
+        plt.close(fig)
 
 def animate_eval_trajs(p: CallbackProps):
     env: HerdOs = p.env

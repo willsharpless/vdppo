@@ -788,13 +788,23 @@ class HerdingHerd(HerdBase):
         assert not self.cfg.herd_zero
 
         # Plot the herd circle.
-        herd_circle = plt.Circle(self.herded_center * mul, cfg.herded_radius * mul, color="lightgray", alpha=0.5)
+        herd_circle = plt.Circle(self.herded_center * mul, cfg.herded_radius * mul, color="C1", alpha=0.2)
         ax.add_patch(herd_circle)
+        ax.text(
+            self.herded_center[0] * mul,
+            self.herded_center[1] * mul,
+            "2",
+            color="black",
+            fontsize=10,
+            ha="center",
+            va="center",
+            alpha=0.5
+        )
 
         # Plot the gates if they are active.
         for ii in range(self.n_gates):
             if self.is_predicate_active(f"herd_gate_{ii}"):
-                gate_circle = plt.Circle(self.gates[ii] * mul, cfg.herded_radius * mul, color="lightgray", alpha=0.5)
+                gate_circle = plt.Circle(self.gates[ii] * mul, cfg.herded_radius * mul, color="lightgray", alpha=0.4)
                 ax.add_patch(gate_circle)
 
                 # Draw the number of the gate.
@@ -810,16 +820,17 @@ class HerdingHerd(HerdBase):
                 )
 
         # Visualize the bottom and top parts of the wall with rectangles.
+        wall_thick_x_vis = 5.0 * self.wall_thick_x
         wall_bottom = plt.Rectangle(
-            (-self.wall_thick_x / 2 * mul, -cfg.halfsize[1] * mul),
-            self.wall_thick_x * mul,
+            (-wall_thick_x_vis / 2 * mul, -cfg.halfsize[1] * mul),
+            wall_thick_x_vis * mul,
             (self.gap_y - self.gap_halfheight + cfg.halfsize[1]) * mul,
             color="black",
             alpha=0.8,
         )
         wall_top = plt.Rectangle(
-            (-self.wall_thick_x / 2 * mul, (self.gap_y + self.gap_halfheight) * mul),
-            self.wall_thick_x * mul,
+            (-wall_thick_x_vis / 2 * mul, (self.gap_y + self.gap_halfheight) * mul),
+            wall_thick_x_vis * mul,
             (cfg.halfsize[1] - (self.gap_y + self.gap_halfheight)) * mul,
             color="black",
             alpha=0.8,
