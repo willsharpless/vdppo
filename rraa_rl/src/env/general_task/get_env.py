@@ -58,6 +58,7 @@ def get_env_and_cbs(
     env_name = env_name.lower()
 
     herd_eval_cbs = [
+        herd_os_cbs.env_layout_plot,
         herd_os_cbs.animate_eval_trajs,
         herd_os_cbs.PlotRootTrajPreds.create(),
         herd_os_cbs.plot_eval_trajs,
