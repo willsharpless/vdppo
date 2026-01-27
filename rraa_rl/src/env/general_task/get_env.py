@@ -1,15 +1,14 @@
 import jax.numpy as jnp
 
 from rraa_rl import delivery_cbs, gridworld_cbs, herd_os_cbs
-from rraa_rl.envs.scene import ManipScene
 from rraa_rl.jax_utils import tree_stack
 from rraa_rl.lcrl.lcrl_wrapper import LCRLEnvCfg, LCRLWrapper
 from rraa_rl.ldba.ldba import LDBA, Guard, Transition, parse_ltl2ldba
+from rraa_rl.src.env.general_task.delivery import Delivery, DeliveryBase, DeliveryBaseCfg, DeliveryCfg
 from rraa_rl.src.env.general_task.env import Env
 from rraa_rl.src.env.general_task.gridworld import GridworldMA, GridworldMACfg, GridworldMap
 from rraa_rl.src.env.general_task.herd_base import HerdingHerdCfg
 from rraa_rl.src.env.general_task.herd_os import HerdOs
-from rraa_rl.src.env.general_task.delivery import DeliveryBase, DeliveryBaseCfg, Delivery, DeliveryCfg
 
 
 def get_cfg_herdos():
@@ -51,7 +50,9 @@ def get_cfg_herdos():
     return cfg
 
 
-def get_env_and_cbs(env_name:str, agent_name:str, n_agent:int = 1, n_spec:int = 1, dense:bool=False) -> tuple[Env, list, list]:
+def get_env_and_cbs(
+    env_name: str, agent_name: str, n_agent: int = 1, n_spec: int = 1, dense: bool = False
+) -> tuple[Env, list, list]:
     env_name = env_name.lower()
 
     herd_eval_cbs = [
@@ -273,6 +274,8 @@ def get_env_and_cbs(env_name:str, agent_name:str, n_agent:int = 1, n_spec:int = 
         env = GridworldMA(cfg)
         cbs = gridworld_eval_cbs, gridworld_collect_cbs
     elif env_name == "manip_scene":
+        from rraa_rl.envs.scene import ManipScene
+
         spec = "F( drawer_open && F( cube_in_drawer ))"
         cfg = ManipScene.Cfg(specification=spec)
         env = ManipScene(cfg)
@@ -330,7 +333,9 @@ def get_env_and_cbs(env_name:str, agent_name:str, n_agent:int = 1, n_spec:int = 
         base_cfg.vel_maxs = [1.0, 1.0, 0.1]
         base_cfg.dynamic_targets = True
         base_cfg.update_targets = True
-        base_cfg.update_cond_fn = 'agent_in_respective_target' if 'ag0_target0' in specification else 'any_agent_in_target'
+        base_cfg.update_cond_fn = (
+            "agent_in_respective_target" if "ag0_target0" in specification else "any_agent_in_target"
+        )
         # base_cfg.update_cond_fn = 'agent_in_respective_target'
 
         cfg = Delivery.Cfg(specification=specification, base=base_cfg)
