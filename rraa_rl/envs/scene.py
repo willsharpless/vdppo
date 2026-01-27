@@ -51,6 +51,9 @@ class SceneBaseCfg(EnvCfg, StaticTemporalNodeMixinCfg):
     n_actions_rot: int = 5
     n_actions_grip: int = 3
 
+    p_reset_data_clean: float = 0.25
+    p_reset_data_noisy: float = 0.25
+
     trunc_steps: int = 400
 
 
@@ -146,12 +149,16 @@ class SceneData:
 
 
 class SceneBase(BaseEnv):
+    State = SceneBaseState
+    MinState = SceneBaseMinState
+
     def __init__(self, cfg: SceneBaseCfg = SceneBaseCfg()):
         super().__init__()
 
         # physics_timestep: float = 0.002
         physics_timestep: float = 0.001
         control_timestep: float = 0.05
+        self.control_timestep = control_timestep
 
         self.cfg = cfg
 
@@ -168,7 +175,7 @@ class SceneBase(BaseEnv):
         self.njmax = 500
         # self.naconmax = 512
         self.nconmax = 64
-        self.n_envs = 17
+        self.n_envs = 1
 
         #
         # # mujoco.mj_saveLastXML("scene_base.xml", self.mj_model)
@@ -341,8 +348,8 @@ class SceneBase(BaseEnv):
 
     @property
     def naconmax(self) -> int:
-        if self.n_envs == 17:
-            ipdb.set_trace()
+        # if self.n_envs == 17:
+        #     ipdb.set_trace()
         logger.info("naconmax = {} x {} = {}".format(self.nconmax, self.n_envs, self.nconmax * self.n_envs))
         return self.nconmax * self.n_envs
 
@@ -915,8 +922,8 @@ class SceneBase(BaseEnv):
         )
 
     def reset(self, key: PRNGKeyArray):
-        p_reset_data_clean = 0.25
-        p_reset_data_noisy = 0.5
+        p_reset_data_clean = self.cfg.p_reset_data_clean
+        p_reset_data_noisy = self.cfg.p_reset_data_noisy
         p_reset_uniform = 1 - p_reset_data_clean - p_reset_data_noisy
 
         key_which, key_reset = jr.split(key)
@@ -945,6 +952,7 @@ class SceneBase(BaseEnv):
 class ManipScene(StaticTemporalNodeMixin, EnvUsingBase):
     Cfg = SceneBaseCfg
     State = StateWithTemporalNode[SceneBaseState]
+    MinState = StateWithTemporalNode[SceneBaseMinState]
 
     def __init__(self, cfg: SceneBaseCfg):
         self.cfg = cfg
