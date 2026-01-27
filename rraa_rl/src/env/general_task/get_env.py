@@ -277,7 +277,10 @@ def get_env_and_cbs(
         from rraa_rl.envs.scene import ManipScene
 
         # spec = "F( drawer_open && F( cube_in_drawer ))"
-        spec = "F( drawer_open && F( cube_in_drawer )) && F G( drawer_closed )"
+
+        # The following two specs are equivalent, verified by spot.
+        # spec = "F( drawer_open && F( cube_in_drawer )) && F G( drawer_closed )"
+        spec = "F( drawer_open && F( cube_in_drawer && F G( drawer_closed )))"
         cfg = ManipScene.Cfg(specification=spec)
         env = ManipScene(cfg)
         cbs = manip_eval_cbs, manip_collect_cbs
