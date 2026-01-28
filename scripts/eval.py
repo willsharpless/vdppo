@@ -25,7 +25,8 @@ def main(
     dense: bool = False
 ):
     
-    algs = ["vd", "lcrl", "mppi"] if algs is None else algs
+    algs = ["vd", "mppi"] if algs is None else algs
+    # algs = ["vd", "lcrl", "mppi"] if algs is None else algs
     # [drl2, lcer]
 
     for alg in algs:
@@ -35,7 +36,6 @@ def main(
         if hasattr(env.base, "n_envs"):
             env.base.n_envs = agent_cfg.n_envs_train
 
-
         if alg == "vd":
             agent_cfg = get_vd_agent_cfg(env_name)
             agent = VDMAPPOAgent.create(seed, agent_cfg, env)
@@ -43,7 +43,7 @@ def main(
         elif alg == "lcrl":
             agent_cfg = get_lcrl_agent_cfg(env_name)
             agent = LCRLMAPPOAgent.create(seed, agent_cfg, env)
-            env.cfg.random_automata_init = agent_cfg.random_automata_init
+            env.cfg.random_automata_init = False
 
         elif alg == "mppi":
             # mppi_cfg = MPPICfg()
