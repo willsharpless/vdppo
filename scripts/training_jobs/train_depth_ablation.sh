@@ -3,11 +3,10 @@
 n_spec=5
 n_agent=1
 alg=${1:-vd}  # Use first argument, default to 'vd'
-GPU_ID_1=${2:-0}
+GPU_ID=${2:-0}
 
-screen -dmS gpu${GPU_ID_1}_job bash -c '
-conda activate jaxrl
-export CUDA_VISIBLE_DEVICES='"${GPU_ID_1}"'
+screen -dmS gpu${GPU_ID}_job bash -c '
+export CUDA_VISIBLE_DEVICES='"${GPU_ID}"'
 
 # iterate thru n_specs and seeds
 for seed in $(seq 0 2); do
@@ -24,4 +23,4 @@ for seed in $(seq 0 2); do
 done
 '
 
-echo "jobs have begun on GPUs ${GPU_ID_1}"
+echo "jobs have begun on GPUs ${GPU_ID}"
