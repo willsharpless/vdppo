@@ -10,7 +10,7 @@ conda activate jaxrl
 export CUDA_VISIBLE_DEVICES='"${GPU_ID_1}"'
 
 # iterate thru n_specs and seeds
-for seed in $(seq 1 2); do
+for seed in $(seq 0 2); do
   for spec in $(seq 1 '"${n_spec}"'); do
 
     python scripts/train.py '"${alg}"' \
