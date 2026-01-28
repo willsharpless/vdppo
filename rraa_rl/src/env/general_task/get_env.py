@@ -1,6 +1,6 @@
 import jax.numpy as jnp
 
-from rraa_rl import delivery_cbs, gridworld_cbs, herd_os_cbs, ablation_cbs
+from rraa_rl import delivery_cbs, deliveryreal_cbs, gridworld_cbs, herd_os_cbs, ablation_cbs
 from rraa_rl.jax_utils import tree_stack
 from rraa_rl.lcrl.lcrl_wrapper import LCRLEnvCfg, LCRLWrapper
 from rraa_rl.ldba.ldba import LDBA, Guard, Transition, parse_ltl2ldba
@@ -10,7 +10,10 @@ from rraa_rl.src.env.general_task.gridworld import GridworldMA, GridworldMACfg, 
 from rraa_rl.src.env.general_task.herd_base import HerdingHerdCfg
 from rraa_rl.src.env.general_task.herd_os import HerdOs
 from rraa_rl.src.env.general_task.delivery import DeliveryBase, DeliveryBaseCfg, Delivery, DeliveryCfg
+from rraa_rl.src.env.general_task.deliveryreal import DeliveryRealBase, DeliveryRealBaseCfg, DeliveryReal, DeliveryRealCfg
 from rraa_rl.src.env.general_task.get_env_ldba import get_env_ldba
+import ipdb
+from loguru import logger
 
 
 def get_cfg_herdos():
@@ -53,7 +56,7 @@ def get_cfg_herdos():
 
 
 def get_env_and_cbs(
-    env_name: str, agent_name: str, n_agent: int = 1, n_spec: int = 1, dense: bool = False
+    env_name: str, agent_name: str, n_agent: int = 1, n_spec: int = 1, dense: bool = False,
 ) -> tuple[Env, list, list]:
     env_name = env_name.lower()
 
@@ -80,6 +83,15 @@ def get_env_and_cbs(
     delivery_collect_cbs = [delivery_cbs.viz_collect_data, delivery_cbs.viz_obs_histogram]
     if agent_name == 'lcrl':
         delivery_eval_cbs, delivery_collect_cbs = [delivery_cbs.animate_eval_trajs_multi_agent_LDBA], []
+
+    deliveryreal_eval_cbs = [
+        deliveryreal_cbs.env_layout_plot,
+        deliveryreal_cbs.animate_eval_trajs,
+        deliveryreal_cbs.PlotRootTrajPreds.create(),
+        deliveryreal_cbs.plot_eval_trajs,
+        deliveryreal_cbs.VizValues.create(),
+    ]
+    deliveryreal_collect_cbs = [deliveryreal_cbs.viz_collect_data, deliveryreal_cbs.viz_obs_histogram]
 
     manip_eval_cbs = []
     manip_collect_cbs = []
@@ -210,6 +222,17 @@ def get_env_and_cbs(
         env = Delivery(cfg)
 
         cbs = delivery_eval_cbs, delivery_collect_cbs
+
+    elif env_name == "deliveryreal":
+        
+        spec = "G(F ag0_target0) && G(F ag1_target1) && G(!obstacles) && G(!oob) && G(!aerial_collide) && G(F ag0_base) && G(F ag1_base)"
+
+        base_cfg = DeliveryRealBaseCfg()
+
+        cfg = DeliveryReal.Cfg(specification=spec, base=base_cfg)
+        env = DeliveryReal(cfg)
+
+        cbs = deliveryreal_eval_cbs, deliveryreal_collect_cbs
 
     elif env_name == "ablation":
         ## N spec and N agent Ablation Env (Double Integrator)
