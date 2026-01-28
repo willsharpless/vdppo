@@ -19,6 +19,13 @@ app = cyclopts.App()
 def main(run_path: pathlib.Path, n_env: int = 1, step: int | None = None):
     run, agent, env, cfg_dict = load_ckpt(run_path, step)
 
+    env: HerdOs
+    env.base.cfg.p_reset_center = 0.0
+    env.base.cfg.p_reset_task = 1.0
+    env.base.cfg.p_reset_herd = 0.0
+    env.base.cfg.p_reset_gate = 0.0
+    env.base.cfg.p_reset_gap = 0.0
+
     collector = Collector.create(
         key=jr.PRNGKey(1234),
         env=env,

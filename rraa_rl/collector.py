@@ -1,11 +1,7 @@
 import functools as ft
 # from typing import Any, Callable, Protocol, Self, Tuple
-from typing import Any, Callable, Generic, Protocol, Tuple, TypeVar
+from typing import Any, Generic, Protocol, TypeVar
 
-import mujoco.mjx.third_party.mujoco_warp
-
-import einops as ei
-import ipdb
 import jax
 import jax.lax as lax
 import jax.numpy as jnp
@@ -15,11 +11,11 @@ import jax_dataclasses as jdc
 import numpy as np
 from attrs import define
 from flax import struct
-from jaxtyping import Bool, Float, PRNGKeyArray
+from jaxtyping import PRNGKeyArray
 from loguru import logger
 from typing_extensions import Self
 
-from rraa_rl.jax_utils import switch01, tree_where_dim0
+from rraa_rl.jax_utils import switch01
 from rraa_rl.src.env.general_task.env import Env, EnvStep
 from rraa_rl.train_utils import tree_where
 

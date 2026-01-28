@@ -41,6 +41,10 @@ def get_cfg_herdos():
     base_cfg.herded_radius = 1.8
 
     base_cfg.p_reset_center = 0.25
+    base_cfg.p_reset_task = 0.2
+    base_cfg.p_reset_herd = 0.1
+    base_cfg.p_reset_gate = 0.2
+    base_cfg.p_reset_gap = 0.01
 
     base_cfg.herd_zero = False
     base_cfg.n_herd = 3
@@ -111,6 +115,12 @@ def get_env_and_cbs(
 
     if env_name == "herdos":
         cfg, spec = get_cfg_herdos()
+        env = HerdOs(cfg)
+        cbs = herd_eval_cbs, herd_collect_cbs
+
+    elif env_name == "herdos_hardware":
+        cfg, spec = get_cfg_herdos()
+        cfg.base.wall_thick_x = 0.95
         env = HerdOs(cfg)
         cbs = herd_eval_cbs, herd_collect_cbs
 

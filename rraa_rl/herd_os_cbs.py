@@ -211,6 +211,7 @@ def plot_eval_trajs(p: CallbackProps):
     fig.savefig(fig_path, bbox_inches="tight", dpi=500)
     plt.close(fig)
 
+
 def env_layout_plot(p: CallbackProps):
     plots_dir = p.run.plots_dir
     env: HerdOs = p.env
@@ -285,6 +286,7 @@ def env_layout_plot(p: CallbackProps):
         static_path = plots_dir / f"env_layout_plot.jpg"
         fig.savefig(static_path, bbox_inches="tight", dpi=500)
         plt.close(fig)
+
 
 def animate_eval_trajs(p: CallbackProps):
     env: HerdOs = p.env
@@ -843,6 +845,21 @@ def animate_herding_traj(
         ax.add_patch(circ)
         agent_circs.append(circ)
 
+    # Write which number for the herders.
+    agent_texts = []
+    for agent_idx in range(env_base.n_agents):
+        text = ax.text(
+            0,
+            0,
+            f"{agent_idx}",
+            verticalalignment="center",
+            horizontalalignment="center",
+            color="white",
+            fontsize=6,
+            weight="bold",
+        )
+        agent_texts.append(text)
+
     herd_circs = []
     for herd_idx in range(cfg.n_herd):
         circ = plt.Circle((0, 0), cfg.agent_radius * mult, facecolor="C3", edgecolor="none")
@@ -886,6 +903,8 @@ def animate_herding_traj(
         for ii, pos_herder in enumerate(n_pos_herder):
             agent_circs[ii].center = pos_herder
 
+            agent_texts[ii].set_position(pos_herder)
+
             if color_temporal_node is not None:
                 agent_circs[ii].set_facecolor(color_temporal_node)
 
@@ -896,8 +915,9 @@ def animate_herding_traj(
 
     T = len(T_pos_herder)
     assert len(T_pos_herd) == len(T_pos_herder) == T
-    artists = all_circs + [kk_text]
+    artists = all_circs + [kk_text, *agent_texts]
     save_animation_blit(fig, artists, anim_path, T, fps=fps, update_fn=update_fn)
+
 
 def animate_eval_trajs_multi_agent_LDBA(p: CallbackProps):
     plots_dir = p.run.plots_dir
@@ -906,7 +926,7 @@ def animate_eval_trajs_multi_agent_LDBA(p: CallbackProps):
 
     n_traj_anim = 5
     n_temporal_nodes = env.ldba.n_states
-    starting_automata_states_to_plot = [0, 1, 2, n_temporal_nodes-1]
+    starting_automata_states_to_plot = [0, 1, 2, n_temporal_nodes - 1]
     n_nodes_to_plot = len(starting_automata_states_to_plot)
 
     bT_test_rollouts = p.bT_test_rollouts
@@ -952,7 +972,7 @@ def animate_eval_trajs_multi_agent_LDBA(p: CallbackProps):
             ax = axes[jj, ii]
             env.base.setup_ax(ax)
 
-            node_name = 'LDBA State'
+            node_name = "LDBA State"
             ax.set_title(f"Node {starting_automata_states_to_plot[jj]} ({node_name})")
 
             circs = []
@@ -964,7 +984,7 @@ def animate_eval_trajs_multi_agent_LDBA(p: CallbackProps):
 
             circs = []
             for herd_idx in range(env.base.cfg.n_herd):
-                circ = plt.Circle((0, 0), cfg.agent_radius, facecolor="C3", edgecolor="none")    
+                circ = plt.Circle((0, 0), cfg.agent_radius, facecolor="C3", edgecolor="none")
                 ax.add_patch(circ)
                 circs.append(circ)
             herds[(ii, jj)] = circs

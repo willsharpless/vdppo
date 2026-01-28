@@ -68,6 +68,12 @@ class HerdBaseCfg:
 @define(slots=False)
 class HerdingHerdCfg(HerdBaseCfg):
     p_reset_center: float = 0.1
+    p_reset_task: float = 0.2
+    p_reset_herd: float = 0.3
+    p_reset_gate: float = 0.3
+    p_reset_gap: float = 0.01
+
+    wall_thick_x: float = 0.05
 
 
 class HerdBase(BaseEnv):
@@ -399,7 +405,7 @@ class HerdingHerd(HerdBase):
 
         # Have a vertical wall, with a gap.
         self.wall_x = 0.0
-        self.wall_thick_x = 0.05
+        self.wall_thick_x = cfg.wall_thick_x
         self.gap_y = self.gates[0, 1]
         self.gap_halfheight = 3 * cfg.agent_radius
 
@@ -428,13 +434,18 @@ class HerdingHerd(HerdBase):
     def reset(self, key: PRNGKeyArray):
         # With some prob, reset the herd in the center.
         p_reset_center = self.cfg.p_reset_center
-        # p_reset_center = 0.5
-        # With some prob, reset the herd within small circle, and herder agents on outside pointing inwards.
-        p_reset_task = 0.2
-        p_reset_herd = 0.3
-        p_reset_gate = 0.3
-        p_reset_gap = 0.01
-        p_reset_orig = 1.0 - p_reset_center - p_reset_herd - p_reset_gate
+        # p_reset_task = 0.2
+        # p_reset_herd = 0.3
+        # p_reset_gate = 0.3
+        # p_reset_gap = 0.01
+        # p_reset_orig = 1.0 - p_reset_center - p_reset_herd - p_reset_gate
+
+        p_reset_task = self.cfg.p_reset_task
+        p_reset_herd = self.cfg.p_reset_herd
+        p_reset_gate = self.cfg.p_reset_gate
+        p_reset_gap = self.cfg.p_reset_gap
+        p_reset_orig = 1.0 - p_reset_task - p_reset_center - p_reset_herd - p_reset_gate - p_reset_gap
+        assert p_reset_orig >= 0.0
 
         key_orig, key_task, key_center, key_gap, key_herding, key_gate, key_which, key_which_gate = jr.split(key, 8)
         key_gates = jr.split(key_gate, self.n_gates)
@@ -450,7 +461,8 @@ class HerdingHerd(HerdBase):
         herd_state_gate = jtu.tree_map(lambda x: x[which_gate], herd_state_gates)
 
         # reset_center = jr.bernoulli(key_do_center, p=p_reset_center)
-        probs = jnp.array([p_reset_orig, p_reset_task, p_reset_center, p_reset_gap, p_reset_herd, p_reset_gate])
+        probs = np.array([p_reset_orig, p_reset_task, p_reset_center, p_reset_gap, p_reset_herd, p_reset_gate])
+        assert np.isclose(probs.sum(), 1.0)
         which_reset = jr.categorical(key_which, probs)
 
         stack_list = [
@@ -474,12 +486,12 @@ class HerdingHerd(HerdBase):
 
         halfsize = np.array(self.cfg.halfsize)
 
-        pos_lo = -0.9 * halfsize
-        pos_hi = -0.1 * halfsize
+        pos_lo = np.array([-0.9 * halfsize[0], -0.9 * halfsize[1]])
+        pos_hi = np.array([-0.1 * halfsize[0], 0.9 * halfsize[1]])
         herd_pos = jr.uniform(key_herd, shape=(self.cfg.n_herd, 2), minval=pos_lo, maxval=pos_hi)
 
-        pos_lo = 0.1 * halfsize
-        pos_hi = 0.9 * halfsize
+        pos_lo = np.array([0.1 * halfsize[0], -0.9 * halfsize[1]])
+        pos_hi = np.array([0.9 * halfsize[0], 0.9 * halfsize[1]])
         herder_pos = jr.uniform(key_herders, shape=(self.cfg.n_herders, 2), minval=pos_lo, maxval=pos_hi)
 
         herder_vel = jr.uniform(
@@ -820,7 +832,7 @@ class HerdingHerd(HerdBase):
                 )
 
         # Visualize the bottom and top parts of the wall with rectangles.
-        wall_thick_x_vis = 5.0 * self.wall_thick_x
+        wall_thick_x_vis = self.wall_thick_x
         wall_bottom = plt.Rectangle(
             (-wall_thick_x_vis / 2 * mul, -cfg.halfsize[1] * mul),
             wall_thick_x_vis * mul,
