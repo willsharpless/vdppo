@@ -12,9 +12,11 @@ from rraa_rl.src.env.general_task.herd_base import HerdingHerdCfg
 from rraa_rl.src.env.general_task.herd_os import HerdOs
 
 
-def get_env_ldba(env_name: str, n_spec: int = 1) -> tuple[Env, list, list]:
+def get_env_ldba(env_name: str, n_spec: int = 1, n_agent: int = 1) -> tuple[Env, list, list]:
 
     if env_name == "herdos":
+
+        return create_herding_ldba()
 
         # Automaton for: (!herder_unsafe) U ( herd_gate_0 && (( !herder_unsafe ) U ( herd_gate_1 && (( !herder_unsafe ) U G (herd_herded && !herder_unsafe) ) ) ) )
         spec = "(!herder_unsafe) U ( herd_gate_0 && (( !herder_unsafe ) U ( herd_gate_1 && (( !herder_unsafe ) U G (herd_herded && !herder_unsafe) ) ) ) )"
@@ -404,6 +406,8 @@ def get_env_ldba(env_name: str, n_spec: int = 1) -> tuple[Env, list, list]:
 
     elif env_name == "delivery":
 
+        return create_delivery_ldba()
+
         # Automaton for: G(F ag0_target0) && G(F ag1_target1) && G(!obstacles) && G(!oob) && G(!aerial_collide) && G(F ag0_base) && G(F ag1_base)
         spec = "G(F ag0_target0) && G(F ag1_target1) && G(!obstacles) && G(!oob) && G(!aerial_collide) && G(F ag0_base) && G(F ag1_base)"
         predicate_order = ["ag0_target0", "ag1_target1", "obstacles", "oob", "aerial_collide", "ag0_base", "ag1_base"]
@@ -546,68 +550,12 @@ def get_env_ldba(env_name: str, n_spec: int = 1) -> tuple[Env, list, list]:
     elif env_name == "ablation":
         ## N spec and N agent Ablation Env (Double Integrator)
 
-        # Predicates: oob, obstacles, target0, ..., target{n_spec-1}
-        predicate_order = ["oob", "obstacles"] + [f"target{i}_dense" if dense else f"target{i}" for i in range(n_spec)]
-        n_states = 2**n_spec
+        return create_ablation_ldba(n_agent=n_agent, n_spec=n_spec, dense=False)
 
-        BIT_oob = 1 << 0
-        BIT_obs = 1 << 1
-        BIT_targets = [1 << (2 + i) for i in range(n_spec)]
+    elif env_name == "ablation_depth":
+        ## N spec and N agent Ablation Env (Double Integrator)
 
-        transition_specs = []
-        for state in range(n_states):
-            # For each possible combination of targets reached
-            for obs in range(2):  # obstacles: 0 or 1
-                for oob in range(2):  # oob: 0 or 1
-                    for target_bits in range(2**n_spec):
-                        # Build predicate mask for this input
-                        pos_mask = 0
-                        neg_mask = 0
-                        if oob:
-                            pos_mask |= BIT_oob
-                        else:
-                            neg_mask |= BIT_oob
-                        if obs:
-                            pos_mask |= BIT_obs
-                        else:
-                            neg_mask |= BIT_obs
-                        for i in range(n_spec):
-                            if (target_bits >> i) & 1:
-                                pos_mask |= BIT_targets[i]
-                            else:
-                                neg_mask |= BIT_targets[i]
-                        # Safety: only allow transitions if oob==0 and obs==0
-                        if oob or obs:
-                            continue
-                        # Compute next state: mark any new targets as seen
-                        new_state = state
-                        for i in range(n_spec):
-                            if (target_bits >> i) & 1:
-                                new_state |= 1 << i
-                        transition_specs.append((state, new_state, pos_mask, neg_mask))
-
-        src_list = []
-        dst_list = []
-        pos_mask_list = []
-        neg_mask_list = []
-        for src, dst, pos_mask, neg_mask in transition_specs:
-            src_list.append(src)
-            dst_list.append(dst)
-            pos_mask_list.append(pos_mask)
-            neg_mask_list.append(neg_mask)
-
-        transitions = Transition(
-            src=jnp.array(src_list, dtype=jnp.int32),
-            dst=jnp.array(dst_list, dtype=jnp.int32),
-            guard=Guard(
-                pos_mask=jnp.array(pos_mask_list, dtype=jnp.int32),
-                neg_mask=jnp.array(neg_mask_list, dtype=jnp.int32),
-            ),
-        )
-        epsilon_src = jnp.array([], dtype=jnp.int32)
-        epsilon_dst = jnp.array([], dtype=jnp.int32)
-        accepting_sets = jnp.zeros((1, n_states), dtype=jnp.bool)
-        accepting_sets[0, n_states - 1] = True  # Only all targets seen is accepting
+        return create_ablation_depth_ldba(n_agent=n_agent, n_spec=n_spec, dense=False)
 
     else:
         raise ValueError(f"Unknown environment name: {env_name}")
@@ -724,7 +672,7 @@ def create_herding_ldba() -> LDBA:
             # State: 0  1  2  3  4  5
             [0, 0, 0, 0, 0, 1],  # Accepting set 0: only state 5 is accepting
         ],
-        dtype=jnp.int32,
+        dtype=jnp.bool,
     )
 
     # === Create LDBA ===
@@ -883,7 +831,7 @@ def create_delivery_ldba() -> LDBA:
             # State: 0  1  2  3  4
             [0, 1, 1, 1, 1],  # States with accepting transitions
         ],
-        dtype=jnp.int32,
+        dtype=jnp.bool,
     )
 
     # === Create LDBA ===
@@ -896,4 +844,255 @@ def create_delivery_ldba() -> LDBA:
         predicate_order=predicate_order,
     )
 
+    return ldba
+
+import jax.numpy as jnp
+from typing import List
+
+
+def create_ablation_ldba(n_spec: int, n_agent: int, dense: bool = False) -> LDBA:
+    """
+    Create LDBA for ablation environment:
+    "G(!oob) && G(!obstacles) [&& G(!collide)] && F target0 && F target1 && ... && F target{n_spec-1}"
+    
+    Multi-agent navigation with multiple sequential targets.
+    - Must avoid out-of-bounds and obstacles (always)
+    - Must avoid collisions if n_agent > 1
+    - Must eventually visit each target (in any order)
+    
+    States track which targets have been visited:
+        State encoding: each bit represents whether target_i has been visited
+        State 0: No targets visited yet
+        State 2^n_spec - 1: All targets visited (accepting)
+        -1: Sink (implicit, safety violation)
+    
+    Args:
+        n_spec: Number of targets to visit
+        n_agent: Number of agents (determines if collision avoidance is needed)
+        dense: If True, uses dense target predicates (target{i}_dense)
+    
+    Predicate order: ["oob", "obstacles", "collide" (if n_agent > 1), 
+                      "target0", "target1", ..., "target{n_spec-1}"]
+                      (or "target0_dense", etc. if dense=True)
+    """
+    
+    # Build predicate order
+    predicate_order = ["oob", "obstacles"]
+    
+    # Add collision predicate if multiple agents
+    if n_agent > 1:
+        predicate_order.append("collide")
+    
+    # Add target predicates
+    suffix = "_dense" if dense else ""
+    for i in range(n_spec):
+        predicate_order.append(f"target{i}{suffix}")
+    
+    # Calculate bit positions
+    OOB_BIT = 1 << 0
+    OBSTACLES_BIT = 1 << 1
+    
+    if n_agent > 1:
+        COLLIDE_BIT = 1 << 2
+        TARGET_START_BIT = 3
+        SAFETY = OOB_BIT | OBSTACLES_BIT | COLLIDE_BIT
+    else:
+        COLLIDE_BIT = 0
+        TARGET_START_BIT = 2
+        SAFETY = OOB_BIT | OBSTACLES_BIT
+    
+    # Target bits
+    TARGET_BITS = [(1 << (TARGET_START_BIT + i)) for i in range(n_spec)]
+    
+    # Number of states: 2^n_spec (one for each subset of targets visited)
+    n_states = 2 ** n_spec
+    
+    # === Define all transitions ===
+    transition_specs = []
+    
+    for state in range(n_states):
+        # For each state, generate transitions based on which targets we can visit next
+        # State encoding: bit i set means target i has been visited
+        
+        # Self-loop: stay in same state if no new targets visited and safe
+        # neg_mask = SAFETY | (all unvisited target bits)
+        unvisited_targets = 0
+        for i in range(n_spec):
+            if not (state & (1 << i)):  # target i not yet visited
+                unvisited_targets |= TARGET_BITS[i]
+        
+        transition_specs.append((state, state, 0, SAFETY | unvisited_targets))
+        
+        # Transitions to states with one additional target visited
+        for i in range(n_spec):
+            if not (state & (1 << i)):  # target i not yet visited in current state
+                next_state = state | (1 << i)
+                
+                # Must have target_i set, must be safe
+                pos_mask = TARGET_BITS[i]
+                # neg_mask includes safety violations
+                neg_mask = SAFETY
+                
+                transition_specs.append((state, next_state, pos_mask, neg_mask))
+    
+    # Build arrays from specs
+    src_list = []
+    dst_list = []
+    pos_mask_list = []
+    neg_mask_list = []
+    
+    for src, dst, pos_mask, neg_mask in transition_specs:
+        src_list.append(src)
+        dst_list.append(dst)
+        pos_mask_list.append(pos_mask)
+        neg_mask_list.append(neg_mask)
+    
+    transitions = Transition(
+        src=jnp.array(src_list, dtype=jnp.int32),
+        dst=jnp.array(dst_list, dtype=jnp.int32),
+        guard=Guard(
+            pos_mask=jnp.array(pos_mask_list, dtype=jnp.int32),
+            neg_mask=jnp.array(neg_mask_list, dtype=jnp.int32),
+        ),
+    )
+    
+    # === Epsilon Transitions ===
+    epsilon_src = jnp.array([], dtype=jnp.int32)
+    epsilon_dst = jnp.array([], dtype=jnp.int32)
+    
+    # === Accepting Sets ===
+    # Only the final state (all targets visited) is accepting
+    accepting_sets = jnp.zeros((1, n_states), dtype=jnp.bool_)
+    accepting_sets = accepting_sets.at[0, n_states - 1].set(True)  # State 2^n_spec - 1
+    
+    # === Create LDBA ===
+    ldba = LDBA(
+        transitions=transitions,
+        epsilon_src=epsilon_src,
+        epsilon_dst=epsilon_dst,
+        accepting_sets=accepting_sets,
+        n_states=n_states,
+        predicate_order=predicate_order,
+    )
+    
+    return ldba
+
+
+def create_ablation_depth_ldba(n_spec: int, n_agent: int) -> LDBA:
+    """
+    Create LDBA for ablation_depth environment:
+    "G(!oob) && G(!obstacles) [&& G(!collide)] && F(target0 && F(target1 && F(...)))"
+    
+    Multi-agent navigation with nested temporal goals - targets must be visited in order.
+    - Must avoid out-of-bounds and obstacles (always)
+    - Must avoid collisions if n_agent > 1
+    - Must visit targets sequentially: first target0, then target1, then target2, etc.
+    
+    States track progress through the sequence:
+        0: Initial - need to visit target0 first
+        1: target0 visited - need to visit target1 next
+        2: target0, target1 visited - need to visit target2 next
+        ...
+        n_spec: All targets visited in order (accepting)
+        -1: Sink (implicit, safety violation)
+    
+    Args:
+        n_spec: Number of targets to visit in sequence
+        n_agent: Number of agents (determines if collision avoidance is needed)
+    
+    Predicate order: ["oob", "obstacles", "collide" (if n_agent > 1),
+                      "target0", "target1", ..., "target{n_spec-1}"]
+    """
+    
+    # Build predicate order
+    predicate_order = ["oob", "obstacles"]
+    
+    # Add collision predicate if multiple agents
+    if n_agent > 1:
+        predicate_order.append("collide")
+    
+    # Add target predicates
+    for i in range(n_spec):
+        predicate_order.append(f"target{i}")
+    
+    # Calculate bit positions
+    OOB_BIT = 1 << 0
+    OBSTACLES_BIT = 1 << 1
+    
+    if n_agent > 1:
+        COLLIDE_BIT = 1 << 2
+        TARGET_START_BIT = 3
+        SAFETY = OOB_BIT | OBSTACLES_BIT | COLLIDE_BIT
+    else:
+        COLLIDE_BIT = 0
+        TARGET_START_BIT = 2
+        SAFETY = OOB_BIT | OBSTACLES_BIT
+    
+    # Target bits
+    TARGET_BITS = [(1 << (TARGET_START_BIT + i)) for i in range(n_spec)]
+    
+    # Number of states: n_spec + 1
+    # States 0 to n_spec-1: waiting for targets 0 to n_spec-1
+    # State n_spec: accepting (all targets visited in order)
+    n_states = n_spec + 1
+    
+    # === Define all transitions ===
+    transition_specs = []
+    
+    for state in range(n_spec):
+        # State i: waiting for target_i
+        
+        # Self-loop: stay in state i if target_i not reached and safe
+        # Must NOT have target_i, must be safe
+        transition_specs.append((state, state, 0, SAFETY | TARGET_BITS[state]))
+        
+        # Transition to next state: visit target_i
+        # Must have target_i, must be safe
+        next_state = state + 1
+        transition_specs.append((state, next_state, TARGET_BITS[state], SAFETY))
+    
+    # Final accepting state: self-loop while safe
+    # Once all targets visited, just need to remain safe
+    transition_specs.append((n_spec, n_spec, 0, SAFETY))
+    
+    # Build arrays from specs
+    src_list = []
+    dst_list = []
+    pos_mask_list = []
+    neg_mask_list = []
+    
+    for src, dst, pos_mask, neg_mask in transition_specs:
+        src_list.append(src)
+        dst_list.append(dst)
+        pos_mask_list.append(pos_mask)
+        neg_mask_list.append(neg_mask)
+    
+    transitions = Transition(
+        src=jnp.array(src_list, dtype=jnp.int32),
+        dst=jnp.array(dst_list, dtype=jnp.int32),
+        guard=Guard(
+            pos_mask=jnp.array(pos_mask_list, dtype=jnp.int32),
+            neg_mask=jnp.array(neg_mask_list, dtype=jnp.int32),
+        ),
+    )
+    
+    # === Epsilon Transitions ===
+    epsilon_src = jnp.array([], dtype=jnp.int32)
+    epsilon_dst = jnp.array([], dtype=jnp.int32)
+    
+    # === Accepting Sets ===
+    # Only the final state (all targets visited in sequence) is accepting
+    accepting_sets = jnp.zeros((1, n_states), dtype=jnp.bool_)
+    accepting_sets = accepting_sets.at[0, n_spec].set(True)  # Final state
+    
+    # === Create LDBA ===
+    ldba = LDBA(
+        transitions=transitions,
+        epsilon_src=epsilon_src,
+        epsilon_dst=epsilon_dst,
+        accepting_sets=accepting_sets,
+        n_states=n_states,
+        predicate_order=predicate_order,
+    )
+    
     return ldba

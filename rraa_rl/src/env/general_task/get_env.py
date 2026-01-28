@@ -64,6 +64,8 @@ def get_env_and_cbs(
         herd_os_cbs.plot_eval_trajs,
     ]
     herd_collect_cbs = []
+    if agent_name == 'lcrl':
+        herd_eval_cbs = [herd_os_cbs.animate_eval_trajs_multi_agent_LDBA]
 
     gridworld_eval_cbs = [gridworld_cbs.animate_eval_trajs, gridworld_cbs.VizValues.create()]
     gridworld_collect_cbs = [gridworld_cbs.collect_cb]
@@ -76,6 +78,8 @@ def get_env_and_cbs(
         delivery_cbs.VizValues.create(),
     ]
     delivery_collect_cbs = [delivery_cbs.viz_collect_data, delivery_cbs.viz_obs_histogram]
+    if agent_name == 'lcrl':
+        delivery_eval_cbs, delivery_collect_cbs = [delivery_cbs.animate_eval_trajs_multi_agent_LDBA], []
 
     manip_eval_cbs = []
     manip_collect_cbs = []
@@ -86,6 +90,8 @@ def get_env_and_cbs(
         ablation_cbs.VizValues.create(),
     ]
     ablation_collect_cbs = [ablation_cbs.viz_collect_data, ablation_cbs.viz_obs_histogram]
+    if agent_name == 'lcrl':
+        ablation_eval_cbs, ablation_collect_cbs = [ablation_cbs.animate_eval_trajs_multi_agent_LDBA], []
 
     manip_eval_cbs = []
     manip_collect_cbs = []
@@ -241,7 +247,7 @@ def get_env_and_cbs(
         elif n_spec == 4:
             spec += f" && F(target0{dense_tag} && F(target1{dense_tag} && F(target2{dense_tag} && F(target3{dense_tag}))))"
         elif n_spec == 5:
-            spec += f" && F(target0{dense_tag} && F(target1{dense_tag} && F(target2{dense_tag} && F(target3{dense_tag} && F(target4{dense_tag}))))))"
+            spec += f" && F(target0{dense_tag} && F(target1{dense_tag} && F(target2{dense_tag} && F(target3{dense_tag} && F(target4{dense_tag})))))"
 
         base_cfg = DeliveryBaseCfg()
 

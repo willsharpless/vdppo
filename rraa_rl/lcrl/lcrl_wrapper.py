@@ -96,12 +96,19 @@ class LCRLWrapper(EnvUsingBase):
         ldba_state = LDBAState(automata_state0, accepting_frontier_mask)
         return LCRLState(ldba_state, base_state)
 
-    def get_eval_states(self, n_envs: int) -> LCRLState:
+    def get_eval_states(self, n_envs: int, root_only: bool=False) -> LCRLState:
         key = jr.PRNGKey(seed=12345)
         states: LCRLState = self.reset_batch(key, n_envs)
         # Override the automata state to be the initial state.
-        with jdc.copy_and_mutate(states) as states:
-            states.ldba_state.state = jnp.zeros((n_envs,), dtype=jnp.int32)
+        if root_only:
+            with jdc.copy_and_mutate(states) as states:
+                states.ldba_state.state = jnp.zeros((n_envs,), dtype=jnp.int32)
+        else:
+            # evenly divide n_envs across ldba_states
+            with jdc.copy_and_mutate(states) as states:
+                n_envs_per_node = jnp.full((self.ldba.n_states,), n_envs // self.ldba.n_states)
+                n_envs_per_node = n_envs_per_node.at[:(n_envs % self.ldba.n_states)].add(1)
+                states.ldba_state.state = jnp.repeat(jnp.arange(self.ldba.n_states), n_envs_per_node)
         return states
 
     def get_obs(self, state: LCRLState) -> AugObsAutomata:

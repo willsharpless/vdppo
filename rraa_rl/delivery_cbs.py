@@ -1010,3 +1010,265 @@ def env_layout_plot(p: CallbackProps):
         static_path = plots_dir / f"delivery_env_layout_plot.jpg"
         fig.savefig(static_path, bbox_inches="tight", dpi=500)
         plt.close(fig)
+
+def animate_eval_trajs_multi_agent_LDBA(p: CallbackProps):
+    plots_dir = p.run.plots_dir
+    env: Delivery = p.env
+    cfg = env.base.cfg
+
+    n_traj_anim = 5
+    n_temporal_nodes = env.ldba.n_states
+    starting_automata_states_to_plot = [0, 1, 2, n_temporal_nodes-1]
+    n_nodes_to_plot = len(starting_automata_states_to_plot)
+
+    bT_test_rollouts = p.bT_test_rollouts
+
+    bT_states: list[Delivery.State] = [traj.state_now for traj in bT_test_rollouts]
+    b_temporal_idx = np.array([T_state.ldba_state.state[0] for T_state in bT_states])
+
+    temporal_node_count = np.array([np.sum(b_temporal_idx == ii) for ii in range(n_temporal_nodes)])
+    offsets = np.array([0, *np.cumsum(temporal_node_count)])
+    # ipdb.set_trace()
+
+    # T_max = max(traj.shape[0] for traj in bT_test_rollouts)
+    T_max = 0
+    batch_idxs: dict[tuple[int, int], int] = {}
+    for ii in range(n_traj_anim):
+        for jj in range(n_temporal_nodes):
+            batch_idx = ii + offsets[jj]
+            batch_idxs[ii, jj] = batch_idx
+            traj = bT_test_rollouts[batch_idx]
+            T_max = max(T_max, len(traj.term))
+    # -----------------------------
+
+    # ncol = n_temporal_nodes
+    # nrow = n_traj_anim
+    ncol = n_traj_anim
+    # nrow = n_temporal_nodes
+    nrow = n_nodes_to_plot
+
+    # Use facecolor to indicate the current temporal node.
+    colors_temporal_node = [f"C{ii}" for ii in range(n_temporal_nodes)]
+    pred_colors = {name: f"C{ii}" for ii, name in enumerate(env.pred_info.predicates)}
+    # relevant_targets = [idx for idx in range(len(cfg.centers)) if (f'target{idx}' in env.pred_info.predicates or f'target{idx}_dense' in env.pred_info.predicates)]
+    relevant_targets = [pred for pred in env.pred_info.predicates if "target" in pred]
+    # relevant_centers = [int(pred.replace("target", "").replace("_dense", "")) for pred in relevant_targets]
+
+    # Use edgecolor to indicate alive vs dead.
+    color_alive = to_rgba("C0", 0.0)
+    color_dead = np.array(to_rgba("C0"))
+
+    # Get the environment predicates for plotting
+    halfsize = cfg.halfsize
+    n_x = 65
+    n_y = 65
+    b_x = jnp.linspace(-halfsize[0], halfsize[0], num=n_x)
+    b_y = jnp.linspace(-halfsize[1], halfsize[1], num=n_y)
+    bb_X, bb_Y = jnp.meshgrid(b_x, b_y)
+    bb_pos = jnp.stack([bb_X, bb_Y], axis=-1)
+
+    key = jax.random.PRNGKey(0)
+    bb_key = ei.rearrange(jax.random.split(key, num=n_x * n_y), "(x y) ... -> x y ...", x=n_x, y=n_y)
+    bb_state = jax_vmap(env.reset, rep=2)(bb_key)
+
+    with jdc.copy_and_mutate(bb_state) as bb_state:
+        bb_state.base.herder_state = bb_state.base.herder_state.at[:, :, 0, :2].set(bb_pos)
+        bb_state.base.herder_state = bb_state.base.herder_state.at[:, :, 0, 2:4].set(0.0)
+        bb_state.ldba_state.state = bb_state.ldba_state.state.at[:].set(0)
+    bb_predicates = jax_vmap(env.get_predicates, rep=2)(bb_state)
+
+    plot_predicates = ['target0', 'target1', 'target2', 'target3', 'target4', 
+                    'target0_dense', 'target1_dense', 'target2_dense', 'target3_dense', 'target4_dense',
+                    'oob', 'obstacles']
+    if cfg.dynamic_targets:
+        plot_predicates = ['oob', 'obstacles']
+
+    node_idx_to_predicates = [plot_predicates for _ in range(n_nodes_to_plot)]
+
+    figsize = 0.9 * np.array([4 * ncol, 3 * nrow])
+    fig, axes = plt.subplots(nrow, ncol, figsize=figsize, dpi=80, squeeze=False, layout="none")
+
+    agent_collections: dict[tuple[int, int], list[plt.Circle]] = {}
+    herds: dict[tuple[int, int], list[plt.Circle]] = {}
+    target_circs: dict[tuple[int, int], list[plt.Circle]] = {}
+    for ii in range(n_traj_anim):
+        for jj in range(n_nodes_to_plot):
+            ax = axes[jj, ii]
+            env.base.setup_ax(ax)
+
+            node_name = 'LDBA State'
+            ax.set_title(f"Node {starting_automata_states_to_plot[jj]} ({node_name})")
+
+            circs = []
+            for agent_idx in range(env.n_agents):
+                circ = plt.Circle((0, 0), cfg.agent_radius, facecolor="C1", edgecolor="none")
+                if env.base.cfg.base_agent and agent_idx == env.n_agents - 1:
+                    circ = plt.Circle((0, 0), 2*cfg.agent_radius, facecolor="C1", edgecolor="black")
+                ax.add_patch(circ)
+                circs.append(circ)
+            agent_collections[(ii, jj)] = circs
+
+            circs = []
+            for herd_idx in range(env.base.cfg.n_herd):
+                circ = plt.Circle((0, 0), cfg.agent_radius, facecolor="C3", edgecolor="none")    
+                ax.add_patch(circ)
+                circs.append(circ)
+            herds[(ii, jj)] = circs
+
+            for pred_name in node_idx_to_predicates[jj]:
+                if pred_name in plot_predicates:
+                    ax.contourf(bb_X, bb_Y, bb_predicates[pred_name], levels=[0, 1], colors=pred_colors[pred_name], alpha=0.5)
+
+            # Add target circles
+            if cfg.dynamic_targets:
+                circs = []
+                for pred in relevant_targets:
+                    circ = plt.Circle((0, 0), cfg.radiuses[int(pred.split('target')[1].replace("_dense", ""))], 
+                                    facecolor=pred_colors[pred], 
+                                    edgecolor='none', alpha=0.5, animated=True)
+                    ax.add_patch(circ)
+                    circs.append(circ)
+                target_circs[(ii, jj)] = circs
+
+    all_circs = [v for values_list in agent_collections.values() for v in values_list]
+    all_circs += [v for values_list in herds.values() for v in values_list]
+    if cfg.dynamic_targets:
+        all_circs += [v for values_list in target_circs.values() for v in values_list]
+
+    kk_text = axes[0, 0].text(
+        0.02,
+        0.98,
+        "",
+        transform=axes[0, 0].transAxes,
+        verticalalignment="top",
+        horizontalalignment="left",
+        color="white",
+        fontsize=8,
+        bbox=dict(facecolor="black", alpha=0.5, pad=2),
+    )
+
+    herd_vel_texts = {}
+    if "dyn/herd_vel" in bT_test_rollouts[0].info:
+        for ii in range(n_traj_anim):
+            for jj in range(n_nodes_to_plot):
+                # bottom right.
+                herd_vel_texts[ii, jj] = axes[jj, ii].text(
+                    0.98,
+                    0.02,
+                    "",
+                    transform=axes[jj, ii].transAxes,
+                    verticalalignment="bottom",
+                    horizontalalignment="right",
+                    color="white",
+                    fontsize=8,
+                    bbox=dict(facecolor="black", alpha=0.5, pad=2),
+                )
+
+    # fig.canvas.draw()  # compute constrained layout once
+    # fig.set_layout_engine("none")  # freeze layout for animation
+    fig.tight_layout()
+
+    for circ in all_circs:
+        circ.set_animated(True)
+    for text in herd_vel_texts.values():
+        text.set_animated(True)
+    kk_text.set_animated(True)
+
+    fig.canvas.draw()
+    bg = fig.canvas.copy_from_bbox(fig.bbox)
+
+    plot_dir = plots_dir / "eval_trajs_anim"
+    plot_dir.mkdir(parents=True, exist_ok=True)
+    anim_path = plot_dir / f"eval_trajs_step{p.train_step}.mp4"
+
+    with iio.imopen(anim_path, "w", plugin="pyav") as writer:
+        writer.init_video_stream("libx264", fps=30)
+
+        pbar = tqdm.trange(T_max, unit="frame", desc="Generating eval trajs animation")
+        for kk in pbar:
+            # restore background
+            fig.canvas.restore_region(bg)
+
+            # update artists (your existing update body, but do NOT return artists)
+            kk_text.set_text(f"Step {kk: 3}")
+            for ii in range(n_traj_anim):
+                for jj in range(n_nodes_to_plot):
+
+                    batch_idx = batch_idxs[ii, jj]
+                    traj = bT_test_rollouts[batch_idx]
+                    (T,) = traj.shape
+                    T_state: Delivery.State = traj.state_now
+                    T_herder_pos = T_state.base.herder_state[:, :, :2]
+
+                    t_idx = min(kk, T - 1)
+
+                    circs = agent_collections[(ii, jj)]
+                    for agent_idx, circ in enumerate(circs):
+                        pos = T_herder_pos[t_idx, agent_idx, :]
+                        assert pos.shape == (2,)
+                        circ.center = pos
+
+                        automata_state_idx = T_state.ldba_state.state[t_idx] - 1
+                        circ.set_facecolor(colors_temporal_node[automata_state_idx])
+
+                        if kk < T:
+                            circ.set_edgecolor(color_alive)
+                        else:
+                            circ.set_edgecolor(color_dead)
+
+                    circs = herds[(ii, jj)]
+                    for herd_idx, circ in enumerate(circs):
+                        pos = T_state.base.herd_state[t_idx, herd_idx, :2]
+                        assert pos.shape == (2,)
+                        circ.center = pos
+
+                    # Update target positions
+                    if cfg.dynamic_targets:
+                        T_centers = T_state.base.centers
+                        circs = target_circs[(ii, jj)]
+                        # ipdb.set_trace()
+                        for target_idx, circ in enumerate(circs):
+                            pos = T_centers[t_idx, target_idx, :]
+                            assert pos.shape == (2,)
+                            circ.center = pos
+
+                    if len(herd_vel_texts) > 0:
+                        # (n_herd, 2)
+                        herd_vel = traj.info["dyn/herd_vel"][t_idx]
+                        # (n_herd,)
+                        herd_speeds = np.linalg.norm(herd_vel, axis=-1)
+                        herd_speed_str = ", ".join([f"{s:.2f}" for s in herd_speeds])
+                        herd_vel_texts[ii, jj].set_text(f"Herd: {herd_speed_str}")
+
+            # draw only animated artists onto the restored background
+            for a in all_circs:
+                a.axes.draw_artist(a)
+            for text in herd_vel_texts.values():
+                text.axes.draw_artist(text)
+            kk_text.axes.draw_artist(kk_text)
+
+            # IMPORTANT: update the buffer
+            fig.canvas.blit(fig.bbox)
+
+            # Grab frame (ensure contiguous uint8 RGB)
+            frame_rgba = np.asarray(fig.canvas.buffer_rgba(), dtype=np.uint8)
+            frame_rgb = np.ascontiguousarray(frame_rgba[..., :3])
+
+            # If the frame dimensions are not divisible by 16, then pad until they are.
+            h, w, _ = frame_rgb.shape
+            h_pad = (16 - (h % 16)) % 16
+            w_pad = (16 - (w % 16)) % 16
+            if h_pad > 0 or w_pad > 0:
+                frame_rgb = np.pad(
+                    frame_rgb,
+                    ((0, h_pad), (0, w_pad), (0, 0)),
+                    mode="constant",
+                    constant_values=0,
+                )
+
+            # writer.append_data(frame_rgb)
+            writer.write_frame(frame_rgb)
+
+    # finally:
+    #     writer.close()
+    plt.close(fig)
