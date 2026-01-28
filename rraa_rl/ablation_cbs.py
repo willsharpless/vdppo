@@ -920,6 +920,87 @@ def viz_obs_histogram(p: CallbackProps):
     fig.savefig(fig_path, bbox_inches="tight", dpi=500)
     plt.close(fig)
 
+def env_layout_plot(p: CallbackProps):
+    plots_dir = p.run.plots_dir
+    env: Delivery = p.env
+    cfg = env.base.cfg
+
+    n_temporal_nodes = env.n_temporal_nodes
+
+    bT_test_rollouts = p.bT_test_rollouts
+    batch_idx = 0  # first idx
+    t_idx = 0  # first step
+
+    if p.train_step == 0:
+
+        # Use the same layout as the animation
+        figsize = 0.9 * np.array([6, 4])
+        fig, axes = plt.subplots(1, 1, figsize=figsize, dpi=500, squeeze=False, layout="none")
+
+        ax = axes[0, 0]
+        env.base.setup_ax(ax)
+
+        # Plot agents
+        agent_circs = []
+        for agent_idx in range(env.n_agents):
+            circ = plt.Circle((0, 0), cfg.agent_radius, facecolor=f"C7", edgecolor="none", alpha=0.9)
+            # if agent_idx == env.n_agents - 1 and env.cfg.base.base_agent:
+            #     circ = plt.Circle((0, 0), 1.5*cfg.agent_radius, facecolor=["C1", "C2", "C0"][agent_idx], edgecolor="none", alpha=0.9)
+            ax.add_patch(circ)
+            agent_circs.append(circ)
+
+        # Plot predicates
+        halfsize = cfg.halfsize
+        n_x = 65
+        n_y = 65
+        b_x = jnp.linspace(-halfsize[0], halfsize[0], num=n_x)
+        b_y = jnp.linspace(-halfsize[1], halfsize[1], num=n_y)
+        bb_X, bb_Y = jnp.meshgrid(b_x, b_y)
+        bb_pos = jnp.stack([bb_X, bb_Y], axis=-1)
+
+        key = jax.random.PRNGKey(0)
+        bb_key = ei.rearrange(jax.random.split(key, num=n_x * n_y), "(x y) ... -> x y ...", x=n_x, y=n_y)
+        bb_state = jax_vmap(env.reset, rep=2)(bb_key)
+
+        with jdc.copy_and_mutate(bb_state) as bb_state:
+            bb_state.base.herder_state = bb_state.base.herder_state.at[:, :, 0, :2].set(bb_pos)
+            bb_state.base.herder_state = bb_state.base.herder_state.at[:, :, 0, 2:4].set(0.0)
+            bb_state.temporal_node_idx = bb_state.temporal_node_idx.at[:].set(0)
+
+        bb_predicates = jax_vmap(env.get_predicates, rep=2)(bb_state)
+
+        pred_colors = {name: f"C{ii}" for ii, name in enumerate(env.pred_info.predicates) if name not in ['oob', 'obstacles']}
+        pred_colors['oob'] = pred_colors['obstacles'] = 'black'
+        plot_predicates = ['obstacles']
+
+        for pred_name in plot_predicates:
+            if pred_name in bb_predicates:
+                ax.contourf(bb_X, bb_Y, bb_predicates[pred_name], levels=[0, 1], colors=pred_colors[pred_name], alpha=0.8)
+
+        # Set agent and herd positions for the first step
+        traj = bT_test_rollouts[batch_idx]
+        T_state: Delivery.State = traj.state_now
+        T_herder_pos = T_state.base.herder_state[:, :, :2]
+        for agent_idx, circ in enumerate(agent_circs):
+            # pos = [3., -3.]  # fixed positions for layout
+            # pos = [3., -3.]  # fixed positions for layout
+            pos = T_herder_pos[t_idx, agent_idx, :]
+            circ.center = pos
+        
+        # Plot targets if dynamic targets are enabled
+        for target_idx in range(5):
+            circ = plt.Circle((0, 0), cfg.radiuses[target_idx], 
+                                facecolor=f"C{target_idx}", alpha=0.4)
+            circ.center = T_state.base.centers[t_idx, target_idx, :2]
+            ax.add_patch(circ)
+
+        # ipdb.set_trace()
+
+        fig.tight_layout()
+        static_path = plots_dir / f"ablation_env_layout_plot.jpg"
+        fig.savefig(static_path, bbox_inches="tight", dpi=500)
+        plt.close(fig)
+
 def animate_eval_trajs_multi_agent_LDBA(p: CallbackProps):
     plots_dir = p.run.plots_dir
     env: Delivery = p.env

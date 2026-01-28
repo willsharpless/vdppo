@@ -85,6 +85,7 @@ def get_env_and_cbs(
     manip_collect_cbs = []
 
     ablation_eval_cbs = [
+        ablation_cbs.env_layout_plot,
         ablation_cbs.animate_eval_trajs,
         ablation_cbs.plot_eval_trajs,
         ablation_cbs.VizValues.create(),
