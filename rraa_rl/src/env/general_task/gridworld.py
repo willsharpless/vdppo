@@ -247,16 +247,6 @@ class GridworldMap:
     
     @staticmethod
     def Map7() -> "GridworldMap":
-        # map_str = """
-        #     |    B   |
-        #     |        |
-        #     |  ..a.  |
-        #     |  ....  |
-        #     |C ....  |
-        #     |  ...b  |
-        #     |        |
-        #     |     A  |
-        # """
         map_str = """
             |        |
             | a.  .. |

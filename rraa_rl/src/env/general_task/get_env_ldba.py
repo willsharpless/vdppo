@@ -88,7 +88,13 @@ def get_env_ldba(env_name: str, n_spec: int = 1, n_agent: int = 1) -> tuple[Env,
         # cbs = herd_eval_cbs, herd_collect_cbs
         raise NotImplementedError("""HerdOsDbg environment is not implemented in this snippet.""")
 
+    # elif env_name == "gridworld_map0":
+
+    #     return create_gridworld_map0_ldba()
+
     elif env_name == "gridworld_map1":
+
+        return create_gridworld_map1_ldba()
 
         # Acceptance: 1 Inf(0)
         # AP: 1 "goal"
@@ -240,6 +246,8 @@ def get_env_ldba(env_name: str, n_spec: int = 1, n_agent: int = 1) -> tuple[Env,
 
     elif env_name == "gridworld_map5":
 
+        return create_gridworld_map5_ldba()
+
         # Automaton for: F A && F B && !D U K && G( !w )
         spec = "F A && F B && !D U K && G( !w )"
         predicate_order = ["A", "B", "D", "K", "w"]
@@ -328,6 +336,8 @@ def get_env_ldba(env_name: str, n_spec: int = 1, n_agent: int = 1) -> tuple[Env,
 
     elif env_name == "gridworld_map6":
 
+        return create_gridworld_map6_ldba()
+
         spec = "F( C && F G ( (q U (A && q )) && (q U (B && q )) ) )"
         raise NotImplementedError(f"""{env_name} LDBA is not implemented""")
 
@@ -336,6 +346,9 @@ def get_env_ldba(env_name: str, n_spec: int = 1, n_agent: int = 1) -> tuple[Env,
         raise NotImplementedError(f"""{env_name} LDBA is not implemented""")
 
     elif env_name == "gridworld_map7":
+
+        return create_gridworld_map7_ldba()
+    
         # Automaton for: (!q U C) && F( C && F G ( (q U (A && q )) && (q U (B && q )) ) )
         spec = "(!q U C) && F( C && F G ( (q U (A && q )) && (q U (B && q )) ) )"
         predicate_order = ["A", "B", "C", "q"]
@@ -555,7 +568,7 @@ def get_env_ldba(env_name: str, n_spec: int = 1, n_agent: int = 1) -> tuple[Env,
     elif env_name == "ablation_depth":
         ## N spec and N agent Ablation Env (Double Integrator)
 
-        return create_ablation_depth_ldba(n_agent=n_agent, n_spec=n_spec, dense=False)
+        return create_ablation_depth_ldba(n_agent=n_agent, n_spec=n_spec)
 
     else:
         raise ValueError(f"Unknown environment name: {env_name}")
@@ -1095,4 +1108,496 @@ def create_ablation_depth_ldba(n_spec: int, n_agent: int) -> LDBA:
         predicate_order=predicate_order,
     )
     
+    return ldba
+
+def create_gridworld_map1_ldba() -> LDBA:
+    """
+    Create LDBA for:
+    "F(a) & F(b) & G(!w)"
+    
+    (Eventually a, eventually b, and always not w)
+
+    States:
+        0: Initial - waiting for both a and b
+        1: b seen - waiting for a
+        2: a seen - waiting for b
+        3: Accepting - both a and b seen, stay safe
+       -1: Sink (implicit, for w violation)
+
+    Predicate order: ["a", "b", "w"]
+    Bits:             0 = a,  1 = b,  2 = w
+    """
+
+    # Define predicate order (determines bit positions in labels)
+    predicate_order = ["A", "B", "w"]
+
+    # Bit positions
+    A_BIT = 1 << 0  # 0b001
+    B_BIT = 1 << 1  # 0b010
+    W_BIT = 1 << 2  # 0b100
+
+    # === Define all transitions ===
+    # Format: (src, dst, pos_mask, neg_mask)
+    transition_specs = [
+        # From state 0 (initial: waiting for both a and b)
+        # [!0 & 1 & !2] 1                       # !a & b & !w → 1
+        (0, 1, B_BIT, A_BIT | W_BIT),
+        # [!0 & !1 & !2] 0                      # !a & !b & !w → 0
+        (0, 0, 0b000, A_BIT | B_BIT | W_BIT),
+        # [0 & !1 & !2] 2                       # a & !b & !w → 2
+        (0, 2, A_BIT, B_BIT | W_BIT),
+        # [0 & 1 & !2] 3                        # a & b & !w → 3
+        (0, 3, A_BIT | B_BIT, W_BIT),
+
+        # From state 1 (b seen, waiting for a)
+        # [!0 & !2] 1                           # !a & !w → 1
+        (1, 1, 0b000, A_BIT | W_BIT),
+        # [0 & !2] 3                            # a & !w → 3
+        (1, 3, A_BIT, W_BIT),
+
+        # From state 2 (a seen, waiting for b)
+        # [!1 & !2] 2                           # !b & !w → 2
+        (2, 2, 0b000, B_BIT | W_BIT),
+        # [1 & !2] 3                            # b & !w → 3
+        (2, 3, B_BIT, W_BIT),
+
+        # From state 3 (accepting: both seen)
+        # [!2] 3 {0}                            # !w → 3 (accepting)
+        (3, 3, 0b000, W_BIT),
+    ]
+
+    # Build arrays from specs
+    src_list = []
+    dst_list = []
+    pos_mask_list = []
+    neg_mask_list = []
+
+    for src, dst, pos_mask, neg_mask in transition_specs:
+        src_list.append(src)
+        dst_list.append(dst)
+        pos_mask_list.append(pos_mask)
+        neg_mask_list.append(neg_mask)
+
+    transitions = Transition(
+        src=jnp.array(src_list, dtype=jnp.int32),
+        dst=jnp.array(dst_list, dtype=jnp.int32),
+        guard=Guard(
+            pos_mask=jnp.array(pos_mask_list, dtype=jnp.int32),
+            neg_mask=jnp.array(neg_mask_list, dtype=jnp.int32),
+        ),
+    )
+
+    # === Epsilon Transitions ===
+    # None needed - automaton is deterministic
+    epsilon_src = jnp.array([], dtype=jnp.int32)
+    epsilon_dst = jnp.array([], dtype=jnp.int32)
+
+    # === Accepting Sets ===
+    # Shape: (n_accepting_sets, n_states) = (1, 4)
+    # State 3 is in accepting set 0
+    accepting_sets = jnp.array(
+        [
+            # State: 0  1  2  3
+            [0, 0, 0, 1],  # Accepting set 0: only state 3 is accepting
+        ],
+        dtype=jnp.bool,
+    )
+
+    # === Create LDBA ===
+    ldba = LDBA(
+        transitions=transitions,
+        epsilon_src=epsilon_src,
+        epsilon_dst=epsilon_dst,
+        accepting_sets=accepting_sets,
+        n_states=4,
+        predicate_order=predicate_order,
+    )
+
+    return ldba
+
+def create_gridworld_map5_ldba() -> LDBA:
+    """
+    Create LDBA for:
+    "F(a) & F(b) & G(!w) & ((!d) U k)"
+    
+    (Eventually a, eventually b, always not w, and not d until k)
+
+    States:
+        0: Initial - waiting for a, b, and k
+        1: k seen - waiting for a and b
+        2: a seen - waiting for b and k
+        3: b seen - waiting for a and k
+        4: b and k seen - waiting for a
+        5: a and b seen - waiting for k
+        6: a and k seen - waiting for b
+        7: Accepting - a, b, and k all seen, stay safe
+       -1: Sink (implicit, for w or d violation)
+
+    Predicate order: ["a", "b", "d", "k", "w"]
+    Bits:             0 = a,  1 = b,  2 = d,  3 = k,  4 = w
+    """
+
+    # Define predicate order (determines bit positions in labels)
+    predicate_order = ["A", "B", "D", "K", "w"]
+
+    # Bit positions
+    A_BIT = 1 << 0  # 0b00001
+    B_BIT = 1 << 1  # 0b00010
+    D_BIT = 1 << 2  # 0b00100
+    K_BIT = 1 << 3  # 0b01000
+    W_BIT = 1 << 4  # 0b10000
+
+    # === Define all transitions ===
+    # Format: (src, dst, pos_mask, neg_mask)
+    transition_specs = [
+        # From state 0 (initial: waiting for a, b, and k)
+        # [!0 & !1 & 3 & !4] 1                  # !a & !b & k & !w → 1
+        (0, 1, K_BIT, A_BIT | B_BIT | W_BIT),
+        # [0 & !1 & !2 & !3 & !4] 2             # a & !b & !d & !k & !w → 2
+        (0, 2, A_BIT, B_BIT | D_BIT | K_BIT | W_BIT),
+        # [!0 & 1 & !2 & !3 & !4] 3             # !a & b & !d & !k & !w → 3
+        (0, 3, B_BIT, A_BIT | D_BIT | K_BIT | W_BIT),
+        # [!0 & 1 & 3 & !4] 4                   # !a & b & k & !w → 4
+        (0, 4, B_BIT | K_BIT, A_BIT | W_BIT),
+        # [!0 & !1 & !2 & !3 & !4] 0            # !a & !b & !d & !k & !w → 0
+        (0, 0, 0b00000, A_BIT | B_BIT | D_BIT | K_BIT | W_BIT),
+        # [0 & 1 & !2 & !3 & !4] 5              # a & b & !d & !k & !w → 5
+        (0, 5, A_BIT | B_BIT, D_BIT | K_BIT | W_BIT),
+        # [0 & !1 & 3 & !4] 6                   # a & !b & k & !w → 6
+        (0, 6, A_BIT | K_BIT, B_BIT | W_BIT),
+        # [0 & 1 & 3 & !4] 7                    # a & b & k & !w → 7
+        (0, 7, A_BIT | B_BIT | K_BIT, W_BIT),
+
+        # From state 1 (k seen: waiting for a and b)
+        # [!0 & !1 & !4] 1                      # !a & !b & !w → 1
+        (1, 1, 0b00000, A_BIT | B_BIT | W_BIT),
+        # [!0 & 1 & !4] 4                       # !a & b & !w → 4
+        (1, 4, B_BIT, A_BIT | W_BIT),
+        # [0 & !1 & !4] 6                       # a & !b & !w → 6
+        (1, 6, A_BIT, B_BIT | W_BIT),
+        # [0 & 1 & !4] 7                        # a & b & !w → 7
+        (1, 7, A_BIT | B_BIT, W_BIT),
+
+        # From state 2 (a seen: waiting for b and k)
+        # [!1 & !2 & !3 & !4] 2                 # !b & !d & !k & !w → 2
+        (2, 2, 0b00000, B_BIT | D_BIT | K_BIT | W_BIT),
+        # [1 & !2 & !3 & !4] 5                  # b & !d & !k & !w → 5
+        (2, 5, B_BIT, D_BIT | K_BIT | W_BIT),
+        # [!1 & 3 & !4] 6                       # !b & k & !w → 6
+        (2, 6, K_BIT, B_BIT | W_BIT),
+        # [1 & 3 & !4] 7                        # b & k & !w → 7
+        (2, 7, B_BIT | K_BIT, W_BIT),
+
+        # From state 3 (b seen: waiting for a and k)
+        # [!0 & !2 & !3 & !4] 3                 # !a & !d & !k & !w → 3
+        (3, 3, 0b00000, A_BIT | D_BIT | K_BIT | W_BIT),
+        # [!0 & 3 & !4] 4                       # !a & k & !w → 4
+        (3, 4, K_BIT, A_BIT | W_BIT),
+        # [0 & !2 & !3 & !4] 5                  # a & !d & !k & !w → 5
+        (3, 5, A_BIT, D_BIT | K_BIT | W_BIT),
+        # [0 & 3 & !4] 7                        # a & k & !w → 7
+        (3, 7, A_BIT | K_BIT, W_BIT),
+
+        # From state 4 (b and k seen: waiting for a)
+        # [!0 & !4] 4                           # !a & !w → 4
+        (4, 4, 0b00000, A_BIT | W_BIT),
+        # [0 & !4] 7                            # a & !w → 7
+        (4, 7, A_BIT, W_BIT),
+
+        # From state 5 (a and b seen: waiting for k)
+        # [!2 & !3 & !4] 5                      # !d & !k & !w → 5
+        (5, 5, 0b00000, D_BIT | K_BIT | W_BIT),
+        # [3 & !4] 7                            # k & !w → 7
+        (5, 7, K_BIT, W_BIT),
+
+        # From state 6 (a and k seen: waiting for b)
+        # [!1 & !4] 6                           # !b & !w → 6
+        (6, 6, 0b00000, B_BIT | W_BIT),
+        # [1 & !4] 7                            # b & !w → 7
+        (6, 7, B_BIT, W_BIT),
+
+        # From state 7 (accepting: all conditions met)
+        # [!4] 7 {0}                            # !w → 7 (accepting)
+        (7, 7, 0b00000, W_BIT),
+    ]
+
+    # Build arrays from specs
+    src_list = []
+    dst_list = []
+    pos_mask_list = []
+    neg_mask_list = []
+
+    for src, dst, pos_mask, neg_mask in transition_specs:
+        src_list.append(src)
+        dst_list.append(dst)
+        pos_mask_list.append(pos_mask)
+        neg_mask_list.append(neg_mask)
+
+    transitions = Transition(
+        src=jnp.array(src_list, dtype=jnp.int32),
+        dst=jnp.array(dst_list, dtype=jnp.int32),
+        guard=Guard(
+            pos_mask=jnp.array(pos_mask_list, dtype=jnp.int32),
+            neg_mask=jnp.array(neg_mask_list, dtype=jnp.int32),
+        ),
+    )
+
+    # === Epsilon Transitions ===
+    # None needed - automaton is deterministic
+    epsilon_src = jnp.array([], dtype=jnp.int32)
+    epsilon_dst = jnp.array([], dtype=jnp.int32)
+
+    # === Accepting Sets ===
+    # Shape: (n_accepting_sets, n_states) = (1, 8)
+    # State 7 is in accepting set 0
+    accepting_sets = jnp.array(
+        [
+            # State: 0  1  2  3  4  5  6  7
+            [0, 0, 0, 0, 0, 0, 0, 1],  # Accepting set 0: only state 7 is accepting
+        ],
+        dtype=jnp.bool,
+    )
+
+    # === Create LDBA ===
+    ldba = LDBA(
+        transitions=transitions,
+        epsilon_src=epsilon_src,
+        epsilon_dst=epsilon_dst,
+        accepting_sets=accepting_sets,
+        n_states=8,
+        predicate_order=predicate_order,
+    )
+
+    return ldba
+
+def create_gridworld_map6_ldba() -> LDBA:
+    """
+    Create LDBA for:
+    "F(c & F(G((q U (a & q)) & (q U (b & q)))))"
+    
+    (Eventually c, then eventually globally: while q holds, eventually reach a&q and b&q)
+
+    States:
+        0: Initial - waiting for c
+        1: c seen - waiting to enter the G(...) phase, can also try accepting conditions
+        2: In G phase - a seen (with q), waiting for b (with q)
+        3: In G phase - checking/accepting state (b seen or waiting for a)
+       -1: Sink (implicit, for q violation in accepting phase)
+
+    Predicate order: ["c", "q", "a", "b"]
+    Bits:             0 = c,  1 = q,  2 = a,  3 = b
+    """
+
+    # Define predicate order (determines bit positions in labels)
+    predicate_order = ["C", "q", "A", "B"]
+
+    # Bit positions
+    C_BIT = 1 << 0  # 0b0001
+    Q_BIT = 1 << 1  # 0b0010
+    A_BIT = 1 << 2  # 0b0100
+    B_BIT = 1 << 3  # 0b1000
+
+    # === Define all transitions ===
+    # Format: (src, dst, pos_mask, neg_mask)
+    transition_specs = [
+        # From state 0 (initial: waiting for c)
+        # [!0] 0                                # !c → 0
+        (0, 0, 0b0000, C_BIT),
+        # [0] 1                                 # c → 1
+        (0, 1, C_BIT, 0b0000),
+
+        # From state 1 (c seen: waiting to enter G phase)
+        # [t] 1                                 # true → 1 (can always stay)
+        (1, 1, 0b0000, 0b0000),
+        # [1 & 2 & !3] 2                        # q & a & !b → 2
+        (1, 2, Q_BIT | A_BIT, B_BIT),
+        # [1 & (2 & 3 | !2)] 3                  # q & (a & b | !a) → 3
+        # This is: q & (!a | b) which splits into two transitions:
+        # q & !a → 3
+        (1, 3, Q_BIT, A_BIT),
+        # q & a & b → 3
+        (1, 3, Q_BIT | A_BIT | B_BIT, 0b0000),
+
+        # From state 2 (a seen with q, waiting for b with q)
+        # [1 & 3] 3 {0}                         # q & b → 3 (accepting)
+        (2, 3, Q_BIT | B_BIT, 0b0000),
+        # [1 & !3] 2                            # q & !b → 2
+        (2, 2, Q_BIT, B_BIT),
+
+        # From state 3 (checking/accepting state)
+        # [1 & 2 & !3] 2                        # q & a & !b → 2
+        (3, 2, Q_BIT | A_BIT, B_BIT),
+        # [1 & 2 & 3] 3 {0}                     # q & a & b → 3 (accepting)
+        (3, 3, Q_BIT | A_BIT | B_BIT, 0b0000),
+        # [1 & !2] 3                            # q & !a → 3
+        (3, 3, Q_BIT, A_BIT),
+    ]
+
+    # Build arrays from specs
+    src_list = []
+    dst_list = []
+    pos_mask_list = []
+    neg_mask_list = []
+
+    for src, dst, pos_mask, neg_mask in transition_specs:
+        src_list.append(src)
+        dst_list.append(dst)
+        pos_mask_list.append(pos_mask)
+        neg_mask_list.append(neg_mask)
+
+    transitions = Transition(
+        src=jnp.array(src_list, dtype=jnp.int32),
+        dst=jnp.array(dst_list, dtype=jnp.int32),
+        guard=Guard(
+            pos_mask=jnp.array(pos_mask_list, dtype=jnp.int32),
+            neg_mask=jnp.array(neg_mask_list, dtype=jnp.int32),
+        ),
+    )
+
+    # === Epsilon Transitions ===
+    # None needed - automaton is deterministic
+    epsilon_src = jnp.array([], dtype=jnp.int32)
+    epsilon_dst = jnp.array([], dtype=jnp.int32)
+
+    # === Accepting Sets ===
+    # Shape: (n_accepting_sets, n_states) = (1, 4)
+    # States 2→3 and 3→3 transitions with {0} are accepting
+    # But for state-based acceptance, we mark states that have accepting outgoing transitions
+    # Looking at the HOA format, accepting transitions go TO state 3
+    # In Büchi acceptance, we need to visit accepting transitions infinitely often
+    # States 2 and 3 have accepting transitions (marked with {0})
+    accepting_sets = jnp.array(
+        [
+            # State: 0  1  2  3
+            [0, 0, 1, 1],  # Accepting set 0: states 2 and 3 have accepting transitions
+        ],
+        dtype=jnp.bool,
+    )
+
+    # === Create LDBA ===
+    ldba = LDBA(
+        transitions=transitions,
+        epsilon_src=epsilon_src,
+        epsilon_dst=epsilon_dst,
+        accepting_sets=accepting_sets,
+        n_states=4,
+        predicate_order=predicate_order,
+    )
+
+    return ldba
+
+def create_gridworld_map7_ldba() -> LDBA:
+    """
+    Create LDBA for:
+    "((!q U c) & F(c & F(G((q U (a & q)) & (q U (b & q))))))"
+    
+    (Not q until c, and eventually c, then eventually globally: 
+     while q holds, repeatedly reach a&q and b&q)
+
+    States:
+        0: Initial - waiting for c (must have !q until then)
+        1: c seen - waiting to enter the G(...) phase
+        2: In G phase - checking/accepting state (b seen or waiting for a)
+        3: In G phase - a seen (with q), waiting for b (with q)
+       -1: Sink (implicit, for q violation before c, or q violation in accepting phase)
+
+    Predicate order: ["q", "c", "a", "b"]
+    Bits:             0 = q,  1 = c,  2 = a,  3 = b
+    """
+
+    # Define predicate order (determines bit positions in labels)
+    predicate_order = ["q", "C", "A", "B"]
+
+    # Bit positions
+    Q_BIT = 1 << 0  # 0b0001
+    C_BIT = 1 << 1  # 0b0010
+    A_BIT = 1 << 2  # 0b0100
+    B_BIT = 1 << 3  # 0b1000
+
+    # === Define all transitions ===
+    # Format: (src, dst, pos_mask, neg_mask)
+    transition_specs = [
+        # From state 0 (initial: waiting for c, must have !q)
+        # [!0 & !1] 0                           # !q & !c → 0
+        (0, 0, 0b0000, Q_BIT | C_BIT),
+        # [1] 1                                 # c → 1
+        (0, 1, C_BIT, 0b0000),
+
+        # From state 1 (c seen: waiting to enter G phase)
+        # [0 & (2 & 3 | !2)] 2                  # q & (a & b | !a) → 2
+        # This splits into two transitions:
+        # q & !a → 2
+        (1, 2, Q_BIT, A_BIT),
+        # q & a & b → 2
+        (1, 2, Q_BIT | A_BIT | B_BIT, 0b0000),
+        # [t] 1                                 # true → 1 (can always stay)
+        (1, 1, 0b0000, 0b0000),
+        # [0 & 2 & !3] 3                        # q & a & !b → 3
+        (1, 3, Q_BIT | A_BIT, B_BIT),
+
+        # From state 2 (checking/accepting state)
+        # [0 & 2 & 3] 2 {0}                     # q & a & b → 2 (accepting)
+        (2, 2, Q_BIT | A_BIT | B_BIT, 0b0000),
+        # [0 & !2] 2                            # q & !a → 2
+        (2, 2, Q_BIT, A_BIT),
+        # [0 & 2 & !3] 3                        # q & a & !b → 3
+        (2, 3, Q_BIT | A_BIT, B_BIT),
+
+        # From state 3 (a seen with q, waiting for b with q)
+        # [0 & 3] 2 {0}                         # q & b → 2 (accepting)
+        (3, 2, Q_BIT | B_BIT, 0b0000),
+        # [0 & !3] 3                            # q & !b → 3
+        (3, 3, Q_BIT, B_BIT),
+    ]
+
+    # Build arrays from specs
+    src_list = []
+    dst_list = []
+    pos_mask_list = []
+    neg_mask_list = []
+
+    for src, dst, pos_mask, neg_mask in transition_specs:
+        src_list.append(src)
+        dst_list.append(dst)
+        pos_mask_list.append(pos_mask)
+        neg_mask_list.append(neg_mask)
+
+    transitions = Transition(
+        src=jnp.array(src_list, dtype=jnp.int32),
+        dst=jnp.array(dst_list, dtype=jnp.int32),
+        guard=Guard(
+            pos_mask=jnp.array(pos_mask_list, dtype=jnp.int32),
+            neg_mask=jnp.array(neg_mask_list, dtype=jnp.int32),
+        ),
+    )
+
+    # === Epsilon Transitions ===
+    # None needed - automaton is deterministic
+    epsilon_src = jnp.array([], dtype=jnp.int32)
+    epsilon_dst = jnp.array([], dtype=jnp.int32)
+
+    # === Accepting Sets ===
+    # Shape: (n_accepting_sets, n_states) = (1, 4)
+    # Accepting transitions (marked {0}) occur on:
+    #   2→2 with q & a & b
+    #   3→2 with q & b
+    # States 2 and 3 have accepting outgoing transitions
+    accepting_sets = jnp.array(
+        [
+            # State: 0  1  2  3
+            [0, 0, 1, 1],  # Accepting set 0: states 2 and 3 have accepting transitions
+        ],
+        dtype=jnp.bool,
+    )
+
+    # === Create LDBA ===
+    ldba = LDBA(
+        transitions=transitions,
+        epsilon_src=epsilon_src,
+        epsilon_dst=epsilon_dst,
+        accepting_sets=accepting_sets,
+        n_states=4,
+        predicate_order=predicate_order,
+    )
+
     return ldba
