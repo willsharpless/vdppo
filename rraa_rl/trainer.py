@@ -206,6 +206,31 @@ class Trainer:
                 if wandb.run is not None:
                     wandb.log(log_dict, step=train_step)
 
+    def make_eval_collector(
+        self,
+        env: Env,
+        n_envs_test: int
+    ):
+        key_base = jr.PRNGKey(124521)
+        key_base, key_collector, key_eval = jr.split(key_base, 3)
+
+        n_envs_train = self.agent.cfg.n_envs_train
+        n_envs_test = 128
+
+        if hasattr(env.base, "n_envs"):
+            env.base.n_envs = n_envs_train
+    
+        logger.debug("Constructing collector_eval...")
+        env_test = copy.deepcopy(env)
+        if hasattr(env_test.base, "n_envs"):
+            env_test.base.n_envs = n_envs_test
+        collector_eval = Collector.create(
+            key=key_collector,
+            env=env_test,
+            cfg=Collector.Cfg(n_envs=n_envs_test, auto_reset=False, ignore_trunc=True),
+        )
+        return collector_eval, key_eval
+    
     def eval(self, collector: Collector, key_eval: jr.PRNGKey):
         env = self.agent.env
 
