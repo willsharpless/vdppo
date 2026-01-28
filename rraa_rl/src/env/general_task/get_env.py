@@ -101,7 +101,7 @@ def get_env_and_cbs(
     manip_eval_cbs = []
     manip_collect_cbs = []
 
-    if env_name == "herdos":
+    elif env_name == "herdos":
         cfg, spec = get_cfg_herdos()
         env = HerdOs(cfg)
         cbs = herd_eval_cbs, herd_collect_cbs
