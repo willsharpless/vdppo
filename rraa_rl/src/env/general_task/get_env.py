@@ -101,12 +101,12 @@ def get_env_and_cbs(
     manip_eval_cbs = []
     manip_collect_cbs = []
 
-    elif env_name == "herdos":
+    if env_name == "herdos":
         cfg, spec = get_cfg_herdos()
         env = HerdOs(cfg)
         cbs = herd_eval_cbs, herd_collect_cbs
 
-    if env_name == "herdos_hardware":
+    elif env_name == "herdos_hardware":
         cfg, spec = get_cfg_herdos()
         cfg.base.wall_thick_x = 0.95
         env = HerdOs(cfg)
