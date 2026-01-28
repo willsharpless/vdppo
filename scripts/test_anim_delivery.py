@@ -18,7 +18,7 @@ app = cyclopts.App()
 
 
 @app.default()
-def main(run_path: pathlib.Path, n_env: int = 1, step: int | None = None):
+def main(run_path: pathlib.Path, n_env: int = 1, step: int | None = None, eval_T: int | None = None):
     run, agent, env, cfg_dict = load_ckpt(run_path, step)
 
     collector = Collector.create(
@@ -32,7 +32,9 @@ def main(run_path: pathlib.Path, n_env: int = 1, step: int | None = None):
     if isinstance(agent, VDMAPPOAgent):
         collect_opts["temporal_transitions"] = True
 
-    Tb_rollout, info_collect = agent.collect_eval_with_states(collector, b_state0, env.eval_T, **collect_opts)
+    eval_T = eval_T or env.eval_T
+
+    Tb_rollout, info_collect = agent.collect_eval_with_states(collector, b_state0, eval_T, **collect_opts)
     Tb_rollout = jax.device_get(Tb_rollout)
     bT_rollout = Tb_rollout.switch01()
 
@@ -47,12 +49,13 @@ def main(run_path: pathlib.Path, n_env: int = 1, step: int | None = None):
 
     T_state: Delivery.State = traj.state_now
     T_pos_herder = T_state.base.herder_state[:, :, :2]
+    T_pos_target = T_state.base.centers[:, :2, :2] # only using first two centers
     T_temporal_node_idx = T_state.temporal_node_idx
     T_labels = [
         f"Temporal {t_node_idx} ({env.temporal_node_names[t_node_idx]})" for t_node_idx in T_state.temporal_node_idx
     ]
     anim_path = run_path / "eval_animation.mp4"
-    animate_delivery_traj(anim_path, cfg.base, T_pos_herder, T_temporal_node_idx, T_labels)
+    animate_delivery_traj(anim_path, env, cfg.base, T_pos_herder, T_pos_target, T_temporal_node_idx, T_labels)
 
 
 if __name__ == "__main__":

@@ -1326,7 +1326,7 @@ def animate_eval_trajs_multi_agent_LDBA(p: CallbackProps):
     #     writer.close()
     plt.close(fig)
 
-def obstacles_to_aabbs(cfg, which=jnp):
+def obstacles_to_aabbs(cfg, which=jnp, agent_radius=0.2):
     """
     Returns AABBs for all obstacles.
 
@@ -1336,28 +1336,34 @@ def obstacles_to_aabbs(cfg, which=jnp):
     radii = which.array(cfg.obstacle_radiuses)  # (n_obst,)
     ratios = which.array(cfg.obstacle_lw_ratios)  # (n_obst,)
 
-    half_w = radii * ratios  # x semi-axis (half-width)
-    half_h = radii  # y semi-axis (half-height)
+    effective_radii = radii - agent_radius - 0.03 
+    # 0.03 bc patches slightly off from pred still
 
-    xmin = centers[:, 0] - half_w
-    xmax = centers[:, 0] + half_w
-    ymin = centers[:, 1] - half_h
-    ymax = centers[:, 1] + half_h
+    half_x = effective_radii * ratios
+    half_y = effective_radii
+
+    xmin = centers[:, 0] - half_x
+    xmax = centers[:, 0] + half_x
+    ymin = centers[:, 1] - half_y
+    ymax = centers[:, 1] + half_y
 
     return which.stack([xmin, ymin, xmax, ymax], axis=-1)
 
 
 def animate_delivery_traj(
     anim_path: pathlib.Path,
+    env: Delivery,
     cfg: DeliveryBaseCfg,
     T_pos_herder: np.ndarray,
+    T_pos_target: np.ndarray,
     T_discr_state: np.ndarray | None = None,
     T_labels: list[str] | None = None,
     fps: int = 30,
 ):
     figsize = np.array([4, 3])
     fig, ax = plt.subplots(figsize=figsize)
-    env_base = DeliveryBase(cfg)
+    # env_base = DeliveryBase(cfg)
+    env_base = env.base
     # mult = cfg.pos_multiplier
     mult = 1
     env_base.setup_ax(ax)
@@ -1370,19 +1376,53 @@ def animate_delivery_traj(
         xmin, ymin, xmax, ymax = aabb
         width = xmax - xmin
         height = ymax - ymin
-        rect = plt.Rectangle((xmin, ymin), width, height, facecolor="C3", edgecolor="none", alpha=0.8)
+        rect = plt.Rectangle((xmin, ymin), width, height, facecolor="k", edgecolor="none", alpha=0.7)
         ax.add_patch(rect)
+
+    # # Get the env predicates (obstacles/oob) for plotting
+    # halfsize = cfg.halfsize
+    # n_x = 65
+    # n_y = 65
+    # b_x = jnp.linspace(-halfsize[0], halfsize[0], num=n_x)
+    # b_y = jnp.linspace(-halfsize[1], halfsize[1], num=n_y)
+    # bb_X, bb_Y = jnp.meshgrid(b_x, b_y)
+    # bb_pos = jnp.stack([bb_X, bb_Y], axis=-1)
+
+    # key = jax.random.PRNGKey(0)
+    # bb_key = ei.rearrange(jax.random.split(key, num=n_x * n_y), "(x y) ... -> x y ...", x=n_x, y=n_y)
+    # bb_state = jax_vmap(env.reset, rep=2)(bb_key)
+
+    # with jdc.copy_and_mutate(bb_state) as bb_state:
+    #     bb_state.base.herder_state = bb_state.base.herder_state.at[:, :, 0, :2].set(bb_pos)
+    #     bb_state.base.herder_state = bb_state.base.herder_state.at[:, :, 0, 2:4].set(0.0)
+    #     bb_state.temporal_node_idx = bb_state.temporal_node_idx.at[:].set(0)
+
+    # bb_predicates = jax_vmap(env.get_predicates, rep=2)(bb_state)
+    # plot_predicates = ["oob", "obstacles"]
+
+    # for pred_name in plot_predicates:
+    #     ax.contourf(
+    #         bb_X, bb_Y, bb_predicates[pred_name], levels=[0, 1], colors='k', alpha=0.5
+    #     )
 
     assert env_base.cfg.n_herders == 3
     agent_radii = np.array([cfg.agent_radius, cfg.agent_radius, 2 * cfg.agent_radius])
 
     agent_circs = []
     for agent_idx in range(env_base.n_agents):
-        circ = plt.Circle((0, 0), agent_radii[agent_idx], facecolor="C1", edgecolor="none")
+        circ = plt.Circle((0, 0), agent_radii[agent_idx], facecolor=f"C{agent_idx+1}", linewidth=2)
+        if agent_idx == 2:
+            circ = plt.Circle((0, 0), 2 * cfg.agent_radius, facecolor="C0", linewidth=2)
         ax.add_patch(circ)
         agent_circs.append(circ)
 
-    all_circs = agent_circs
+    target_circs = []
+    for target_idx in range(2):
+        circ = plt.Circle((0, 0), cfg.radiuses[target_idx], facecolor=f"C{target_idx+1}", edgecolor="none", alpha=0.5)
+        ax.add_patch(circ)
+        target_circs.append(circ)
+
+    all_circs = agent_circs + target_circs
     dynamic_target_circs = []
 
     kk_text = ax.text(
@@ -1400,8 +1440,9 @@ def animate_delivery_traj(
 
     def update_fn(kk: int):
         n_pos_herder = T_pos_herder[kk]
+        n_pos_target = T_pos_target[kk]
 
-        colors_temporal_node = ["C0", "C1", "C2", "C4", "C5", "C6"]  # C3 is grey.
+        colors_temporal_node = ["C4", "C5", "C6", "C7", "C8", "C9", "C10"]  # C3 is grey.
         color_temporal_node = None
         if T_discr_state is not None:
             discr_state = T_discr_state[kk]
@@ -1411,7 +1452,11 @@ def animate_delivery_traj(
             agent_circs[ii].center = pos_herder
 
             if color_temporal_node is not None:
-                agent_circs[ii].set_facecolor(color_temporal_node)
+                agent_circs[ii].set_edgecolor(color_temporal_node)
+                # agent_circs[ii].set_facecolor(f"C{ii+1}")
+
+        for ii, pos_target in enumerate(n_pos_target):
+            target_circs[ii].center = pos_target
 
         text = f"Step: {kk}"
         if T_labels is not None:

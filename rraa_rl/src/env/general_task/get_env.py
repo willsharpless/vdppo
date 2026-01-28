@@ -190,7 +190,6 @@ def get_env_and_cbs(
         # specification = "G(F target0 && F target1) && G(!obstacles && !oob) && G(!ag_at_target || ag_to_base_agent)"
         # specification = "G(F target0 && F target1) && G(!obstacles && !oob) && G(!ag1_at_target || ag1_to_base_agent) && G(!ag2_at_target || ag2_to_base_agent)"
 
-        ## TODO add !collide !!!
         base_cfg = DeliveryBaseCfg()
 
         ## 1 agent test
@@ -212,10 +211,10 @@ def get_env_and_cbs(
         base_cfg.vel_maxs = [1.0, 1.0, 0.1]
         base_cfg.dynamic_targets = True
         base_cfg.update_targets = True
-        base_cfg.update_cond_fn = (
-            "agent_in_respective_target" if "ag0_target0" in spec else "any_agent_in_target"
-        )
-        # base_cfg.update_cond_fn = 'agent_in_respective_target'
+        # base_cfg.update_cond_fn = (
+        #     "agent_in_respective_target" if "ag0_target0" in spec else "any_agent_in_target"
+        # )
+        base_cfg.update_cond_fn = 'agent_in_respective_target'
 
         cfg = Delivery.Cfg(specification=spec, base=base_cfg)
         env = Delivery(cfg)
