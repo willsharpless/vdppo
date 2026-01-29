@@ -1,6 +1,6 @@
 import jax.numpy as jnp
 
-from rraa_rl import delivery_cbs, deliveryreal_cbs, gridworld_cbs, herd_os_cbs, ablation_cbs
+from rraa_rl import delivery_cbs, deliveryreal_cbs, gridworld_cbs, herd_os_cbs, ablation_cbs, deliveryrealv2_cbs
 from rraa_rl.jax_utils import tree_stack
 from rraa_rl.lcrl.lcrl_wrapper import LCRLEnvCfg, LCRLWrapper
 from rraa_rl.ldba.ldba import LDBA, Guard, Transition, parse_ltl2ldba
@@ -11,6 +11,7 @@ from rraa_rl.src.env.general_task.herd_base import HerdingHerdCfg
 from rraa_rl.src.env.general_task.herd_os import HerdOs
 from rraa_rl.src.env.general_task.delivery import DeliveryBase, DeliveryBaseCfg, Delivery, DeliveryCfg
 from rraa_rl.src.env.general_task.deliveryreal import DeliveryRealBase, DeliveryRealBaseCfg, DeliveryReal, DeliveryRealCfg
+from rraa_rl.src.env.general_task.deliveryrealv2 import DeliveryRealv2Base, DeliveryRealv2BaseCfg, DeliveryRealv2, DeliveryRealv2Cfg
 from rraa_rl.src.env.general_task.get_env_ldba import get_env_ldba
 import ipdb
 from loguru import logger
@@ -96,6 +97,15 @@ def get_env_and_cbs(
         deliveryreal_cbs.VizValues.create(),
     ]
     deliveryreal_collect_cbs = [deliveryreal_cbs.viz_collect_data, deliveryreal_cbs.viz_obs_histogram]
+
+    deliveryrealv2_eval_cbs = [
+        deliveryrealv2_cbs.env_layout_plot,
+        deliveryrealv2_cbs.animate_eval_trajs,
+        deliveryrealv2_cbs.PlotRootTrajPreds.create(),
+        deliveryrealv2_cbs.plot_eval_trajs,
+        deliveryrealv2_cbs.VizValues.create(),
+    ]
+    deliveryrealv2_collect_cbs = [deliveryrealv2_cbs.viz_collect_data, deliveryrealv2_cbs.viz_obs_histogram]
 
     manip_eval_cbs = []
     manip_collect_cbs = []
@@ -248,6 +258,33 @@ def get_env_and_cbs(
         env = DeliveryReal(cfg)
 
         cbs = deliveryreal_eval_cbs, deliveryreal_collect_cbs
+
+    elif env_name == "deliveryrealv2":
+        
+        spec = "G(F ag0_target0) && G(F ag1_target1) && G(!obstacles) && G(!air_obstacles) && G(!oob) && G(!aerial_collide) && G(F ag0_base) && G(F ag1_base)"
+    
+        base_cfg = DeliveryRealv2BaseCfg()
+        cent = 2.25
+        base_cfg.obstacle_centers = [
+            [-cent, -cent],
+            [-cent, cent],
+            [cent, -cent],
+            [cent, cent],
+        ]
+        base_cfg.obstacle_radiuses = [0.8] * 4
+        base_cfg.obstacle_lw_ratios = [1.0] * 4
+
+        base_cfg.air_obstacle_centers = [
+            [0., 0.]
+        ]
+        base_cfg.air_obstacle_radiuses = [1.4]
+        base_cfg.air_obstacle_lw_ratios = [1.]
+        base_cfg.air_obstacles = True
+
+        cfg = DeliveryRealv2.Cfg(specification=spec, base=base_cfg)
+        env = DeliveryRealv2(cfg)
+
+        cbs = deliveryrealv2_eval_cbs, deliveryrealv2_collect_cbs
 
     elif env_name == "ablation":
         ## N spec and N agent Ablation Env (Double Integrator)
