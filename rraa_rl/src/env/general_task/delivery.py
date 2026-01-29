@@ -84,3 +84,8 @@ class Delivery(StaticTemporalNodeMixin, EnvUsingBase):
         # truncate bootstraps thru reset!
 
         return should_term
+    
+    def is_valid_real_eval_state(self, state: StateWithTemporalNode):
+        predicates = self.get_predicates(state)
+        is_unsafe = (predicates["aerial_collide"] + predicates["oob"] + predicates["obstacles"]) > 0
+        return ~is_unsafe

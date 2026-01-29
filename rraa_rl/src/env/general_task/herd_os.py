@@ -69,7 +69,7 @@ class HerdOs(StaticTemporalNodeMixin, EnvUsingBase):
 
     def is_valid_real_eval_state(self, state: StateWithTemporalNode):
         predicates = self.get_predicates(state)
-        is_unsafe = predicates["herder_unsafe"]
+        is_unsafe = predicates["herder_unsafe"] > 0
         return ~is_unsafe
 
 

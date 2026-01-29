@@ -21,6 +21,7 @@ from valtr.reachability import (DAGAvoid, DAGConst, DAGGUMinN, DAGGUSingle, DAGI
 from rraa_rl.evaluate_dag import evaluate_dag
 from rraa_rl.jax_utils import tree_cat
 from valtr.valtr import to_dag
+from typing import Union
 
 _EnvState = TypeVar("_EnvState")
 _Obs = TypeVar("_Obs")
@@ -448,7 +449,7 @@ class StaticTemporalNodeMixin:
         raise NotImplementedError("")
 
     def get_real_eval_states(
-        self: StaticTemporalNodeMixinProtocol | "StaticTemporalNodeMixin",
+        self: Union[StaticTemporalNodeMixinProtocol, "StaticTemporalNodeMixin"],
         n_envs: int,
         n_envs_to_sample: int,
         root_only: bool = True,
@@ -467,7 +468,7 @@ class StaticTemporalNodeMixin:
             # Rejection sampling using is_valid_real_eval_state.
             m_state_base = self.base.reset_batch_eval(key, n_envs_to_sample)
             b_state0 = StateWithTemporalNode(
-                temporal_node_idx=jnp.zeros((n_envs,), dtype=jnp.int32),
+                temporal_node_idx=jnp.zeros((n_envs_to_sample,), dtype=jnp.int32),
                 base=m_state_base,
             )
             b_valid = b_valid_fn(b_state0)

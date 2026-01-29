@@ -91,12 +91,12 @@ def main(
                     T_state: HerdOs.State = traj.state_now
                     T_pos_herd = T_state.base.herd_state[:, :, :2]
                     T_pos_herder = T_state.base.herder_state[:, :, :2]
-                    T_temporal_node_idx = T_state.temporal_node_idx
+                    # T_temporal_node_idx = T_state.temporal_node_idx
                     T_labels = [
                         f"Temporal {t_node_idx} ({env.temporal_node_names[t_node_idx]})" for t_node_idx in T_state.temporal_node_idx
                     ]
                     anim_path = run_path / f"bad_eval_animation_score_{b_values[ix]}.mp4"
-                    animate_herding_traj(anim_path, cfg.base, T_pos_herd, T_pos_herder, T_temporal_node_idx, T_labels)
+                    animate_herding_traj(anim_path, cfg.base, T_pos_herd, T_pos_herder, None, T_labels)
                 ipdb.set_trace()
 
         logger.info(f"{alg}, satisfaction: {np.mean(means):.3f}, sd: {np.std(means):.3f}")

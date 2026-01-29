@@ -804,6 +804,8 @@ class DeliveryBase(BaseEnv):
 
         return DeliveryBaseState(herd_state=herd_pos, herder_state=herder_state, steps=0, centers=centers)
 
+    def reset_eval(self, key):
+        return self.reset(key)
     # def reset_orig(self, key: PRNGKeyArray, centers: jnp.ndarray):
     #     n_herd = self.cfg.n_herd
     #     n_herders = self.cfg.n_herders
