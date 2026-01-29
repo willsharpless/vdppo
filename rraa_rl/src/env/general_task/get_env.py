@@ -223,9 +223,14 @@ def get_env_and_cbs(
         base_cfg.vel_maxs = [1.0, 1.0, 0.1]
         base_cfg.dynamic_targets = True
         base_cfg.update_targets = True
-        # base_cfg.update_cond_fn = (
-        #     "agent_in_respective_target" if "ag0_target0" in spec else "any_agent_in_target"
-        # )
+        base_cfg.centers = [
+            [-2.0, 0.0],
+            [3.0, 1.0],
+        ]
+        base_cfg.radiuses = [0.5, 0.5]
+        base_cfg.update_cond_fn = (
+            "agent_in_respective_target" if "ag0_target0" in spec else "any_agent_in_target"
+        )
         base_cfg.update_cond_fn = 'agent_in_respective_target'
 
         cfg = Delivery.Cfg(specification=spec, base=base_cfg)

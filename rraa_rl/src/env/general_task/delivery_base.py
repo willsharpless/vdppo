@@ -480,9 +480,9 @@ class DeliveryBase(BaseEnv):
             "obstacles": self.is_herder_in_obstacles(state),
             "target0": self.is_herder_in_target(state, center=self.cfg.centers[0], radius=self.cfg.radiuses[0]),
             "target1": self.is_herder_in_target(state, center=self.cfg.centers[1], radius=self.cfg.radiuses[1]),
-            "target2": self.is_herder_in_target(state, center=self.cfg.centers[2], radius=self.cfg.radiuses[2]),
-            "target3": self.is_herder_in_target(state, center=self.cfg.centers[3], radius=self.cfg.radiuses[3]),
-            "target4": self.is_herder_in_target(state, center=self.cfg.centers[4], radius=self.cfg.radiuses[4]),
+            # "target2": self.is_herder_in_target(state, center=self.cfg.centers[2], radius=self.cfg.radiuses[2]),
+            # "target3": self.is_herder_in_target(state, center=self.cfg.centers[3], radius=self.cfg.radiuses[3]),
+            # "target4": self.is_herder_in_target(state, center=self.cfg.centers[4], radius=self.cfg.radiuses[4]),
             "ags_to_base_agent": self.is_herder_at_base_ag(state),
             "ag0_target0": self.is_herderX_circs(state, herder_ix=0, center_ix=0),
             "ag1_target0": self.is_herderX_circs(state, herder_ix=1, center_ix=0),
@@ -491,6 +491,10 @@ class DeliveryBase(BaseEnv):
             "ag0_base": self.is_herderX_at_base_ag(state, herder_ix=0),
             "ag1_base": self.is_herderX_at_base_ag(state, herder_ix=1),
         }
+        if state.centers.shape[0] > 2:
+            predicates["target2"] = self.is_herder_in_target(state, center=self.cfg.centers[2], radius=self.cfg.radiuses[2])
+            predicates["target3"] = self.is_herder_in_target(state, center=self.cfg.centers[3], radius=self.cfg.radiuses[3])
+            predicates["target4"] = self.is_herder_in_target(state, center=self.cfg.centers[4], radius=self.cfg.radiuses[4])
         if self.cfg.dynamic_targets:
             predicates["target0"] = self.is_herder_in_dyn_target(state, center_ix=0)
             predicates["target1"] = self.is_herder_in_dyn_target(state, center_ix=1)
