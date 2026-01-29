@@ -49,7 +49,7 @@ class DeliveryRealBaseCfg:
     acc_maxs: list[float] = [2.0, 2.0, 1.0]
     vel_maxs: list[float] = [1.0, 1.0, 0.1]
 
-    agent_radius: float = 0.2
+    agent_radius: float = 0.4
     base_agent_radius: float = 0.8
 
     # Half size.
@@ -67,22 +67,19 @@ class DeliveryRealBaseCfg:
     centers: list[list[float]] = [
         [-2.0, 0.0],
         [3.0, 1.0],
-        [1.5, -2.0],
-        [-4.0, -4.0],
-        [0.0, 3.0],
     ]
     radiuses: list[float] = [0.5] * len(centers)
 
     obstacle_centers: list[list[float]] = [
-        [-2.8, 3.2],
-        [-1.0-0.5, -2.5-0.5],
-        [0.1-0.5, -0.3-0.5],
-        [0.3-0.5, 0.1-0.5],
-        [2.75, 3.7],
+        [-2.8, 3.2], # upper left
+        [-1.0-0.5, -2.5-0.5], # lower left
+        [0.1-0.5, -0.3-0.2], # lower middle
+        [0.3-0.5, 0.1-0.4], # lower middle addendum
+        [2.75, 3.7], # upper right
     ]
-    obstacle_radiuses: list[float] = [0.4, 0.4, 0.4, 0.4, 0.45]
+    obstacle_radiuses: list[float] = [0.4, 0.3, 0.25, 0.4, 0.4]
     # obstacle_radiuses: list[float] = [0.8, 0.8, 0.8, 0.8, 0.9]
-    obstacle_lw_ratios: list[float] = [1.0, 5., 4.5, 0.9, 0.7]
+    obstacle_lw_ratios: list[float] = [1.0, 5., 5., 0.9, 0.7]
     obstacle_shape_norm: float = float("inf")
 
     base_agent: bool = True
@@ -543,9 +540,9 @@ class DeliveryRealBase(BaseEnv):
             "obstacles": self.is_herder_in_obstacles(state),
             "target0": self.is_herder_in_target(state, center=self.cfg.centers[0], radius=self.cfg.radiuses[0]),
             "target1": self.is_herder_in_target(state, center=self.cfg.centers[1], radius=self.cfg.radiuses[1]),
-            "target2": self.is_herder_in_target(state, center=self.cfg.centers[2], radius=self.cfg.radiuses[2]),
-            "target3": self.is_herder_in_target(state, center=self.cfg.centers[3], radius=self.cfg.radiuses[3]),
-            "target4": self.is_herder_in_target(state, center=self.cfg.centers[4], radius=self.cfg.radiuses[4]),
+            # "target2": self.is_herder_in_target(state, center=self.cfg.centers[2], radius=self.cfg.radiuses[2]),
+            # "target3": self.is_herder_in_target(state, center=self.cfg.centers[3], radius=self.cfg.radiuses[3]),
+            # "target4": self.is_herder_in_target(state, center=self.cfg.centers[4], radius=self.cfg.radiuses[4]),
             "ags_to_base_agent": self.is_herder_at_base_ag(state),
             "ag0_target0": self.is_herderX_circs(state, herder_ix=0, center_ix=0),
             "ag1_target0": self.is_herderX_circs(state, herder_ix=1, center_ix=0),
