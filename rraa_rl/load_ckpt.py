@@ -33,7 +33,7 @@ class LoadCkptResult(NamedTuple):
     cfg_dict: dict
 
 
-def load_ckpt(run_path: pathlib.Path, step: int | None = None, alg: str = "vd"):
+def load_ckpt(run_path: pathlib.Path, step: int | None = None, alg: str = "vd", n_spec:int=1, n_agent:int=1):
     # Load the configs.
     yaml_path = run_path / "config.yaml"
     with open(yaml_path, "r") as f:
@@ -44,7 +44,7 @@ def load_ckpt(run_path: pathlib.Path, step: int | None = None, alg: str = "vd"):
     # agent_name = run.agent_name # sometimes capitalizes, differing from previous signature
 
     env: GridworldMA
-    env, _, _ = get_env_and_cbs(env_name, agent_name=alg)
+    env, _, _ = get_env_and_cbs(env_name, agent_name=alg, n_spec=n_spec, n_agent=n_agent)
 
     if alg == "vd":
         agent_cfg = VDMAPPOAgent.Cfg.fromdict(cfg_dict["agent"])

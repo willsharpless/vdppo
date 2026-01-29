@@ -1,4 +1,5 @@
 import time
+import pathlib
 
 import einops as ei
 import imageio.v2 as imageio
@@ -20,12 +21,13 @@ from matplotlib.patches import RegularPolygon
 
 from rraa_rl.collector import RolloutOutput
 from rraa_rl.jax_utils import jax_vmap, rep_vmap
-from rraa_rl.src.env.general_task.delivery import Delivery
+from rraa_rl.src.env.general_task.delivery import Delivery, DeliveryBaseCfg
 from rraa_rl.src.env.general_task.env import AugObs
 from rraa_rl.src.rl.utils.utils import get_BuRd_smooth
 from rraa_rl.trainer import CallbackProps
 from rraa_rl.vd_mappo import PPOData, VDMAPPOAgent
 from valtr.reachability import collect_predicate_info
+from rraa_rl.gridworld_cbs import save_animation_blit
 
 plt.style.use("seaborn-v0_8-darkgrid")
 
@@ -1258,3 +1260,117 @@ def animate_eval_trajs_multi_agent_LDBA(p: CallbackProps):
     # finally:
     #     writer.close()
     plt.close(fig)
+
+def animate_ablation_traj(
+    anim_path: pathlib.Path,
+    env: Delivery,
+    cfg: DeliveryBaseCfg,
+    T_pos_herder: np.ndarray,
+    T_discr_state: np.ndarray | None = None,
+    T_labels: list[str] | None = None,
+    fps: int = 30,
+):
+    figsize = np.array([4, 3])
+    fig, ax = plt.subplots(figsize=figsize)
+    # env_base = DeliveryBase(cfg)
+    env_base = env.base
+    # mult = cfg.pos_multiplier
+    mult = 1
+    env_base.setup_ax(ax)
+
+    # # (n_boxes, 4) [xmin, ymin, xmax, ymax]
+    # aabbs = obstacles_to_aabbs(cfg, which=np)
+
+    # # Convert the aabb to rectangles.
+    # for aabb in aabbs:
+    #     xmin, ymin, xmax, ymax = aabb
+    #     width = xmax - xmin
+    #     height = ymax - ymin
+    #     rect = plt.Rectangle((xmin, ymin), width, height, facecolor="k", edgecolor="none", alpha=0.7)
+    #     ax.add_patch(rect)
+
+    # Get the env predicates (obstacles/oob) for plotting
+    halfsize = cfg.halfsize
+    n_x = 65
+    n_y = 65
+    b_x = jnp.linspace(-halfsize[0], halfsize[0], num=n_x)
+    b_y = jnp.linspace(-halfsize[1], halfsize[1], num=n_y)
+    bb_X, bb_Y = jnp.meshgrid(b_x, b_y)
+    bb_pos = jnp.stack([bb_X, bb_Y], axis=-1)
+
+    key = jax.random.PRNGKey(0)
+    bb_key = ei.rearrange(jax.random.split(key, num=n_x * n_y), "(x y) ... -> x y ...", x=n_x, y=n_y)
+    bb_state = jax_vmap(env.reset, rep=2)(bb_key)
+
+    with jdc.copy_and_mutate(bb_state) as bb_state:
+        bb_state.base.herder_state = bb_state.base.herder_state.at[:, :, 0, :2].set(bb_pos)
+        bb_state.base.herder_state = bb_state.base.herder_state.at[:, :, 0, 2:4].set(0.0)
+        bb_state.temporal_node_idx = bb_state.temporal_node_idx.at[:].set(0)
+
+    bb_predicates = jax_vmap(env.get_predicates, rep=2)(bb_state)
+    relevant_targets = [pred for pred in env.pred_info.predicates if "target" in pred]
+    plot_predicates = ["oob", "obstacles"]
+    # ipdb.set_trace()
+
+    for pred_name in plot_predicates:
+        ax.contourf(
+            bb_X, bb_Y, bb_predicates[pred_name], levels=[0, 1], colors='k', alpha=0.5
+        )
+
+    agent_circs = []
+    for agent_idx in range(env_base.n_agents):
+        circ = plt.Circle((0, 0), cfg.agent_radius, facecolor=f"C{agent_idx+1}", linewidth=2)
+        ax.add_patch(circ)
+        agent_circs.append(circ)
+
+    # ipdb.set_trace()
+
+    target_circs = []
+    for target_idx in range(len(relevant_targets)):
+        circ = plt.Circle(cfg.centers[target_idx], cfg.radiuses[target_idx], facecolor=f"C0", edgecolor="none", alpha=0.5)
+        ax.add_patch(circ)
+        target_circs.append(circ)
+
+    all_circs = agent_circs # + target_circs
+    dynamic_target_circs = []
+
+    kk_text = ax.text(
+        0.02,
+        0.98,
+        "",
+        transform=ax.transAxes,
+        verticalalignment="top",
+        horizontalalignment="left",
+        color="white",
+        fontsize=8,
+        bbox=dict(facecolor="black", alpha=0.5, pad=2),
+    )
+    fig.tight_layout()
+
+    def update_fn(kk: int):
+        n_pos_herder = T_pos_herder[kk]
+
+        colors_temporal_node = ["C4", "C5", "C6", "C7", "C8", "C9", "C10"]  # C3 is grey.
+        color_temporal_node = None
+        if T_discr_state is not None:
+            discr_state = T_discr_state[kk]
+            color_temporal_node = colors_temporal_node[discr_state]
+
+        for ii, pos_herder in enumerate(n_pos_herder):
+            agent_circs[ii].center = pos_herder
+
+            if color_temporal_node is not None:
+                agent_circs[ii].set_edgecolor(color_temporal_node)
+                # agent_circs[ii].set_facecolor(f"C{ii+1}")
+
+        # for ii, pos_target in enumerate(n_pos_target):
+        #     target_circs[ii].center = pos_target
+
+        text = f"Step: {kk}"
+        if T_labels is not None:
+            text += f"\n{T_labels[kk]}"
+        kk_text.set_text(text)
+
+    T = len(T_pos_herder)
+    artists = all_circs + [kk_text]
+    save_animation_blit(fig, artists, anim_path, T, fps=fps, update_fn=update_fn)

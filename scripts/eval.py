@@ -12,6 +12,7 @@ from loguru import logger
 from rraa_rl.collector import Collector
 from rraa_rl.deliveryreal_cbs import animate_deliveryreal_traj
 from rraa_rl.herd_os_cbs import animate_herding_traj
+from rraa_rl.ablation_cbs import animate_ablation_traj
 from rraa_rl.rollout_temporal_analysis import evaluate_ltl_finite
 from rraa_rl.load_ckpt import load_ckpt
 from rraa_rl.rollout_utils import extract_rollouts_eval
@@ -62,7 +63,16 @@ def main(
             #     continue
             logger.info(f"Evaluating {seed_path._str.split('/')[-1]}")
 
-            run, agent, env, cfg_dict = load_ckpt(seed_path, None, alg)
+            # If ablation
+            if "ablation" in env_name:
+                if "spec" in ablation_type or "depth" in ablation_type:
+                    n_spec, n_agent = i + 1, 1
+                elif "ag" in ablation_type:
+                    n_spec = n_agent = i + 1
+            else:
+                n_spec = n_agent = 1
+
+            run, agent, env, cfg_dict = load_ckpt(seed_path, None, alg, n_spec=n_spec, n_agent=n_agent)
             collector = Collector.create(
                 key=jr.PRNGKey(seed),
                 env=env,
@@ -98,9 +108,9 @@ def main(
             means.append(p_satisfied_mean)
 
             # Animate some bad trajectories to check
-            if debug:
+            if debug and p_satisfied_mean < 1.0:
                 bad_traj = b_values < 0
-                bad_traj_sample = np.random.choice(np.where(bad_traj)[0], size=3, replace=False)
+                bad_traj_sample = np.random.choice(np.where(bad_traj)[0], size=min(3, bad_traj.sum()), replace=False)
                 for ix in bad_traj_sample:
                     traj = b_trajs[ix]
                     cfg: HerdOs.Cfg = env.cfg
@@ -112,8 +122,11 @@ def main(
                     T_labels = [
                         f"Temporal {t_node_idx} ({env.temporal_node_names[t_node_idx]})" for t_node_idx in T_state.temporal_node_idx
                     ]
-                    anim_path = seed_path / f"bad_eval_animation_score_{b_values[ix]}.mp4"
-                    animate_herding_traj(anim_path, cfg.base, T_pos_herd, T_pos_herder, None, T_labels)
+                    anim_path = seed_path / f"bad_eval_animation_{ix}.mp4"
+                    if env_name == "herdos":
+                        animate_herding_traj(anim_path, cfg.base, T_pos_herd, T_pos_herder, None, T_labels)
+                    elif "ablation" in env_name:
+                        animate_ablation_traj(anim_path, env, cfg.base, T_pos_herder, None, T_labels)
                 # ipdb.set_trace()
 
         # trainer = Trainer(agent, trainer_cfg)
@@ -135,7 +148,7 @@ def main(
 
     # Atomically replace the original file with the temporary file
     temp_file_path.replace(out_file)
-    logger.log(f"Wrote results to {out_file}")
+    logger.info(f"Wrote results to {out_file}")
 
 def find_runs(runs_dir, alg, env_name, n_seeds=3, ablation_type="spec", i=0):
     alg_env_paths = []
@@ -144,7 +157,7 @@ def find_runs(runs_dir, alg, env_name, n_seeds=3, ablation_type="spec", i=0):
         if env_name.startswith("ablation"):
             if ablation_type == "spec" or ablation_type == "depth":
                 candidates = [d for d in runs_dir.iterdir() if d.is_dir() and 
-                            d.name.endswith(f"{alg}_spc{i+1}_ag{i+1}_seed{seed}")]
+                            d.name.endswith(f"{alg}_spc{i+1}_ag1_seed{seed}")]
             if ablation_type == "ag":
                 candidates = [d for d in runs_dir.iterdir() if d.is_dir() and 
                             d.name.endswith(f"{alg}_spc{i+1}_ag{i+1}_seed{seed}")]

@@ -411,7 +411,7 @@ class DeliveryBase(BaseEnv):
         herded = jnp.all((dists + self.cfg.agent_radius) < self.cfg.herded_radius)
         return herded
 
-    def is_herder_in_obstacles(self, state: DeliveryBaseState, which=jnp):
+    def is_herder_in_obstacles(self, state: DeliveryBaseState, which=jnp, buffer=0.):
         herder_pos = state.herder_state[..., :, 0:2] 
         
         obst_centers = which.array(self.cfg.obstacle_centers)
@@ -428,7 +428,7 @@ class DeliveryBase(BaseEnv):
                                      ord=self.cfg.obstacle_shape_norm)
         # (n_obst, )
         c_dists = which.min(ch_dists, axis=-1)
-        c_is_herder_inside = jnp.any(c_dists < (obst_radii - self.cfg.agent_radius))
+        c_is_herder_inside = jnp.any(c_dists < (obst_radii - self.cfg.agent_radius + buffer))
         return c_is_herder_inside
 
     def is_herder_in_target(self, state: DeliveryBaseState, which=jnp, center=[0., 0.], radius=0.5):
@@ -745,7 +745,7 @@ class DeliveryBase(BaseEnv):
                 valid_vel = jnp.zeros_like(pos_try_full)
                 herder_state_try = jnp.concatenate([pos_try_full, valid_vel], axis=-1)
                 state_try = DeliveryBaseState(herd_state=herd_pos, herder_state=herder_state_try, steps=0, centers=centers)
-                is_not_valid = self.is_herder_in_obstacles(state_try)
+                is_not_valid = self.is_herder_in_obstacles(state_try, buffer=0.5)
                 return ~is_not_valid, pos_try
 
             def sample_until_valid(carry):
@@ -789,8 +789,8 @@ class DeliveryBase(BaseEnv):
         # Uniformly sample herder positions and velocities.
         # (n_herders, 4)
         maxpos_per_ag = np.zeros((1, 2))
-        maxpos_per_ag[:, 0] = halfsize_x - self.cfg.agent_radius
-        maxpos_per_ag[:, 1] = halfsize_y - self.cfg.agent_radius
+        maxpos_per_ag[:, 0] = halfsize_x - self.cfg.agent_radius - 0.1
+        maxpos_per_ag[:, 1] = halfsize_y - self.cfg.agent_radius - 0.1
         maxvel = np.zeros((n_herders, 2))
         maxvel[:, 0] = np.array(self.cfg.vel_maxs)
         maxvel[:, 1] = np.array(self.cfg.vel_maxs)
