@@ -52,7 +52,8 @@ def main(
                 env=env,
                 cfg=Collector.Cfg(n_envs=n_envs_test, auto_reset=False, ignore_trunc=True),
             )
-            b_state0 = env.get_eval_states(collector.cfg.n_envs, root_only=True)
+            b_state0 = env.get_real_eval_states(collector.cfg.n_envs, collector.cfg.n_envs * 8)
+            # b_state0 = env.get_eval_states(collector.cfg.n_envs, root_only=True)
             # ipdb.set_trace()
 
             collect_opts = {}

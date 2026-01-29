@@ -34,8 +34,10 @@ class EnvStep_(NamedTuple):
     trunc: jnp.ndarray | bool
     info: dict
 
+
 class EnvStep(EnvStep_, Generic[_EnvState, _Obs]):
     pass
+
 
 class BaseEnv(Generic[_EnvState, _Obs]):
     def __init__(self):
@@ -62,7 +64,7 @@ class BaseEnv(Generic[_EnvState, _Obs]):
 
     def reset(self, key: PRNGKeyArray) -> Any:
         raise NotImplementedError("")
-    
+
     def reset_eval(self, key: PRNGKeyArray) -> Any:
         raise NotImplementedError("")
 
@@ -76,7 +78,7 @@ class BaseEnv(Generic[_EnvState, _Obs]):
     def reset_batch(self, key: PRNGKeyArray, batch_size: int) -> Any:
         b_key = jr.split(key, batch_size)
         return jax.vmap(self.reset)(b_key)
-    
+
     def reset_batch_eval(self, key: PRNGKeyArray, batch_size: int) -> Any:
         b_key = jr.split(key, batch_size)
         return jax.vmap(self.reset_eval)(b_key)
@@ -265,6 +267,10 @@ class Env(Generic[_EnvState, _Obs]):
     def get_eval_states(self, n_envs: int) -> Any:
         raise NotImplementedError("")
 
+    def get_real_eval_states(self, n_envs: int, n_envs_to_sample: int):
+        """The real eval function to get metrics in the paper."""
+        raise NotImplementedError("")
+
 
 BaseClassState = TypeVar("BaseClassState")
 
@@ -437,6 +443,44 @@ class StaticTemporalNodeMixin:
             base=base_state,
         )
         return state
+
+    def is_valid_real_eval_state(self, state: StateWithTemporalNode) -> bool:
+        raise NotImplementedError("")
+
+    def get_real_eval_states(
+        self: StaticTemporalNodeMixinProtocol | "StaticTemporalNodeMixin",
+        n_envs: int,
+        n_envs_to_sample: int,
+        root_only: bool = True,
+    ) -> StateWithTemporalNode:
+        assert root_only
+        n_obtained = 0
+
+        b_valid_fn = jax.jit(jax.vmap(self.is_valid_real_eval_state))
+
+        valid_states_list = []
+
+        ii = 0
+        base_key = jr.PRNGKey(seed=12345)
+        while n_obtained < n_envs_to_sample:
+            key = jr.fold_in(base_key, ii)
+            # Rejection sampling using is_valid_real_eval_state.
+            m_state_base = self.base.reset_batch_eval(key, n_envs_to_sample)
+            b_state0 = StateWithTemporalNode(
+                temporal_node_idx=jnp.zeros((n_envs,), dtype=jnp.int32),
+                base=m_state_base,
+            )
+            b_valid = b_valid_fn(b_state0)
+            n_valid = jnp.sum(b_valid)
+
+            state0_valid = jtu.tree_map(lambda x: x[b_valid], b_state0)
+            valid_states_list.append(state0_valid)
+            n_obtained += int(n_valid)
+
+        # Concatenate, then trim to n_envs.
+        b_state0_all = tree_cat(valid_states_list, axis=0)
+        b_state0_all = jtu.tree_map(lambda x: x[:n_envs], b_state0_all)
+        return b_state0_all
 
     def get_eval_states(
         self: StaticTemporalNodeMixinProtocol, n_envs: int, root_only: bool = False

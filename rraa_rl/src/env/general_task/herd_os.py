@@ -67,6 +67,11 @@ class HerdOs(StaticTemporalNodeMixin, EnvUsingBase):
 
         return should_term
 
+    def is_valid_real_eval_state(self, state: StateWithTemporalNode):
+        predicates = self.get_predicates(state)
+        is_unsafe = predicates["herder_unsafe"]
+        return ~is_unsafe
+
 
 # @define(slots=False)
 # class HerdOsPlayCfg(EnvCfg, StaticTemporalNodeMixinCfg):
