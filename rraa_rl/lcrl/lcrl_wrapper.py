@@ -152,7 +152,7 @@ class LCRLWrapper(EnvUsingBase):
             # Rejection sampling using is_valid_real_eval_state.
             m_state_base = self.base.reset_batch_eval(key, n_envs_to_sample)
             accepting_frontier_mask = jnp.zeros((n_envs_to_sample, self.ldba.n_accepting_sets), dtype=bool)
-            automata_state0 = jnp.array((n_envs_to_sample), dtype=jnp.int32)
+            automata_state0 = jnp.zeros(n_envs_to_sample, dtype=jnp.int32)
             ldba_state = LDBAState(automata_state0, accepting_frontier_mask)
             b_state0 = LCRLState(ldba_state, m_state_base)
             b_valid = b_valid_fn(b_state0)

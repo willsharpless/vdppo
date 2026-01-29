@@ -95,6 +95,9 @@ class DeliveryBaseCfg:
     dynamic_targets: bool = False
     update_targets: bool = False
 
+    # Multiplier, ONLY USED FOR VIZ.
+    pos_multiplier: float = 1.0
+
     def sample_center_outside_obst(self, key: PRNGKeyArray):
         n_targets = len(self.centers)
         valid_centers = jnp.zeros((n_targets, 2))
@@ -972,16 +975,17 @@ class DeliveryBase(BaseEnv):
 
     def setup_ax(self, ax: plt.Axes):
         cfg = self.cfg
-        ax.set_xlim(-1.05 * cfg.halfsize[0], 1.05 * cfg.halfsize[0])
-        ax.set_ylim(-1.05 * cfg.halfsize[1], 1.05 * cfg.halfsize[1])
+        mul = cfg.pos_multiplier
+        ax.set_xlim(-1.05 * cfg.halfsize[0] * mul, 1.05 * cfg.halfsize[0] * mul)
+        ax.set_ylim(-1.05 * cfg.halfsize[1] * mul, 1.05 * cfg.halfsize[1] * mul)
         ax.set_aspect("equal")
 
         # axvspan and axhspan to mark the boundaries.
         opts = dict(color="black", alpha=0.9)
-        ax.axvspan(cfg.halfsize[0], cfg.halfsize[0] + 1.0, **opts)
-        ax.axvspan(-cfg.halfsize[0] - 1.0, -cfg.halfsize[0], **opts)
-        ax.axhspan(cfg.halfsize[1], cfg.halfsize[1] + 1.0, **opts)
-        ax.axhspan(-cfg.halfsize[1] - 1.0, -cfg.halfsize[1], **opts)
+        ax.axvspan(cfg.halfsize[0] * mul, (cfg.halfsize[0] + 1.0) * mul, **opts)
+        ax.axvspan((-cfg.halfsize[0] - 1.0) * mul, -cfg.halfsize[0], **opts)
+        ax.axhspan(cfg.halfsize[1] * mul, (cfg.halfsize[1] + 1.0) * mul, **opts)
+        ax.axhspan((-cfg.halfsize[1] - 1.0) * mul, -cfg.halfsize[1] * mul, **opts)
 
         if not self.cfg.herd_zero:
             # Plot the herd circle.

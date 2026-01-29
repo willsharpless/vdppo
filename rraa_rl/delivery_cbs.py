@@ -1364,8 +1364,7 @@ def animate_delivery_traj(
     fig, ax = plt.subplots(figsize=figsize)
     # env_base = DeliveryBase(cfg)
     env_base = env.base
-    # mult = cfg.pos_multiplier
-    mult = 1
+    mult = cfg.pos_multiplier
     env_base.setup_ax(ax)
 
     # (n_boxes, 4) [xmin, ymin, xmax, ymax]
@@ -1373,6 +1372,7 @@ def animate_delivery_traj(
 
     # Convert the aabb to rectangles.
     for aabb in aabbs:
+        aabb = aabb * mult
         xmin, ymin, xmax, ymax = aabb
         width = xmax - xmin
         height = ymax - ymin
@@ -1406,23 +1406,24 @@ def animate_delivery_traj(
     #     )
 
     assert env_base.cfg.n_herders == 3
-    agent_radii = np.array([cfg.agent_radius, cfg.agent_radius, 2 * cfg.agent_radius])
+    agent_radii = np.array([cfg.agent_radius, cfg.agent_radius, 2 * cfg.agent_radius]) * mult
 
-    agent_circs = []
-    for agent_idx in range(env_base.n_agents):
-        circ = plt.Circle((0, 0), agent_radii[agent_idx], facecolor=f"C{agent_idx+1}", linewidth=2)
+    # Target at bottom.
+    agent_circs = {}
+    for agent_idx in list(range(env_base.n_agents))[::-1]:
+        circ = plt.Circle((0, 0), agent_radii[agent_idx], facecolor=f"C{agent_idx+1}", linewidth=2, zorder=4)
         if agent_idx == 2:
-            circ = plt.Circle((0, 0), 2 * cfg.agent_radius, facecolor="C0", linewidth=2)
+            circ = plt.Circle((0, 0), agent_radii[agent_idx], facecolor="C0", linewidth=2, zorder=3.5)
         ax.add_patch(circ)
-        agent_circs.append(circ)
+        agent_circs[agent_idx] = circ
 
     target_circs = []
     for target_idx in range(2):
-        circ = plt.Circle((0, 0), cfg.radiuses[target_idx], facecolor=f"C{target_idx+1}", edgecolor="none", alpha=0.5)
+        circ = plt.Circle((0, 0), cfg.radiuses[target_idx] * mult, facecolor=f"C{target_idx+1}", edgecolor="none", alpha=0.5)
         ax.add_patch(circ)
         target_circs.append(circ)
 
-    all_circs = agent_circs + target_circs
+    all_circs = list(agent_circs.values()) + target_circs
     dynamic_target_circs = []
 
     kk_text = ax.text(

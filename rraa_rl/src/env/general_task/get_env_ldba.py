@@ -15,65 +15,7 @@ from rraa_rl.src.env.general_task.herd_os import HerdOs
 def get_env_ldba(env_name: str, n_spec: int = 1, n_agent: int = 1) -> tuple[Env, list, list]:
 
     if env_name == "herdos":
-
         return create_herding_ldba()
-
-        # Automaton for: (!herder_unsafe) U ( herd_gate_0 && (( !herder_unsafe ) U ( herd_gate_1 && (( !herder_unsafe ) U G (herd_herded && !herder_unsafe) ) ) ) )
-        spec = "(!herder_unsafe) U ( herd_gate_0 && (( !herder_unsafe ) U ( herd_gate_1 && (( !herder_unsafe ) U G (herd_herded && !herder_unsafe) ) ) ) )"
-        predicate_order = ["herder_unsafe", "herd_gate_0", "herd_gate_1", "herd_herded"]
-        n_states = 4
-
-        BIT_unsafe = 1 << 0
-        BIT_gate0 = 1 << 1
-        BIT_gate1 = 1 << 2
-        BIT_herded = 1 << 3
-
-        # States:
-        # 0: initial - waiting for gate_0, !unsafe must hold
-        # 1: passed gate_0, waiting for gate_1, !unsafe must hold
-        # 2: passed gate_1, waiting for herded (entering G phase), !unsafe must hold
-        # 3: accepting - in G(herded && !unsafe) phase
-
-        transition_specs = [
-            # From state 0: waiting for gate_0, !unsafe required
-            (0, 0, 0b0, BIT_gate0 | BIT_unsafe),  # !gate0 & !unsafe -> 0
-            (0, 1, BIT_gate0, BIT_unsafe),  # gate0 & !unsafe -> 1
-            # From state 1: passed gate_0, waiting for gate_1, !unsafe required
-            (1, 1, 0b0, BIT_gate1 | BIT_unsafe),  # !gate1 & !unsafe -> 1
-            (1, 2, BIT_gate1, BIT_unsafe),  # gate1 & !unsafe -> 2
-            # From state 2: passed gate_1, waiting for herded, !unsafe required
-            (2, 2, 0b0, BIT_herded | BIT_unsafe),  # !herded & !unsafe -> 2
-            (2, 3, BIT_herded, BIT_unsafe),  # herded & !unsafe -> 3
-            # From state 3: accepting - G(herded && !unsafe)
-            (3, 3, BIT_herded, BIT_unsafe),  # herded & !unsafe -> 3
-        ]
-
-        # Build arrays from specs
-        src_list = []
-        dst_list = []
-        pos_mask_list = []
-        neg_mask_list = []
-
-        for src, dst, pos_mask, neg_mask in transition_specs:
-            src_list.append(src)
-            dst_list.append(dst)
-            pos_mask_list.append(pos_mask)
-            neg_mask_list.append(neg_mask)
-
-        transitions = Transition(
-            src=jnp.array(src_list, dtype=jnp.int32),
-            dst=jnp.array(dst_list, dtype=jnp.int32),
-            guard=Guard(
-                pos_mask=jnp.array(pos_mask_list, dtype=jnp.int32),
-                neg_mask=jnp.array(neg_mask_list, dtype=jnp.int32),
-            ),
-        )
-
-        epsilon_src = jnp.array([], dtype=jnp.int32)
-        epsilon_dst = jnp.array([], dtype=jnp.int32)
-
-        # Only state 3 is accepting
-        accepting_sets = jnp.array([[0, 0, 0, 1]], dtype=jnp.bool)
 
     elif env_name == "herdos_dbg":
         # cfg = get_cfg_herdos()
@@ -91,264 +33,19 @@ def get_env_ldba(env_name: str, n_spec: int = 1, n_agent: int = 1) -> tuple[Env,
     # elif env_name == "gridworld_map0":
 
     #     return create_gridworld_map0_ldba()
+    elif env_name == "manip_scene":
+        return create_manip_scene_ldba()
 
     elif env_name == "gridworld_map1":
-
         return create_gridworld_map1_ldba()
 
-        # Acceptance: 1 Inf(0)
-        # AP: 1 "goal"
-        # --BODY--
-        # State: 0
-        # [!0] 0
-        # [0] 1
-        # State: 1
-        # [t] 1 {0}
-
-        # hoa_text = """
-        # HOA: v1
-        # tool: "owl ltl2ldba" "21.0"
-        # name: "Automaton for F(goal)"
-        # owlArgs: "ltl2ldba" "-f" "F goal"
-        # Start: 0
-        # acc-name: Buchi
-        # Acceptance: 1 Inf(0)
-        # properties: trans-acc no-univ-branch
-        # properties: deterministic unambiguous
-        # properties: complete
-        # AP: 1 "goal"
-        # --BODY--
-        # State: 0
-        # [!0] 0
-        # [0] 1
-        # State: 1
-        # [t] 1 {0}
-        # --END--
-        # """
-        # ldba = parse_ltl2ldba(hoa_text)
-
-        # spec = "F A"
-        # predicate_order = ["A"]
-        # n_states = 2
-        # BIT_A = 1 << 0
-        # guard = Guard(pos_mask=jnp.array(0b0, dtype=jnp.int32), neg_mask=jnp.array(BIT_A, dtype=jnp.int32))
-        # t0 = Transition(src=0, dst=0, guard=guard)
-        #
-        # guard = Guard(pos_mask=jnp.array(BIT_A, dtype=jnp.int32), neg_mask=jnp.array(0b0, dtype=jnp.int32))
-        # t1 = Transition(src=0, dst=1, guard=guard)
-        #
-        # transitions = tree_stack([t0, t1], axis=0)
-        #
-        # epsilon_src = jnp.array([], dtype=jnp.int32)
-        # epsilon_dst = jnp.array([], dtype=jnp.int32)
-        #
-        # # (n_accepting_sets=1, n_states=2). Only state 1 is accepting (True).
-        # accepting_sets = jnp.array([[0, 1]], dtype=jnp.bool)
-
-        # spec = "F A && F B"
-        # predicate_order = ["A", "B"]
-        # n_states = 4
-        # BIT_A = 1 << 0
-        # BIT_B = 1 << 1
-        #
-        # transition_specs = [
-        #     # From state 0
-        #     (0, 0, 0b00, BIT_A | BIT_B),  # !a & !b -> 0
-        #     (0, 1, BIT_A, BIT_B),  # a & !b -> 1
-        #     (0, 2, BIT_B, BIT_A),  # !a & b -> 2
-        #     (0, 1, BIT_A | BIT_B, 0b0),  # a & b -> 1
-        #     # From state 1
-        #     (1, 1, 0b00, BIT_B),  # !b -> 1
-        #     (1, 3, BIT_B, 0b0),  # b -> 3
-        #     # From state 2
-        #     (2, 2, 0b00, BIT_A),  # !a
-        #     (2, 3, BIT_A, 0b0),  # a -> 3
-        #     # From state 3 (accepting)
-        #     (3, 3, 0b0, 0b0),  # t -> 3
-        # ]
-        #
-        # # Build arrays from specs
-        # src_list = []
-        # dst_list = []
-        # pos_mask_list = []
-        # neg_mask_list = []
-        #
-        # for src, dst, pos_mask, neg_mask in transition_specs:
-        #     src_list.append(src)
-        #     dst_list.append(dst)
-        #     pos_mask_list.append(pos_mask)
-        #     neg_mask_list.append(neg_mask)
-        #
-        # transitions = Transition(
-        #     src=jnp.array(src_list, dtype=jnp.int32),
-        #     dst=jnp.array(dst_list, dtype=jnp.int32),
-        #     guard=Guard(
-        #         pos_mask=jnp.array(pos_mask_list, dtype=jnp.int32),
-        #         neg_mask=jnp.array(neg_mask_list, dtype=jnp.int32),
-        #     ),
-        # )
-        #
-        # epsilon_src = jnp.array([], dtype=jnp.int32)
-        # epsilon_dst = jnp.array([], dtype=jnp.int32)
-        #
-        # # (n_accepting_sets=1, n_states=4). Only state 3 is accepting (True).
-        # accepting_sets = jnp.array([[0, 0, 0, 1]], dtype=jnp.bool)
-
-        spec = "F A && F B && G( !w )"
-        predicate_order = ["A", "B", "w"]
-        n_states = 4
-        BIT_A = 1 << 0
-        BIT_B = 1 << 1
-        BIT_w = 1 << 2
-
-        transition_specs = [
-            # From state 0
-            (0, 0, 0b00, BIT_A | BIT_B | BIT_w),  # !a & !b -> 0
-            (0, 1, BIT_A, BIT_B | BIT_w),  # a & !b -> 1
-            (0, 2, BIT_B, BIT_A | BIT_w),  # !a & b -> 2
-            (0, 1, BIT_A | BIT_B, BIT_w),  # a & b -> 1
-            # From state 1
-            (1, 1, 0b00, BIT_B | BIT_w),  # !b -> 1
-            (1, 3, BIT_B, BIT_w),  # b -> 3
-            # From state 2
-            (2, 2, 0b00, BIT_A | BIT_w),  # !a
-            (2, 3, BIT_A, BIT_w),  # a -> 3
-            # From state 3 (accepting)
-            (3, 3, 0b0, BIT_w),  # t -> 3
-        ]
-
-        # Build arrays from specs
-        src_list = []
-        dst_list = []
-        pos_mask_list = []
-        neg_mask_list = []
-
-        for src, dst, pos_mask, neg_mask in transition_specs:
-            src_list.append(src)
-            dst_list.append(dst)
-            pos_mask_list.append(pos_mask)
-            neg_mask_list.append(neg_mask)
-
-        transitions = Transition(
-            src=jnp.array(src_list, dtype=jnp.int32),
-            dst=jnp.array(dst_list, dtype=jnp.int32),
-            guard=Guard(
-                pos_mask=jnp.array(pos_mask_list, dtype=jnp.int32),
-                neg_mask=jnp.array(neg_mask_list, dtype=jnp.int32),
-            ),
-        )
-
-        epsilon_src = jnp.array([], dtype=jnp.int32)
-        epsilon_dst = jnp.array([], dtype=jnp.int32)
-
-        # (n_accepting_sets=1, n_states=4). Only state 3 is accepting (True).
-        accepting_sets = jnp.array([[0, 0, 0, 1]], dtype=jnp.bool)
-
     elif env_name == "gridworld_map5":
-
         return create_gridworld_map5_ldba()
-
-        # Automaton for: F A && F B && !D U K && G( !w )
-        spec = "F A && F B && !D U K && G( !w )"
-        predicate_order = ["A", "B", "D", "K", "w"]
-        n_states = 8
-
-        BIT_A = 1 << 0
-        BIT_B = 1 << 1
-        BIT_D = 1 << 2
-        BIT_K = 1 << 3
-        BIT_w = 1 << 4
-
-        # States:
-        # 0: initial - need A, B, K (before K, !D must hold)
-        # 1: have A, need B, K
-        # 2: have B, need A, K
-        # 3: have A & B, need K
-        # 4: have K, need A, B
-        # 5: have K & A, need B
-        # 6: have K & B, need A
-        # 7: accepting - have all (A, B, K achieved)
-
-        transition_specs = [
-            # From state 0: need A, B, K (!D until K)
-            (0, 0, 0b0, BIT_A | BIT_B | BIT_K | BIT_D | BIT_w),  # !a & !b & !k & !d & !w -> 0
-            (0, 1, BIT_A, BIT_B | BIT_K | BIT_D | BIT_w),  # a & !b & !k & !d & !w -> 1
-            (0, 2, BIT_B, BIT_A | BIT_K | BIT_D | BIT_w),  # !a & b & !k & !d & !w -> 2
-            (0, 3, BIT_A | BIT_B, BIT_K | BIT_D | BIT_w),  # a & b & !k & !d & !w -> 3
-            (0, 4, BIT_K, BIT_A | BIT_B | BIT_w),  # !a & !b & k & !w -> 4 (D doesn't matter once K)
-            (0, 5, BIT_A | BIT_K, BIT_B | BIT_w),  # a & !b & k & !w -> 5
-            (0, 6, BIT_B | BIT_K, BIT_A | BIT_w),  # !a & b & k & !w -> 6
-            (0, 7, BIT_A | BIT_B | BIT_K, BIT_w),  # a & b & k & !w -> 7
-            # From state 1: have A, need B, K (!D until K)
-            (1, 1, 0b0, BIT_B | BIT_K | BIT_D | BIT_w),  # !b & !k & !d & !w -> 1
-            (1, 3, BIT_B, BIT_K | BIT_D | BIT_w),  # b & !k & !d & !w -> 3
-            (1, 5, BIT_K, BIT_B | BIT_w),  # !b & k & !w -> 5
-            (1, 7, BIT_B | BIT_K, BIT_w),  # b & k & !w -> 7
-            # From state 2: have B, need A, K (!D until K)
-            (2, 2, 0b0, BIT_A | BIT_K | BIT_D | BIT_w),  # !a & !k & !d & !w -> 2
-            (2, 3, BIT_A, BIT_K | BIT_D | BIT_w),  # a & !k & !d & !w -> 3
-            (2, 6, BIT_K, BIT_A | BIT_w),  # !a & k & !w -> 6
-            (2, 7, BIT_A | BIT_K, BIT_w),  # a & k & !w -> 7
-            # From state 3: have A & B, need K (!D until K)
-            (3, 3, 0b0, BIT_K | BIT_D | BIT_w),  # !k & !d & !w -> 3
-            (3, 7, BIT_K, BIT_w),  # k & !w -> 7
-            # From state 4: have K, need A, B (D no longer matters)
-            (4, 4, 0b0, BIT_A | BIT_B | BIT_w),  # !a & !b & !w -> 4
-            (4, 5, BIT_A, BIT_B | BIT_w),  # a & !b & !w -> 5
-            (4, 6, BIT_B, BIT_A | BIT_w),  # !a & b & !w -> 6
-            (4, 7, BIT_A | BIT_B, BIT_w),  # a & b & !w -> 7
-            # From state 5: have K & A, need B
-            (5, 5, 0b0, BIT_B | BIT_w),  # !b & !w -> 5
-            (5, 7, BIT_B, BIT_w),  # b & !w -> 7
-            # From state 6: have K & B, need A
-            (6, 6, 0b0, BIT_A | BIT_w),  # !a & !w -> 6
-            (6, 7, BIT_A, BIT_w),  # a & !w -> 7
-            # From state 7: accepting
-            (7, 7, 0b0, BIT_w),  # !w -> 7
-        ]
-
-        # Build arrays from specs
-        src_list = []
-        dst_list = []
-        pos_mask_list = []
-        neg_mask_list = []
-
-        for src, dst, pos_mask, neg_mask in transition_specs:
-            src_list.append(src)
-            dst_list.append(dst)
-            pos_mask_list.append(pos_mask)
-            neg_mask_list.append(neg_mask)
-
-        transitions = Transition(
-            src=jnp.array(src_list, dtype=jnp.int32),
-            dst=jnp.array(dst_list, dtype=jnp.int32),
-            guard=Guard(
-                pos_mask=jnp.array(pos_mask_list, dtype=jnp.int32),
-                neg_mask=jnp.array(neg_mask_list, dtype=jnp.int32),
-            ),
-        )
-
-        epsilon_src = jnp.array([], dtype=jnp.int32)
-        epsilon_dst = jnp.array([], dtype=jnp.int32)
-
-        # Only state 7 is accepting
-        accepting_sets = jnp.array([[0, 0, 0, 0, 0, 0, 0, 1]], dtype=jnp.bool)
-
     elif env_name == "gridworld_map6":
-
         return create_gridworld_map6_ldba()
-
-        spec = "F( C && F G ( (q U (A && q )) && (q U (B && q )) ) )"
-        raise NotImplementedError(f"""{env_name} LDBA is not implemented""")
-
-    elif env_name == "manip_scene":
-
-        raise NotImplementedError(f"""{env_name} LDBA is not implemented""")
-
     elif env_name == "gridworld_map7":
-
         return create_gridworld_map7_ldba()
-    
+
         # Automaton for: (!q U C) && F( C && F G ( (q U (A && q )) && (q U (B && q )) ) )
         spec = "(!q U C) && F( C && F G ( (q U (A && q )) && (q U (B && q )) ) )"
         predicate_order = ["A", "B", "C", "q"]
@@ -859,52 +556,54 @@ def create_delivery_ldba() -> LDBA:
 
     return ldba
 
-import jax.numpy as jnp
+
 from typing import List
+
+import jax.numpy as jnp
 
 
 def create_ablation_ldba(n_spec: int, n_agent: int, dense: bool = False) -> LDBA:
     """
     Create LDBA for ablation environment:
     "G(!oob) && G(!obstacles) [&& G(!collide)] && F target0 && F target1 && ... && F target{n_spec-1}"
-    
+
     Multi-agent navigation with multiple sequential targets.
     - Must avoid out-of-bounds and obstacles (always)
     - Must avoid collisions if n_agent > 1
     - Must eventually visit each target (in any order)
-    
+
     States track which targets have been visited:
         State encoding: each bit represents whether target_i has been visited
         State 0: No targets visited yet
         State 2^n_spec - 1: All targets visited (accepting)
         -1: Sink (implicit, safety violation)
-    
+
     Args:
         n_spec: Number of targets to visit
         n_agent: Number of agents (determines if collision avoidance is needed)
         dense: If True, uses dense target predicates (target{i}_dense)
-    
-    Predicate order: ["oob", "obstacles", "collide" (if n_agent > 1), 
+
+    Predicate order: ["oob", "obstacles", "collide" (if n_agent > 1),
                       "target0", "target1", ..., "target{n_spec-1}"]
                       (or "target0_dense", etc. if dense=True)
     """
-    
+
     # Build predicate order
     predicate_order = ["oob", "obstacles"]
-    
+
     # Add collision predicate if multiple agents
     if n_agent > 1:
         predicate_order.append("collide")
-    
+
     # Add target predicates
     suffix = "_dense" if dense else ""
     for i in range(n_spec):
         predicate_order.append(f"target{i}{suffix}")
-    
+
     # Calculate bit positions
     OOB_BIT = 1 << 0
     OBSTACLES_BIT = 1 << 1
-    
+
     if n_agent > 1:
         COLLIDE_BIT = 1 << 2
         TARGET_START_BIT = 3
@@ -913,53 +612,53 @@ def create_ablation_ldba(n_spec: int, n_agent: int, dense: bool = False) -> LDBA
         COLLIDE_BIT = 0
         TARGET_START_BIT = 2
         SAFETY = OOB_BIT | OBSTACLES_BIT
-    
+
     # Target bits
     TARGET_BITS = [(1 << (TARGET_START_BIT + i)) for i in range(n_spec)]
-    
+
     # Number of states: 2^n_spec (one for each subset of targets visited)
-    n_states = 2 ** n_spec
-    
+    n_states = 2**n_spec
+
     # === Define all transitions ===
     transition_specs = []
-    
+
     for state in range(n_states):
         # For each state, generate transitions based on which targets we can visit next
         # State encoding: bit i set means target i has been visited
-        
+
         # Self-loop: stay in same state if no new targets visited and safe
         # neg_mask = SAFETY | (all unvisited target bits)
         unvisited_targets = 0
         for i in range(n_spec):
             if not (state & (1 << i)):  # target i not yet visited
                 unvisited_targets |= TARGET_BITS[i]
-        
+
         transition_specs.append((state, state, 0, SAFETY | unvisited_targets))
-        
+
         # Transitions to states with one additional target visited
         for i in range(n_spec):
             if not (state & (1 << i)):  # target i not yet visited in current state
                 next_state = state | (1 << i)
-                
+
                 # Must have target_i set, must be safe
                 pos_mask = TARGET_BITS[i]
                 # neg_mask includes safety violations
                 neg_mask = SAFETY
-                
+
                 transition_specs.append((state, next_state, pos_mask, neg_mask))
-    
+
     # Build arrays from specs
     src_list = []
     dst_list = []
     pos_mask_list = []
     neg_mask_list = []
-    
+
     for src, dst, pos_mask, neg_mask in transition_specs:
         src_list.append(src)
         dst_list.append(dst)
         pos_mask_list.append(pos_mask)
         neg_mask_list.append(neg_mask)
-    
+
     transitions = Transition(
         src=jnp.array(src_list, dtype=jnp.int32),
         dst=jnp.array(dst_list, dtype=jnp.int32),
@@ -968,16 +667,16 @@ def create_ablation_ldba(n_spec: int, n_agent: int, dense: bool = False) -> LDBA
             neg_mask=jnp.array(neg_mask_list, dtype=jnp.int32),
         ),
     )
-    
+
     # === Epsilon Transitions ===
     epsilon_src = jnp.array([], dtype=jnp.int32)
     epsilon_dst = jnp.array([], dtype=jnp.int32)
-    
+
     # === Accepting Sets ===
     # Only the final state (all targets visited) is accepting
     accepting_sets = jnp.zeros((1, n_states), dtype=jnp.bool_)
     accepting_sets = accepting_sets.at[0, n_states - 1].set(True)  # State 2^n_spec - 1
-    
+
     # === Create LDBA ===
     ldba = LDBA(
         transitions=transitions,
@@ -987,7 +686,7 @@ def create_ablation_ldba(n_spec: int, n_agent: int, dense: bool = False) -> LDBA
         n_states=n_states,
         predicate_order=predicate_order,
     )
-    
+
     return ldba
 
 
@@ -995,12 +694,12 @@ def create_ablation_depth_ldba(n_spec: int, n_agent: int) -> LDBA:
     """
     Create LDBA for ablation_depth environment:
     "G(!oob) && G(!obstacles) [&& G(!collide)] && F(target0 && F(target1 && F(...)))"
-    
+
     Multi-agent navigation with nested temporal goals - targets must be visited in order.
     - Must avoid out-of-bounds and obstacles (always)
     - Must avoid collisions if n_agent > 1
     - Must visit targets sequentially: first target0, then target1, then target2, etc.
-    
+
     States track progress through the sequence:
         0: Initial - need to visit target0 first
         1: target0 visited - need to visit target1 next
@@ -1008,30 +707,30 @@ def create_ablation_depth_ldba(n_spec: int, n_agent: int) -> LDBA:
         ...
         n_spec: All targets visited in order (accepting)
         -1: Sink (implicit, safety violation)
-    
+
     Args:
         n_spec: Number of targets to visit in sequence
         n_agent: Number of agents (determines if collision avoidance is needed)
-    
+
     Predicate order: ["oob", "obstacles", "collide" (if n_agent > 1),
                       "target0", "target1", ..., "target{n_spec-1}"]
     """
-    
+
     # Build predicate order
     predicate_order = ["oob", "obstacles"]
-    
+
     # Add collision predicate if multiple agents
     if n_agent > 1:
         predicate_order.append("collide")
-    
+
     # Add target predicates
     for i in range(n_spec):
         predicate_order.append(f"target{i}")
-    
+
     # Calculate bit positions
     OOB_BIT = 1 << 0
     OBSTACLES_BIT = 1 << 1
-    
+
     if n_agent > 1:
         COLLIDE_BIT = 1 << 2
         TARGET_START_BIT = 3
@@ -1040,46 +739,46 @@ def create_ablation_depth_ldba(n_spec: int, n_agent: int) -> LDBA:
         COLLIDE_BIT = 0
         TARGET_START_BIT = 2
         SAFETY = OOB_BIT | OBSTACLES_BIT
-    
+
     # Target bits
     TARGET_BITS = [(1 << (TARGET_START_BIT + i)) for i in range(n_spec)]
-    
+
     # Number of states: n_spec + 1
     # States 0 to n_spec-1: waiting for targets 0 to n_spec-1
     # State n_spec: accepting (all targets visited in order)
     n_states = n_spec + 1
-    
+
     # === Define all transitions ===
     transition_specs = []
-    
+
     for state in range(n_spec):
         # State i: waiting for target_i
-        
+
         # Self-loop: stay in state i if target_i not reached and safe
         # Must NOT have target_i, must be safe
         transition_specs.append((state, state, 0, SAFETY | TARGET_BITS[state]))
-        
+
         # Transition to next state: visit target_i
         # Must have target_i, must be safe
         next_state = state + 1
         transition_specs.append((state, next_state, TARGET_BITS[state], SAFETY))
-    
+
     # Final accepting state: self-loop while safe
     # Once all targets visited, just need to remain safe
     transition_specs.append((n_spec, n_spec, 0, SAFETY))
-    
+
     # Build arrays from specs
     src_list = []
     dst_list = []
     pos_mask_list = []
     neg_mask_list = []
-    
+
     for src, dst, pos_mask, neg_mask in transition_specs:
         src_list.append(src)
         dst_list.append(dst)
         pos_mask_list.append(pos_mask)
         neg_mask_list.append(neg_mask)
-    
+
     transitions = Transition(
         src=jnp.array(src_list, dtype=jnp.int32),
         dst=jnp.array(dst_list, dtype=jnp.int32),
@@ -1088,16 +787,16 @@ def create_ablation_depth_ldba(n_spec: int, n_agent: int) -> LDBA:
             neg_mask=jnp.array(neg_mask_list, dtype=jnp.int32),
         ),
     )
-    
+
     # === Epsilon Transitions ===
     epsilon_src = jnp.array([], dtype=jnp.int32)
     epsilon_dst = jnp.array([], dtype=jnp.int32)
-    
+
     # === Accepting Sets ===
     # Only the final state (all targets visited in sequence) is accepting
     accepting_sets = jnp.zeros((1, n_states), dtype=jnp.bool_)
     accepting_sets = accepting_sets.at[0, n_spec].set(True)  # Final state
-    
+
     # === Create LDBA ===
     ldba = LDBA(
         transitions=transitions,
@@ -1107,14 +806,114 @@ def create_ablation_depth_ldba(n_spec: int, n_agent: int) -> LDBA:
         n_states=n_states,
         predicate_order=predicate_order,
     )
-    
+
     return ldba
+
+
+def create_manip_scene_ldba() -> LDBA:
+    """
+    Create LDBA for:
+    "F(drawer_open && F(cube_in_drawer)) && FG(drawer_closed)"
+
+    States:
+        0: Initial - waiting for drawer_open
+        1: Drawer opened - waiting for cube_in_drawer
+        2: Cube in drawer - waiting to commit to permanent drawer_closed
+        3: Accepting - drawer must stay closed forever
+       -1: Sink (implicit, if drawer opens in state 3)
+
+    Predicate order: ["drawer_open", "cube_in_drawer", "drawer_closed"]
+    Bits:             0 = drawer_open, 1 = cube_in_drawer, 2 = drawer_closed
+    """
+
+    # Define predicate order (determines bit positions in labels)
+    predicate_order = ["drawer_open", "cube_in_drawer", "drawer_closed"]
+
+    # Bit positions
+    DRAWER_OPEN = 1 << 0  # 0b001
+    CUBE_IN = 1 << 1  # 0b010
+    DRAWER_CLOSED = 1 << 2  # 0b100
+
+    # === Define all transitions ===
+    # Format: (src, dst, pos_mask, neg_mask)
+    transition_specs = [
+        # From state 0 (initial: waiting for drawer_open)
+        # [!0] 0                          # !drawer_open → 0
+        (0, 0, 0b000, DRAWER_OPEN),
+        # [0 & !1] 1                      # drawer_open & !cube_in_drawer → 1
+        (0, 1, DRAWER_OPEN, CUBE_IN),
+        # [0 & 1] 2                       # drawer_open & cube_in_drawer → 2
+        (0, 2, DRAWER_OPEN | CUBE_IN, 0b000),
+        # From state 1 (drawer opened, waiting for cube_in_drawer)
+        # [!1] 1                          # !cube_in_drawer → 1
+        (1, 1, 0b000, CUBE_IN),
+        # [1] 2                           # cube_in_drawer → 2
+        (1, 2, CUBE_IN, 0b000),
+        # From state 2 (cube in drawer, waiting to commit to closed)
+        # [t] 2                           # true → 2 (stay, don't commit yet)
+        (2, 2, 0b000, 0b000),
+        # From state 3 (accepting: drawer must stay closed)
+        # [2] 3 {0}                       # drawer_closed → 3 (accepting)
+        (3, 3, DRAWER_CLOSED, 0b000),
+    ]
+
+    # Build arrays from specs
+    src_list = []
+    dst_list = []
+    pos_mask_list = []
+    neg_mask_list = []
+
+    for src, dst, pos_mask, neg_mask in transition_specs:
+        src_list.append(src)
+        dst_list.append(dst)
+        pos_mask_list.append(pos_mask)
+        neg_mask_list.append(neg_mask)
+
+    transitions = Transition(
+        src=jnp.array(src_list, dtype=jnp.int32),
+        dst=jnp.array(dst_list, dtype=jnp.int32),
+        guard=Guard(
+            pos_mask=jnp.array(pos_mask_list, dtype=jnp.int32),
+            neg_mask=jnp.array(neg_mask_list, dtype=jnp.int32),
+        ),
+    )
+
+    # === Epsilon Transitions ===
+    # State 2 has an epsilon transition to state 3 (commit to permanent drawer_closed)
+    # This corresponds to [2] 3 in the HOA output
+    # The epsilon should only be taken when drawer_closed is true
+    epsilon_src = jnp.array([2], dtype=jnp.int32)
+    epsilon_dst = jnp.array([3], dtype=jnp.int32)
+
+    # === Accepting Sets ===
+    # Shape: (n_accepting_sets, n_states) = (1, 4)
+    # State 3 is in accepting set 0
+    accepting_sets = jnp.array(
+        [
+            # State: 0  1  2  3
+            [0, 0, 0, 1],  # Accepting set 0: only state 3 is accepting
+        ],
+        dtype=jnp.int32,
+    )
+
+    # === Create LDBA ===
+    ldba = LDBA(
+        transitions=transitions,
+        epsilon_src=epsilon_src,
+        epsilon_dst=epsilon_dst,
+        accepting_sets=accepting_sets,
+        n_states=4,
+        predicate_order=predicate_order,
+    )
+
+    return ldba
+
 
 def create_gridworld_map1_ldba() -> LDBA:
     """
     Create LDBA for:
     "F(a) & F(b) & G(!w)"
-    
+
     (Eventually a, eventually b, and always not w)
 
     States:
@@ -1148,19 +947,16 @@ def create_gridworld_map1_ldba() -> LDBA:
         (0, 2, A_BIT, B_BIT | W_BIT),
         # [0 & 1 & !2] 3                        # a & b & !w → 3
         (0, 3, A_BIT | B_BIT, W_BIT),
-
         # From state 1 (b seen, waiting for a)
         # [!0 & !2] 1                           # !a & !w → 1
         (1, 1, 0b000, A_BIT | W_BIT),
         # [0 & !2] 3                            # a & !w → 3
         (1, 3, A_BIT, W_BIT),
-
         # From state 2 (a seen, waiting for b)
         # [!1 & !2] 2                           # !b & !w → 2
         (2, 2, 0b000, B_BIT | W_BIT),
         # [1 & !2] 3                            # b & !w → 3
         (2, 3, B_BIT, W_BIT),
-
         # From state 3 (accepting: both seen)
         # [!2] 3 {0}                            # !w → 3 (accepting)
         (3, 3, 0b000, W_BIT),
@@ -1215,11 +1011,12 @@ def create_gridworld_map1_ldba() -> LDBA:
 
     return ldba
 
+
 def create_gridworld_map5_ldba() -> LDBA:
     """
     Create LDBA for:
     "F(a) & F(b) & G(!w) & ((!d) U k)"
-    
+
     (Eventually a, eventually b, always not w, and not d until k)
 
     States:
@@ -1267,7 +1064,6 @@ def create_gridworld_map5_ldba() -> LDBA:
         (0, 6, A_BIT | K_BIT, B_BIT | W_BIT),
         # [0 & 1 & 3 & !4] 7                    # a & b & k & !w → 7
         (0, 7, A_BIT | B_BIT | K_BIT, W_BIT),
-
         # From state 1 (k seen: waiting for a and b)
         # [!0 & !1 & !4] 1                      # !a & !b & !w → 1
         (1, 1, 0b00000, A_BIT | B_BIT | W_BIT),
@@ -1277,7 +1073,6 @@ def create_gridworld_map5_ldba() -> LDBA:
         (1, 6, A_BIT, B_BIT | W_BIT),
         # [0 & 1 & !4] 7                        # a & b & !w → 7
         (1, 7, A_BIT | B_BIT, W_BIT),
-
         # From state 2 (a seen: waiting for b and k)
         # [!1 & !2 & !3 & !4] 2                 # !b & !d & !k & !w → 2
         (2, 2, 0b00000, B_BIT | D_BIT | K_BIT | W_BIT),
@@ -1287,7 +1082,6 @@ def create_gridworld_map5_ldba() -> LDBA:
         (2, 6, K_BIT, B_BIT | W_BIT),
         # [1 & 3 & !4] 7                        # b & k & !w → 7
         (2, 7, B_BIT | K_BIT, W_BIT),
-
         # From state 3 (b seen: waiting for a and k)
         # [!0 & !2 & !3 & !4] 3                 # !a & !d & !k & !w → 3
         (3, 3, 0b00000, A_BIT | D_BIT | K_BIT | W_BIT),
@@ -1297,25 +1091,21 @@ def create_gridworld_map5_ldba() -> LDBA:
         (3, 5, A_BIT, D_BIT | K_BIT | W_BIT),
         # [0 & 3 & !4] 7                        # a & k & !w → 7
         (3, 7, A_BIT | K_BIT, W_BIT),
-
         # From state 4 (b and k seen: waiting for a)
         # [!0 & !4] 4                           # !a & !w → 4
         (4, 4, 0b00000, A_BIT | W_BIT),
         # [0 & !4] 7                            # a & !w → 7
         (4, 7, A_BIT, W_BIT),
-
         # From state 5 (a and b seen: waiting for k)
         # [!2 & !3 & !4] 5                      # !d & !k & !w → 5
         (5, 5, 0b00000, D_BIT | K_BIT | W_BIT),
         # [3 & !4] 7                            # k & !w → 7
         (5, 7, K_BIT, W_BIT),
-
         # From state 6 (a and k seen: waiting for b)
         # [!1 & !4] 6                           # !b & !w → 6
         (6, 6, 0b00000, B_BIT | W_BIT),
         # [1 & !4] 7                            # b & !w → 7
         (6, 7, B_BIT, W_BIT),
-
         # From state 7 (accepting: all conditions met)
         # [!4] 7 {0}                            # !w → 7 (accepting)
         (7, 7, 0b00000, W_BIT),
@@ -1370,11 +1160,12 @@ def create_gridworld_map5_ldba() -> LDBA:
 
     return ldba
 
+
 def create_gridworld_map6_ldba() -> LDBA:
     """
     Create LDBA for:
     "F(c & F(G((q U (a & q)) & (q U (b & q)))))"
-    
+
     (Eventually c, then eventually globally: while q holds, eventually reach a&q and b&q)
 
     States:
@@ -1405,7 +1196,6 @@ def create_gridworld_map6_ldba() -> LDBA:
         (0, 0, 0b0000, C_BIT),
         # [0] 1                                 # c → 1
         (0, 1, C_BIT, 0b0000),
-
         # From state 1 (c seen: waiting to enter G phase)
         # [t] 1                                 # true → 1 (can always stay)
         (1, 1, 0b0000, 0b0000),
@@ -1417,13 +1207,11 @@ def create_gridworld_map6_ldba() -> LDBA:
         (1, 3, Q_BIT, A_BIT),
         # q & a & b → 3
         (1, 3, Q_BIT | A_BIT | B_BIT, 0b0000),
-
         # From state 2 (a seen with q, waiting for b with q)
         # [1 & 3] 3 {0}                         # q & b → 3 (accepting)
         (2, 3, Q_BIT | B_BIT, 0b0000),
         # [1 & !3] 2                            # q & !b → 2
         (2, 2, Q_BIT, B_BIT),
-
         # From state 3 (checking/accepting state)
         # [1 & 2 & !3] 2                        # q & a & !b → 2
         (3, 2, Q_BIT | A_BIT, B_BIT),
@@ -1486,12 +1274,13 @@ def create_gridworld_map6_ldba() -> LDBA:
 
     return ldba
 
+
 def create_gridworld_map7_ldba() -> LDBA:
     """
     Create LDBA for:
     "((!q U c) & F(c & F(G((q U (a & q)) & (q U (b & q))))))"
-    
-    (Not q until c, and eventually c, then eventually globally: 
+
+    (Not q until c, and eventually c, then eventually globally:
      while q holds, repeatedly reach a&q and b&q)
 
     States:
@@ -1522,7 +1311,6 @@ def create_gridworld_map7_ldba() -> LDBA:
         (0, 0, 0b0000, Q_BIT | C_BIT),
         # [1] 1                                 # c → 1
         (0, 1, C_BIT, 0b0000),
-
         # From state 1 (c seen: waiting to enter G phase)
         # [0 & (2 & 3 | !2)] 2                  # q & (a & b | !a) → 2
         # This splits into two transitions:
@@ -1534,7 +1322,6 @@ def create_gridworld_map7_ldba() -> LDBA:
         (1, 1, 0b0000, 0b0000),
         # [0 & 2 & !3] 3                        # q & a & !b → 3
         (1, 3, Q_BIT | A_BIT, B_BIT),
-
         # From state 2 (checking/accepting state)
         # [0 & 2 & 3] 2 {0}                     # q & a & b → 2 (accepting)
         (2, 2, Q_BIT | A_BIT | B_BIT, 0b0000),
@@ -1542,7 +1329,6 @@ def create_gridworld_map7_ldba() -> LDBA:
         (2, 2, Q_BIT, A_BIT),
         # [0 & 2 & !3] 3                        # q & a & !b → 3
         (2, 3, Q_BIT | A_BIT, B_BIT),
-
         # From state 3 (a seen with q, waiting for b with q)
         # [0 & 3] 2 {0}                         # q & b → 2 (accepting)
         (3, 2, Q_BIT | B_BIT, 0b0000),
