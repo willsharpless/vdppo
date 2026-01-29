@@ -67,3 +67,39 @@ def load_ckpt(run_path: pathlib.Path, step: int | None = None):
     agent: VDMAPPOAgent = flax.serialization.from_state_dict(agent, load_dict["agent"])
 
     return LoadCkptResult(run=run, agent=agent, env=env, cfg_dict=cfg_dict)
+
+def load_ckpt_lcrl(run_path: pathlib.Path, step: int | None = None):
+    # Load the configs.
+    yaml_path = run_path / "config.yaml"
+    with open(yaml_path, "r") as f:
+        cfg_dict = yaml.safe_load(f)
+
+    run = Run.fromdict(cfg_dict["run"])
+    env_name = run.env_name
+    agent_name = run.agent_name
+
+    env: GridworldMA
+    env, _, _ = get_env_and_cbs(env_name, agent_name=agent_name)
+
+    agent_cfg = VDMAPPOAgent.Cfg.fromdict(cfg_dict["agent"])
+    agent = VDMAPPOAgent.create(123, agent_cfg, env)
+
+    ckpts_path = run_path / "ckpts"
+    if step is None:
+        latest_ckpt = sorted(ckpts_path.glob("params_*.pkl"))
+        assert latest_ckpt, f"No checkpoints found in {ckpts_path}"
+
+        load_path = latest_ckpt[-1]
+    else:
+        load_path = ckpts_path / f"params_{step:09}.pkl"
+        if not load_path.exists():
+            available = sorted(ckpts_path.glob("params_*.pkl"))
+            raise FileNotFoundError(f"Checkpoint not found: {load_path}. Available: {available}")
+    logger.info(f"Restoring from {load_path}")
+
+    with load_path.open("rb") as f:
+        load_dict = pickle.load(f)
+
+    agent: VDMAPPOAgent = flax.serialization.from_state_dict(agent, load_dict["agent"])
+
+    return LoadCkptResult(run=run, agent=agent, env=env, cfg_dict=cfg_dict)

@@ -1,61 +1,86 @@
-import ipdb
-from cyclopts import App
+import pathlib
 
-from rraa_rl.lcrl.lcrl_wrapper import LCRLEnvCfg, LCRLWrapper
-from rraa_rl.lcrl_mappo import LCRLMAPPOAgent
-from rraa_rl.run import Run
-from rraa_rl.src.env.general_task.env import Env, EnvUsingBase
-from rraa_rl.src.env.general_task.get_env import get_env_and_cbs
-from rraa_rl.src.get_agent_cfg import get_lcrl_agent_cfg, get_vd_agent_cfg
-from rraa_rl.trainer import Trainer, TrainerCfg
+import cyclopts
+import ipdb
+import jax
+import jax.random as jr
+import numpy as np
+from loguru import logger
+
+from rraa_rl.collector import Collector
+from rraa_rl.deliveryreal_cbs import animate_deliveryreal_traj
+from rraa_rl.herd_os_cbs import animate_herding_traj
+from rraa_rl.rollout_temporal_analysis import evaluate_ltl_finite
+from rraa_rl.load_ckpt import load_ckpt
+from rraa_rl.rollout_utils import extract_rollouts_eval
+from rraa_rl.src.env.general_task.deliveryreal import DeliveryReal
+from rraa_rl.src.env.general_task.herd_os import HerdOs
 from rraa_rl.vd_mappo import VDMAPPOAgent
 
-app = App()
+app = cyclopts.App()
 
 @app.default()
 def main(
-    algs: list[str] | None = None,
-    debug: bool = False,
-    env_name: str = "Delivery",
+    algs: list[str] | None = ["vd"],
+    env_name: str = "herdos",
     seed: int = 123,
     n_envs_test: int = 128,
-    trainer_cfg: TrainerCfg = TrainerCfg(),
     n_agent: int = 1,
     n_spec: int = 1,
-    dense: bool = False
+    dense: bool = False,
+    eval_T: int | None = None
 ):
     
-    algs = ["vd", "mppi"] if algs is None else algs
+    # algs = ["vd", "mppi"] if algs is None else algs
     # algs = ["vd", "lcrl", "mppi"] if algs is None else algs
     # [drl2, lcer]
 
+    # run_path: pathlib.Path, 
+
     for alg in algs:
 
-        env, _, _ = get_env_and_cbs(env_name, agent_name=alg, n_agent=n_agent, n_spec=n_spec, dense=dense)
+        runs_dir = '/datadrive/vd' / env_name / alg.capitalize()
+        alg_env_paths = []
+        # TODO iterate
 
-        if hasattr(env.base, "n_envs"):
-            env.base.n_envs = agent_cfg.n_envs_train
+        for run_path in alg_env_paths:
 
-        if alg == "vd":
-            agent_cfg = get_vd_agent_cfg(env_name)
-            agent = VDMAPPOAgent.create(seed, agent_cfg, env)
+            run, agent, env, cfg_dict = load_ckpt(run_path, None)
+            collector = Collector.create(
+                key=jr.PRNGKey(seed),
+                env=env,
+                cfg=Collector.Cfg(n_envs=n_envs_test, auto_reset=False, ignore_trunc=True),
+            )
+            b_state0 = env.get_eval_states(collector.cfg.n_envs, root_only=True)
 
-        elif alg == "lcrl":
-            agent_cfg = get_lcrl_agent_cfg(env_name)
-            agent = LCRLMAPPOAgent.create(seed, agent_cfg, env)
-            env.cfg.random_automata_init = False
+            collect_opts = {}
+            if isinstance(agent, VDMAPPOAgent):
+                collect_opts["temporal_transitions"] = True
 
-        elif alg == "mppi":
-            # mppi_cfg = MPPICfg()
-            # agent = MPPI.create(seed, mppi_cfg, env)
-            pass
+            eval_T = eval_T or env.eval_T
 
-        else:
-            raise ValueError(f"Unknown alg {alg}")  
+            Tb_rollout, info_collect = agent.collect_eval_with_states(collector, b_state0, eval_T, **collect_opts)
+            Tb_rollout = jax.device_get(Tb_rollout)
+            bT_rollout = Tb_rollout.switch01()
+
+            # Extract each rollout
+            b_trajs = extract_rollouts_eval(bT_rollout)
+
+            # Compute satisfaction
+            b_values = []
+            for ii, traj in enumerate(b_trajs):
+                debug = ii == 64
+                dag_value = evaluate_ltl_finite(env, traj.predicates_next, which=np)[env.dag_root]
+                b_values.append(dag_value)
+            b_values = np.array(b_values)
+            b_is_satisfied = b_values > 0.1
+
+            p_satisified_mean = np.mean(b_is_satisfied)
 
 
-        trainer = Trainer(agent, trainer_cfg)
-        out = trainer.eval(trainer.make_eval_collector(env, n_envs_test))
+
+        # trainer = Trainer(agent, trainer_cfg)
+        # out = trainer.eval(trainer.make_eval_collector(env, n_envs_test))
 
 
 if __name__ == "__main__":
