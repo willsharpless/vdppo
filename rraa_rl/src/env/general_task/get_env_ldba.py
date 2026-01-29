@@ -893,7 +893,7 @@ def create_manip_scene_ldba() -> LDBA:
             # State: 0  1  2  3
             [0, 0, 0, 1],  # Accepting set 0: only state 3 is accepting
         ],
-        dtype=jnp.int32,
+        dtype=jnp.bool,
     )
 
     # === Create LDBA ===

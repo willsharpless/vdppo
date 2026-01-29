@@ -4,16 +4,16 @@ from typing import Generic, TypeVar
 import jax
 import jax.numpy as jnp
 import jax.random as jr
+import jax.tree_util as jtu
 import jax_dataclasses as jdc
+import numpy as np
 from attrs import define
 from jaxtyping import PRNGKeyArray
 
+from rraa_rl.jax_utils import tree_cat
 from rraa_rl.ldba.ldba import LDBA, LDBAState
 from rraa_rl.src.env.general_task.env import AugObsAutomata, BaseEnv, EnvCfg, EnvStep, EnvUsingBase
 from rraa_rl.train_utils import tree_where
-
-import jax.tree_util as jtu
-from rraa_rl.jax_utils import tree_cat
 
 BaseClassState = TypeVar("BaseClassState")
 
@@ -44,6 +44,18 @@ class LCRLWrapper(EnvUsingBase):
         n_actions_per_agent = self.base.n_actions_per_agent
         return [*n_actions_per_agent, [self.ldba.n_epsilon_transitions + 1]]
 
+    def to_minstate(self, state: LCRLState) -> LCRLState:
+        # validate=False because we are changing the structure.
+        with jdc.copy_and_mutate(state, validate=False) as state_new:
+            state_new.base = self.base.to_minstate(state.base)
+        return state_new
+
+    def from_minstate(self, minstate: LCRLState) -> LCRLState:
+        # validate=False because we are changing the structure.
+        with jdc.copy_and_mutate(minstate, validate=False) as state_new:
+            state_new.base = self.base.from_minstate(minstate.base)
+        return state_new
+
     def step(self, state: LCRLState, action: list[jnp.ndarray]) -> EnvStep:
         action_base = action[:-1]
         action_epsilon = action[-1]
@@ -60,8 +72,35 @@ class LCRLWrapper(EnvUsingBase):
         label = self.ldba.predicates_to_label(predicates_bool)
         automata_state_new, epsilon_taken = self.ldba.step(state.ldba_state.state, label, action_epsilon)
 
-        # If we take the epsilon, then we don't take the base.step
-        base_state = tree_where(epsilon_taken, state.base, base_step.envstate)
+        from rraa_rl.envs.scene import SceneBase
+
+        if isinstance(self.base, SceneBase):
+            state: LCRLState[SceneBase.State]
+
+            # We can't do jnp.where on warp state since it doesn't vmap well.
+            # Do it only on qpos and qvel.
+            qpos = jnp.where(epsilon_taken, state.base.mjx_data.qpos, base_step.envstate.mjx_data.qpos)
+            qvel = jnp.where(epsilon_taken, state.base.mjx_data.qvel, base_step.envstate.mjx_data.qvel)
+
+            mjx_data_new = state.base.mjx_data.replace(qpos=qpos, qvel=qvel)
+
+            with jdc.copy_and_mutate(base_step.envstate) as base_state:
+                base_state.mjx_data = mjx_data_new
+            base_state = self.base.mjx_forward(base_state)
+
+        # # Warp is jank. I guess this is to avoid tracers interacting with warp data.
+        # def where_should_epsilon(x, y):
+        #     if epsilon_taken.shape and epsilon_taken.shape[0] != x.shape[0]:
+        #         return y
+        #
+        #     if epsilon_taken.shape:
+        #         epsilon_taken_reshaped = jnp.reshape(epsilon_taken, [x.shape[0]] + [1] * (len(x.shape) - 1))
+        #
+        #     return jnp.where(epsilon_taken_reshaped, x, y)
+        #
+        # # If we take the epsilon, then we don't take the base.step
+        # # base_state = tree_where(epsilon_taken, state.base, base_step.envstate)
+        # base_state = jtu.tree_map(where_should_epsilon, state.base, base_step.envstate)
 
         # Update the frontier.
         frontier_mask_new, has_changed = self.ldba.update_frontier(
@@ -99,19 +138,37 @@ class LCRLWrapper(EnvUsingBase):
         ldba_state = LDBAState(automata_state0, accepting_frontier_mask)
         return LCRLState(ldba_state, base_state)
 
-    def get_eval_states(self, n_envs: int, root_only: bool=False) -> LCRLState:
+    def get_eval_states(self, n_envs: int, root_only: bool = False) -> LCRLState:
         key = jr.PRNGKey(seed=12345)
-        states: LCRLState = self.reset_batch(key, n_envs)
         # Override the automata state to be the initial state.
         if root_only:
+            states: LCRLState = self.reset_batch(key, n_envs)
             with jdc.copy_and_mutate(states) as states:
                 states.ldba_state.state = jnp.zeros((n_envs,), dtype=jnp.int32)
-        else:
-            # evenly divide n_envs across ldba_states
-            with jdc.copy_and_mutate(states) as states:
-                n_envs_per_node = jnp.full((self.ldba.n_states,), n_envs // self.ldba.n_states)
-                n_envs_per_node = n_envs_per_node.at[:(n_envs % self.ldba.n_states)].add(1)
-                states.ldba_state.state = jnp.repeat(jnp.arange(self.ldba.n_states), n_envs_per_node)
+            return states
+
+        # Assign envs evenly to each temporal node.
+        n_envs_per_node = np.full((self.ldba.n_states,), n_envs // self.ldba.n_states)
+        n_envs_per_node[0] = n_envs - n_envs_per_node[1:].sum()
+
+        # Do this because manipulating warp state is very problematic. Not all fields should be batched.
+        b_state_base = self.base.reset_batch_with_pattern(key, tuple(n_envs_per_node))
+
+        ldba_state_list = []
+        for ii, n_envs_this in enumerate(n_envs_per_node):
+            ldba_state_list.append(jnp.full((n_envs_this,), ii))
+        b_ldba_state = jnp.concatenate(ldba_state_list, axis=0)
+
+        b_accepting_frontier_mask = jnp.zeros((n_envs, self.ldba.n_accepting_sets), dtype=bool)
+        b_ldba = LDBAState(b_ldba_state, b_accepting_frontier_mask)
+        states = LCRLState(b_ldba, b_state_base)
+
+        # # evenly divide n_envs across ldba_states
+        # with jdc.copy_and_mutate(states) as states:
+        #     n_envs_per_node = jnp.full((self.ldba.n_states,), n_envs // self.ldba.n_states)
+        #     n_envs_per_node = n_envs_per_node.at[:(n_envs % self.ldba.n_states)].add(1)
+        #     states.ldba_state.state = jnp.repeat(jnp.arange(self.ldba.n_states), n_envs_per_node)
+
         return states
 
     def get_obs(self, state: LCRLState) -> AugObsAutomata:
@@ -131,7 +188,7 @@ class LCRLWrapper(EnvUsingBase):
         ldba_obs = jax.nn.one_hot(state.ldba_state.state, n_ldba_states, dtype=jnp.float32)
         ldba_obs_names = [f"ldba_state_{i}" for i in range(n_ldba_states)]
         return ldba_obs, ldba_obs_names
-    
+
     def get_real_eval_states(
         self,
         n_envs: int,
