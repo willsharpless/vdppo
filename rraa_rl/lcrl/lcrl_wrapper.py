@@ -87,6 +87,8 @@ class LCRLWrapper(EnvUsingBase):
             with jdc.copy_and_mutate(base_step.envstate) as base_state:
                 base_state.mjx_data = mjx_data_new
             base_state = self.base.mjx_forward(base_state)
+        else:
+            base_state = tree_where(epsilon_taken, state.base, base_step.envstate)
 
         # # Warp is jank. I guess this is to avoid tracers interacting with warp data.
         # def where_should_epsilon(x, y):
