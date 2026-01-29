@@ -424,6 +424,10 @@ class HerdBase(BaseEnv):
         ax.axhspan(cfg.halfsize[1] * mul, (cfg.halfsize[1] + 1.0) * mul, **opts)
         ax.axhspan((-cfg.halfsize[1] - 1.0) * mul, -cfg.halfsize[1] * mul, **opts)
 
+    def is_valid_real_eval_state(self, state):
+        predicates = self.get_predicates(state)
+        is_unsafe = predicates["herder_unsafe"] > 0
+        return ~is_unsafe
 
 class HerdingHerd(HerdBase):
     Cfg = HerdingHerdCfg

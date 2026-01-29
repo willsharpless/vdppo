@@ -315,7 +315,9 @@ class EnvUsingBase(Env):
 
     def setup_ax(self, ax: plt.Axes):
         return self.base.setup_ax(ax)
-
+    
+    def is_valid_real_eval_state(self, state):
+        return self.base.is_valid_real_eval_state(state.base)
 
 class AugObs(NamedTuple):
     """Separate the "base" observation and the observation of the temporal node."""
@@ -445,8 +447,8 @@ class StaticTemporalNodeMixin:
         )
         return state
 
-    def is_valid_real_eval_state(self, state: StateWithTemporalNode) -> bool:
-        raise NotImplementedError("")
+    # def is_valid_real_eval_state(self, state: StateWithTemporalNode) -> bool:
+    #     raise NotImplementedError("")
 
     def get_real_eval_states(
         self: Union[StaticTemporalNodeMixinProtocol, "StaticTemporalNodeMixin"],
