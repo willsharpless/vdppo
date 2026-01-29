@@ -62,6 +62,9 @@ class BaseEnv(Generic[_EnvState, _Obs]):
 
     def reset(self, key: PRNGKeyArray) -> Any:
         raise NotImplementedError("")
+    
+    def reset_eval(self, key: PRNGKeyArray) -> Any:
+        raise NotImplementedError("")
 
     @ft.partial(
         jax.jit,
@@ -73,6 +76,10 @@ class BaseEnv(Generic[_EnvState, _Obs]):
     def reset_batch(self, key: PRNGKeyArray, batch_size: int) -> Any:
         b_key = jr.split(key, batch_size)
         return jax.vmap(self.reset)(b_key)
+    
+    def reset_batch_eval(self, key: PRNGKeyArray, batch_size: int) -> Any:
+        b_key = jr.split(key, batch_size)
+        return jax.vmap(self.reset_eval)(b_key)
 
     @ft.partial(
         jax.jit,
@@ -438,7 +445,8 @@ class StaticTemporalNodeMixin:
 
         if root_only:
             # All envs start at the root temporal node (idx 0).
-            m_state_base = self.base.reset_batch(key, n_envs)
+            # m_state_base = self.base.reset_batch(key, n_envs)
+            m_state_base = self.base.reset_batch_eval(key, n_envs)
             b_state0 = StateWithTemporalNode(
                 temporal_node_idx=jnp.zeros((n_envs,), dtype=jnp.int32),
                 base=m_state_base,

@@ -371,6 +371,41 @@ class HerdBase(BaseEnv):
 
         return HerdBaseState(herd_state=herd_pos, herder_state=herder_state, steps=0)
 
+    def reset_eval(self, key: PRNGKeyArray):
+        n_herd = self.cfg.n_herd
+        n_herders = self.cfg.n_herders
+        key_herd, key_herders = jr.split(key)
+
+        # Uniformly sample herd positions.
+        halfsize_x, halfsize_y = self.cfg.halfsize
+        maxpos = np.array([-0.5, halfsize_y]) - self.cfg.agent_radius
+        if self.cfg.herd_zero:
+            maxpos = np.zeros(2)
+        minpos = np.array([-halfsize_x, -halfsize_y]) + self.cfg.agent_radius
+        herd_pos = jr.uniform(key_herd, shape=(n_herd, 2), minval=minpos, maxval=maxpos)
+
+        # Uniformly sample herder positions in right half-plane
+        maxstate = np.zeros((n_herders, 4))
+        minstate = np.zeros((n_herders, 4))
+        upper_x = halfsize_x - self.cfg.agent_radius
+        upper_y = halfsize_y - self.cfg.agent_radius
+        lower_x = 0.5 + self.cfg.agent_radius
+        lower_y = -halfsize_y + self.cfg.agent_radius
+
+        maxstate[:, 0] = upper_x - self.cfg.agent_radius
+        maxstate[:, 1] = upper_y - self.cfg.agent_radius
+        minstate[:, 0] = lower_x - self.cfg.agent_radius
+        minstate[:, 1] = lower_y - self.cfg.agent_radius
+
+        # maxstate[:, 2] = np.array(self.cfg.vel_maxs)
+        # maxstate[:, 3] = np.array(self.cfg.vel_maxs)
+        maxstate[:, 2] = 0.0
+        maxstate[:, 3] = 0.0
+
+        herder_state = jr.uniform(key_herders, shape=(n_herders, 4), minval=minstate, maxval=maxstate)
+
+        return HerdBaseState(herd_state=herd_pos, herder_state=herder_state, steps=0)
+
     @property
     def eval_T(self) -> int:
         return self.cfg.trunc_steps
