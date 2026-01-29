@@ -67,7 +67,7 @@ class BaseEnv(Generic[_EnvState, _Obs]):
         raise NotImplementedError("")
 
     def reset_eval(self, key: PRNGKeyArray) -> Any:
-        raise NotImplementedError("")
+        return self.reset(key)
 
     @ft.partial(
         jax.jit,
@@ -81,8 +81,7 @@ class BaseEnv(Generic[_EnvState, _Obs]):
         return jax.vmap(self.reset)(b_key)
 
     def reset_batch_eval(self, key: PRNGKeyArray, batch_size: int) -> Any:
-        b_key = jr.split(key, batch_size)
-        return jax.vmap(self.reset_eval)(b_key)
+        return self.reset_batch(key, batch_size)
 
     @ft.partial(
         jax.jit,

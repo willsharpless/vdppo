@@ -281,6 +281,9 @@ def get_env_and_cbs(
         base_cfg.air_obstacle_lw_ratios = [1.]
         base_cfg.air_obstacles = True
 
+        base_cfg.n_herd = 1
+        base_cfg.herd_zero = True
+
         cfg = DeliveryRealv2.Cfg(specification=spec, base=base_cfg)
         env = DeliveryRealv2(cfg)
 
