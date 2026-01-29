@@ -12,6 +12,9 @@ from rraa_rl.ldba.ldba import LDBA, LDBAState
 from rraa_rl.src.env.general_task.env import AugObsAutomata, BaseEnv, EnvCfg, EnvStep, EnvUsingBase
 from rraa_rl.train_utils import tree_where
 
+import jax.tree_util as jtu
+from rraa_rl.jax_utils import tree_cat
+
 BaseClassState = TypeVar("BaseClassState")
 
 
@@ -128,3 +131,38 @@ class LCRLWrapper(EnvUsingBase):
         ldba_obs = jax.nn.one_hot(state.ldba_state.state, n_ldba_states, dtype=jnp.float32)
         ldba_obs_names = [f"ldba_state_{i}" for i in range(n_ldba_states)]
         return ldba_obs, ldba_obs_names
+    
+    def get_real_eval_states(
+        self,
+        n_envs: int,
+        n_envs_to_sample: int,
+        root_only: bool = True,
+    ):
+        assert root_only
+        n_obtained = 0
+
+        b_valid_fn = jax.jit(jax.vmap(self.is_valid_real_eval_state))
+
+        valid_states_list = []
+
+        ii = 0
+        base_key = jr.PRNGKey(seed=12345)
+        while n_obtained < n_envs_to_sample:
+            key = jr.fold_in(base_key, ii)
+            # Rejection sampling using is_valid_real_eval_state.
+            m_state_base = self.base.reset_batch_eval(key, n_envs_to_sample)
+            accepting_frontier_mask = jnp.zeros((n_envs_to_sample, self.ldba.n_accepting_sets), dtype=bool)
+            automata_state0 = jnp.array((n_envs_to_sample), dtype=jnp.int32)
+            ldba_state = LDBAState(automata_state0, accepting_frontier_mask)
+            b_state0 = LCRLState(ldba_state, m_state_base)
+            b_valid = b_valid_fn(b_state0)
+            n_valid = jnp.sum(b_valid)
+
+            state0_valid = jtu.tree_map(lambda x: x[b_valid], b_state0)
+            valid_states_list.append(state0_valid)
+            n_obtained += int(n_valid)
+
+        # Concatenate, then trim to n_envs.
+        b_state0_all = tree_cat(valid_states_list, axis=0)
+        b_state0_all = jtu.tree_map(lambda x: x[:n_envs], b_state0_all)
+        return b_state0_all

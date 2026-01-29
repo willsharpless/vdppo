@@ -18,41 +18,58 @@ from rraa_rl.rollout_utils import extract_rollouts_eval
 from rraa_rl.src.env.general_task.deliveryreal import DeliveryReal
 from rraa_rl.src.env.general_task.herd_os import HerdOs
 from rraa_rl.vd_mappo import VDMAPPOAgent
+import json
+import tempfile
 
 app = cyclopts.App()
 
 @app.default()
 def main(
-    algs: list[str] | None = ["vd"],
+    alg: str = "vd",
     env_name: str = "herdos",
+    ablation_type: str = "spec",
     seed: int = 123,
     n_envs_test: int = 128,
     eval_T: int | None = None,
     debug: bool = False,
 ):
-    
-    # algs = ["vd", "mppi"] if algs is None else algs
-    # algs = ["vd", "lcrl", "mppi"] if algs is None else algs
-    # [drl2, lcer]
 
-    # run_path: pathlib.Path, 
+    runs_dir = pathlib.Path('/datadrive/vd') / env_name / alg.upper()
 
-    for alg in algs:
+    if "ablation" not in env_name:
+        loop_range = 1
+    else:
+        loop_range = 5
 
-        runs_dir = pathlib.Path('/datadrive/vd') / env_name / alg.upper()
-        alg_env_paths = find_runs(runs_dir, alg)
+    out_file = pathlib.Path('/datadrive/vd') / env_name / f"eval_results.json"
+    out_file.parent.mkdir(parents=True, exist_ok=True)
+
+    if out_file.exists():
+        with open(out_file, "r") as f:
+            all_results = json.load(f)
+    else:
+        all_results = {}
+
+    loop_means, loop_stds = [], []
+    for i in range(loop_range): #looping in case of ablation
+
+        alg_env_paths = find_runs(runs_dir, alg, env_name, ablation_type=ablation_type, i=i)
+        # ipdb.set_trace()
 
         means = []
-        for run_path in alg_env_paths:
-            logger.info(f"Evaluating {run_path._str.split('/')[-1]}")
+        for seed_path in alg_env_paths:
+            # if seed_path._str.endswith("seed0"):
+            #     continue
+            logger.info(f"Evaluating {seed_path._str.split('/')[-1]}")
 
-            run, agent, env, cfg_dict = load_ckpt(run_path, None)
+            run, agent, env, cfg_dict = load_ckpt(seed_path, None, alg)
             collector = Collector.create(
                 key=jr.PRNGKey(seed),
                 env=env,
                 cfg=Collector.Cfg(n_envs=n_envs_test, auto_reset=False, ignore_trunc=True),
             )
             b_state0 = env.get_real_eval_states(collector.cfg.n_envs, collector.cfg.n_envs * 8)
+            
             # b_state0 = env.get_eval_states(collector.cfg.n_envs, root_only=True)
             # ipdb.set_trace()
 
@@ -95,19 +112,44 @@ def main(
                     T_labels = [
                         f"Temporal {t_node_idx} ({env.temporal_node_names[t_node_idx]})" for t_node_idx in T_state.temporal_node_idx
                     ]
-                    anim_path = run_path / f"bad_eval_animation_score_{b_values[ix]}.mp4"
+                    anim_path = seed_path / f"bad_eval_animation_score_{b_values[ix]}.mp4"
                     animate_herding_traj(anim_path, cfg.base, T_pos_herd, T_pos_herder, None, T_labels)
-                ipdb.set_trace()
+                # ipdb.set_trace()
 
-        logger.info(f"{alg}, satisfaction: {np.mean(means):.3f}, sd: {np.std(means):.3f}")
         # trainer = Trainer(agent, trainer_cfg)
         # out = trainer.eval(trainer.make_eval_collector(env, n_envs_test))
 
-def find_runs(runs_dir, alg, n_seeds=3):
+        loop_means.append(np.mean(means))
+        loop_stds.append(np.std(means))
+
+    logger.info(f"{alg}, satisfaction: {loop_means}, sd: {loop_stds}")
+
+    all_results[f"{alg}_{env_name}"] = {
+        "means": loop_means,
+        "stds": loop_stds,
+    } # overwrites any data in the json with same label
+
+    with tempfile.NamedTemporaryFile("w", dir=out_file.parent, delete=False) as tmp_file:
+        json.dump(all_results, tmp_file, indent=4)
+        temp_file_path = pathlib.Path(tmp_file.name)
+
+    # Atomically replace the original file with the temporary file
+    temp_file_path.replace(out_file)
+    logger.log(f"Wrote results to {out_file}")
+
+def find_runs(runs_dir, alg, env_name, n_seeds=3, ablation_type="spec", i=0):
     alg_env_paths = []
     
     for seed in range(n_seeds):
-        candidates = [d for d in runs_dir.iterdir() if d.is_dir() and d.name.endswith(f"{alg}_seed{seed}")]
+        if env_name.startswith("ablation"):
+            if ablation_type == "spec" or ablation_type == "depth":
+                candidates = [d for d in runs_dir.iterdir() if d.is_dir() and 
+                            d.name.endswith(f"{alg}_spc{i+1}_ag{i+1}_seed{seed}")]
+            if ablation_type == "ag":
+                candidates = [d for d in runs_dir.iterdir() if d.is_dir() and 
+                            d.name.endswith(f"{alg}_spc{i+1}_ag{i+1}_seed{seed}")]
+        else:
+            candidates = [d for d in runs_dir.iterdir() if d.is_dir() and d.name.endswith(f"{alg}_seed{seed}")]
         
         best_ckpt, best_dir = -1, None
         for d in candidates:
