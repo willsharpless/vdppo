@@ -25,7 +25,6 @@ from rraa_rl.src.env.general_task.gridworld import GridworldMA, GridworldMAState
 from rraa_rl.vd_mappo import VDMAPPOAgent
 from rraa_rl.lcrl_mappo import LCRLMAPPOAgent
 
-
 class LoadCkptResult(NamedTuple):
     run: Run
     agent: VDMAPPOAgent | LCRLMAPPOAgent

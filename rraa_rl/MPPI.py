@@ -30,6 +30,7 @@ from rraa_rl.vd_mappo import VDMAPPOAgent
 from rraa_rl.jax_utils import switch01, tree_where_dim0
 from rraa_rl.src.get_agent_cfg import get_lcrl_agent_cfg, get_vd_agent_cfg
 from rraa_rl.trainer import CallbackProps
+from rraa_rl.src.env.general_task.get_env import get_env_and_cbs
 
 @struct.dataclass
 class RolloutOutput:
@@ -134,7 +135,7 @@ class MPPI:
     env: Env
     key: PRNGKeyArray
 
-    def __init__(self, env: Env, cfg: MPPICfg, key: PRNGKeyArray):
+    def __init__(self, env: Env, cfg: MPPICfg, key: PRNGKeyArray=jr.PRNGKey(0)):
         self.cfg = cfg
         self.env = env
         self.b_state0 = None
@@ -518,3 +519,38 @@ class MPPI:
             cb_name = cb.__name__ if hasattr(cb, "__name__") else str(type(cb))
             print(f"Running eval callback {cb_name}")
             cb(cb_props)
+
+    def collect_eval_with_states(
+        self, 
+        collector: Collector,
+        b_state0: Any, 
+        rollout_T: int,
+        temporal_transitions: bool = False,
+        debug: bool = False,
+    ):
+        key_eval = self.key # self.key should also work
+        env = self.env
+        rollout_T = 3 if debug else rollout_T
+        eval_n_envs = 1 if debug else self.cfg.n_envs
+
+        if b_state0 is None:
+            b_state0 = env.get_eval_states(eval_n_envs)
+
+        mppi_rollouts = None
+        if debug:
+            Tb_rollout, mppi_rollouts = self.collect_full_traj_debug(
+                b_state0, rollout_T, eval_n_envs, key_eval
+            )
+            mppi_rollouts = jax.device_get(mppi_rollouts)
+            
+        else:
+            Tb_rollout = self.collect_full_traj(
+                b_state0, rollout_T, key_eval
+            )
+        return Tb_rollout, mppi_rollouts
+    
+def init_mppi(env_name:str, seed:jr.PRNGKey=jr.PRNGKey(0), n_spec:int=1, n_agent:int=1):
+    env, _, _ = get_env_and_cbs(env_name, agent_name='mppi', n_spec=n_spec, n_agent=n_agent, dense=True)
+    run = Run.create(env_name=env_name, name=f"mppi_{env_name}", agent_name="MPPI")
+    agent = MPPI(env=env, cfg=MPPI.Cfg(), key=seed)
+    return run, agent, env, {}

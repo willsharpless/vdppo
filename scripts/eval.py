@@ -19,6 +19,7 @@ from rraa_rl.rollout_utils import extract_rollouts_eval
 from rraa_rl.src.env.general_task.deliveryreal import DeliveryReal
 from rraa_rl.src.env.general_task.herd_os import HerdOs
 from rraa_rl.vd_mappo import VDMAPPOAgent
+from rraa_rl.MPPI import init_mppi
 import json
 import tempfile
 
@@ -53,26 +54,39 @@ def main(
 
     loop_means, loop_stds = [], []
     for i in range(loop_range): #looping in case of ablation
-
-        alg_env_paths = find_runs(runs_dir, alg, env_name, ablation_type=ablation_type, i=i)
+        if debug and i == 3:
+            ipdb.set_trace()
+        
+        if alg != "mppi":
+            alg_env_paths = find_runs(runs_dir, alg, env_name, ablation_type=ablation_type, i=i)
+        else:
+            alg_env_paths = ["seed_0", "seed_1", "seed_2"]
         # ipdb.set_trace()
 
         means = []
         for seed_path in alg_env_paths:
             # if seed_path._str.endswith("seed0"):
             #     continue
-            logger.info(f"Evaluating {seed_path._str.split('/')[-1]}")
+            if alg != "mppi":
+                logger.info(f"Evaluating {seed_path._str.split('/')[-1]}")
+            else:
+                logger.info(f"Evaluating MPPI, {seed_path}")
 
             # If ablation
             if "ablation" in env_name:
-                if "spec" in ablation_type or "depth" in ablation_type:
+                if "spec" in ablation_type or env_name == "ablation_depth":
                     n_spec, n_agent = i + 1, 1
                 elif "ag" in ablation_type:
                     n_spec = n_agent = i + 1
             else:
                 n_spec = n_agent = 1
 
-            run, agent, env, cfg_dict = load_ckpt(seed_path, None, alg, n_spec=n_spec, n_agent=n_agent)
+            if alg != "mppi":
+                run, agent, env, cfg_dict = load_ckpt(seed_path, None, alg, n_spec=n_spec, n_agent=n_agent)
+            else:
+                run_seed = jr.PRNGKey(int(seed_path.split('_')[-1]))
+                run, agent, env, cfg_dict = init_mppi(env_name, run_seed, n_spec=n_spec, n_agent=n_agent)
+
             collector = Collector.create(
                 key=jr.PRNGKey(seed),
                 env=env,
@@ -112,6 +126,8 @@ def main(
                 bad_traj = b_values < 0
                 bad_traj_sample = np.random.choice(np.where(bad_traj)[0], size=min(3, bad_traj.sum()), replace=False)
                 for ix in bad_traj_sample:
+                    
+                    # get bad traj data
                     traj = b_trajs[ix]
                     cfg: HerdOs.Cfg = env.cfg
 
@@ -122,7 +138,16 @@ def main(
                     T_labels = [
                         f"Temporal {t_node_idx} ({env.temporal_node_names[t_node_idx]})" for t_node_idx in T_state.temporal_node_idx
                     ]
-                    anim_path = seed_path / f"bad_eval_animation_{ix}.mp4"
+
+                    # anim output
+                    if alg != "mppi":
+                        anim_path = seed_path / f"bad_eval_animation_{ix}.mp4"
+                    else:
+                        mppi_dir = pathlib.Path('/datadrive/vd') / env_name / alg.upper()
+                        mppi_dir.mkdir(parents=True, exist_ok=True)
+                        anim_path = mppi_dir / f"bad_eval_animation_{ix}_seed{seed_path.split('_')[-1]}.mp4"
+
+                    # make env anim
                     if env_name == "herdos":
                         animate_herding_traj(anim_path, cfg.base, T_pos_herd, T_pos_herder, None, T_labels)
                     elif "ablation" in env_name:
@@ -155,7 +180,7 @@ def find_runs(runs_dir, alg, env_name, n_seeds=3, ablation_type="spec", i=0):
     
     for seed in range(n_seeds):
         if env_name.startswith("ablation"):
-            if ablation_type == "spec" or ablation_type == "depth":
+            if ablation_type == "spec" or env_name == "ablation_depth":
                 candidates = [d for d in runs_dir.iterdir() if d.is_dir() and 
                             d.name.endswith(f"{alg}_spc{i+1}_ag1_seed{seed}")]
             if ablation_type == "ag":
