@@ -398,6 +398,12 @@ class SceneBase(BaseEnv):
 
         return data
 
+    def mjx_forward(self, state: SceneBaseState) -> SceneBaseState:
+        mjx_data = mjx.forward(self.mjx_model, state.mjx_data)
+        with jdc.copy_and_mutate(state) as new_state:
+            new_state.mjx_data = mjx_data
+        return new_state
+
     def to_minstate(self, state: SceneBaseState) -> SceneBaseMinState:
         return SceneBaseMinState(
             qpos=state.mjx_data.qpos,
@@ -472,12 +478,7 @@ class SceneBase(BaseEnv):
         target_attach_quat = T_wa.rotation().wxyz
 
         # Solve IK using the controller
-        return self._ik.solve(
-            pos=target_attach_pos,
-            quat=target_attach_quat,
-            curr_qpos=curr_qpos,
-            max_iters=5
-        )
+        return self._ik.solve(pos=target_attach_pos, quat=target_attach_quat, curr_qpos=curr_qpos, max_iters=5)
 
     def _step_physics(self, mjx_data: mjx.Data) -> mjx.Data:
         def step_fn(data: mjx.Data, _):

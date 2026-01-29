@@ -22,7 +22,7 @@ def vd(
     trainer_cfg: TrainerCfg = TrainerCfg(),
     n_agent: int = 1,
     n_spec: int = 1,
-    dense: bool = False
+    dense: bool = False,
 ):
     env, eval_cbs, collect_cbs = get_env_and_cbs(env_name, agent_name="vd", n_agent=n_agent, n_spec=n_spec, dense=dense)
     agent_cfg = get_vd_agent_cfg(env_name)
@@ -44,12 +44,17 @@ def lcrl(
     trainer_cfg: TrainerCfg = TrainerCfg(),
     n_agent: int = 1,
     n_spec: int = 1,
-    dense: bool = False
+    dense: bool = False,
 ):
     env: LCRLWrapper
-    env, eval_cbs, collect_cbs = get_env_and_cbs(env_name, agent_name="lcrl", n_agent=n_agent, n_spec=n_spec, dense=dense)
-
+    env, eval_cbs, collect_cbs = get_env_and_cbs(
+        env_name, agent_name="lcrl", n_agent=n_agent, n_spec=n_spec, dense=dense
+    )
     agent_cfg = get_lcrl_agent_cfg(env_name)
+
+    if hasattr(env.base, "n_envs"):
+        env.base.n_envs = agent_cfg.n_envs_train
+
     agent = LCRLMAPPOAgent.create(seed, agent_cfg, env)
     # agent_cfg.random_automata_init = True
 

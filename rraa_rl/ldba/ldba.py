@@ -82,16 +82,20 @@ class LDBA:
         return self.epsilon_src.shape[0]
 
     def step_epsilon(self, state: jnp.ndarray, epsilon_action: jnp.ndarray):
-        # epsilon_action is an int. Should be in [1, n_epsilon_transitions], or 0 for no-op.
+        assert state.shape == ()
+        assert epsilon_action.shape == ()
         epsilon_idx = epsilon_action - 1
         epsilon_idx_safe = jnp.where(epsilon_action == 0, 0, epsilon_idx)
 
         is_sink_state = state == self.sink_state
         state_safe = jnp.where(is_sink_state, 0, state)
         epsilon_taken = self.epsilon_src[epsilon_idx_safe] == state_safe
+        assert epsilon_taken.shape == ()
+
         next_state = jnp.where(epsilon_taken, self.epsilon_dst[epsilon_idx_safe], state)
         # If in sink, stay in sink.
         next_state = jnp.where(is_sink_state, self.sink_state, next_state)
+        assert next_state.shape == ()
         return next_state, epsilon_taken
 
     def step_noepsilon(self, state: jnp.ndarray, label: jnp.ndarray):
@@ -110,17 +114,24 @@ class LDBA:
         return next_state
 
     def step(self, state: jnp.ndarray, label: jnp.ndarray, epsilon_action: jnp.ndarray):
+        assert state.shape == ()
         next_state_noepsilon = self.step_noepsilon(state, label)
+        assert next_state_noepsilon.shape == ()
 
         if self.n_epsilon_transitions == 0:
             return next_state_noepsilon, jnp.array(False)
 
+        assert epsilon_action.shape == (1,)
+        epsilon_action = epsilon_action.squeeze()
+
         next_state_epsilon, epsilon_taken = self.step_epsilon(state, epsilon_action)
+        assert next_state_epsilon.shape == ()
 
         # If we tried to take epsilon (epsilon != 0) but it was not eligible, then we fall back to no-epsilon step.
         try_take_epsilon = epsilon_action != 0
         has_taken_epsilon = try_take_epsilon & epsilon_taken
         next_state = jnp.where(has_taken_epsilon, next_state_epsilon, next_state_noepsilon)
+        assert next_state.shape == ()
         return next_state, has_taken_epsilon
 
     def predicates_to_label(self, predicates: dict[str, jnp.ndarray]) -> jnp.ndarray:
@@ -131,11 +142,14 @@ class LDBA:
         return label
 
     def update_frontier(self, frontier_mask: jnp.ndarray, state: jnp.ndarray) -> tuple[jnp.ndarray, jnp.ndarray]:
+        assert state.shape == ()
+
         # frontier_mask: (n_accepting_sets,). bool
         # 1: Find which accepting sets contain the current state.
         # (n_accepting_sets, ), 1 if the set contains the state.
         accepting_sets = self.accepting_sets[:, state]
         assert accepting_sets.dtype == bool
+        assert accepting_sets.shape == (self.n_accepting_sets,)
 
         # 2: Update the frontier mask. If the set i is in the frontier, then frontier_mask[i] = 1
         satisfied_sets = frontier_mask | accepting_sets
