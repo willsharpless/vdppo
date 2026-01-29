@@ -13,6 +13,7 @@ from attrs import define
 from jaxtyping import PRNGKeyArray
 from loguru import logger
 
+from rraa_rl.geometry import RectCenterExtent, dist_pt_to_rect
 from rraa_rl.jax_types import BoolScalar
 from rraa_rl.jax_utils import softminimum, tree_stack
 from rraa_rl.src.env.general_task.env import BaseEnv, Env, EnvStep
@@ -48,11 +49,12 @@ class DeliveryRealv2BaseCfg:
 
     n_herders: int = 3
     n_herd: int = 3
-    acc_maxs: list[float] = [2.0, 2.0, 1.0]
-    vel_maxs: list[float] = [1.0, 1.0, 0.1]
+    acc_maxs: list[float] = [1.5, 1.5, 1.0]
+    vel_maxs: list[float] = [0.8, 0.8, 0.1]
 
     agent_radius: float = 0.4
-    base_agent_radius: float = 0.7
+    # base_agent_radius: float = 0.75
+    base_agent_radius: float = 1.32
 
     # Half size.
     halfsize: tuple[float, float] = (5.0, 5.0)
@@ -95,6 +97,7 @@ class DeliveryRealv2BaseCfg:
     update_targets: bool = True
 
     p_reset_task: float = 0.2
+    p_reset_heuristic: float = 0.5
 
     p_reset_atgoal: float = 0.01
 
@@ -437,38 +440,24 @@ class DeliveryRealv2Base(BaseEnv):
 
     ## BOOL PREDICATES (SPARSE)
 
-    def is_herder_collide(self, state: DeliveryRealv2BaseState):
-        assert self.cfg.n_herders == 3
-
-        # Ignore the last agent.
-        herder_pos = state.herder_state[:, 0:2]
-        n_herders = herder_pos.shape[0]
+    def _has_collide(self, n_pos: jnp.ndarray, radius: float | jnp.ndarray):
+        n = len(n_pos)
 
         def check_pair(i: int, j: int):
-            dist = jnp.linalg.norm(herder_pos[i] - herder_pos[j])
-            collide = dist < 2 * self.cfg.agent_radius
+            dist = jnp.linalg.norm(n_pos[i] - n_pos[j])
+            collide = dist < 2 * radius
             return collide
 
         collide = False
-        for i in range(n_herders):
-            for j in range(i + 1, n_herders):
+        for i in range(n):
+            for j in range(i + 1, n):
                 collide = collide | check_pair(i, j)
+
         return collide
 
     def is_just_herders_collide(self, state: DeliveryRealv2BaseState):
         herder_pos = state.herder_state[:-1, 0:2]
-        n_herders = herder_pos.shape[0]
-
-        def check_pair(i: int, j: int):
-            dist = jnp.linalg.norm(herder_pos[i] - herder_pos[j])
-            collide = dist < 2 * self.cfg.agent_radius
-            return collide
-
-        collide = False
-        for i in range(n_herders):
-            for j in range(i + 1, n_herders):
-                collide = collide | check_pair(i, j)
-        return collide
+        return self._has_collide(herder_pos, self.cfg.agent_radius)
 
     def is_herder_oob(self, state: DeliveryRealv2BaseState):
         herder_pos = state.herder_state[:, 0:2]
@@ -476,13 +465,6 @@ class DeliveryRealv2Base(BaseEnv):
         min_dists = jnp.min(dists, axis=-1)
         oob = jnp.any(min_dists < self.cfg.agent_radius)
         return oob
-
-    def is_herd_herded(self, state: DeliveryRealv2BaseState):
-        """All herd agents are fully within a circle in the center."""
-        herd_pos = state.herd_state
-        dists = jnp.linalg.norm(herd_pos, axis=-1)
-        herded = jnp.all((dists + self.cfg.agent_radius) < self.cfg.herded_radius)
-        return herded
 
     def is_herder_in_obstacles(self, state: DeliveryRealv2BaseState, which=jnp):
         herder_pos = state.herder_state[..., :, 0:2]  # (n_herders, 2)
@@ -519,42 +501,13 @@ class DeliveryRealv2Base(BaseEnv):
 
         return c_is_herder_inside
 
-    # def is_herder_in_air_obstacles(self, state: DeliveryRealv2BaseState, which=jnp):
-    #     # herder_pos = state.herder_state[:-1, 0:2]  # (n_herders, 2) # NOTE just applied to non-base agent
-    #     herder_pos = state.herder_state[:-1, 0:2]  # (n_herders, 2) # NOTE just applied to non-base agent
-
-    #     obst_centers = which.array(self.cfg.air_obstacle_centers)  # (n_obst, 2)
-    #     obst_radii = which.array(self.cfg.air_obstacle_radiuses)  # (n_obst,)
-    #     obstacle_lw_ratios = which.array(self.cfg.air_obstacle_lw_ratios)  # (n_obst,)
-
-    #     # Box half-extents: (n_obst, 2)
-    #     half_extents = which.stack([
-    #         obst_radii * obstacle_lw_ratios,  # half-width (x)
-    #         obst_radii                         # half-height (y)
-    #     ], axis=-1)
-
-    #     # Relative position: (n_obst, n_herders, 2)
-    #     rel_pos = herder_pos[None, :, :] - obst_centers[:, None, :]
-
-    #     # Box SDF: distance to nearest point on box surface
-    #     # q = |rel_pos| - half_extents
-    #     q = which.abs(rel_pos) - half_extents[:, None, :]  # (n_obst, n_herders, 2)
-
-    #     # SDF = length(max(q, 0)) + min(max(q.x, q.y), 0)
-    #     outside_dist = which.linalg.norm(which.maximum(q, 0.0), axis=-1)  # (n_obst, n_herders)
-    #     inside_dist = which.minimum(which.max(q, axis=-1), 0.0)  # (n_obst, n_herders)
-    #     sdf = outside_dist + inside_dist  # (n_obst, n_herders)
-
-    #     # Collision when SDF < agent_radius
-    #     c_is_herder_inside = which.any(sdf < self.cfg.agent_radius)
-
-    #     return c_is_herder_inside
-
     def is_herder_in_air_obstacles(self, state: DeliveryRealv2BaseState, which=jnp):
-        c_is_herder_inside = which.any(
-            jnp.abs(state.herder_state[..., :-1, 0:2]).max(axis=-1) - self.cfg.agent_radius < 1.0
-        )
-        return c_is_herder_inside
+        n_move = self.cfg.n_herders - 1
+        n_pos_move = state.herder_state[:n_move, :2]
+        assert n_pos_move.shape == (n_move, 2)
+
+        n_in_aerial_obs = jax.vmap(ft.partial(self._in_aerial_obs, radius=self.cfg.agent_radius))(n_pos_move)
+        return which.any(n_in_aerial_obs)
 
     def is_herder_in_target(self, state: DeliveryRealv2BaseState, which=jnp, center=[0.0, 0.0], radius=0.5):
         h_pos = state.herder_state[..., :, 0:2]
@@ -601,10 +554,8 @@ class DeliveryRealv2Base(BaseEnv):
 
     def get_predicates_bool(self, state: DeliveryRealv2BaseState):
         predicates = {
-            "collide": self.is_herder_collide(state),
             "aerial_collide": self.is_just_herders_collide(state),
             "oob": self.is_herder_oob(state),
-            # "herd_herded": self.is_herd_herded(state),
             "obstacles": self.is_herder_in_obstacles(state),
             "target0": self.is_herder_in_target(state, center=self.cfg.centers[0], radius=self.cfg.radiuses[0]),
             "target1": self.is_herder_in_target(state, center=self.cfg.centers[1], radius=self.cfg.radiuses[1]),
@@ -903,26 +854,28 @@ class DeliveryRealv2Base(BaseEnv):
 
         herd_pos = jnp.zeros((self.cfg.n_herd, 2))
 
+        assert self.cfg.dynamic_targets
+        centers = self.cfg.reset_targets_fn(key_center)
+
         # ----
         p_reset_task = self.cfg.p_reset_task
-        p_reset_orig = 1.0 - p_reset_task
+        p_reset_heuristic = self.cfg.p_reset_heuristic
+        p_reset_orig = 1.0 - p_reset_task - p_reset_heuristic
         assert p_reset_orig >= 0.0
 
         herder_state_uniform = self._reset_uniform(key_uniform)
         herder_state_task = self._reset_task(key_task)
+        herder_state_heuristic = self._reset_heuristic(key_task, centers)
 
-        probs = np.array([p_reset_orig, p_reset_task])
+        probs = np.array([p_reset_orig, p_reset_task, p_reset_heuristic])
         assert np.isclose(probs.sum(), 1.0)
         which_reset = jr.categorical(key_which, probs)
 
-        stack_list = [herder_state_uniform, herder_state_task]
+        stack_list = [herder_state_uniform, herder_state_task, herder_state_heuristic]
         assert len(probs) == len(stack_list)
         herder_state_stack = tree_stack(stack_list)
         herder_state = jtu.tree_map(lambda x: x[which_reset], herder_state_stack)
         # ----
-
-        assert self.cfg.dynamic_targets
-        centers = self.cfg.reset_targets_fn(key_center)
 
         # Small probability of reset the agent near the goal.
         p_reset_atgoal = self.cfg.p_reset_atgoal
@@ -939,7 +892,7 @@ class DeliveryRealv2Base(BaseEnv):
     def is_invalid_real_eval_state(self, state: DeliveryRealv2BaseState):
         predicates = self.get_predicates(state)
         predicates = {k: v > 0 for k, v in predicates.items()}
-        pred_names = ["collide", "aerial_collide", "obstacles", "oob", "air_obstacles"]
+        pred_names = ["aerial_collide", "obstacles", "oob", "air_obstacles"]
         is_unsafe = jnp.any(jnp.array([predicates[name] for name in pred_names]))
         return is_unsafe
 
@@ -1039,6 +992,155 @@ class DeliveryRealv2Base(BaseEnv):
         base_state = jr.uniform(key2, shape=(1, 2), minval=-maxstate_base, maxval=maxstate_base)
 
         n_herder_pos = jnp.concatenate([n_herder_pos, base_state], axis=0)
+
+        vel_max = np.array(self.cfg.vel_maxs)[:, None]
+        n_herder_vel = jr.uniform(key_vel, shape=(n_herders, 2), minval=-vel_max, maxval=vel_max)
+
+        n_herder_state = jnp.concatenate([n_herder_pos, n_herder_vel], axis=-1)
+        assert n_herder_state.shape == (n_herders, 4)
+
+        return n_herder_state
+
+    def _in_obs(self, pos: jnp.ndarray, radius: jnp.ndarray, which=jnp):
+        obst_centers = which.array(self.cfg.obstacle_centers)  # (n_obst, 2)
+        obst_radii = which.array(self.cfg.obstacle_radiuses)  # (n_obst,)
+        obst_lw_ratios = which.array(self.cfg.obstacle_lw_ratios)  # (n_obst,)
+        n_obst = len(obst_centers)
+
+        half_extents = which.stack([obst_radii * obst_lw_ratios, obst_radii], axis=-1)
+        o_rects = RectCenterExtent(center=obst_centers, extent=half_extents)  # (n_obst, ...)
+
+        o_dist_obst = jax.vmap(ft.partial(dist_pt_to_rect, pos))(o_rects)
+        assert o_dist_obst.shape == (n_obst,)
+
+        return which.any(o_dist_obst < radius)
+
+    def _in_aerial_obs(self, pos: jnp.ndarray, radius: jnp.ndarray, which=jnp):
+        air_obst_centers = which.array(self.cfg.air_obstacle_centers)
+        air_obst_radii = which.array(self.cfg.air_obstacle_radiuses)
+        air_obst_lw_ratios = which.array(self.cfg.air_obstacle_lw_ratios)  # (n_obst,)
+        n_obst = len(air_obst_centers)
+
+        half_extents = which.stack([air_obst_radii * air_obst_lw_ratios, air_obst_radii], axis=-1)
+        o_rects = RectCenterExtent(center=air_obst_centers, extent=half_extents)
+
+        o_dist_obst = jax.vmap(ft.partial(dist_pt_to_rect, pos))(o_rects)
+        assert o_dist_obst.shape == (n_obst,)
+
+        return which.any(o_dist_obst < radius)
+
+    def _is_oob(self, pos: jnp.ndarray, which=jnp):
+        dists = self.dist_to_wall(pos)
+        min_dists = jnp.min(dists, axis=-1)
+        return jnp.any(min_dists < self.cfg.agent_radius)
+
+    def _is_valid_base(self, pos_base: jnp.ndarray, which=jnp):
+        # Shouldn't collide with obstacles, shouldn't be out of bounds.
+        radius_base = self.cfg.base_agent_radius
+        base_in_obs = self._in_obs(pos_base, radius_base, which=which)
+        # -------------
+        base_oob = self._is_oob(pos_base, which=which)
+        # -------------
+        base_unsafe = base_in_obs | base_oob
+        return ~base_unsafe
+
+    def _is_valid_move(self, n_pos_move: jnp.ndarray):
+        n_move = self.cfg.n_herders - 1
+        assert n_pos_move.shape == (n_move, 2)
+
+        # Shouldn't collide with obstacles,
+        n_in_obs = jax.vmap(ft.partial(self._in_obs, radius=self.cfg.agent_radius))(n_pos_move)
+        in_obs = jnp.any(n_in_obs)
+
+        # Aerial obstacles.
+        n_in_aerial_obs = jax.vmap(ft.partial(self._in_aerial_obs, radius=self.cfg.agent_radius))(n_pos_move)
+        in_aerial_obs = jnp.any(n_in_aerial_obs)
+
+        # Aerial collide
+        aerial_collide = self._has_collide(n_pos_move, self.cfg.agent_radius)
+
+        # Not out of bounds.
+        n_oob = jax.vmap(self._is_oob)(n_pos_move)
+        oob = jnp.any(n_oob)
+
+        is_unsafe = in_obs | in_aerial_obs | aerial_collide | oob
+        return ~is_unsafe
+
+    def _reset_heuristic(self, key: PRNGKeyArray, n_centers: jnp.ndarray):
+        """
+        1. Rejection sample a position for the base that minimizes the distance to the closest target and is valid.
+        2. Rejection sample positions for the other herders that is close to their target and is valid.
+        """
+        n_herders = self.cfg.n_herders
+        n_move = n_herders - 1
+
+        assert n_centers.shape == (n_move, 2)
+
+        agent_radius = self.cfg.agent_radius
+
+        key_base, key_herders, key_vel = jr.split(key, 3)
+
+        # 1. Sample for the base.
+        n_samples_base = 16
+        b_key_base = jr.split(key_base, n_samples_base)
+
+        # To make the sampling more focused, consider the midpoint between the two targets.
+        # Sample within a circle with radius equal to half the distance between the two targets.
+        sample_circ_center = 0.5 * (n_centers[0] + n_centers[1])
+        sample_circ_radius = 0.5 * jnp.linalg.norm(n_centers[0] - n_centers[1])
+
+        def sample_base_pos(key_):
+            key_0, key_1 = jr.split(key_)
+            angle_ = jr.uniform(key_0, minval=0.0, maxval=2 * jnp.pi)
+            radius_ = jr.uniform(key_1, minval=0.0, maxval=sample_circ_radius)
+            pos_offset_ = radius_ * jnp.array([jnp.cos(angle_), jnp.sin(angle_)])
+            pos_ = sample_circ_center + pos_offset_
+            return pos_
+
+        b_pos_base = jax.vmap(sample_base_pos)(b_key_base)
+        b_base_valid = jax.vmap(self._is_valid_base)(b_pos_base)
+
+        # Of the valid ones, find the one that is closest to any target.
+        bn_dist = jnp.linalg.norm(b_pos_base[:, None] - n_centers[None, :], axis=-1)
+        assert bn_dist.shape == (n_samples_base, n_move)
+
+        b_dist_closest = jnp.min(bn_dist, axis=1)
+        assert b_dist_closest.shape == (n_samples_base,)
+
+        b_cost = jnp.where(b_base_valid, b_dist_closest, 1e6)
+        idx = jnp.argmin(b_cost)
+        pos_base = b_pos_base[idx, :]
+        assert pos_base.shape == (2,)
+
+        # 2. Sample for the other herders. Sample around their targets, try to ensure validity.
+        n_samples_herders = 32
+        b_key_herders = jr.split(key_herders, n_samples_herders)
+
+        def sample_herder_pos(key_):
+            n_angle_ = jr.uniform(key_, minval=0.0, maxval=2 * jnp.pi, shape=n_move)
+            n_radius_ = jr.uniform(key_, minval=0.0, maxval=5 * agent_radius, shape=n_move)
+            n_pos_offset_ = n_radius_[:, None] * jnp.stack([jnp.cos(n_angle_), jnp.sin(n_angle_)], axis=-1)
+            assert n_pos_offset_.shape == (n_move, 2)
+
+            n_pos_ = n_centers + n_pos_offset_
+            assert n_pos_.shape == (n_move, 2)
+
+            # Clip to within the environment bounds.
+            minpos = -0.99 * np.array(self.cfg.halfsize)
+            maxpos = 0.99 * np.array(self.cfg.halfsize)
+            n_pos_ = jnp.clip(n_pos_, minpos, maxpos)
+
+            return n_pos_
+
+        bn_move_pos = jax.vmap(sample_herder_pos)(b_key_herders)
+        assert bn_move_pos.shape == (n_samples_herders, n_move, 2)
+
+        b_move_valid = jax.vmap(self._is_valid_move)(bn_move_pos)
+        idx = jnp.argmax(b_move_valid)
+        n_move_pos = bn_move_pos[idx, :, :]
+        assert n_move_pos.shape == (n_move, 2)
+
+        n_herder_pos = jnp.concatenate([n_move_pos, pos_base[None, :]], axis=0)
 
         vel_max = np.array(self.cfg.vel_maxs)[:, None]
         n_herder_vel = jr.uniform(key_vel, shape=(n_herders, 2), minval=-vel_max, maxval=vel_max)
