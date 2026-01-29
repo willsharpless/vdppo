@@ -5,12 +5,14 @@ n_agent=1
 alg=${1:-vd}  # Use first argument, default to 'vd'
 GPU_ID=${2:-0}
 
+seed=${3:-0}
+
 screen -dmS gpu${GPU_ID}_job bash -c '
 conda activate jaxrlnew
 export CUDA_VISIBLE_DEVICES='"${GPU_ID}"'
 
 # iterate thru n_specs and seeds
-for seed in $(seq 0 2); do
+for seed in $(seq '"${seed}"' '"${seed}"'); do
   for spec in $(seq 1 '"${n_spec}"'); do
 
     python scripts/train.py '"${alg}"' \

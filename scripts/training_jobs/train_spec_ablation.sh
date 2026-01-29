@@ -6,11 +6,13 @@ n_agent=1
 alg=${1:-vd}  # Use first argument, default to 'vd'
 GPU_ID=${2:-0}
 
+seed=${3:-0}
+
 screen -dmS gpu${GPU_ID}_job bash -c '
 conda activate jaxrlnew
 export CUDA_VISIBLE_DEVICES='"${GPU_ID}"'
 
-list_of_seeds=(0 1 2)
+list_of_seeds=('"${seed}"')
 list_of_remaining_specs=(1 2 3 4 5)
 
 # iterate thru n_specs and seeds
