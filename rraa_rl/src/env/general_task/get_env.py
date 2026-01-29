@@ -264,20 +264,24 @@ def get_env_and_cbs(
         spec = "G(F ag0_target0) && G(F ag1_target1) && G(!obstacles) && G(!air_obstacles) && G(!oob) && G(!aerial_collide) && G(F ag0_base) && G(F ag1_base)"
     
         base_cfg = DeliveryRealv2BaseCfg()
-        cent = 2.25
+        # cent = 2.25
+        cent = 2.75
         base_cfg.obstacle_centers = [
             [-cent, -cent],
             [-cent, cent],
             [cent, -cent],
             [cent, cent],
         ]
-        base_cfg.obstacle_radiuses = [0.8] * 4
+        # base_cfg.obstacle_radiuses = [0.8] * 4
+        base_cfg.obstacle_radiuses = [1.0] * 4
         base_cfg.obstacle_lw_ratios = [1.0] * 4
 
         base_cfg.air_obstacle_centers = [
             [0., 0.]
         ]
-        base_cfg.air_obstacle_radiuses = [1.4]
+        # base_cfg.air_obstacle_radiuses = [1.4]
+        # base_cfg.air_obstacle_radiuses = [1.6]
+        base_cfg.air_obstacle_radiuses = [2.2]
         base_cfg.air_obstacle_lw_ratios = [1.]
         base_cfg.air_obstacles = True
 

@@ -733,8 +733,8 @@ def env_layout_plot(p: CallbackProps):
 
         for pred_name in plot_predicates:
             if pred_name in bb_predicates:
-                alpha = 0.2 if not pred_name in ["oob", "obstacles"] else 0.8
-                color = "yellow" if pred_name == "air_obstacles" else pred_colors[pred_name]
+                alpha = 0.2 if not pred_name in ["oob", "obstacles"] else 0.6
+                color = "red" if pred_name == "air_obstacles" else pred_colors[pred_name]
                 ax.contourf(bb_X, bb_Y, bb_predicates[pred_name], levels=[0, 1], colors=color, alpha=alpha)
 
         # Set agent and herd positions for the first step
