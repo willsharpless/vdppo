@@ -764,7 +764,6 @@ def env_layout_plot(p: CallbackProps):
         static_path = plots_dir / f"deliveryrealv2_env_layout_plot.jpg"
         fig.savefig(static_path, bbox_inches="tight", dpi=500)
         plt.close(fig)
-        exit(0)
 
 
 def animate_eval_trajs_multi_agent_LDBA(p: CallbackProps):

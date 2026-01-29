@@ -50,7 +50,7 @@ class DeliveryRealv2BaseCfg:
     n_herders: int = 3
     n_herd: int = 3
     acc_maxs: list[float] = [1.5, 1.5, 1.0]
-    vel_maxs: list[float] = [0.8, 0.8, 0.1]
+    vel_maxs: list[float] = [0.8, 0.8, 0.4]
 
     agent_radius: float = 0.4
     # base_agent_radius: float = 0.75
