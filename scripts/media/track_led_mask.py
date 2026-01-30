@@ -55,7 +55,12 @@ class _UserAbort(Exception):
     pass
 
 
-def _prompt_user_click(frame_bgr: np.ndarray, window_name: str = "Click to re-initialize tracking") -> Optional[Tuple[float, float]]:
+def _prompt_user_click(
+    frame_bgr: np.ndarray,
+    frame_idx: int,
+    fps: float,
+    window_name: str = "Click to re-initialize tracking",
+) -> Optional[Tuple[float, float]]:
     """
     Display frame and wait for user to click a point.
     Returns (cx, cy) if user clicks, None if user presses ESC to skip this frame.
@@ -68,13 +73,20 @@ def _prompt_user_click(frame_bgr: np.ndarray, window_name: str = "Click to re-in
             clicked_point[0] = (float(x), float(y))
 
     cv2.namedWindow(window_name, cv2.WINDOW_NORMAL)
+    # Maximize window
+    cv2.setWindowProperty(window_name, cv2.WND_PROP_FULLSCREEN, cv2.WINDOW_FULLSCREEN)
     cv2.setMouseCallback(window_name, on_mouse)
+
+    # Calculate timestamp
+    timestamp_sec = frame_idx / fps
+    minutes = int(timestamp_sec // 60)
+    seconds = timestamp_sec % 60
 
     # Draw instruction text on frame
     display = frame_bgr.copy()
     cv2.putText(
         display,
-        "Click on LED to continue | ESC=skip frame | Q=quit",
+        f"Frame {frame_idx} ({minutes}:{seconds:05.2f}) | Click on LED | ESC=skip | Q=quit",
         (10, 30),
         cv2.FONT_HERSHEY_SIMPLEX,
         0.7,
@@ -227,9 +239,11 @@ def track(
 
     user_aborted = False
     it = range(remaining) if remaining is not None else iter(int, 1)
+    frame_idx = 0  # Frame 0 already processed above
 
     try:
         for _ in tqdm.tqdm(it, total=remaining if remaining is not None else None):
+            frame_idx += 1
             ok, frame = cap.read()
             if not ok:
                 break
@@ -251,8 +265,8 @@ def track(
             e = float(err[0, 0]) if (err is not None and good) else 0.0
 
             if (not good) or (err is not None and e > max_track_err):
-                logger.warning("Tracking lost! Prompting user to re-initialize...")
-                clicked = _prompt_user_click(frame)
+                logger.warning(f"Tracking lost at frame {frame_idx}! Prompting user to re-initialize...")
+                clicked = _prompt_user_click(frame, frame_idx, fps)
                 if clicked is not None:
                     cx, cy = clicked
                     p = np.array([[[cx, cy]]], dtype=np.float32)
