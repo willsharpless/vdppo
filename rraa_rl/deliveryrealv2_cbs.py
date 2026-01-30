@@ -1057,7 +1057,7 @@ def animate_deliveryrealv2_traj(
     fps: int = 30,
 ):
     figsize = np.array([4, 3])
-    fig, ax = plt.subplots(figsize=figsize)
+    fig, ax = plt.subplots(figsize=figsize, dpi=400)
     # env_base = DeliveryRealv2Base(cfg)
     env_base = env.base
     # mult = cfg.pos_multiplier

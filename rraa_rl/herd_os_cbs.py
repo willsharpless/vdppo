@@ -834,7 +834,7 @@ def animate_herding_traj(
     fps: int = 30,
 ):
     figsize = np.array([4, 3])
-    fig, ax = plt.subplots(figsize=figsize)
+    fig, ax = plt.subplots(figsize=figsize, dpi=400)
     env_base = HerdingHerd(cfg)
     mult = cfg.pos_multiplier
     env_base.setup_ax(ax)

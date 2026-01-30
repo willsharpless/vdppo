@@ -37,7 +37,7 @@ def main(run_path: pathlib.Path, n_env: int = 1, step: int | None = None):
     if isinstance(agent, VDMAPPOAgent):
         collect_opts["temporal_transitions"] = True
 
-    Tb_rollout, info_collect = agent.collect_eval_with_states(collector, b_state0, env.eval_T, **collect_opts)
+    Tb_rollout, info_collect = agent.collect_eval_with_states(collector, b_state0, 300, **collect_opts)
     Tb_rollout = jax.device_get(Tb_rollout)
     bT_rollout = Tb_rollout.switch01()
 
@@ -45,20 +45,19 @@ def main(run_path: pathlib.Path, n_env: int = 1, step: int | None = None):
     b_trajs = extract_rollouts_eval(bT_rollout)
 
     # Animate the first trajectory.
-    traj = b_trajs[0]
+    for ii, traj in enumerate(b_trajs):
+        # ------------------------------------------------------------
+        cfg: HerdOs.Cfg = env.cfg
 
-    # ------------------------------------------------------------
-    cfg: HerdOs.Cfg = env.cfg
-
-    T_state: HerdOs.State = traj.state_now
-    T_pos_herd = T_state.base.herd_state[:, :, :2]
-    T_pos_herder = T_state.base.herder_state[:, :, :2]
-    T_temporal_node_idx = T_state.temporal_node_idx
-    T_labels = [
-        f"Temporal {t_node_idx} ({env.temporal_node_names[t_node_idx]})" for t_node_idx in T_state.temporal_node_idx
-    ]
-    anim_path = run_path / "eval_animation.mp4"
-    animate_herding_traj(anim_path, cfg.base, T_pos_herd, T_pos_herder, T_temporal_node_idx, T_labels)
+        T_state: HerdOs.State = traj.state_now
+        T_pos_herd = T_state.base.herd_state[:, :, :2]
+        T_pos_herder = T_state.base.herder_state[:, :, :2]
+        T_temporal_node_idx = T_state.temporal_node_idx
+        T_labels = [
+            f"Temporal {t_node_idx} ({env.temporal_node_names[t_node_idx]})" for t_node_idx in T_state.temporal_node_idx
+        ]
+        anim_path = run_path / f"eval_animation_{ii:02}.mp4"
+        animate_herding_traj(anim_path, cfg.base, T_pos_herd, T_pos_herder, T_temporal_node_idx, T_labels)
 
 
 if __name__ == "__main__":
