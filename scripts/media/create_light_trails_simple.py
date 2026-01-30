@@ -10,6 +10,33 @@ from loguru import logger
 app = cyclopts.App()
 
 
+def extract_background(cap: cv2.VideoCapture, n_frames_to_use: int) -> np.ndarray:
+    cap.set(cv2.CAP_PROP_POS_FRAMES, 0)
+    n_frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
+
+    n_frames_to_use = min(n_frames, n_frames_to_use)
+    frame_idxs = np.round(np.linspace(0, n_frames - 1, n_frames_to_use)).astype(int)
+    frame_idxs = np.unique(frame_idxs)
+
+    buffer = None
+    for ii, frame_idx in enumerate(tqdm.tqdm(frame_idxs, desc="Extracting background")):
+        cap.set(cv2.CAP_PROP_POS_FRAMES, frame_idx)
+        ok, frame_bgr = cap.read()
+
+        if buffer is None:
+            buffer = np.zeros((n_frames_to_use, *frame_bgr.shape), dtype=frame_bgr.dtype)
+            logger.debug("dtype: {}".format(frame_bgr.dtype))
+
+        if not ok:
+            raise RuntimeError(f"Failed to read frame at index {frame_idx}")
+
+        buffer[ii] = frame_bgr
+
+    # Compute median across time.
+    background = np.median(buffer, axis=0).astype(buffer.dtype)
+    return background
+
+
 def _gamma_encode(img_linear_0_1: np.ndarray, gamma: float) -> np.ndarray:
     if gamma == 1.0:
         return img_linear_0_1
@@ -58,21 +85,36 @@ def main(
     frac: float = 1.0,
     skip: int = 1,
     start_frame: int = 0,
-    strength: float = 1.0,  # scale frame contribution (0..1)
+    # --- masking controls ---
+    luma_thresh: float = 0.15,  # absolute threshold in linear [0,1]
+    luma_diff_thresh: float = 0.05,  # threshold on luma difference from bg in linear [0,1]
+    strength: float = 0.25,  # scale masked contribution (0..1)
     # Time ramp: make early trails dim, late trails bright
-    time_ramp: str = "none",  # none|linear|ease_in|ease_out|smoothstep
+    time_ramp: str = "smoothstep",  # none|linear|ease_in|ease_out|smoothstep
     ramp_min: float = 0.15,  # weight at start
     ramp_max: float = 1.00,  # weight at end
-    ramp_pow: float = 1.0,
+    ramp_pow: float = 3.0,
     # Bloom
     bloom_thresh: float = 0.6,  # 0..1, higher = only brightest pixels bloom
     bloom_sigma: float = 6.0,  # blur radius in pixels
     bloom_intensity: float = 0.0,  # 0 disables
 ):
-    """Create light trails from video without masking or recoloring."""
+    """Create light trails from video with brightness-based masking (no recoloring)."""
     cap = cv2.VideoCapture(str(vid_path))
     if not cap.isOpened():
         raise SystemExit(f"Could not open video: {vid_path}")
+
+    # Extract or load background
+    bg_path = vid_path.with_name(f"{vid_path.stem}__bg.png")
+    if not bg_path.exists():
+        n_frames_to_use = 100
+        bg_u8 = extract_background(cap, n_frames_to_use)
+        cv2.imwrite(str(bg_path), bg_u8)
+        logger.success(f"Saved background to: {bg_path}")
+    else:
+        bg_u8 = cv2.imread(str(bg_path))
+        logger.info(f"Loaded background from: {bg_path}")
+    bg_f32 = bg_u8.astype(np.float32) * (1.0 / 255.0)
 
     n_frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
     n_frames = int(round(frac * n_frames))
@@ -105,11 +147,21 @@ def main(
         # float32 [0,1]
         frame_f32 = frame_bgr.astype(np.float32) * (1.0 / 255.0)
 
+        # Subtract background
+        frame_without_bg = cv2.subtract(frame_f32, bg_f32)
+
         # Work in linear space for physically sensible blending if gamma != 1
         x = _gamma_decode(frame_f32, gamma)
+        x_without_bg = _gamma_decode(frame_without_bg, gamma)
 
-        # Apply strength
-        x = x * strength
+        # --- Brightness-based masking ---
+        # Simple absolute brightness (luma) mask in linear space.
+        luma = x.mean(axis=2, keepdims=True)  # shape (H,W,1)
+        luma_diff = x_without_bg.mean(axis=2, keepdims=True)
+        is_bright = ((luma > luma_thresh) & (luma_diff > luma_diff_thresh)).astype(np.float32)
+
+        # Apply mask + strength so only bright pixels accumulate
+        x = x * is_bright * strength
 
         # --- time ramp weight ---
         t = frame_idx / max(n_frames - 1, 1)
