@@ -1094,6 +1094,35 @@ def animate_deliveryrealv2_traj(
         fontsize=8,
         bbox=dict(facecolor="black", alpha=0.5, pad=2),
     )
+
+    # Label the agents and the targets.
+    agent_texts = []
+    for agent_idx in range(env_base.n_agents):
+        text = ax.text(
+            0,
+            0,
+            f"A{agent_idx}",
+            verticalalignment="center",
+            horizontalalignment="center",
+            color="white",
+            fontsize=6,
+            weight="bold",
+        )
+        agent_texts.append(text)
+    target_texts = []
+    for target_idx in range(2):
+        text = ax.text(
+            0,
+            0,
+            f"T{target_idx}",
+            verticalalignment="center",
+            horizontalalignment="center",
+            color="white",
+            fontsize=6,
+            weight="bold",
+        )
+        target_texts.append(text)
+
     fig.tight_layout()
 
     def update_fn(kk: int):
@@ -1109,6 +1138,9 @@ def animate_deliveryrealv2_traj(
         for ii, pos_herder in enumerate(n_pos_herder):
             agent_circs[ii].center = pos_herder
 
+            # Set the position of the agent text
+            agent_texts[ii].set_position(pos_herder)
+
             if color_temporal_node is not None:
                 agent_circs[ii].set_edgecolor(color_temporal_node)
                 # agent_circs[ii].set_facecolor(f"C{ii+1}")
@@ -1116,11 +1148,14 @@ def animate_deliveryrealv2_traj(
         for ii, pos_target in enumerate(n_pos_target):
             target_circs[ii].center = pos_target
 
+            # Set the position of the target text.
+            target_texts[ii].set_position(pos_target)
+
         text = f"Step: {kk}"
         if T_labels is not None:
             text += f"\n{T_labels[kk]}"
         kk_text.set_text(text)
 
     T = len(T_pos_herder)
-    artists = all_circs + [kk_text]
+    artists = all_circs + [kk_text, *agent_texts, *target_texts]
     save_animation_blit(fig, artists, anim_path, T, fps=fps, update_fn=update_fn)
