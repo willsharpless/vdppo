@@ -1,4 +1,6 @@
 import pathlib
+from typing import Optional, Tuple, Annotated
+from cyclopts import Parameter
 
 import cv2
 import cyclopts
@@ -9,6 +11,18 @@ from loguru import logger
 from matplotlib.colors import to_rgb
 
 app = cyclopts.App()
+
+
+def _parse_multi_arg(arg: Optional[str], n_masks: int, default, convert=str) -> list:
+    """Parse comma-separated argument into list, broadcasting single value to all masks."""
+    if arg is None:
+        return [default] * n_masks
+    parts = [p.strip() for p in arg.split(",")]
+    if len(parts) == 1:
+        return [convert(parts[0])] * n_masks
+    if len(parts) != n_masks:
+        raise ValueError(f"Expected 1 or {n_masks} values, got {len(parts)}")
+    return [convert(p) for p in parts]
 
 
 def _gamma_encode(img_linear_0_1: np.ndarray, gamma: float) -> np.ndarray:
@@ -130,9 +144,11 @@ def main(
     frac: float = 1.0,
     skip: int = 1,
     start_frame: int = 0,
-    # --- recolor ---
-    mask_vid_path: pathlib.Path = None,
-    sat: float = 0.95,  # saturation to apply (0..255)
+    # --- recolor (supports multiple masks) ---
+    mask_vid_paths: Annotated[list[pathlib.Path], Parameter(consume_multiple=True)] = [],  # multiple mask videos
+    colors: Optional[str] = None,  # comma-separated hex colors, e.g. "#348ABD,#E24A33"
+    mask_dilates: Optional[str] = None,  # comma-separated dilation radii, e.g. "0,5"
+    sat: float = 0.95,  # saturation to apply
     mask_blur: float = 0.0,  # gaussian sigma to soften mask edges (0 disables)
     mask_gain: float = 1.0,  # multiply mask alpha (e.g. 1.5), clamped to [0,1]
     # --- masking controls ---
@@ -150,28 +166,50 @@ def main(
     bloom_thresh: float = 0.6,  # 0..1, higher = only brightest pixels bloom
     bloom_sigma: float = 6.0,  # blur radius in pixels
     bloom_intensity: float = 0.0,  # 0 disables
-    #
-    new_color: str = "#348ABD"
 ):
     cap = cv2.VideoCapture(vid_path)
     if not cap.isOpened():
         raise SystemExit(f"Could not open video: {vid_path}")
 
-    mcap = None
-    if mask_vid_path is not None:
-        mcap = cv2.VideoCapture(str(mask_vid_path))
-        if not mcap.isOpened():
-            raise SystemExit(f"Could not open mask video: {mask_vid_path}")
-
     # Basic sanity: size should match
     w = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
     h = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
 
-    if mcap is not None:
+    # Open all mask videos
+    n_masks = len(mask_vid_paths)
+    mcaps = []
+    for mask_path in mask_vid_paths:
+        mcap = cv2.VideoCapture(str(mask_path))
+        if not mcap.isOpened():
+            raise SystemExit(f"Could not open mask video: {mask_path}")
         mw = int(mcap.get(cv2.CAP_PROP_FRAME_WIDTH))
         mh = int(mcap.get(cv2.CAP_PROP_FRAME_HEIGHT))
         if (w, h) != (mw, mh):
-            logger.warning(f"Mask video size {(mw, mh)} != video size {(w, h)}; will resize mask each frame.")
+            logger.warning(f"Mask video {mask_path} size {(mw, mh)} != video size {(w, h)}; will resize.")
+        mcaps.append(mcap)
+        logger.info(f"Opened mask video: {mask_path}")
+
+    # Parse per-mask arguments
+    color_list = _parse_multi_arg(colors, n_masks, "#348ABD", str) if n_masks > 0 else []
+    dilate_list = _parse_multi_arg(mask_dilates, n_masks, 0, int) if n_masks > 0 else []
+
+    # Convert colors to HSV hue values
+    target_hues = []
+    for c in color_list:
+        r, g, b = to_rgb(c)
+        target_h, _, _ = _rgb_to_hsv_opencv(r, g, b)
+        target_hues.append(target_h)
+        logger.info(f"Color {c} -> hue {target_h}")
+
+    # Build dilation kernels per mask
+    dilate_kernels = []
+    for d in dilate_list:
+        if d > 0:
+            kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (2 * d + 1, 2 * d + 1))
+            dilate_kernels.append(kernel)
+            logger.info(f"Mask dilation: {d}px")
+        else:
+            dilate_kernels.append(None)
 
     bg_path = vid_path.with_name(f"{vid_path.stem}__bg.png")
     if not bg_path.exists():
@@ -197,16 +235,9 @@ def main(
 
     cap.set(cv2.CAP_PROP_POS_FRAMES, start_frame)
 
-    if mcap is not None:
-        mcap.set(cv2.CAP_PROP_POS_FRAMES, start_frame + n_frames - 1)
+    for mcap in mcaps:
         mcap.set(cv2.CAP_PROP_POS_FRAMES, start_frame)
 
-    # Target hue/sat for recolor
-    # new_color = "#348ABD"
-    r, g, b = to_rgb(new_color)
-    target_h, _, _ = _rgb_to_hsv_opencv(r, g, b)
-    logger.info("h: {}".format(target_h))
-    # target_s = int(np.clip(sat, 0, 255))
     target_s = sat
 
     # We accumulate log(prod(1 - x)) as sum(log1p(-x))
@@ -230,49 +261,56 @@ def main(
             logger.error("Failed to read video, exiting...")
             break
 
-        okm, mask_frame = mcap.read()
-        if not okm:
-            logger.error("Failed to read mask, exiting...")
+        # Read all mask frames
+        mask_frames = []
+        for i, mcap in enumerate(mcaps):
+            okm, mask_frame = mcap.read()
+            if not okm:
+                logger.error(f"Failed to read mask {i}, exiting...")
+                break
+            mask_frames.append(mask_frame)
+        if len(mask_frames) != n_masks:
             break
-
-        # # Save intermediate recolored frame for debugging
-        # debug_path = vid_path.with_name(f"{vid_path.stem}__frame_{frame_idx:05d}.png")
-        # cv2.imwrite(str(debug_path), frame_bgr)
-        # ipdb.set_trace()
 
         # Only keep every Nth frame (based on frames read since start)
         if (frame_idx % skip) != 0:
             continue
 
-        mask_gray = mask_frame[:, :, 0]
-
-        # Convert mask to float alpha [0,1]
-        mask01 = mask_gray.astype(np.float32) / 255.0
-        if mask_blur and mask_blur > 0:
-            mask01 = cv2.GaussianBlur(mask01, (0, 0), float(mask_blur))
-        if mask_gain != 1.0:
-            mask01 = np.clip(mask01 * float(mask_gain), 0.0, 1.0)
-
         # float32 [0,1]
         frame_f32_orig = frame_bgr.astype(np.float32) * (1.0 / 255.0)
 
-        # --- Recolor LED using the mask video (in display/BGR space) ---
-        frame_f32 = frame_f32_orig
-        # frame_f32 = _recolor_with_mask_bgr(
-        #     frame_bgr=frame_f32_orig,
-        #     mask01=mask01,
-        #     target_h=target_h,
-        #     target_s=target_s,
-        #     keep_value=True,
-        # )
+        # Subtract background
+        frame_without_bg = cv2.subtract(frame_f32_orig, bg_f32)
+
+        # Process each mask and apply recoloring
+        frame_f32 = frame_f32_orig.copy()
+        for i, mask_frame in enumerate(mask_frames):
+            mask_gray = mask_frame[:, :, 0]
+
+            # Apply per-mask dilation
+            if dilate_kernels[i] is not None:
+                mask_gray = cv2.dilate(mask_gray, dilate_kernels[i], iterations=1)
+
+            # Convert mask to float alpha [0,1]
+            mask01 = mask_gray.astype(np.float32) / 255.0
+            if mask_blur and mask_blur > 0:
+                mask01 = cv2.GaussianBlur(mask01, (0, 0), float(mask_blur))
+            if mask_gain != 1.0:
+                mask01 = np.clip(mask01 * float(mask_gain), 0.0, 1.0)
+
+            # Recolor this mask region
+            frame_f32 = _recolor_with_mask_bgr(
+                frame_bgr=frame_f32,
+                mask01=mask01,
+                target_h=target_hues[i],
+                target_s=target_s,
+                keep_value=True,
+            )
 
         # # Save intermediate recolored frame for debugging
-        # debug_path = vid_path.with_name(f"{vid_path.stem}__frame_{frame_idx:05d}.png")
+        # debug_path = vid_path.parent / f"dbg/frame_{frame_idx:05d}.png"
+        # debug_path.parent.mkdir(exist_ok=True)
         # cv2.imwrite(str(debug_path), (frame_f32 * 255.0).astype(np.uint8))
-        # ipdb.set_trace()
-
-        # Subtract background
-        frame_without_bg = cv2.subtract(frame_f32, bg_f32)
 
         # Work in linear space for physically sensible blending if gamma != 1
         x = _gamma_decode(frame_f32, gamma)
@@ -285,14 +323,14 @@ def main(
         luma_diff = x_without_bg.mean(axis=2, keepdims=True)
         is_bright = ((luma > luma_thresh) & (luma_diff > luma_diff_thresh)).astype(np.float32)  # 0/1 mask, float32
 
-        filter_h = 210
-        filter_h_width = 34
-        filter_hue = [filter_h - filter_h_width, filter_h + filter_h_width]
-        if filter_hue is not None:
-            hsv = cv2.cvtColor(frame_f32_orig, cv2.COLOR_BGR2HSV)
-            hue = hsv[:, :, 0]  # shape (H,W)
-            hue_mask = ((hue >= filter_hue[0]) & (hue <= filter_hue[1])).astype(np.float32)
-            is_bright = is_bright * hue_mask[:, :, None]
+        # filter_h = 210
+        # filter_h_width = 34
+        # filter_hue = [filter_h - filter_h_width, filter_h + filter_h_width]
+        # if filter_hue is not None:
+        #     hsv = cv2.cvtColor(frame_f32_orig, cv2.COLOR_BGR2HSV)
+        #     hue = hsv[:, :, 0]  # shape (H,W)
+        #     hue_mask = ((hue >= filter_hue[0]) & (hue <= filter_hue[1])).astype(np.float32)
+        #     is_bright = is_bright * hue_mask[:, :, None]
 
         # Optional morphology to remove speckles / thicken trails
         if open_kernel is not None or dilate_kernel is not None:
@@ -303,22 +341,22 @@ def main(
                 is_bright_u8 = cv2.dilate(is_bright_u8, dilate_kernel, iterations=1)
             is_bright = (is_bright_u8.astype(np.float32) / 255.0)[:, :, None]
 
-        if filter_hue is not None:
-            hsv = cv2.cvtColor(frame_f32_orig, cv2.COLOR_BGR2HSV)
-            hue = hsv[:, :, 0]  # shape (H,W)
-            hue_mask = ((hue >= filter_hue[0]) & (hue <= filter_hue[1])).astype(np.float32)
-            is_bright = is_bright * hue_mask[:, :, None]
-
-        # Optional morphology to remove speckles / thicken trails
-        if open_kernel is not None:
-            is_bright_u8 = (is_bright[:, :, 0] * 255).astype(np.uint8)
-            is_bright_u8 = cv2.morphologyEx(is_bright_u8, cv2.MORPH_OPEN, open_kernel)
-            is_bright = (is_bright_u8.astype(np.float32) / 255.0)[:, :, None]
+        # if filter_hue is not None:
+        #     hsv = cv2.cvtColor(frame_f32_orig, cv2.COLOR_BGR2HSV)
+        #     hue = hsv[:, :, 0]  # shape (H,W)
+        #     hue_mask = ((hue >= filter_hue[0]) & (hue <= filter_hue[1])).astype(np.float32)
+        #     is_bright = is_bright * hue_mask[:, :, None]
+        #
+        # # Optional morphology to remove speckles / thicken trails
+        # if open_kernel is not None:
+        #     is_bright_u8 = (is_bright[:, :, 0] * 255).astype(np.uint8)
+        #     is_bright_u8 = cv2.morphologyEx(is_bright_u8, cv2.MORPH_OPEN, open_kernel)
+        #     is_bright = (is_bright_u8.astype(np.float32) / 255.0)[:, :, None]
 
         # (Very weakly) include the background by Gaussian blur.
         ksize = 31
         is_bright_blur = cv2.GaussianBlur(is_bright, (ksize, ksize), 0)
-        is_bright = np.maximum(0.6 * is_bright_blur[:, :, None], is_bright)
+        is_bright = np.maximum(0.9 * is_bright_blur[:, :, None], is_bright)
 
         # # Visualize the mask for each frame. Black if not in is_bright. Use the image if is_bright.
         # viz_img = frame_f32 * is_bright
@@ -367,6 +405,8 @@ def main(
         count += 1
 
     cap.release()
+    for mcap in mcaps:
+        mcap.release()
 
     if count == 0:
         raise SystemExit("No frames read.")
