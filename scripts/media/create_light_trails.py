@@ -150,22 +150,28 @@ def main(
     bloom_thresh: float = 0.6,  # 0..1, higher = only brightest pixels bloom
     bloom_sigma: float = 6.0,  # blur radius in pixels
     bloom_intensity: float = 0.0,  # 0 disables
+    #
+    new_color: str = "#348ABD"
 ):
     cap = cv2.VideoCapture(vid_path)
     if not cap.isOpened():
         raise SystemExit(f"Could not open video: {vid_path}")
 
-    mcap = cv2.VideoCapture(str(mask_vid_path))
-    if not mcap.isOpened():
-        raise SystemExit(f"Could not open mask video: {mask_vid_path}")
+    mcap = None
+    if mask_vid_path is not None:
+        mcap = cv2.VideoCapture(str(mask_vid_path))
+        if not mcap.isOpened():
+            raise SystemExit(f"Could not open mask video: {mask_vid_path}")
 
     # Basic sanity: size should match
     w = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
     h = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
-    mw = int(mcap.get(cv2.CAP_PROP_FRAME_WIDTH))
-    mh = int(mcap.get(cv2.CAP_PROP_FRAME_HEIGHT))
-    if (w, h) != (mw, mh):
-        logger.warning(f"Mask video size {(mw, mh)} != video size {(w, h)}; will resize mask each frame.")
+
+    if mcap is not None:
+        mw = int(mcap.get(cv2.CAP_PROP_FRAME_WIDTH))
+        mh = int(mcap.get(cv2.CAP_PROP_FRAME_HEIGHT))
+        if (w, h) != (mw, mh):
+            logger.warning(f"Mask video size {(mw, mh)} != video size {(w, h)}; will resize mask each frame.")
 
     bg_path = vid_path.with_name(f"{vid_path.stem}__bg.png")
     if not bg_path.exists():
@@ -183,7 +189,6 @@ def main(
 
     # Save a frame of the final original image.
     cap.set(cv2.CAP_PROP_POS_FRAMES, start_frame + n_frames - 1)
-    mcap.set(cv2.CAP_PROP_POS_FRAMES, start_frame + n_frames - 1)
     ok, frame_bgr = cap.read()
     path = vid_path.with_name(f"{vid_path.stem}__final_frame.png")
     cv2.imwrite(path, frame_bgr)
@@ -191,10 +196,13 @@ def main(
     # exit(0)
 
     cap.set(cv2.CAP_PROP_POS_FRAMES, start_frame)
-    mcap.set(cv2.CAP_PROP_POS_FRAMES, start_frame)
+
+    if mcap is not None:
+        mcap.set(cv2.CAP_PROP_POS_FRAMES, start_frame + n_frames - 1)
+        mcap.set(cv2.CAP_PROP_POS_FRAMES, start_frame)
 
     # Target hue/sat for recolor
-    new_color = "#348ABD"
+    # new_color = "#348ABD"
     r, g, b = to_rgb(new_color)
     target_h, _, _ = _rgb_to_hsv_opencv(r, g, b)
     logger.info("h: {}".format(target_h))
@@ -218,10 +226,12 @@ def main(
     for frame_idx in tqdm.trange(n_frames):
         ok, frame_bgr = cap.read()
         if not ok:
+            logger.error("Failed to read video, exiting...")
             break
 
         okm, mask_frame = mcap.read()
         if not okm:
+            logger.error("Failed to read mask, exiting...")
             break
 
         # # Save intermediate recolored frame for debugging
