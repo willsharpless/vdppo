@@ -6,6 +6,7 @@ import jax
 import jax.random as jr
 import numpy as np
 from loguru import logger
+from valtr.reachability import DAGGUSingle, dag_to_str
 
 from rraa_rl.collector import Collector
 from rraa_rl.delivery_cbs import animate_delivery_traj
@@ -66,9 +67,19 @@ def main(run_path: pathlib.Path, n_env: int = 1, step: int | None = None, eval_T
         T_state = traj.state_now
 
         T_temporal_node_idx = T_state.temporal_node_idx
-        T_labels = [
-            f"Temporal {t_node_idx} ({env.temporal_node_names[t_node_idx]})" for t_node_idx in T_state.temporal_node_idx
-        ]
+        T_labels = []
+        for t_node_idx in T_state.temporal_node_idx:
+            dag_id = env.temporal_nodes[t_node_idx]
+            dag_node = env.dag_nodes[dag_id]
+            assert isinstance(dag_node, DAGGUSingle)
+            reach_str = dag_to_str(env.dag_nodes, dag_node.reach)
+
+            label = f"T{t_node_idx} %{dag_id}: {reach_str}"
+            T_labels.append(label)
+
+        # T_labels = [
+        #     f"Temporal {t_node_idx} ({env.temporal_node_names[t_node_idx]})" for
+        # ]
 
         if run.env_name == "delivery":
             T_state: Delivery.State
