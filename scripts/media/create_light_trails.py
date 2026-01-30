@@ -54,7 +54,7 @@ def _recolor_with_mask_bgr(
     # We do a hard where() then soften via alpha blend in BGR.
     m = mask01 > 0.0
     hsv2[..., 0] = np.where(m, target_h, hsv2[..., 0])
-    hsv2[..., 1] = np.where(m, target_s, hsv2[..., 1])
+    # hsv2[..., 1] = np.where(m, target_s, hsv2[..., 1])
     if not keep_value:
         # If you want to force a specific brightness later you could set V here.
         pass
@@ -219,6 +219,7 @@ def main(
     if morph_open and morph_open > 0:
         k = int(morph_open)
         open_kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (2 * k + 1, 2 * k + 1))
+        logger.info(f"morph_open: {morph_open}")
     if morph_dilate and morph_dilate > 0:
         k = int(morph_dilate)
         dilate_kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (2 * k + 1, 2 * k + 1))
@@ -253,16 +254,17 @@ def main(
             mask01 = np.clip(mask01 * float(mask_gain), 0.0, 1.0)
 
         # float32 [0,1]
-        frame_f32 = frame_bgr.astype(np.float32) * (1.0 / 255.0)
+        frame_f32_orig = frame_bgr.astype(np.float32) * (1.0 / 255.0)
 
         # --- Recolor LED using the mask video (in display/BGR space) ---
-        frame_f32 = _recolor_with_mask_bgr(
-            frame_bgr=frame_f32,
-            mask01=mask01,
-            target_h=target_h,
-            target_s=target_s,
-            keep_value=True,
-        )
+        frame_f32 = frame_f32_orig
+        # frame_f32 = _recolor_with_mask_bgr(
+        #     frame_bgr=frame_f32_orig,
+        #     mask01=mask01,
+        #     target_h=target_h,
+        #     target_s=target_s,
+        #     keep_value=True,
+        # )
 
         # # Save intermediate recolored frame for debugging
         # debug_path = vid_path.with_name(f"{vid_path.stem}__frame_{frame_idx:05d}.png")
@@ -283,14 +285,46 @@ def main(
         luma_diff = x_without_bg.mean(axis=2, keepdims=True)
         is_bright = ((luma > luma_thresh) & (luma_diff > luma_diff_thresh)).astype(np.float32)  # 0/1 mask, float32
 
-        filter_h = 190
-        filter_h_width = 40
+        filter_h = 210
+        filter_h_width = 34
         filter_hue = [filter_h - filter_h_width, filter_h + filter_h_width]
         if filter_hue is not None:
-            hsv = cv2.cvtColor(frame_f32, cv2.COLOR_BGR2HSV)
+            hsv = cv2.cvtColor(frame_f32_orig, cv2.COLOR_BGR2HSV)
             hue = hsv[:, :, 0]  # shape (H,W)
             hue_mask = ((hue >= filter_hue[0]) & (hue <= filter_hue[1])).astype(np.float32)
             is_bright = is_bright * hue_mask[:, :, None]
+
+        # Optional morphology to remove speckles / thicken trails
+        if open_kernel is not None or dilate_kernel is not None:
+            is_bright_u8 = (is_bright[:, :, 0] * 255).astype(np.uint8)
+            if open_kernel is not None:
+                is_bright_u8 = cv2.morphologyEx(is_bright_u8, cv2.MORPH_OPEN, open_kernel)
+            if dilate_kernel is not None:
+                is_bright_u8 = cv2.dilate(is_bright_u8, dilate_kernel, iterations=1)
+            is_bright = (is_bright_u8.astype(np.float32) / 255.0)[:, :, None]
+
+        if filter_hue is not None:
+            hsv = cv2.cvtColor(frame_f32_orig, cv2.COLOR_BGR2HSV)
+            hue = hsv[:, :, 0]  # shape (H,W)
+            hue_mask = ((hue >= filter_hue[0]) & (hue <= filter_hue[1])).astype(np.float32)
+            is_bright = is_bright * hue_mask[:, :, None]
+
+        # Optional morphology to remove speckles / thicken trails
+        if open_kernel is not None:
+            is_bright_u8 = (is_bright[:, :, 0] * 255).astype(np.uint8)
+            is_bright_u8 = cv2.morphologyEx(is_bright_u8, cv2.MORPH_OPEN, open_kernel)
+            is_bright = (is_bright_u8.astype(np.float32) / 255.0)[:, :, None]
+
+        # (Very weakly) include the background by Gaussian blur.
+        ksize = 31
+        is_bright_blur = cv2.GaussianBlur(is_bright, (ksize, ksize), 0)
+        is_bright = np.maximum(0.6 * is_bright_blur[:, :, None], is_bright)
+
+        # # Visualize the mask for each frame. Black if not in is_bright. Use the image if is_bright.
+        # viz_img = frame_f32 * is_bright
+        # debug_path = vid_path.parent / f"dbg/{vid_path.stem}__mask_viz_{frame_idx:05d}.png"
+        # debug_path.parent.mkdir(exist_ok=True)
+        # cv2.imwrite(str(debug_path), (np.clip(viz_img, 0.0, 1.0) * 255.0).astype(np.uint8))
 
         # # Use luma + the mask to define the final mask, recolor frame_bgr.
         # recolor_mask = is_bright.squeeze(-1) * mask01
@@ -310,15 +344,6 @@ def main(
         # debug_path = vid_path.with_name(f"{vid_path.stem}__frame_{frame_idx:05d}.png")
         # cv2.imwrite(str(debug_path), (np.clip(frame, 0.0, 1.0) * 255.0).astype(np.uint8))
         # ipdb.set_trace()
-
-        # Optional morphology to remove speckles / thicken trails
-        if open_kernel is not None or dilate_kernel is not None:
-            is_bright_u8 = (is_bright[:, :, 0] * 255).astype(np.uint8)
-            if open_kernel is not None:
-                is_bright_u8 = cv2.morphologyEx(is_bright_u8, cv2.MORPH_OPEN, open_kernel)
-            if dilate_kernel is not None:
-                is_bright_u8 = cv2.dilate(is_bright_u8, dilate_kernel, iterations=1)
-            is_bright = (is_bright_u8.astype(np.float32) / 255.0)[:, :, None]
 
         # Apply mask + strength so only LEDs (and maybe immediate glow) accumulate
         x = x * is_bright * strength
@@ -359,44 +384,6 @@ def main(
     out = _gamma_encode(out_lin, gamma)
 
     out_u8 = (np.clip(out, 0.0, 1.0) * 255.0 + 0.5).astype(np.uint8)
-
-    # mean = None          # running mean in linear space
-    # count = 0
-    #
-    # for _ in tqdm.trange(end_frame):
-    #     ok, frame_bgr = cap.read()
-    #     if not ok:
-    #         break
-    #
-    #     # float32 in [0,1]
-    #     frame = frame_bgr.astype(np.float32) * (1.0 / 255.0)
-    #
-    #     # average in linear space if gamma != 1
-    #     frame_lin = _gamma_decode(frame, gamma)
-    #
-    #     if mean is None:
-    #         # Use float64 for the accumulator for maximum numeric stability;
-    #         # output still becomes uint8 at the end.
-    #         mean = frame_lin.astype(np.float64, copy=True)
-    #         count = 1
-    #         continue
-    #
-    #     count += 1
-    #     # Numerically stable streaming mean update:
-    #     # mean <- mean + (x - mean) / count
-    #     mean += (frame_lin.astype(np.float64) - mean) / count
-    #
-    # cap.release()
-    #
-    # if count == 0:
-    #     raise SystemExit("No frames read.")
-    #
-    # logger.info(f"Computed stable streaming mean over {count} frames.")
-    # avg_lin = mean  # already the mean, in linear space
-    #
-    # logger.info("Gamma encode...")
-    # avg = _gamma_encode(avg_lin, gamma)
-    # out_u8 = (np.clip(avg, 0.0, 1.0) * 255.0 + 0.5).astype(np.uint8)
 
     out_path = vid_path.with_name(f"{vid_path.stem}__trails.png")
 
