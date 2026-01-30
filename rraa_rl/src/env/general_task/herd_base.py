@@ -110,6 +110,19 @@ class HerdBase(BaseEnv):
         return -1, 1
 
     @property
+    def action_dim(self) -> int:
+        return 2
+    
+    @property
+    def control_lim_lo(self) -> list[list[float]]:
+        return [[-self.cfg.acc_maxs[i]] * self.action_dim for i in range(self.cfg.n_herders)]
+
+    @property
+    def control_lim_hi(self) -> list[list[float]]:
+        return [[self.cfg.acc_maxs[i]] * self.action_dim for i in range(self.cfg.n_herders)]
+
+
+    @property
     def n_actions_per_agent(self) -> list[list[int]]:
         # Each herder has 3 actions per axis.
         n_actions_per_agent = []
@@ -241,6 +254,17 @@ class HerdBase(BaseEnv):
     def step(self, state: HerdBaseState, action: list[jnp.ndarray]):
         controls = self._action_to_controls(action)
         state_new, info_dyn = self.next_state(state, controls)
+        obs_new = self.get_obs(state_new)
+
+        predicates = self.get_predicates(state_new)
+        term = self.should_term_fn(predicates)
+        trunc = state_new.steps >= self.cfg.trunc_steps
+
+        info = {"age": state_new.steps} | info_dyn
+        return EnvStep(state_new, obs_new, predicates, term, trunc, info)
+
+    def step_control(self, state: HerdBaseState, controls: jnp.ndarray):
+        state_new , info_dyn = self.next_state(state, controls)
         obs_new = self.get_obs(state_new)
 
         predicates = self.get_predicates(state_new)

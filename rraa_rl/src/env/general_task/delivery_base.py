@@ -992,6 +992,11 @@ class DeliveryBase(BaseEnv):
             herd_circle = plt.Circle((0, 0), cfg.herded_radius, color="lightgray", alpha=0.5)
             ax.add_patch(herd_circle)
 
+    def is_valid_real_eval_state(self, state):
+        predicates = self.get_predicates(state)
+        is_unsafe = (predicates["aerial_collide"] + predicates["oob"] + predicates["obstacles"]) > 0
+        return ~is_unsafe
+
 
 # class DeliveryBasePlay(DeliveryBase):
 #     """For testing."""

@@ -219,6 +219,64 @@ def animate_eval_trajs_vd(p: CallbackProps):
     animated_artists = all_circs + [kk_text]
     save_animation_blit(fig, animated_artists, anim_path, T_max, update_fn)
 
+def animate_gridworld_traj(
+    anim_path: Path,
+    env: GridworldMA,
+    cfg: GridworldMABase.Cfg,
+    T_state: GridworldMA.State,
+    # T_labels: list[str] | None = None,
+    fps: int = 30,
+):
+    figsize = np.array([4, 3])
+    fig, ax = plt.subplots(figsize=figsize)
+    # env_base = DeliveryBase(cfg)
+    env_base = env.base
+    # mult = cfg.pos_multiplier
+    mult = 1
+    env_base.setup_ax(ax)
+
+    # The grid cells are 1x1
+    agent_radius = 0.2
+
+    # node_idx = env.temporal_nodes[jj]
+    # node = env.dag_nodes[node_idx]
+    # node_name = type(node).__name__[3:]
+    # ax.set_title(f"Node {jj} ({node_name})")
+
+    circs = []
+    for agent_idx in range(env.n_agents):
+        circ = plt.Circle((0, 0), agent_radius, facecolor="C1", edgecolor="none")
+        ax.add_patch(circ)
+        circs.append(circ)
+
+    all_circs = circs
+
+    kk_text = ax.text(
+        0.02,
+        0.98,
+        "",
+        transform=ax.transAxes,
+        verticalalignment="top",
+        horizontalalignment="left",
+        color="white",
+        fontsize=8,
+        bbox=dict(facecolor="black", alpha=0.5, pad=2),
+    )
+
+    fig.tight_layout()
+
+    def update_fn(kk: int):
+        kk_text.set_text(f"Step {kk: 3}")
+        T_pos = T_state.base.pos[kk]
+
+        for agent_idx, circ in enumerate(circs):
+            pos = T_pos[agent_idx, :2]
+            circ.center = pos
+
+    T = len(T_state.base.pos)
+    artists = all_circs + [kk_text]
+    save_animation_blit(fig, artists, anim_path, T, fps=fps, update_fn=update_fn)
+
 
 def animate_eval_trajs_base(p: CallbackProps):
     plots_dir = p.run.plots_dir

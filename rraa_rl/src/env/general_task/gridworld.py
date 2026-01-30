@@ -159,9 +159,9 @@ class GridworldMap:
             | K ###  |
             |     #  |
             |#### # B|
-            |   #    |
-            | A #    |
-            |   D    |
+            |...#    |
+            |.A.#    |
+            |...D    |
         """
         d_raw, len_x, len_y = GridworldMap.parse_room_str(map_str, boundary="|")
 
@@ -171,6 +171,7 @@ class GridworldMap:
             "D": d_raw["D"],
             "K": d_raw["K"],
             "w": d_raw["#"],
+            ".": d_raw["."] | d_raw["#"] | d_raw["A"] | d_raw["D"]
         }
         predicate_expr = {
             "A": AnyAgent(),
@@ -178,6 +179,7 @@ class GridworldMap:
             "D": AnyAgent(),
             "K": AnyAgent(),
             "w": AnyAgent(),
+            ".": AnyAgent(),
         }
 
         color_dict = {
@@ -198,6 +200,7 @@ class GridworldMap:
             "K": "k",
             "D": "d",
             "#": "w",
+            ".": "",
         }
 
         return GridworldMap(len_x, len_y, predicates, predicate_expr, d_raw, color_dict, label_dict)
@@ -397,6 +400,18 @@ class GridworldMABase(BaseEnv):
         return n_actions_per_agent
 
     @property
+    def action_dim(self) -> int:
+        return self.n_agents
+    
+    @property
+    def control_lim_lo(self) -> list[list[float]]:
+        return [0] * self.n_agents
+
+    @property
+    def control_lim_hi(self) -> list[list[float]]:
+        return [1] * self.n_agents
+
+    @property
     def action_deltas(self) -> jnp.ndarray:
         # [stay, up, down, right, left]. [x, y]. Origin is bottom left, increases to top right.
         deltas = jnp.array([[0, 0], [0, 1], [0, -1], [1, 0], [-1, 0]])
@@ -435,6 +450,20 @@ class GridworldMABase(BaseEnv):
         state_new = self.next_state(state, action)
         obs_new = self.get_obs(state_new)
         predicates = self.get_predicates(state)
+        term = False
+        trunc = state_new.steps >= self.cfg.trunc_steps
+
+        info = {"age": state_new.steps}
+        return EnvStep(state_new, obs_new, predicates, term, trunc, info)
+    
+    def step_control(self, state: GridworldMAState, controls: jnp.ndarray):
+        controls = jnp.asarray(controls).reshape((self.n_agents,))
+        n_actions = self.action_deltas.shape[0]
+        actions = jnp.minimum(jnp.floor(controls * n_actions).astype(jnp.int32), n_actions - 1)
+        state_new = self.next_state(state, actions)
+        obs_new = self.get_obs(state_new)
+
+        predicates = self.get_predicates(state_new)
         term = False
         trunc = state_new.steps >= self.cfg.trunc_steps
 
@@ -509,6 +538,17 @@ class GridworldMABase(BaseEnv):
         # Visualize the map.
         self.map.show_map(ax)
         # ax.imshow(self.map.map_viz_color.T, origin="lower", alpha=0.7)
+
+    def is_valid_real_eval_state(self, state):
+        predicates = self.get_predicates(state)
+        is_unsafe = False
+        if "w" in predicates:
+            is_unsafe = predicates["w"] > 0
+        if "." in predicates:
+            is_unsafe = predicates["."] > 0
+        if "q" in predicates:
+            is_unsafe = predicates["q"] > 0
+        return ~is_unsafe
 
     def get_all_states(self) -> GridworldMAState:
         assert self.n_agents == 1
