@@ -9,6 +9,7 @@ import matplotlib.pyplot as plt
 import numpy as np
 from attrs import define
 from jaxtyping import PRNGKeyArray
+
 from rraa_rl.geometry import AABB, LineSegment, dist_pt_to_aabb, segment_intersects_aabb
 from rraa_rl.jax_types import BoolScalar
 from rraa_rl.jax_utils import softmaximum, softminimum, tree_stack
@@ -112,7 +113,7 @@ class HerdBase(BaseEnv):
     @property
     def action_dim(self) -> int:
         return 2
-    
+
     @property
     def control_lim_lo(self) -> list[list[float]]:
         return [[-self.cfg.acc_maxs[i]] * self.action_dim for i in range(self.cfg.n_herders)]
@@ -120,7 +121,6 @@ class HerdBase(BaseEnv):
     @property
     def control_lim_hi(self) -> list[list[float]]:
         return [[self.cfg.acc_maxs[i]] * self.action_dim for i in range(self.cfg.n_herders)]
-
 
     @property
     def n_actions_per_agent(self) -> list[list[int]]:
@@ -264,7 +264,7 @@ class HerdBase(BaseEnv):
         return EnvStep(state_new, obs_new, predicates, term, trunc, info)
 
     def step_control(self, state: HerdBaseState, controls: jnp.ndarray):
-        state_new , info_dyn = self.next_state(state, controls)
+        state_new, info_dyn = self.next_state(state, controls)
         obs_new = self.get_obs(state_new)
 
         predicates = self.get_predicates(state_new)
@@ -453,6 +453,7 @@ class HerdBase(BaseEnv):
         is_unsafe = predicates["herder_unsafe"] > 0
         return ~is_unsafe
 
+
 class HerdingHerd(HerdBase):
     Cfg = HerdingHerdCfg
     State = HerdBaseState
@@ -492,6 +493,16 @@ class HerdingHerd(HerdBase):
     @property
     def n_gates(self) -> int:
         return len(self.gates)
+
+    def get_eval_formulae(self) -> dict[str, str]:
+        return {
+            "safety": "G(!herder_unsafe)",
+            "gate0": "F(herd_gate_0)",
+            "gate1": "F(herd_gate_1)",
+            "gate0->1": "F(herd_gate_0 && F(herd_gate_1))",
+            "herded_once": "F(herd_herded)",
+            "herded": "F G(herd_herded)",
+        }
 
     @ft.partial(jax.jit, static_argnames=("self",))
     def reset(self, key: PRNGKeyArray):
@@ -873,7 +884,7 @@ class HerdingHerd(HerdBase):
             fontsize=10,
             ha="center",
             va="center",
-            alpha=0.5
+            alpha=0.5,
         )
 
         # Plot the gates if they are active.

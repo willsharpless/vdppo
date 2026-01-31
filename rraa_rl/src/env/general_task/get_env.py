@@ -147,10 +147,17 @@ def get_env_and_cbs(
         cbs = herd_eval_cbs, herd_collect_cbs
 
     elif env_name == "gridworld_map1":
-        map5 = GridworldMap.Map1()
+        map1 = GridworldMap.Map1()
         # spec = "F A"
         spec = "F A && F B && G( !w )"
-        cfg = GridworldMACfg(specification=spec, map=map5)
+        eval_formulae = {
+            "safety": "G( !w )",
+            "non_safety": "F A && F B",
+            "reach_A": "F A",
+            "reach_B": "F B",
+            "reach_both": "F A && F B",
+        }
+        cfg = GridworldMACfg(specification=spec, map=map1, eval_formulae=eval_formulae)
 
         env = GridworldMA(cfg)
         cbs = gridworld_eval_cbs, gridworld_collect_cbs
@@ -158,15 +165,31 @@ def get_env_and_cbs(
     elif env_name == "gridworld_map5":
         map5 = GridworldMap.Map5()
         spec = "F A && F B && !D U K && G( !w )"
-        cfg = GridworldMACfg(specification=spec, map=map5)
+        eval_formulae = {
+            "safety": "G( !w )",
+            "non_safety": "F A && F B && !D U K",
+            "reach_A": "F A",
+            "reach_B": "F B",
+            "reach_key": "!D U K",
+        }
+        cfg = GridworldMACfg(specification=spec, map=map5, eval_formulae=eval_formulae)
 
         env = GridworldMA(cfg)
         cbs = gridworld_eval_cbs, gridworld_collect_cbs
 
     elif env_name == "gridworld_map6":
         map6 = GridworldMap.Map6()
+        # Equivalent to
+        # Fc && GFA && FGq && qU(b && q)
         spec = "F( C && F G ( (q U (A && q )) && (q U (B && q )) ) )"
-        cfg = GridworldMACfg(specification=spec, map=map6)
+        eval_formulae = {
+            "reach_C": "F C",
+            "GFA": "G F A",
+            "FGq": "F G q",
+            "qU(b && q)": "q U (B && q)",
+            "Fq": "F q",
+        }
+        cfg = GridworldMACfg(specification=spec, map=map6, eval_formulae=eval_formulae)
 
         env = GridworldMA(cfg)
         cbs = gridworld_eval_cbs, gridworld_collect_cbs
@@ -178,14 +201,28 @@ def get_env_and_cbs(
         # The following two specs are equivalent, verified by spot.
         # spec = "F( drawer_open && F( cube_in_drawer )) && F G( drawer_closed )"
         spec = "F( drawer_open && F( cube_in_drawer && F G( drawer_closed )))"
-        cfg = ManipScene.Cfg(specification=spec)
+        eval_formulae = {
+            "drawer_open": "F drawer_open",
+            "cube_in_drawer": "F cube_in_drawer",
+        }
+        cfg = ManipScene.Cfg(specification=spec, eval_formulae=eval_formulae)
         env = ManipScene(cfg)
         cbs = manip_eval_cbs, manip_collect_cbs
 
     elif env_name == "gridworld_map7":
         map7 = GridworldMap.Map7()
+        # Equivalent to
+        # !q U C && GFa && GFb && FGq
         spec = "(!q U C) && F( C && F G ( (q U (A && q )) && (q U (B && q )) ) )"
-        cfg = GridworldMACfg(specification=spec, map=map7)
+        eval_formulae = {
+            "!q U C": "!q U C",
+            "GFA": "G F A",
+            "GFB": "G F B",
+            "Fa": "F A",
+            "Fb": "F B",
+            "FGq": "F G q",
+        }
+        cfg = GridworldMACfg(specification=spec, map=map7, eval_formulae=eval_formulae)
 
         env = GridworldMA(cfg)
         cbs = gridworld_eval_cbs, gridworld_collect_cbs

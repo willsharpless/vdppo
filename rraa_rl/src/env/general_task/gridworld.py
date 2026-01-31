@@ -17,6 +17,7 @@ from rraa_rl.src.env.general_task.env import (AugObs, BaseEnv, EnvCfg, EnvStep, 
 
 plt.style.use("seaborn-v0_8-darkgrid")
 
+
 class BoolExpression:
     """So that we can specify either ANY agent or ALL agents"""
 
@@ -171,7 +172,7 @@ class GridworldMap:
             "D": d_raw["D"],
             "K": d_raw["K"],
             "w": d_raw["#"],
-            ".": d_raw["."] | d_raw["#"] | d_raw["A"] | d_raw["D"]
+            ".": d_raw["."] | d_raw["#"] | d_raw["A"] | d_raw["D"],
         }
         predicate_expr = {
             "A": AnyAgent(),
@@ -183,9 +184,9 @@ class GridworldMap:
         }
 
         color_dict = {
-            "#": to_rgba([0.028, 0.62, 0.59], alpha=0.),
-            "K": to_rgba("C1", alpha=0.),
-            "D": to_rgba("C1", alpha=0.),
+            "#": to_rgba([0.028, 0.62, 0.59], alpha=0.0),
+            "K": to_rgba("C1", alpha=0.0),
+            "D": to_rgba("C1", alpha=0.0),
         }
 
         # label_dict = {
@@ -247,7 +248,7 @@ class GridworldMap:
         }
 
         return GridworldMap(len_x, len_y, predicates, predicate_expr, d_raw, color_dict, label_dict)
-    
+
     @staticmethod
     def Map7() -> "GridworldMap":
         map_str = """
@@ -276,9 +277,9 @@ class GridworldMap:
         }
 
         color_dict = {
-            ".": to_rgba("C2", alpha=0.),
-            "a": to_rgba("C2", alpha=0.),
-            "b": to_rgba("C2", alpha=0.),
+            ".": to_rgba("C2", alpha=0.0),
+            "a": to_rgba("C2", alpha=0.0),
+            "b": to_rgba("C2", alpha=0.0),
         }
 
         # label_dict = {
@@ -366,6 +367,8 @@ class GridworldMACfg(EnvCfg, StaticTemporalNodeMixinCfg):
     map: GridworldMap = None
     n_agents: int = 1
 
+    eval_formulae: dict[str, str] = None
+
     trunc_steps: int = 100
 
 
@@ -378,6 +381,9 @@ class GridworldMABase(BaseEnv):
         super().__init__()
 
         self.cfg = cfg
+
+    def get_eval_formulae(self) -> dict[str, str]:
+        return self.cfg.eval_formulae or {}
 
     @property
     def n_agents(self) -> int:
@@ -402,7 +408,7 @@ class GridworldMABase(BaseEnv):
     @property
     def action_dim(self) -> int:
         return self.n_agents
-    
+
     @property
     def control_lim_lo(self) -> list[list[float]]:
         return [0] * self.n_agents
@@ -455,7 +461,7 @@ class GridworldMABase(BaseEnv):
 
         info = {"age": state_new.steps}
         return EnvStep(state_new, obs_new, predicates, term, trunc, info)
-    
+
     def step_control(self, state: GridworldMAState, controls: jnp.ndarray):
         controls = jnp.asarray(controls).reshape((self.n_agents,))
         n_actions = self.action_deltas.shape[0]

@@ -188,6 +188,21 @@ class DeliveryBase(BaseEnv):
             should_term_fn = self._should_term
         self.should_term_fn = should_term_fn
 
+    def get_eval_formulae(self) -> dict[str, str]:
+        return {
+            "safety": "G(!obstacles) && G(!oob) && G(!aerial_collide)",
+            # --
+            "ag0_target0": "G F(ag0_target0)",
+            "ag1_target1": "G F(ag1_target1)",
+            "ag0 base": "G F(ag0_base)",
+            "ag1 base": "G F(ag1_base)",
+            # --
+            "ag0_target0 once": "F(ag0_target0)",
+            "ag1_target1 once": "F(ag1_target1)",
+            "ag0 base once": "F(ag0_base)",
+            "ag1 base once": "F(ag1_base)",
+        }
+
     @property
     def n_agents(self) -> int:
         return self.cfg.n_herders

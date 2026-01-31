@@ -16,6 +16,7 @@ from matplotlib.colors import to_rgba
 
 from rraa_rl.collector import Collector
 from rraa_rl.gridworld_cbs import save_animation_blit
+from rraa_rl.lcrl_mappo import LCRLMAPPOAgent
 from rraa_rl.rollout_temporal_analysis import evaluate_ltl_finite
 from rraa_rl.rollout_utils import extract_rollouts_eval
 from rraa_rl.run import Run
@@ -23,7 +24,7 @@ from rraa_rl.src.env.general_task.env import Env, StateWithTemporalNode
 from rraa_rl.src.env.general_task.get_env import get_env_and_cbs
 from rraa_rl.src.env.general_task.gridworld import GridworldMA, GridworldMAState
 from rraa_rl.vd_mappo import VDMAPPOAgent
-from rraa_rl.lcrl_mappo import LCRLMAPPOAgent
+
 
 class LoadCkptResult(NamedTuple):
     run: Run
@@ -32,7 +33,7 @@ class LoadCkptResult(NamedTuple):
     cfg_dict: dict
 
 
-def load_ckpt(run_path: pathlib.Path, step: int | None = None, alg: str = "vd", n_spec:int=1, n_agent:int=1):
+def load_ckpt(run_path: pathlib.Path, step: int | None = None, alg: str = "vd", n_spec: int = 1, n_agent: int = 1):
     # Load the configs.
     yaml_path = run_path / "config.yaml"
     with open(yaml_path, "r") as f:
@@ -41,16 +42,6 @@ def load_ckpt(run_path: pathlib.Path, step: int | None = None, alg: str = "vd", 
     run = Run.fromdict(cfg_dict["run"])
     env_name = run.env_name
     # agent_name = run.agent_name # sometimes capitalizes, differing from previous signature
-
-    env: GridworldMA
-    env, _, _ = get_env_and_cbs(env_name, agent_name=alg, n_spec=n_spec, n_agent=n_agent)
-
-    if alg == "vd":
-        agent_cfg = VDMAPPOAgent.Cfg.fromdict(cfg_dict["agent"])
-        agent = VDMAPPOAgent.create(123, agent_cfg, env)
-    elif alg == "lcrl":
-        agent_cfg = LCRLMAPPOAgent.Cfg.fromdict(cfg_dict["agent"])
-        agent = LCRLMAPPOAgent.create(123, agent_cfg, env)
 
     ckpts_path = run_path / "ckpts"
     if step is None:
@@ -65,8 +56,31 @@ def load_ckpt(run_path: pathlib.Path, step: int | None = None, alg: str = "vd", 
             raise FileNotFoundError(f"Checkpoint not found: {load_path}. Available: {available}")
     logger.info(f"Restoring from {load_path}")
 
-    with load_path.open("rb") as f:
-        load_dict = pickle.load(f)
+    try:
+        with load_path.open("rb") as f:
+            load_dict = pickle.load(f)
+    except:
+        # Try loading numpy version
+        load_path_np = ckpts_path.with_name(load_path.stem + "_np.pkl")
+        if not load_path_np.exists():
+            raise
+
+        logger.info(f"Failed to load standard pickle, trying numpy version at {load_path_np}")
+        with load_path_np.open("rb") as f:
+            load_dict = pickle.load(f)
+
+        load_dict = jax.device_put(load_dict)
+
+    # Move loading env after try loading pickle because above could fail
+    env: GridworldMA
+    env, _, _ = get_env_and_cbs(env_name, agent_name=alg, n_spec=n_spec, n_agent=n_agent)
+
+    if alg == "vd":
+        agent_cfg = VDMAPPOAgent.Cfg.fromdict(cfg_dict["agent"])
+        agent = VDMAPPOAgent.create(123, agent_cfg, env)
+    elif alg == "lcrl":
+        agent_cfg = LCRLMAPPOAgent.Cfg.fromdict(cfg_dict["agent"])
+        agent = LCRLMAPPOAgent.create(123, agent_cfg, env)
 
     agent: VDMAPPOAgent | LCRLMAPPOAgent = flax.serialization.from_state_dict(agent, load_dict["agent"])
 

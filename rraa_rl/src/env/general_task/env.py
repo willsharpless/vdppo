@@ -1,6 +1,6 @@
 import copy
 import functools as ft
-from typing import Any, Generic, NamedTuple, Protocol, TypeVar
+from typing import Any, Generic, NamedTuple, Protocol, TypeVar, Union
 
 import flax.linen as nn
 import jax
@@ -21,7 +21,6 @@ from valtr.reachability import (DAGAvoid, DAGConst, DAGGUMinN, DAGGUSingle, DAGI
 from rraa_rl.evaluate_dag import evaluate_dag
 from rraa_rl.jax_utils import tree_cat
 from valtr.valtr import to_dag
-from typing import Union
 
 _EnvState = TypeVar("_EnvState")
 _Obs = TypeVar("_Obs")
@@ -44,6 +43,9 @@ class BaseEnv(Generic[_EnvState, _Obs]):
     def __init__(self):
         self._obs_names = None
         self.active_predicates: list[str] | None = None
+
+    def get_eval_formulae(self) -> dict[str, str]:
+        raise NotImplementedError("")
 
     def add_obs_preprocessor(self, module: nn.Module):
         return module
@@ -164,6 +166,21 @@ class Env(Generic[_EnvState, _Obs]):
 
     def add_obs_preprocessor(self, module: nn.Module):
         return module
+
+    def get_eval_formulae_dags(self) -> dict[str, tuple[list[DAGId], DAGId]]:
+        eval_formulae = self.get_eval_formulae()
+        if "root" not in eval_formulae:
+            eval_formulae["root"] = self.specification
+
+        out = {}
+        for formula_label, formula in eval_formulae.items():
+            dag_builder, dag_root = to_dag(formula)
+            dag_nodes = dag_builder.nodes
+            out[formula_label] = dag_nodes, dag_root
+        return out
+
+    def get_eval_formulae(self) -> dict[str, str]:
+        return self.base.get_eval_formulae()
 
     def to_minstate(self, state: _EnvState) -> _EnvState:
         return state
@@ -314,9 +331,10 @@ class EnvUsingBase(Env):
 
     def setup_ax(self, ax: plt.Axes):
         return self.base.setup_ax(ax)
-    
+
     def is_valid_real_eval_state(self, state):
         return self.base.is_valid_real_eval_state(state.base)
+
 
 class AugObs(NamedTuple):
     """Separate the "base" observation and the observation of the temporal node."""
