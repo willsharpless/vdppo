@@ -30,14 +30,14 @@ def logistic_normal_mu(eta, sigma, z):
     return logistic(eta + sigma * z).mean()
 
 
-def get_ci(b_num, b_tot):
+def get_ci(b_num, b_tot, B: int = 10_000, K: int = 10_000):
     out = logit_t_with_logistic_normal_mu_ci(
         successes=b_num,
         trials=b_tot,
         alpha=0.05,
         smooth="jeffreys",
-        B=10_000,
-        K=10_000,
+        B=B,
+        K=B,
         random_seed=42,
     )
     means = out["mu_hat"]
