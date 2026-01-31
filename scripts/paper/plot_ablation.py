@@ -78,9 +78,6 @@ def main():
                         b_num_dict[plot_key].append(num_valid)
                         b_tot_dict[plot_key].append(total)
 
-                    if alg == "vd":
-                        ipdb.set_trace()
-
                     for plot_key, b_num in b_num_dict.items():
                         b_num = np.array(b_num)
                         b_tot = np.array(b_tot_dict[plot_key])

@@ -55,6 +55,13 @@ def eval(
     else:
         loop_range = 1
 
+    loop_range_vals = list(range(loop_range))
+
+    if env_name == "ablation_depth":
+        eval_T = eval_T or 512
+        eval_T = max(eval_T, 512)
+        loop_range_vals = [4]
+
     # out_file = pathlib.Path("/datadrive/vd") / env_name / f"eval_results.json"
     out_file = get_eval_results_path(env_name)
     out_file.parent.mkdir(parents=True, exist_ok=True)
@@ -67,7 +74,7 @@ def eval(
 
     loop_means, loop_stds = [], []
     missing_runs = []
-    for i in range(loop_range):  # looping in case of ablation
+    for i in loop_range_vals:  # looping in case of ablation
         if debug and i == 3:
             ipdb.set_trace()
 

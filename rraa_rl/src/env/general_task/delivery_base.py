@@ -198,6 +198,11 @@ class DeliveryBase(BaseEnv):
             "ag1_target1 once": "F(ag1_target1)",
             "ag0 base once": "F(ag0_base)",
             "ag1 base once": "F(ag1_base)",
+            # --
+            "ag0 T0 base once": "F(ag0_target0 && F( ag0_base ))",
+            "ag1 T1 base once": "F(ag1_target1 && F( ag1_base ))",
+            # --
+            "cycled": "F(ag0_target0 && F( ag0_base )) && F(ag1_target1 && F( ag1_base ))"
         }
 
     @property
@@ -499,11 +504,10 @@ class DeliveryBase(BaseEnv):
         n_centers = self.cfg.centers
         n_radius = self.cfg.radiuses
 
-        n_center_default = DeliveryBaseCfg().centers
-        n_radius_default = DeliveryBaseCfg().radiuses
-
-        assert np.all(np.array(n_centers) == np.array(n_center_default))
-        assert np.all(np.array(n_radius) == np.array(n_radius_default))
+        # n_center_default = DeliveryBaseCfg().centers
+        # n_radius_default = DeliveryBaseCfg().radiuses
+        # assert np.all(np.array(n_centers) == np.array(n_center_default))
+        # assert np.all(np.array(n_radius) == np.array(n_radius_default))
 
         predicates = {
             "collide": self.is_herder_collide(state),
@@ -513,9 +517,9 @@ class DeliveryBase(BaseEnv):
             "obstacles": self.is_herder_in_obstacles(state),
             "target0": self.is_herder_in_target(state, center=n_centers[0], radius=n_radius[0]),
             "target1": self.is_herder_in_target(state, center=n_centers[1], radius=n_radius[1]),
-            "target2": self.is_herder_in_target(state, center=n_centers[2], radius=n_radius[2]),
-            "target3": self.is_herder_in_target(state, center=n_centers[3], radius=n_radius[3]),
-            "target4": self.is_herder_in_target(state, center=n_centers[4], radius=n_radius[4]),
+            # "target2": self.is_herder_in_target(state, center=n_centers[2], radius=n_radius[2]),
+            # "target3": self.is_herder_in_target(state, center=n_centers[3], radius=n_radius[3]),
+            # "target4": self.is_herder_in_target(state, center=n_centers[4], radius=n_radius[4]),
             "ags_to_base_agent": self.is_herder_at_base_ag(state),
             "ag0_target0": self.is_herderX_circs(state, herder_ix=0, center_ix=0),
             "ag1_target0": self.is_herderX_circs(state, herder_ix=1, center_ix=0),
@@ -524,12 +528,12 @@ class DeliveryBase(BaseEnv):
             "ag0_base": self.is_herderX_at_base_ag(state, herder_ix=0),
             "ag1_base": self.is_herderX_at_base_ag(state, herder_ix=1),
             # unsafe for ablation_depth
-            "d_unsafe": self.is_herder_oob(state) | self.is_herder_in_obstacles(state)
+            "d_unsafe": self.is_herder_oob(state) | self.is_herder_in_obstacles(state),
         }
-        # if state.centers.shape[0] > 2:
-        #     predicates["target2"] = self.is_herder_in_target(state, center=self.cfg.centers[2], radius=self.cfg.radiuses[2])
-        #     predicates["target3"] = self.is_herder_in_target(state, center=self.cfg.centers[3], radius=self.cfg.radiuses[3])
-        #     predicates["target4"] = self.is_herder_in_target(state, center=self.cfg.centers[4], radius=self.cfg.radiuses[4])
+        if state.centers.shape[0] > 2:
+            predicates["target2"] = self.is_herder_in_target(state, center=self.cfg.centers[2], radius=self.cfg.radiuses[2])
+            predicates["target3"] = self.is_herder_in_target(state, center=self.cfg.centers[3], radius=self.cfg.radiuses[3])
+            predicates["target4"] = self.is_herder_in_target(state, center=self.cfg.centers[4], radius=self.cfg.radiuses[4])
         if self.cfg.dynamic_targets:
             predicates["target0"] = self.is_herder_in_dyn_target(state, center_ix=0)
             predicates["target1"] = self.is_herder_in_dyn_target(state, center_ix=1)
@@ -843,9 +847,9 @@ class DeliveryBase(BaseEnv):
         else:
             centers = jnp.array(self.cfg.centers)
 
-        default_centers = DeliveryBaseCfg().centers
-        assert not self.cfg.dynamic_targets
-        assert np.all(self.cfg.centers == default_centers)
+        # default_centers = DeliveryBaseCfg().centers
+        # assert not self.cfg.dynamic_targets
+        # assert np.all(self.cfg.centers == default_centers)
 
         return DeliveryBaseState(herd_state=herd_pos, herder_state=herder_state, steps=0, centers=centers)
 

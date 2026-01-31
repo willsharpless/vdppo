@@ -22,8 +22,12 @@ def main():
         # "gridworld_map5":,
         # "gridworld_map6":,
         # "gridworld_map7":,
-        "herdos": [("root", "Task"), ("safety", "Safety"), ("gate0->1", "Gate 0->1"), ("herded", "Herded")],
-        # "delivery":,
+        "herdos": [("root", "Overall"), ("safety", "Safety"), ("herded", "Herded")],
+        "delivery": [
+            ("root", "Overall"),
+            ("safety", "Safety"),
+            ("cycled", "Agent Cycled"),
+        ],
     }
     algs = ["vd", "lcrl", "mppi"]
     plot_dir = get_paper_plot_dir()
@@ -78,6 +82,8 @@ def main():
             if n_seeds < 2:
                 logger.warning(f"{label} only has {n_seeds} seeds, skipping...")
                 continue
+            if n_seeds < 3:
+                logger.warning(f"{label} only has {n_seeds} seeds, CI may be unreliable...")
 
             for spec_name in b_num_dict:
                 b_num = np.array(b_num_dict[spec_name])
@@ -126,7 +132,7 @@ def main():
 
             alg_color = method_colors[alg]
             marker = "o"
-            markersize = 5
+            markersize = 4
             linewidth = 1.5
             capsize = 3
             ax.errorbar(
@@ -152,147 +158,16 @@ def main():
         ax.set_yticklabels([display_name for _, display_name in specs_to_plot])
 
         ax.set_xlabel("Success Rate")
-        ax.set_ylabel("Criterion")
+        # ax.set_ylabel("Criterion")
         ax.grid(axis="x", linestyle="--", alpha=0.5)
 
-        fig_path = plot_dir / f"{env}_plot.pdf"
-        fig.savefig(fig_path, bbox_inches="tight", pad_inches=1e-2)
+        # fig_path = plot_dir / f"{env}_plot.pdf"
+        fig_path = plot_dir / f"{env}_plot.png"
+        fig.savefig(fig_path, bbox_inches="tight", pad_inches=1e-2, dpi=400)
         plt.close(fig)
         logger.success("Saved plot to {}", fig_path)
 
     # End of for loop over env.
-
-
-def plot_grouped_boxplots_horizontal(
-    data,
-    criteria_names=None,
-    method_names=None,
-    colors=None,
-    figsize=(4, 3),
-    group_gap=1.0,
-    within_gap=0.23,
-    box_height=0.18,
-    median_frac=0.8,  # fraction of box width used by the median line
-    showfliers=False,
-    xlim=(0, 1),
-    title="Method Comparison Across Criteria",
-    xlabel="Score",
-    ylabel="Criterion",
-):
-    """
-    Horizontal grouped boxplots with:
-      - criteria as groups on y-axis
-      - methods as colored boxes within each group
-      - black, shortened median lines
-    """
-
-    if criteria_names is None:
-        criteria_names = list(data.keys())
-
-    if method_names is None:
-        seen = []
-        for c in criteria_names:
-            for m in data[c]:
-                if m not in seen:
-                    seen.append(m)
-        method_names = seen
-
-    n_criteria = len(criteria_names)
-    n_methods = len(method_names)
-
-    # Colors
-    if colors is None:
-        palette = plt.cm.tab10.colors
-        method_colors = [palette[i % len(palette)] for i in range(n_methods)]
-    elif isinstance(colors, dict):
-        method_colors = [colors[m] for m in method_names]
-    else:
-        method_colors = colors
-
-    fig, ax = plt.subplots(figsize=figsize)
-
-    group_centers = np.arange(n_criteria) * group_gap
-
-    if box_height >= within_gap:
-        box_height = 0.9 * within_gap
-
-    offsets = (np.arange(n_methods) - (n_methods - 1) / 2) * within_gap
-
-    for i, (method, color) in enumerate(zip(method_names, method_colors)):
-        method_data = []
-        positions = []
-
-        for j, crit in enumerate(criteria_names):
-            method_data.append(data[crit].get(method, [np.nan]))
-            positions.append(group_centers[j] + offsets[i])
-
-        bp = ax.boxplot(
-            method_data,
-            vert=False,
-            positions=positions,
-            widths=box_height,
-            patch_artist=True,
-            showfliers=showfliers,
-            manage_ticks=False,
-            medianprops=dict(color="black", linewidth=1.5),
-        )
-
-        # Style boxes
-        for box in bp["boxes"]:
-            box.set_facecolor(color)
-            box.set_alpha(0.85)
-
-        # --- SHORTEN MEDIAN LINES ---
-        for median in bp["medians"]:
-            y = median.get_ydata()
-            center = np.mean(y)
-            new_len = (y[1] - y[0]) * median_frac
-            median.set_ydata([y[0], y[0] + new_len])
-
-    ax.set_yticks(group_centers)
-    ax.set_yticklabels(criteria_names)
-
-    ax.set_xlim(-0.1, 1.1)
-
-    ax.set_xlabel(xlabel)
-    ax.set_ylabel(ylabel)
-    ax.set_title(title)
-
-    ax.grid(axis="x", linestyle="--", alpha=0.5)
-
-    handles = [plt.Line2D([0], [0], color=c, lw=10) for c in method_colors]
-    ax.legend(handles, method_names, title="Method")
-
-    plt.tight_layout()
-
-    fig.savefig("test.pdf")
-
-
-def main2():
-    data = {
-        "Safety": {
-            "Method A": np.random.rand(20),
-            "Method B": np.random.rand(20),
-            "Method C": np.random.rand(20),
-        },
-        "ReachA": {
-            "Method A": np.random.rand(20),
-            "Method B": np.random.rand(20),
-            "Method C": np.random.rand(20),
-        },
-        "ReachB": {
-            "Method A": np.random.rand(20),
-            "Method B": np.random.rand(20),
-            "Method C": np.random.rand(20),
-        },
-        "ReachC": {
-            "Method A": np.random.rand(20),
-            "Method B": np.random.rand(20),
-            "Method C": np.random.rand(20),
-        },
-    }
-
-    plot_grouped_boxplots_horizontal(data)
 
 
 if __name__ == "__main__":

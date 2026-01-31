@@ -351,6 +351,12 @@ class SceneBase(BaseEnv):
 
         self.scene_data = SceneData.get()
 
+    def get_eval_formulae(self) -> dict[str, str]:
+        return {
+            "drawer_open": "F( drawer_open )",
+            "cube_in_drawer": "F( cube_in_drawer )",
+        }
+
     @property
     def naconmax(self) -> int:
         # if self.n_envs == 17:
