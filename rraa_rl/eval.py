@@ -61,6 +61,9 @@ def eval(
         eval_T = eval_T or 512
         eval_T = max(eval_T, 512)
         loop_range_vals = [4]
+    if env_name == "manip_scene":
+        eval_T = eval_T or 512
+        eval_T = max(eval_T, 512)
 
     # out_file = pathlib.Path("/datadrive/vd") / env_name / f"eval_results.json"
     out_file = get_eval_results_path(env_name)
@@ -133,6 +136,10 @@ def eval(
                     run, agent, env, cfg_dict = load_ckpt(seed_path, None, alg, n_spec=n_spec, n_agent=n_agent)
                     step = cfg_dict["step"]
                     logger.debug(f"Loaded step {step}")
+
+                    if hasattr(env.base, "n_envs"):
+                        env.base.n_envs = 2 * n_envs_test
+
                 except TypeError as e:
                     if "ShapedArray.__init__() got an unexpected keyword argument 'named_shape'" in str(e):
                         # ckpt saved with older version of jax.
@@ -145,6 +152,9 @@ def eval(
                 run_key = jr.PRNGKey(run_seed)
                 run, agent, env, cfg_dict = init_mppi(env_name, run_key, n_spec=n_spec, n_agent=n_agent)
                 agent.cfg.n_envs = n_envs_test
+
+                if hasattr(env.base, "n_envs"):
+                    env.base.n_envs = 2 * n_envs_test
 
             collector = Collector.create(
                 key=jr.PRNGKey(seed),

@@ -201,11 +201,11 @@ def get_env_and_cbs(
         # The following two specs are equivalent, verified by spot.
         # spec = "F( drawer_open && F( cube_in_drawer )) && F G( drawer_closed )"
         spec = "F( drawer_open && F( cube_in_drawer && F G( drawer_closed )))"
-        eval_formulae = {
-            "drawer_open": "F drawer_open",
-            "cube_in_drawer": "F cube_in_drawer",
-        }
-        cfg = ManipScene.Cfg(specification=spec, eval_formulae=eval_formulae)
+        # eval_formulae = {
+        #     "drawer_open": "F drawer_open",
+        #     "cube_in_drawer": "F cube_in_drawer",
+        # }
+        cfg = ManipScene.Cfg(specification=spec)
         env = ManipScene(cfg)
         cbs = manip_eval_cbs, manip_collect_cbs
 

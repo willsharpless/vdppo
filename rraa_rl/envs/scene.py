@@ -180,6 +180,7 @@ class SceneBase(BaseEnv):
 
         self.njmax = 500
         self.nconmax = 16
+        # self.nconmax = 18
 
         self.n_envs = 1
 
@@ -961,6 +962,41 @@ class SceneBase(BaseEnv):
 
         # return state
 
+    @property
+    def action_dim(self) -> int:
+        return 5
+
+    @property
+    def control_lim_lo(self) -> list[list[float]]:
+        action_range = np.array([0.05, 0.05, 0.05, 0.3, 1.0])
+        action_low = -action_range
+        return action_low[None, :]
+
+    @property
+    def control_lim_hi(self) -> list[list[float]]:
+        action_range = np.array([0.05, 0.05, 0.05, 0.3, 1.0])
+        action_high = action_range
+        return action_high[None, :]
+
+    def step_control(self, state: SceneBaseState, controls: jnp.ndarray):
+        assert controls.shape == (self.n_agents, self.action_dim)
+        controls = controls.squeeze(0)
+
+        # Clip controls.
+        controls = jnp.clip(controls, self.config.action_low, self.config.action_high)
+
+        state_new, info_dyn = self.next_state(state, controls)
+        obs_new = self.get_obs(state_new)
+
+        predicates = self.get_predicates(state_new)
+        term = False
+        trunc = state_new.steps >= self.cfg.trunc_steps
+
+        logger.debug("[step] contact_dim.shape: {}".format(state_new.mjx_data._impl.contact__dim.shape))
+
+        info = {"age": state_new.steps} | info_dyn
+        return EnvStep(state_new, obs_new, predicates, term, trunc, info)
+
 
 class ManipScene(StaticTemporalNodeMixin, EnvUsingBase):
     Cfg = SceneBaseCfg
@@ -989,6 +1025,20 @@ class ManipScene(StaticTemporalNodeMixin, EnvUsingBase):
         logger.debug("[reset_batch] contact_dim.shape: {}".format(b_state_new.base.mjx_data._impl.contact__dim.shape))
 
         return b_state_new
+
+    def get_real_eval_states(
+        self,
+        n_envs: int,
+        n_envs_to_sample: int,
+        root_only: bool = True,
+    ) -> StateWithTemporalNode:
+        # No need to rejection sample.
+        base_key = jr.PRNGKey(seed=12345)
+        b_state = self.reset_batch(base_key, n_envs)
+        if root_only:
+            with jdc.copy_and_mutate(b_state) as b_state:
+                b_state.temporal_node_idx = jnp.zeros((n_envs,), dtype=jnp.int32)
+        return b_state
 
     @property
     def specification(self):
