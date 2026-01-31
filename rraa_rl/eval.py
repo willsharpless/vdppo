@@ -43,6 +43,7 @@ def eval(
     missing: bool = False,
     min_ckpt: int = 50000,
     n_seeds: int = 3,
+    force: bool = False
 ):
 
     runs_dir = pathlib.Path("/datadrive/vd") / env_name / alg.upper()
@@ -105,8 +106,11 @@ def eval(
             # See if we already have results for this run.
             label = get_eval_label(alg, env_name, ablation_type)
             if has_eval_results(label, seed_path, env_name):
-                logger.info(f"Skipping eval for {seed_path}, already have results.")
-                continue
+                if force:
+                    logger.info(f"Already have eval for {seed_path}, but running because force=True.")
+                else:
+                    logger.info(f"Skipping eval for {seed_path}, already have results.")
+                    continue
 
             # if seed_path._str.endswith("seed0"):
             #     continue
@@ -120,6 +124,8 @@ def eval(
             if alg != "mppi":
                 try:
                     run, agent, env, cfg_dict = load_ckpt(seed_path, None, alg, n_spec=n_spec, n_agent=n_agent)
+                    step = cfg_dict["step"]
+                    logger.debug(f"Loaded step {step}")
                 except TypeError as e:
                     if "ShapedArray.__init__() got an unexpected keyword argument 'named_shape'" in str(e):
                         # ckpt saved with older version of jax.
@@ -214,6 +220,8 @@ def eval(
 
             p_satisfied_mean = np.mean(b_is_satisfied)
             means.append(p_satisfied_mean)
+
+            logger.debug("p_satisfied_mean: {}".format(p_satisfied_mean))
 
             # Animate some bad trajectories to check
             if debug and p_satisfied_mean < 1.0:

@@ -356,17 +356,32 @@ def get_env_and_cbs(
 
         spec = "G(!oob) && G(!obstacles)" if n_agent == 1 else "G(!oob) && G(!obstacles) && G(!collide)"
 
-        dense_tag = "_dense" if dense else ""
-        if n_spec == 1:
-            spec += f" && F(target0{dense_tag})"
-        elif n_spec == 2:
-            spec += f" && F(target0{dense_tag} && F(target1{dense_tag}))"
-        elif n_spec == 3:
-            spec += f" && F(target0{dense_tag} && F(target1{dense_tag} && F(target2{dense_tag})))"
-        elif n_spec == 4:
-            spec += f" && F(target0{dense_tag} && F(target1{dense_tag} && F(target2{dense_tag} && F(target3{dense_tag}))))"
-        elif n_spec == 5:
-            spec += f" && F(target0{dense_tag} && F(target1{dense_tag} && F(target2{dense_tag} && F(target3{dense_tag} && F(target4{dense_tag})))))"
+        if agent_name == "vd":
+            match n_spec:
+                case 1:
+                    spec = "(!d_unsafe)U (target0 && G(!d_unsafe))"
+                case 2:
+                    spec = "(!d_unsafe) U ( target0 && ( !d_unsafe ) U (target1 && G(!d_unsafe) ) )"
+                case 3:
+                    spec = "(!d_unsafe) U ( target0 && ( !d_unsafe ) U ( target1 && ( !d_unsafe ) U (target2 && G(!d_unsafe) ) ) )"
+                case 4:
+                    spec = "(!d_unsafe) U ( target0 && ( !d_unsafe ) U ( target1 && ( !d_unsafe ) U ( target2 && ( !d_unsafe ) U (target3 && G(!d_unsafe) ) ) ) )"
+                case 5:
+                    spec = "(!d_unsafe) U ( target0 && ( !d_unsafe ) U ( target1 && ( !d_unsafe ) U ( target2 && ( !d_unsafe ) U ( target3 && ( !d_unsafe ) U (target4 && G(!d_unsafe) ) ) ) ) )"
+                case _:
+                    raise ValueError(f"Unsupported n_spec {n_spec} for agent vd.")
+        else:
+            dense_tag = "_dense" if dense else ""
+            if n_spec == 1:
+                spec += f" && F(target0{dense_tag})"
+            elif n_spec == 2:
+                spec += f" && F(target0{dense_tag} && F(target1{dense_tag}))"
+            elif n_spec == 3:
+                spec += f" && F(target0{dense_tag} && F(target1{dense_tag} && F(target2{dense_tag})))"
+            elif n_spec == 4:
+                spec += f" && F(target0{dense_tag} && F(target1{dense_tag} && F(target2{dense_tag} && F(target3{dense_tag}))))"
+            elif n_spec == 5:
+                spec += f" && F(target0{dense_tag} && F(target1{dense_tag} && F(target2{dense_tag} && F(target3{dense_tag} && F(target4{dense_tag})))))"
 
         base_cfg = DeliveryBaseCfg()
 

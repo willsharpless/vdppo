@@ -66,6 +66,7 @@ class Delivery(StaticTemporalNodeMixin, EnvUsingBase):
 
     @property
     def specification(self):
+        logger.debug("spec: {}".format(self.cfg.specification))
         return self.cfg.specification
 
     def should_terminate(self, predicates: dict[str, jnp.ndarray]) -> BoolScalar:

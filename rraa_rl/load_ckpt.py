@@ -56,6 +56,8 @@ def load_ckpt(run_path: pathlib.Path, step: int | None = None, alg: str = "vd", 
             raise FileNotFoundError(f"Checkpoint not found: {load_path}. Available: {available}")
     logger.info(f"Restoring from {load_path}")
 
+    cfg_dict["step"] = step
+
     try:
         with load_path.open("rb") as f:
             load_dict = pickle.load(f)
