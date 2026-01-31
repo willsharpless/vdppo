@@ -480,7 +480,8 @@ def main(
     out_dir = vid_path.parent
 
     for ii, (frame_idx, traj_len, n_overlay) in list(enumerate(zip(frame_idxs, traj_lens, n_overlays)))[skip:]:
-        path = out_dir / f"p{ii}.pdf"
+        # path = out_dir / f"p{ii}.pdf"
+        path = out_dir / f"p{ii}.png"
 
         plot(
             bg_rgb,
@@ -488,7 +489,7 @@ def main(
             frame_idx,
             traj_len,
             color_list,
-            dpi=300,
+            dpi=700,
             out_path=path,
             vid_path=vid_path,
             masks=masks,
@@ -619,7 +620,7 @@ def plot(
     plt.tight_layout(pad=0)
 
     # Save output as PDF
-    fig.savefig(out_path, format="pdf", bbox_inches="tight", pad_inches=0, dpi=dpi)
+    fig.savefig(out_path, bbox_inches="tight", pad_inches=0, dpi=dpi)
     plt.close(fig)
 
     logger.success(f"Saved overlay to: {out_path}")
