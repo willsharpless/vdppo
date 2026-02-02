@@ -19,11 +19,11 @@ from rraa_rl.collector import RolloutOutput
 from rraa_rl.gridworld_cbs import save_animation_blit
 from rraa_rl.jax_utils import jax_vmap, rep_vmap
 from rraa_rl.src.env.general_task.deliveryreal import DeliveryReal
-from rraa_rl.src.env.general_task.deliveryreal_base import DeliveryRealBase, DeliveryRealBaseCfg
+from rraa_rl.src.env.general_task.deliveryreal_base import DeliveryRealBaseCfg
 from rraa_rl.src.env.general_task.env import AugObs
 from rraa_rl.src.rl.utils.utils import get_BuRd_smooth
 from rraa_rl.trainer import CallbackProps
-from rraa_rl.vd_mappo import PPOData, VDMAPPOAgent
+from rraa_rl.agents.vd_mappo import PPOData, VDMAPPOAgent
 
 plt.style.use("seaborn-v0_8-darkgrid")
 

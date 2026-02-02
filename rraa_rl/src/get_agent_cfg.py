@@ -1,5 +1,5 @@
 from rraa_rl.lcrl_mappo import LCRLMAPPOAgent
-from rraa_rl.vd_mappo import VDMAPPOAgent
+from rraa_rl.agents.vd_mappo import VDMAPPOAgent
 
 
 def get_vd_agent_cfg(env_name: str):

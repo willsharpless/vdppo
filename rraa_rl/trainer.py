@@ -19,7 +19,7 @@ from rraa_rl.rollout_temporal_analysis import evaluate_ltl_finite
 from rraa_rl.rollout_utils import extract_rollouts_eval
 from rraa_rl.run import Run
 from rraa_rl.src.env.general_task.env import Env, StateWithTemporalNode
-from rraa_rl.vd_mappo import VDMAPPOAgent
+from rraa_rl.agents.vd_mappo import VDMAPPOAgent
 
 
 @define

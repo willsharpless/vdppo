@@ -1,15 +1,13 @@
-import os
-
 import ipdb
 from cyclopts import App
 
-from rraa_rl import delivery_cbs, herd_os_cbs
+from rraa_rl import delivery_cbs
 from rraa_rl.run import Run
 from rraa_rl.src.env.general_task.delivery import Delivery
 from rraa_rl.src.env.general_task.delivery_base import DeliveryBaseCfg
 from rraa_rl.src.env.general_task.env import Env
 from rraa_rl.trainer import Trainer, TrainerCfg
-from rraa_rl.vd_mappo import VDMAPPOAgent
+from rraa_rl.agents.vd_mappo import VDMAPPOAgent
 
 app = App()
 

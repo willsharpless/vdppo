@@ -16,7 +16,7 @@ from rraa_rl.load_ckpt import load_ckpt
 from rraa_rl.rollout_temporal_analysis import evaluate_ltl_finite
 from rraa_rl.rollout_utils import extract_rollouts_eval
 from rraa_rl.scene_cbs import animate_scene_traj
-from rraa_rl.vd_mappo import VDMAPPOAgent
+from rraa_rl.agents.vd_mappo import VDMAPPOAgent
 
 app = cyclopts.App()
 

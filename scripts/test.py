@@ -1,15 +1,12 @@
 import pathlib
-import pickle
 
 import cyclopts
-import flax
 import ipdb
 import jax
 import jax.random as jr
 import jax.tree_util as jtu
 import matplotlib.pyplot as plt
 import numpy as np
-import yaml
 from loguru import logger
 from matplotlib.colors import to_rgba
 
@@ -18,11 +15,9 @@ from rraa_rl.gridworld_cbs import save_animation_blit
 from rraa_rl.load_ckpt import load_ckpt
 from rraa_rl.rollout_temporal_analysis import evaluate_ltl_finite
 from rraa_rl.rollout_utils import extract_rollouts_eval
-from rraa_rl.run import Run
 from rraa_rl.src.env.general_task.env import StateWithTemporalNode
-from rraa_rl.src.env.general_task.get_env import get_env_and_cbs
-from rraa_rl.src.env.general_task.gridworld import GridworldMA, GridworldMAState
-from rraa_rl.vd_mappo import VDMAPPOAgent
+from rraa_rl.src.env.general_task.gridworld import GridworldMAState
+from rraa_rl.agents.vd_mappo import VDMAPPOAgent
 
 app = cyclopts.App()
 

@@ -1,6 +1,4 @@
-import pickle
 from collections import defaultdict
-from typing import Protocol
 
 import imageio
 import ipdb
@@ -9,24 +7,15 @@ import jax.random as jr
 import matplotlib.pyplot as plt
 import mujoco
 import numpy as np
-import tqdm
-import yaml
-from attrs import define
-from cyclopts import Parameter
 from loguru import logger
 from PIL import Image, ImageDraw, ImageFont
 
-import wandb
-from rraa_rl.cfg_utils import Cfg
-from rraa_rl.collector import Collector, RolloutOutput, extract_info_from_rollout
+from rraa_rl.collector import Collector, RolloutOutput
 from rraa_rl.envs.scene import ManipScene, SceneBaseMinState
-from rraa_rl.lcrl_mappo import LCRLMAPPOAgent
-from rraa_rl.rollout_temporal_analysis import evaluate_ltl_finite
 from rraa_rl.rollout_utils import extract_rollouts_eval
-from rraa_rl.run import Run
-from rraa_rl.src.env.general_task.env import Env, StateWithTemporalNode
+from rraa_rl.src.env.general_task.env import StateWithTemporalNode
 from rraa_rl.src.get_agent_cfg import get_vd_agent_cfg
-from rraa_rl.vd_mappo import VDMAPPOAgent
+from rraa_rl.agents.vd_mappo import VDMAPPOAgent
 
 
 def main():
