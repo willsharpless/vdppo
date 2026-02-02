@@ -571,7 +571,7 @@ class StaticTemporalNodeMixin:
             self._augment_obs_names = obs_names
         return self._augment_obs_names
 
-    def _augment_obs_and_names(self: Env, state: AugObs):
+    def _augment_obs_and_names(self: Env, state: StateWithTemporalNode):
         """Augment the base observation with the (one hot) temporal node idx and (one hot) node type."""
         if self.n_temporal_nodes > 1:
             obs_node_idx = jnn.one_hot(state.temporal_node_idx, self.n_temporal_nodes)

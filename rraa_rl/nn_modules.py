@@ -1,6 +1,7 @@
 from typing import Sequence
 
 import flax.linen as nn
+import jax.nn
 import jax.nn as jnn
 import jax.numpy as jnp
 import jax.tree_util as jtu
@@ -207,3 +208,23 @@ class IndexAtEnd(nn.Module):
             raise NotImplementedError("")
 
         return out
+
+def softplus_inv(y: jnp.ndarray) -> jnp.ndarray:
+    """
+    Inverse of softplus: returns x such that softplus(x) = y.
+    Assumes y >= 0 (softplus outputs are nonnegative).
+    Stable for small and large y.
+    """
+    y = jnp.asarray(y)
+    # y + log(1 - exp(-y)) == y + log(-expm1(-y))
+    return y + jnp.log(-jnp.expm1(-y))
+
+class PositiveConstant(nn.Module):
+    num: int
+    init_value: float = 1.0
+
+    @nn.compact
+    def __call__(self):
+        init_value_softplus = softplus_inv(self.init_value)
+        c = self.param("c", lambda key: jnp.full(self.num, init_value_softplus))
+        return jax.nn.softplus(c)
