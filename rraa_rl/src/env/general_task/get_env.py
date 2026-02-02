@@ -25,8 +25,8 @@ def get_cfg_herdos():
     # spec = "(!herder_oob && !herd_herder_collide) U ( herd_gate_1 && (( !herder_oob && !herd_herder_collide ) U G (herd_herded && !herder_oob && !herd_herder_collide) ) )"
 
     # This below is equivalent to the uncommented version, verified by spot.
-    # spec = "G(!herder_unsafe) && F( herd_gate_0 && F( herd_gate_1 ) ) && F G (herd_herded)"
-    spec = "(!herder_unsafe) U ( herd_gate_0 && (( !herder_unsafe ) U ( herd_gate_1 && (( !herder_unsafe ) U G (herd_herded && !herder_unsafe) ) ) ) )"
+    spec = "G(!herder_unsafe) && F( herd_gate_0 && F( herd_gate_1 ) ) && F G (herd_herded)"
+    # spec = "(!herder_unsafe) U ( herd_gate_0 && (( !herder_unsafe ) U ( herd_gate_1 && (( !herder_unsafe ) U G (herd_herded && !herder_unsafe) ) ) ) )"
     # fmt: on
 
     base_cfg = HerdingHerdCfg()
