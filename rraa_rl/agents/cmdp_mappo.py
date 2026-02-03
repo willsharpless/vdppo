@@ -174,7 +174,7 @@ class CMDPMAPPOAgent:
             {
                 "modules_actor": "actor",
                 "modules_critic": "critic",
-                "modules_lambda": "lambd"
+                "modules_lambd": "lambd"
             },
         )
 

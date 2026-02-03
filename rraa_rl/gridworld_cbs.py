@@ -309,7 +309,12 @@ def animate_eval_trajs_base(p: CallbackProps):
 
     ncol = n_traj_anim
 
-    colors_automata = plt.get_cmap("tab20", env.ldba.n_states).colors
+    if isinstance(env, LCRLWrapper):
+        n_discrete = env.ldba.n_states
+    else:
+        n_discrete = 1
+
+    colors_automata = plt.get_cmap("tab20", n_discrete).colors
     color_alive = to_rgba("C0", 0.0)
     color_dead = np.array(to_rgba("C0"))
 

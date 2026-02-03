@@ -25,7 +25,7 @@ from valtr.valtr import to_dag
 from valtr.reachability import DAGId, DAGMinN, DAGReach, DAGAvoid, has_temporal_children, DAGNode, DAGReachAvoid, DAGMinGuard
 from valtr.valtr import to_dag, to_dag_notransform
 
-from rraa_rl.src.env.general_task.env import Env, StaticTemporalNodeMixin, EnvStep, StateWithTemporalNode, EnvUsingBase
+from rraa_rl.src.env.general_task.env import Env, StaticTemporalNodeMixin, EnvStep, StateWithTemporalNode, EnvUsingBase, EnvCfg
 
 _EnvState = TypeVar("_EnvState")
 _Obs = TypeVar("_Obs")
@@ -209,11 +209,14 @@ class CMDPObs(NamedTuple):
     base: jnp.ndarray
     cmdp: jnp.ndarray
 
+    def base_is_array(self) -> bool:
+        return isinstance(self.base, (jnp.ndarray, np.ndarray))
+
     def combine(self, which=jnp):
         return which.concatenate([self.base, self.cmdp], axis=-1)
 
 @define
-class CMDPCfg:
+class CMDPCfg(EnvCfg):
     random_reset: bool = True
     """If true, randomly initialize the reach flags and epsilon moved flags on reset."""
 
@@ -232,6 +235,13 @@ class CMDPEnvWrapper(Env):
         self.dag_root_notrans = dag_root
         self.cmdp_info = parse_dag(self.dag_nodes_notrans, self.dag_root_notrans)
 
+    def add_obs_preprocessor(self, module: nn.Module):
+        return self.base.add_obs_preprocessor(module)
+    
+    @property
+    def base(self):
+        return self._env.base
+
     @property
     def specification(self):
         return self._env.specification
@@ -247,6 +257,10 @@ class CMDPEnvWrapper(Env):
             return self._env.n_agents + 1
         else:
             return self._env.n_agents
+    
+    @property
+    def n_actions_per_agent(self):
+        return self.base.n_actions_per_agent
 
     def to_minstate(self, state: CMDPAugState) -> CMDPAugState:
         # validate=False because we are changing the structure.
@@ -273,7 +287,7 @@ class CMDPEnvWrapper(Env):
         state_new = self.step_cmdp(state, state_base_new, step.predicates, epsilon_action)
 
         obs = self.get_obs(state_new)
-        step = step._replace(state=state_new, obs=obs)
+        step = step._replace(envstate=state_new, obs=obs)
         return step
 
     def step_cmdp(self, state: CMDPAugState, state_base_new: Any, predicates: dict[str, jnp.ndarray], epsilon_action: jnp.ndarray | None = None) -> CMDPAugState:
@@ -309,7 +323,16 @@ class CMDPEnvWrapper(Env):
 
     def _augment_obs_and_names(self, state: CMDPAugState):
         """Augment the base observation with the reach flags and the eps_moved."""
-        obs_aug = jnp.concatenate([state.reach_flags, state.epsilon_moved])
+        reach_flags = [state.reach_flags[dag_id] for dag_id in self.cmdp_info.reach_flags]
+        all_arr = reach_flags
+        if self.cmdp_info.has_epsilon_move:
+            all_arr.append(state.epsilon_moved)
+
+        if len(all_arr) == 1:
+            obs_aug = all_arr[0][None]
+        else:
+            obs_aug = jnp.concatenate(all_arr)
+
         assert obs_aug.shape == (self.cmdp_info.n_reach_flags + self.cmdp_info.n_epsilon_moves,)
 
         reach_names = [f"reachflag_{i}" for i in range(self.cmdp_info.n_reach_flags)]
@@ -339,3 +362,25 @@ class CMDPEnvWrapper(Env):
     @ft.partial(jax.jit, static_argnames=("self", "batch_size"))
     def reset_batch(self, key: PRNGKeyArray, batch_size: int, init: bool = False) -> Any:
         return jax.vmap(self.reset)(jr.split(key, batch_size))
+
+    def get_eval_states(
+        self, n_envs: int, root_only: bool = False
+    ) -> CMDPAugState:
+        key = jr.PRNGKey(seed=12345)
+
+        # assert root_only
+
+        # All envs start at the root temporal node (idx 0).
+        # m_state_base = self.base.reset_batch(key, n_envs)
+        m_state_base = self.base.reset_batch_eval(key, n_envs)
+        reach_flags = {dag_id: jnp.zeros((n_envs,), dtype=jnp.bool_) for dag_id in self.cmdp_info.reach_flags}
+        epsilon_moved = jnp.zeros((n_envs,), dtype=jnp.bool_)
+        b_state0 = CMDPAugState(
+            reach_flags=reach_flags,
+            epsilon_moved=epsilon_moved,
+            base=m_state_base,
+        )
+        return b_state0
+
+    def setup_ax(self, ax: plt.Axes):
+        self.base.setup_ax(ax)
