@@ -8,7 +8,11 @@ from rraa_rl.src.env.general_task.get_env import get_env_and_cbs
 def main():
     env_name = "herdos"
     env, _, _ = get_env_and_cbs(env_name, agent_name="vd")
-    env_cmdp = CMDPEnvWrapper(env)
+    cfg = CMDPEnvWrapper.Cfg()
+    env_cmdp = CMDPEnvWrapper(cfg, env)
+
+    for op in env_cmdp.cmdp_info.operations:
+        print(f"Operation: {op}")
 
 if __name__ == '__main__':
     with ipdb.launch_ipdb_on_exception():

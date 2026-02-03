@@ -22,7 +22,7 @@ from valtr.reachability import (DAGAvoid, DAGConst, DAGGUMinN, DAGGUSingle, DAGI
 from rraa_rl.evaluate_dag import evaluate_dag
 from rraa_rl.jax_utils import tree_cat
 from valtr.valtr import to_dag
-from valtr.reachability import DAGId, DAGMinN, DAGReach, DAGAvoid, has_temporal_children, DAGNode, DAGReachAvoid
+from valtr.reachability import DAGId, DAGMinN, DAGReach, DAGAvoid, has_temporal_children, DAGNode, DAGReachAvoid, DAGMinGuard
 from valtr.valtr import to_dag, to_dag_notransform
 
 from rraa_rl.src.env.general_task.env import Env, StaticTemporalNodeMixin, EnvStep, StateWithTemporalNode, EnvUsingBase
@@ -77,7 +77,10 @@ class CMDPInfo:
         reach_ids: list[DAGId] = []
         for op in self.operations:
             match op:
-                case CMDPReachChain(condition=condition):
+                case CMDPReachChain(reach=reach_id, condition=condition):
+                    if reach_id not in reach_ids:
+                        reach_ids.append(reach_id)
+
                     for c in condition:
                         if c not in reach_ids:
                             reach_ids.append(c)
@@ -119,15 +122,28 @@ def parse_reach_chain(nodes: list[DAGNode], root: DAGId) -> list[CMDPOperation]:
         current_node = nodes[current_node_id]
         match current_node:
             case DAGReach(reach=reach_id):
-                operations.append(CMDPReachChain(reach=reach_id, condition=condition_chain.copy()))
-                condition_chain.append(reach_id)
+                child_node = nodes[reach_id]
 
                 # Move to the next node in the chain.
-                if isinstance(next_node := nodes[reach_id], DAGMinN):
+                # F( some_propositional_stuff & F)
+                next_node = nodes[reach_id]
+                if isinstance(next_node, DAGMinGuard):
+
+                    # The "guard" is the propositional stuff that needs to be true to reach.
+                    child_reach_id = next_node.nontemporal_arg
+
+                    operations.append(CMDPReachChain(reach=child_reach_id, condition=condition_chain.copy()))
+                    condition_chain.append(next_node.nontemporal_arg)
+
+                    # Continue the chain.
+                    current_node_id = next_node.temporal_arg
+                elif isinstance(next_node, DAGVar):
+                    # A single reach, don't need to continue.
+                    child_reach_id = reach_id
+                    operations.append(CMDPReachChain(reach=child_reach_id, condition=condition_chain.copy()))
+
                     # End of the chain.
                     break
-                elif isinstance(next_node, DAGReach):
-                    current_node_id = reach_id
                 else:
                     raise NotImplementedError(f"Unsupported DAG node type in reach chain: {type(next_node)}")
             case _:
@@ -142,8 +158,8 @@ def parse_dag(nodes: list[DAGNode], root: DAGId) -> CMDPInfo:
     root_node = nodes[root]
 
     # The root node should be AND of multiple operations.
-    if isinstance(root_node, DAGMinN):
-        children = root_node.children
+    if isinstance(root_node, (DAGMinN, DAGMinGuard)):
+        children = root_node.children()
     else:
         children = [root]
 
