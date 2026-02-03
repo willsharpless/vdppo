@@ -146,6 +146,14 @@ def get_env_and_cbs(
         env = HerdOs(cfg)
         cbs = herd_eval_cbs, herd_collect_cbs
 
+    elif env_name == "gridworld_map1_r":
+        map1 = GridworldMap.Map1()
+        spec = "F A"
+        cfg = GridworldMACfg(specification=spec, map=map1)
+
+        env = GridworldMA(cfg)
+        cbs = gridworld_eval_cbs, gridworld_collect_cbs
+
     elif env_name == "gridworld_map1":
         map1 = GridworldMap.Map1()
         # spec = "F A"
