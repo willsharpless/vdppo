@@ -263,6 +263,10 @@ class CMDPEnvWrapper(Env):
     def n_actions_per_agent(self):
         return self.base.n_actions_per_agent
 
+    @property
+    def max_entropy(self):
+        return self.base.max_entropy
+
     def to_minstate(self, state: CMDPAugState) -> CMDPAugState:
         # validate=False because we are changing the structure.
         with jdc.copy_and_mutate(state, validate=False) as state_new:
