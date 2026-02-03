@@ -222,6 +222,7 @@ class CMDPCfg(EnvCfg):
 
 class CMDPEnvWrapper(Env):
     Cfg = CMDPCfg
+    State = CMDPAugState
 
     def __init__(self, cfg: CMDPCfg, env: StaticTemporalNodeMixin | EnvUsingBase):
         super().__init__(env.cfg, env.specification)

@@ -12,11 +12,13 @@ from flax import struct
 from matplotlib.colors import to_rgba
 from matplotlib.colors import LinearSegmentedColormap
 
+from rraa_rl.agents.cmdp_mappo import CMDPMAPPOAgent
 from rraa_rl.distribution import tfd
 from rraa_rl.jax_utils import jax_vmap
 from rraa_rl.lcrl.lcrl_wrapper import LCRLWrapper
 from rraa_rl.agents.lcrl_mappo import LCRLMAPPOAgent
 from rraa_rl.ldba.ldba import LDBAState
+from rraa_rl.cmdp_wrapper import CMDPEnvWrapper
 from rraa_rl.src.env.general_task.env import AugObs, AugObsAutomata, StateWithTemporalNode
 from rraa_rl.src.env.general_task.gridworld import GridworldMA, GridworldMABase, GridworldMAState
 from rraa_rl.trainer import CallbackProps
@@ -492,6 +494,39 @@ class VizValues(struct.PyTreeNode):
 
         return bbt_V, bbtn_act, bbtn_probs, bbtn_entropy
 
+    @jax.jit
+    def get_value_cmdp(self, agent: CMDPMAPPOAgent):
+        env: CMDPEnvWrapper = agent.env
+        env_base: GridworldMABase = env.base
+
+        bb_state_base = env_base.get_all_states()
+        len_x, len_y = bb_state_base.pos.shape[:2]
+
+        bb_reach_flags = {op: jnp.zeros((len_x, len_y), dtype=bool) for op in env.cmdp_ops}
+        bb_epsilon_moved = jnp.zeros((len_x, len_y, env.cmdp_info.n_epsilon_moves), dtype=bool)
+        bb_state = CMDPEnvWrapper.State(bb_reach_flags, bb_epsilon_moved, bb_state_base)
+        bb_obs_ = jax_vmap(env.get_obs, rep=2)(bb_state)
+
+        def get_mode_and_prob(obs_):
+            act_dist: tfd.JointDistributionSequential = agent.network.select("actor")(obs_)
+            n_act = act_dist.mode()
+            n_log_probs = act_dist.log_prob_parts(n_act)[:-1]
+            entropies_list = [dist.entropy() for dist in act_dist.model]
+            n_entropy = jnp.stack(entropies_list[:-1], axis=0)
+            n_probs = jnp.array([jnp.exp(lp).squeeze() for lp in n_log_probs])
+            assert n_probs.shape == (env.n_agents,)
+
+            t_V = agent.network.select("critic")(obs_)
+
+            return n_act, n_probs, n_entropy, t_V
+
+        bbn_act, bbn_probs, bbn_entropy, bbt_V = jax_vmap(get_mode_and_prob, rep=2)(bb_obs_)
+        return bbn_act, bbn_probs, bbn_entropy
+
+        assert bbtn_probs.shape == (len_x, len_y, env.ldba.n_states, env.n_agents)
+
+        return bbt_V, bbtn_act, bbtn_probs, bbtn_entropy
+
     def __call__(self, p: CallbackProps):
         if p.env.n_agents > 1:
             return
@@ -509,6 +544,11 @@ class VizValues(struct.PyTreeNode):
                 bbt_V, bbtn_act, bbtn_probs, bbtn_entropy = jax.device_get(self.get_value_vd(p.agent))
                 n_automata_states = env.n_temporal_nodes
                 discrete_state_name = "Temporal"
+            case CMDPMAPPOAgent():
+                env: CMDPEnvWrapper = p.agent.env
+                bbt_V, bbtn_act, bbtn_probs, bbtn_entropy = jax.device_get(self.get_value_vd(p.agent))
+                n_automata_states = env.n_conjunctions
+                discrete_state_name = "CMDP Ops"
             case _:
                 raise NotImplementedError("")
 
