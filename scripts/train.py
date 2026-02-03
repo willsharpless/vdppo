@@ -1,6 +1,7 @@
 import ipdb
 from cyclopts import App
 
+from rraa_rl.agents.cmdp_mappo import CMDPMAPPOAgent
 from rraa_rl.agents.lcrl_mappo import LCRLMAPPOAgent
 from rraa_rl.agents.vd_mappo import VDMAPPOAgent
 from rraa_rl.lcrl.lcrl_wrapper import LCRLWrapper
@@ -52,7 +53,7 @@ def cmdp(
     if hasattr(env.base, "n_envs"):
         env.base.n_envs = agent_cfg.n_envs_train
 
-    agent = VDMAPPOAgent.create(seed, agent_cfg, env)
+    agent = CMDPMAPPOAgent.create(seed, agent_cfg, env)
 
     return train(name, debug, env_name, seed, trainer_cfg, env, eval_cbs, collect_cbs, agent)
 

@@ -1,6 +1,7 @@
 import jax.numpy as jnp
 
 from rraa_rl import delivery_cbs, deliveryreal_cbs, gridworld_cbs, herd_os_cbs, ablation_cbs, deliveryrealv2_cbs
+from rraa_rl.cmdp_wrapper import CMDPEnvWrapper
 from rraa_rl.jax_utils import tree_stack
 from rraa_rl.lcrl.lcrl_wrapper import LCRLEnvCfg, LCRLWrapper
 from rraa_rl.ldba.ldba import LDBA, Guard, Transition, parse_ltl2ldba
@@ -412,5 +413,9 @@ def get_env_and_cbs(
         lcrl_env_cfg = LCRLEnvCfg(specification=spec)
         ldba = get_env_ldba(env_name, n_spec=n_spec)
         env = LCRLWrapper(lcrl_env_cfg, env.base, ldba)
+
+    if agent_name == "cmdp":
+        cmdp_cfg = CMDPEnvWrapper.Cfg()
+        env = CMDPEnvWrapper(cmdp_cfg, env)
 
     return env, cbs[0], cbs[1]

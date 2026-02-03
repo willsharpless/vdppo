@@ -1,17 +1,13 @@
 import functools as ft
-import pathlib
 # from typing import Any, Self
 from typing import Any
 
 import einops as ei
 import flax
-import ipdb
 import jax
 import jax.numpy as jnp
 import jax.random as jr
 import jax.tree_util as jtu
-import jax_dataclasses as jdc
-import numpy as np
 import optax
 from attrs import define
 from cyclopts import Parameter
@@ -19,20 +15,17 @@ from flax import struct
 from jaxtyping import PRNGKeyArray
 from loguru import logger
 from typing_extensions import Self
-from valtr.reachability import (DAGAvoid, DAGConst, DAGGUMinN, DAGGUSingle, DAGId, DAGMaxN, DAGMinN, DAGNegate,
-                                DAGReach, DAGReachAvoid, DAGVar)
 
 from rraa_rl.cfg_utils import Cfg
 from rraa_rl.cmdp_wrapper import CMDPEnvWrapper, CMDPAvoid, CMDPWeakUntil, CMDPReachChain, CMDPFG, CMDPGF, CMDPAugState
 from rraa_rl.collector import Collector, RolloutOutput
 from rraa_rl.distribution import tfd
-from rraa_rl.distribution_utils import get_multidiscrete_min_entropy
 from rraa_rl.evaluate_dag import evaluate_dag
-from rraa_rl.gae import BellmanGUSingle, BellmanMax, BellmanMaxMin, BellmanMin, gae_generalized, sum_gae
+from rraa_rl.gae import sum_gae
 from rraa_rl.jax_types import FloatScalar, bFloat
-from rraa_rl.nn_modules import (BaseObsOnly, BothObs, IndexAtEnd, LearnTemporalEmbedding, MAMultiDiscretePolicy,
-                                SeparateMAMultiDiscretePolicy, VDValue, VDValueShared, PositiveConstant)
-from rraa_rl.src.env.general_task.env import AugObs, AugObsAutomata, Env, EnvStep, StateWithTemporalNode
+from rraa_rl.nn_modules import (BaseObsOnly, MAMultiDiscretePolicy,
+                                VDValue, VDValueShared, PositiveConstant)
+from rraa_rl.src.env.general_task.env import AugObs, AugObsAutomata
 from rraa_rl.train_state import ModuleDict, Params, TrainState
 from rraa_rl.train_utils import compute_norm_and_clip, has_any_nan_or_inf, tree_where
 

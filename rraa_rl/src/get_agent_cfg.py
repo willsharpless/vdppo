@@ -1,10 +1,11 @@
+from rraa_rl.agents.cmdp_mappo import CMDPMAPPOAgent
 from rraa_rl.agents.lcrl_mappo import LCRLMAPPOAgent
 from rraa_rl.agents.vd_mappo import VDMAPPOAgent
 
 def get_cmdp_agent_cfg(env_name: str):
     env_name = env_name.lower()
 
-    cfg = VDMAPPOAgent.Cfg()
+    cfg = CMDPMAPPOAgent.Cfg()
     cfg.actor_lr = 8e-4
     cfg.n_epochs = 2
     cfg.n_minibatches = 4

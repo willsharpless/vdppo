@@ -202,6 +202,8 @@ class CMDPCfg:
     """If true, randomly initialize the reach flags and epsilon moved flags on reset."""
 
 class CMDPEnvWrapper(Env):
+    Cfg = CMDPCfg
+
     def __init__(self, cfg: CMDPCfg, env: StaticTemporalNodeMixin | EnvUsingBase):
         super().__init__(env.cfg, env.specification)
         self._env = env
