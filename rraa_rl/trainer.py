@@ -14,7 +14,7 @@ from loguru import logger
 import wandb
 from rraa_rl.cfg_utils import Cfg
 from rraa_rl.collector import Collector, RolloutOutput, extract_info_from_rollout
-from rraa_rl.lcrl_mappo import LCRLMAPPOAgent
+from rraa_rl.agents.lcrl_mappo import LCRLMAPPOAgent
 from rraa_rl.rollout_temporal_analysis import evaluate_ltl_finite
 from rraa_rl.rollout_utils import extract_rollouts_eval
 from rraa_rl.run import Run

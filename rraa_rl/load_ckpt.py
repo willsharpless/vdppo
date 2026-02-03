@@ -7,7 +7,7 @@ import jax
 import yaml
 from loguru import logger
 
-from rraa_rl.lcrl_mappo import LCRLMAPPOAgent
+from rraa_rl.agents.lcrl_mappo import LCRLMAPPOAgent
 from rraa_rl.run import Run
 from rraa_rl.src.env.general_task.env import Env
 from rraa_rl.src.env.general_task.get_env import get_env_and_cbs
