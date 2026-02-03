@@ -2,6 +2,7 @@ from pathlib import Path
 from typing import Callable
 from colour import hsl2hex
 
+import einops as ei
 import imageio.v3 as iio
 import jax
 import jax.numpy as jnp
@@ -502,7 +503,9 @@ class VizValues(struct.PyTreeNode):
         bb_state_base = env_base.get_all_states()
         len_x, len_y = bb_state_base.pos.shape[:2]
 
-        bb_reach_flags = {op: jnp.zeros((len_x, len_y), dtype=bool) for op in env.cmdp_ops}
+        n_ops = env.n_conjunctions
+
+        bb_reach_flags = {dag_id: jnp.zeros((len_x, len_y), dtype=bool) for dag_id in env.cmdp_info.reach_flags}
         bb_epsilon_moved = jnp.zeros((len_x, len_y, env.cmdp_info.n_epsilon_moves), dtype=bool)
         bb_state = CMDPEnvWrapper.State(bb_reach_flags, bb_epsilon_moved, bb_state_base)
         bb_obs_ = jax_vmap(env.get_obs, rep=2)(bb_state)
@@ -510,20 +513,23 @@ class VizValues(struct.PyTreeNode):
         def get_mode_and_prob(obs_):
             act_dist: tfd.JointDistributionSequential = agent.network.select("actor")(obs_)
             n_act = act_dist.mode()
-            n_log_probs = act_dist.log_prob_parts(n_act)[:-1]
+            n_log_probs = act_dist.log_prob_parts(n_act)
             entropies_list = [dist.entropy() for dist in act_dist.model]
-            n_entropy = jnp.stack(entropies_list[:-1], axis=0)
+            n_entropy = jnp.stack(entropies_list, axis=0)
             n_probs = jnp.array([jnp.exp(lp).squeeze() for lp in n_log_probs])
             assert n_probs.shape == (env.n_agents,)
 
             t_V = agent.network.select("critic")(obs_)
 
-            return n_act, n_probs, n_entropy, t_V
+            # Repeat act, probs and entropy to get the t dimension
+            tn_act = [ei.repeat(act, "nact -> t nact", t=n_ops) for act in n_act]
+            tn_probs = ei.repeat(n_probs, "nprob -> t nprob", t=n_ops)
+            tn_entropy = ei.repeat(n_entropy, "nentropy -> t nentropy", t=n_ops)
 
-        bbn_act, bbn_probs, bbn_entropy, bbt_V = jax_vmap(get_mode_and_prob, rep=2)(bb_obs_)
-        return bbn_act, bbn_probs, bbn_entropy
+            return tn_act, tn_probs, tn_entropy, t_V
 
-        assert bbtn_probs.shape == (len_x, len_y, env.ldba.n_states, env.n_agents)
+        bbtn_act, bbtn_probs, bbtn_entropy, bbt_V = jax_vmap(get_mode_and_prob, rep=2)(bb_obs_)
+
 
         return bbt_V, bbtn_act, bbtn_probs, bbtn_entropy
 
@@ -546,7 +552,7 @@ class VizValues(struct.PyTreeNode):
                 discrete_state_name = "Temporal"
             case CMDPMAPPOAgent():
                 env: CMDPEnvWrapper = p.agent.env
-                bbt_V, bbtn_act, bbtn_probs, bbtn_entropy = jax.device_get(self.get_value_vd(p.agent))
+                bbt_V, bbtn_act, bbtn_probs, bbtn_entropy = jax.device_get(self.get_value_cmdp(p.agent))
                 n_automata_states = env.n_conjunctions
                 discrete_state_name = "CMDP Ops"
             case _:
@@ -619,7 +625,7 @@ class VizValues(struct.PyTreeNode):
         ncol = n_automata_states
         nrow = 2
         figsize = 0.9 * np.array([3 * ncol, 3 * nrow])
-        fig, axes = plt.subplots(2, ncol, figsize=figsize, layout="constrained")
+        fig, axes = plt.subplots(2, ncol, figsize=figsize, layout="constrained", squeeze=False)
 
         action_to_str = [".", "↑", "↓", "→", "←"]
 

@@ -32,7 +32,6 @@ from rraa_rl.train_utils import compute_norm_and_clip, has_any_nan_or_inf, tree_
 
 @struct.dataclass
 class PPOData:
-    state: Any
     act: Any
     obs: jnp.ndarray
     logp: jnp.ndarray
@@ -187,6 +186,7 @@ class CMDPMAPPOAgent:
         """Compute GAE advantages and Q-values from rollout.
         There should be one advantage and Q-value per CMDP computation node.
         """
+        T, batch_size = Tb_rollout.shape
         # (batch, T, n_temporal)
         Tbt_V = self.network.select("critic")(Tb_rollout.obs_now, params=self.network.params)
         Tbt_V = jax.lax.stop_gradient(Tbt_V)
@@ -196,8 +196,8 @@ class CMDPMAPPOAgent:
         Tbt_V_next = jax.lax.stop_gradient(Tbt_V_next)
         bTt_V_next = ei.rearrange(Tbt_V_next, "T b t -> b T t")
 
-        bT_state_now: CMDPAugState = ei.rearrange(Tb_rollout.state_now, "T b ... -> b T ...")
-        bT_state_next: CMDPAugState = ei.rearrange(Tb_rollout.state_next, "T b ... -> b T ...")
+        bT_reachflags_now = {k: ei.rearrange(v, "T b ... -> b T ...") for k, v in Tb_rollout.state_now.reach_flags.items()}
+        bT_reachflags_next = {k: ei.rearrange(v, "T b ... -> b T ...") for k, v in Tb_rollout.state_next.reach_flags.items()}
 
         bT_pred = {k: v.T for k, v in Tb_rollout.predicates_next.items()}
 
@@ -223,13 +223,13 @@ class CMDPMAPPOAgent:
                 case CMDPWeakUntil(stay=stay_id, reach=reach_id):
                     # Same as Avoid, but if the reachflag is true then force zero cost.
                     bT_stay_val = evaluate_dag(self.env.dag_nodes_notrans, stay_id, bT_pred, scratch)
-                    bT_reached = bT_state_next.reach_flags[reach_id]
+                    bT_reached = bT_reachflags_next[reach_id]
                     bT_reward = jnp.minimum(bT_avoid_val, 0.0)
                     bT_reward = jnp.where(bT_reached, 0.0, bT_reward)
                 case CMDPReachChain(reach=reach_id, condition=condition_ids):
                     # If reachflag goes from 0 to 1, give a reward of +1.
-                    bT_reached_prev = bT_state_now.reach_flags[reach_id]
-                    bT_reached_next = bT_state_next.reach_flags[reach_id]
+                    bT_reached_prev = bT_reachflags_now[reach_id]
+                    bT_reached_next = bT_reachflags_next[reach_id]
                     bT_into_reach = (~bT_reached_prev) & (bT_reached_next)
                     bT_reward = jnp.where(bT_into_reach, 1.0, 0.0)
                 case CMDPFG(stay=stay_id):
@@ -251,8 +251,10 @@ class CMDPMAPPOAgent:
             bTt_A_list.append(bT_A)
             bTt_Q_list.append(bT_Q)
 
-        bTt_A = jnp.stack(bTt_A_list, axis=-2)
-        bTt_Q = jnp.stack(bTt_Q_list, axis=-2)
+        bTt_A = jnp.stack(bTt_A_list, axis=-1)
+        bTt_Q = jnp.stack(bTt_Q_list, axis=-1)
+
+        assert bTt_A.shape == (batch_size, T, self.env.n_conjunctions)
 
         return bTt_A, bTt_Q
 
@@ -377,7 +379,7 @@ class CMDPMAPPOAgent:
         """Compute the actor loss. We are trying to maximize reward."""
         b_obs = b_data.obs
         b_act = b_data.act
-        _, batch_size = b_data.t_Q.shape
+        batch_size, _ = b_data.t_Q.shape
 
         # (batch, n_agents)
         bn_logp_old = b_data.logp
@@ -412,7 +414,6 @@ class CMDPMAPPOAgent:
         bn_loss1 = -bn_is_ratio * b_A[:, None]
         bn_loss2 = -bn_is_ratio_clip * b_A[:, None]
         bn_loss = jnp.maximum(bn_loss1, bn_loss2)
-        assert bn_loss.shape == (batch_size, self.env.n_agents)
 
         b_loss_pg = jnp.mean(bn_loss, axis=1)
         loss_pg = jnp.mean(b_loss_pg)
@@ -441,10 +442,10 @@ class CMDPMAPPOAgent:
 
         return loss, info
 
-    def _lambd_loss(self, network: TrainState, b_data: PPOData):
+    def _lambd_loss(self, b_data: PPOData, params: Params):
         bt_Q = b_data.t_Q
 
-        t_lambd = self.network.select("lambd")(params=network.params)
+        t_lambd = self.network.select("lambd")(params=params)
 
         bt_loss_list = []
 
@@ -468,6 +469,7 @@ class CMDPMAPPOAgent:
         bt_loss = jnp.stack(bt_loss_list, axis=-1)
         b_loss = jnp.sum(bt_loss * t_lambd, axis=-1)
         loss = jnp.mean(b_loss)
+        print("loss.dtype: ", loss.dtype)
 
         bt_violated = jnp.where(bt_loss > 0.0, 1, 0)
         b_all_satisfy = jnp.all(bt_violated == 0, axis=1)
@@ -506,24 +508,9 @@ class CMDPMAPPOAgent:
         network_new = network.apply_gradients(grads=grad)
         return network_new, info
 
-    def _update_critic(self, network: TrainState, b_data: PPOData) -> tuple[TrainState, dict]:
-        critic_loss = ft.partial(self._critic_loss, b_data)
-        grad, info = jax.grad(critic_loss, has_aux=True)(network.params)
-
-        grad_bad = has_any_nan_or_inf(grad)
-        grad, grad_norm, clipped_grad_norm = compute_norm_and_clip(grad, self.cfg.max_grad_norm)
-        grad = tree_where(grad_bad, jtu.tree_map(jnp.zeros_like, grad), grad)
-
-        info["clipped_grad_norm"] = clipped_grad_norm
-        info["grad_norm"] = grad_norm
-        info["grad_bad"] = grad_bad
-
-        network_new = network.apply_gradients(grads=grad)
-        return network_new, info
-
     def _update_lambd(self, network: TrainState, b_data: PPOData) -> tuple[TrainState, dict]:
-        lambd_loss = ft.partial(self._lambd_loss, b_data=b_data)
-        grad, info = jax.grad(lambd_loss, has_aux=True)(network)
+        lambd_loss = ft.partial(self._lambd_loss, b_data)
+        grad, info = jax.grad(lambd_loss, has_aux=True)(network.params)
 
         grad_bad = has_any_nan_or_inf(grad)
         grad, grad_norm, clipped_grad_norm = compute_norm_and_clip(grad, self.cfg.max_grad_norm)
@@ -551,8 +538,13 @@ class CMDPMAPPOAgent:
         logp_list = act_dist.log_prob_parts(act)
         assert isinstance(logp_list, list)
         logp = jnp.stack(logp_list, axis=0)
+
         # Last one is for the epsilon action.
-        assert logp.shape == (self.env.n_agents + 1,)
+        if self.env.cmdp_info.has_epsilon_move:
+            assert logp.shape == (self.env.n_agents + 1,)
+        else:
+            assert logp.shape == (self.env.n_agents,)
+
         return act, logp
 
     def det_action(self, obs: Any) -> Any:
