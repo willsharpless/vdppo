@@ -23,9 +23,16 @@ def vd(
     n_agent: int = 1,
     n_spec: int = 1,
     dense: bool = False,
+    actor_shared_trunk: bool = True,
+    value_shared_trunk: bool = True,
+    n_layers: int = 2,
 ):
     env, eval_cbs, collect_cbs = get_env_and_cbs(env_name, agent_name="vd", n_agent=n_agent, n_spec=n_spec, dense=dense)
     agent_cfg = get_vd_agent_cfg(env_name)
+    agent_cfg.actor_shared_trunk = actor_shared_trunk
+    agent_cfg.value_shared_trunk = value_shared_trunk
+    agent_cfg.actor_hids = (128,) * n_layers
+    agent_cfg.critic_hids = (128,) * n_layers
 
     if hasattr(env.base, "n_envs"):
         env.base.n_envs = agent_cfg.n_envs_train

@@ -32,7 +32,7 @@ class LoadCkptResult(NamedTuple):
     cfg_dict: dict
 
 
-def load_ckpt(run_path: pathlib.Path, step: int | None = None, alg: str = "vd", n_spec:int=1, n_agent:int=1):
+def load_ckpt(run_path: pathlib.Path, step: int | None = None, alg: str = "vd", n_spec:int=1, n_agent:int=1, ashared=True, vshared=True, n_layers=2):
     # Load the configs.
     yaml_path = run_path / "config.yaml"
     with open(yaml_path, "r") as f:
@@ -46,10 +46,18 @@ def load_ckpt(run_path: pathlib.Path, step: int | None = None, alg: str = "vd", 
     env, _, _ = get_env_and_cbs(env_name, agent_name=alg, n_spec=n_spec, n_agent=n_agent)
 
     if alg == "vd":
-        agent_cfg = VDMAPPOAgent.Cfg.fromdict(cfg_dict["agent"])
+        agent_cfg = VDMAPPOAgent.Cfg.fromdict(cfg_dict["agent"])            
+        agent_cfg.actor_shared_trunk = ashared
+        agent_cfg.value_shared_trunk = vshared
+        agent_cfg.actor_hids = (128,) * n_layers
+        agent_cfg.critic_hids = (128,) * n_layers
         agent = VDMAPPOAgent.create(123, agent_cfg, env)
     elif alg == "lcrl":
-        agent_cfg = LCRLMAPPOAgent.Cfg.fromdict(cfg_dict["agent"])
+        agent_cfg = LCRLMAPPOAgent.Cfg.fromdict(cfg_dict["agent"])            
+        agent_cfg.actor_shared_trunk = ashared
+        agent_cfg.value_shared_trunk = vshared
+        agent_cfg.actor_hids = (128,) * n_layers
+        agent_cfg.critic_hids = (128,) * n_layers
         agent = LCRLMAPPOAgent.create(123, agent_cfg, env)
 
     ckpts_path = run_path / "ckpts"
