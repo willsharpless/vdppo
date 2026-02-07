@@ -1,34 +1,28 @@
-import pickle
-from typing import Protocol
-
 import jax
 import jax.random as jr
 import jax.numpy as jnp
 import jax.tree_util as jtu
 import jax_dataclasses as jdc
-from jaxtyping import Bool, Float, PRNGKeyArray
+from jaxtyping import PRNGKeyArray
 import jax.lax as lax
 from flax import struct
 
 import numpy as np
-import tqdm
 import yaml
 from attrs import define
 from cyclopts import Parameter
 from loguru import logger
-from typing import Any, Callable, Protocol, Tuple
+from typing import Any, Protocol
 from typing_extensions import Self
 
-import wandb
 from rraa_rl.cfg_utils import Cfg
-from rraa_rl.collector import Collector, extract_info_from_rollout
+from rraa_rl.collector import Collector
 from rraa_rl.rollout_temporal_analysis import evaluate_ltl_finite
 from rraa_rl.rollout_utils import extract_rollouts_eval
 from rraa_rl.run import Run
 from rraa_rl.src.env.general_task.env import Env, EnvStep, StateWithTemporalNode
-from rraa_rl.vd_mappo import VDMAPPOAgent
-from rraa_rl.jax_utils import switch01, tree_where_dim0
-from rraa_rl.src.get_agent_cfg import get_lcrl_agent_cfg, get_vd_agent_cfg
+from rraa_rl.agents.vd_mappo import VDMAPPOAgent
+from rraa_rl.jax_utils import switch01
 from rraa_rl.trainer import CallbackProps
 from rraa_rl.src.env.general_task.get_env import get_env_and_cbs
 

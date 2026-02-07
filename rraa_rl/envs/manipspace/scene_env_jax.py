@@ -138,7 +138,7 @@ class SceneEnvJax:
         arm_sampling_bounds = jnp.asarray([[0.25, -0.2, 0.20], [0.6, 0.2, 0.35]])
         object_sampling_bounds = jnp.asarray([[0.3, -0.07], [0.45, 0.18]])
         target_sampling_bounds = object_sampling_bounds
-        action_range = jnp.array([0.05, 0.05, 0.05, 0.3, 1.0])
+        action_range = np.array([0.05, 0.05, 0.05, 0.3, 1.0])
         drawer_center = jnp.array([0.33, -0.24, 0.066])
 
         self.config = SceneEnvConfig(

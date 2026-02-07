@@ -1,37 +1,29 @@
-import time
 from pathlib import Path
 from typing import Callable
 from colour import hsl2hex
 
 import einops as ei
-import imageio.v2 as imageio
 import imageio.v3 as iio
-import ipdb
 import jax
 import jax.numpy as jnp
-import jax_dataclasses as jdc
 import matplotlib.pyplot as plt
 import numpy as np
 import tqdm
 from flax import struct
-from loguru import logger
-from lovely_histogram import plot_histogram
-from matplotlib.animation import FFMpegWriter, FuncAnimation
-from matplotlib.collections import EllipseCollection
-from matplotlib.colors import CenteredNorm, to_rgba
+from matplotlib.colors import to_rgba
 from matplotlib.colors import LinearSegmentedColormap
 
-from rraa_rl.collector import RolloutOutput
-from rraa_rl.distribution import tfd, tfp
-from rraa_rl.jax_utils import jax_vmap, rep_vmap
+from rraa_rl.agents.cmdp_mappo import CMDPMAPPOAgent
+from rraa_rl.distribution import tfd
+from rraa_rl.jax_utils import jax_vmap
 from rraa_rl.lcrl.lcrl_wrapper import LCRLWrapper
-from rraa_rl.lcrl_mappo import LCRLMAPPOAgent
+from rraa_rl.agents.lcrl_mappo import LCRLMAPPOAgent
 from rraa_rl.ldba.ldba import LDBAState
+from rraa_rl.cmdp_wrapper import CMDPEnvWrapper
 from rraa_rl.src.env.general_task.env import AugObs, AugObsAutomata, StateWithTemporalNode
 from rraa_rl.src.env.general_task.gridworld import GridworldMA, GridworldMABase, GridworldMAState
-from rraa_rl.src.rl.utils.utils import get_BuRd_smooth
 from rraa_rl.trainer import CallbackProps
-from rraa_rl.vd_mappo import PPOData, VDMAPPOAgent
+from rraa_rl.agents.vd_mappo import VDMAPPOAgent
 
 plt.style.use("seaborn-v0_8-darkgrid")
 
@@ -320,7 +312,12 @@ def animate_eval_trajs_base(p: CallbackProps):
 
     ncol = n_traj_anim
 
-    colors_automata = plt.get_cmap("tab20", env.ldba.n_states).colors
+    if isinstance(env, LCRLWrapper):
+        n_discrete = env.ldba.n_states
+    else:
+        n_discrete = 1
+
+    colors_automata = plt.get_cmap("tab20", n_discrete).colors
     color_alive = to_rgba("C0", 0.0)
     color_dead = np.array(to_rgba("C0"))
 
@@ -498,6 +495,44 @@ class VizValues(struct.PyTreeNode):
 
         return bbt_V, bbtn_act, bbtn_probs, bbtn_entropy
 
+    @jax.jit
+    def get_value_cmdp(self, agent: CMDPMAPPOAgent):
+        env: CMDPEnvWrapper = agent.env
+        env_base: GridworldMABase = env.base
+
+        bb_state_base = env_base.get_all_states()
+        len_x, len_y = bb_state_base.pos.shape[:2]
+
+        n_ops = env.n_conjunctions
+
+        bb_reach_flags = {dag_id: jnp.zeros((len_x, len_y), dtype=bool) for dag_id in env.cmdp_info.reach_flags}
+        bb_epsilon_moved = jnp.zeros((len_x, len_y, env.cmdp_info.n_epsilon_moves), dtype=bool)
+        bb_state = CMDPEnvWrapper.State(bb_reach_flags, bb_epsilon_moved, bb_state_base)
+        bb_obs_ = jax_vmap(env.get_obs, rep=2)(bb_state)
+
+        def get_mode_and_prob(obs_):
+            act_dist: tfd.JointDistributionSequential = agent.network.select("actor")(obs_)
+            n_act = act_dist.mode()
+            n_log_probs = act_dist.log_prob_parts(n_act)
+            entropies_list = [dist.entropy() for dist in act_dist.model]
+            n_entropy = jnp.stack(entropies_list, axis=0)
+            n_probs = jnp.array([jnp.exp(lp).squeeze() for lp in n_log_probs])
+            assert n_probs.shape == (env.n_agents,)
+
+            t_V = agent.network.select("critic")(obs_)
+
+            # Repeat act, probs and entropy to get the t dimension
+            tn_act = [ei.repeat(act, "nact -> t nact", t=n_ops) for act in n_act]
+            tn_probs = ei.repeat(n_probs, "nprob -> t nprob", t=n_ops)
+            tn_entropy = ei.repeat(n_entropy, "nentropy -> t nentropy", t=n_ops)
+
+            return tn_act, tn_probs, tn_entropy, t_V
+
+        bbtn_act, bbtn_probs, bbtn_entropy, bbt_V = jax_vmap(get_mode_and_prob, rep=2)(bb_obs_)
+
+
+        return bbt_V, bbtn_act, bbtn_probs, bbtn_entropy
+
     def __call__(self, p: CallbackProps):
         if p.env.n_agents > 1:
             return
@@ -515,6 +550,11 @@ class VizValues(struct.PyTreeNode):
                 bbt_V, bbtn_act, bbtn_probs, bbtn_entropy = jax.device_get(self.get_value_vd(p.agent))
                 n_automata_states = env.n_temporal_nodes
                 discrete_state_name = "Temporal"
+            case CMDPMAPPOAgent():
+                env: CMDPEnvWrapper = p.agent.env
+                bbt_V, bbtn_act, bbtn_probs, bbtn_entropy = jax.device_get(self.get_value_cmdp(p.agent))
+                n_automata_states = env.n_conjunctions
+                discrete_state_name = "CMDP Ops"
             case _:
                 raise NotImplementedError("")
 
@@ -585,7 +625,7 @@ class VizValues(struct.PyTreeNode):
         ncol = n_automata_states
         nrow = 2
         figsize = 0.9 * np.array([3 * ncol, 3 * nrow])
-        fig, axes = plt.subplots(2, ncol, figsize=figsize, layout="constrained")
+        fig, axes = plt.subplots(2, ncol, figsize=figsize, layout="constrained", squeeze=False)
 
         action_to_str = [".", "↑", "↓", "→", "←"]
 

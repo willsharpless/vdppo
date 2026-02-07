@@ -6,8 +6,8 @@ from valtr.reachability import (DAGAvoid, DAGConst, DAGGUMinN, DAGGUSingle, DAGI
                                 DAGReach, DAGReachAvoid, DAGVar)
 
 from rraa_rl.collector import RolloutOutput
-from rraa_rl.src.env.general_task.herd_os import HerdOs
 from rraa_rl.src.env.general_task.env import DAGTransition, get_rules
+from rraa_rl.src.env.general_task.herd_os import HerdOs
 
 
 def evaluate_triggers(env: HerdOs, trajs: list[RolloutOutput]) -> dict:
@@ -26,11 +26,32 @@ def evaluate_triggers(env: HerdOs, trajs: list[RolloutOutput]) -> dict:
 
 
 def evaluate_ltl_finite(env: HerdOs, T_pred: dict[str, np.ndarray], which=jnp):
-    """Evaluate whether the LTL formula (when treated as finite) holds over the finite trace.
-    Solve using dynamic programming."""
-
     dag_nodes = env.dag_nodes
     dag_root = env.dag_root
+
+    return evaluate_ltl_finite_dag(dag_nodes, dag_root, T_pred, which=which)
+
+
+def get_ltl_finite_values_rollout(dag_nodes: list[DAGId], dag_root, b_traj: list[RolloutOutput], which=np):
+    b_values = []
+    for ii, traj in enumerate(b_traj):
+        node = dag_nodes[dag_root]
+        if isinstance(node, DAGGUSingle):
+            dag_value = evaluate_gu(dag_nodes, dag_root, traj.predicates_next, which=np)
+        else:
+            dag_value = evaluate_ltl_finite_dag(dag_nodes, dag_root, traj.predicates_next, which=np)[dag_root]
+        b_values.append(dag_value)
+    b_values = np.array(b_values)
+    return b_values
+
+
+def evaluate_gu(dag_nodes: list[DAGId], dag_root, T_pred: dict[str, np.ndarray], which=np):
+    ipdb.set_trace()
+
+
+def evaluate_ltl_finite_dag(dag_nodes: list[DAGId], dag_root, T_pred: dict[str, np.ndarray], which=jnp):
+    """Evaluate whether the LTL formula (when treated as finite) holds over the finite trace.
+    Solve using dynamic programming."""
 
     tmp_key = list(T_pred.keys())[0]
     (T,) = T_pred[tmp_key].shape

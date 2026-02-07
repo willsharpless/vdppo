@@ -197,6 +197,16 @@ class LCRLWrapper(EnvUsingBase):
         n_envs_to_sample: int,
         root_only: bool = True,
     ):
+        from rraa_rl.envs.scene import SceneBase
+
+        if isinstance(self.base, SceneBase):
+            base_key = jr.PRNGKey(seed=12345)
+            b_state = self.reset_batch(base_key, n_envs)
+            if root_only:
+                with jdc.copy_and_mutate(b_state) as b_state:
+                    b_state.ldba_state.state = jnp.zeros((n_envs,), dtype=jnp.int32)
+            return b_state
+
         assert root_only
         n_obtained = 0
 

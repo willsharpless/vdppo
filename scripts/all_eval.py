@@ -1,6 +1,8 @@
-from doctest import debug
+import json
 import pathlib
 import re
+import tempfile
+from doctest import debug
 
 import cyclopts
 import ipdb
@@ -11,20 +13,20 @@ from loguru import logger
 from tqdm.auto import tqdm
 
 from rraa_rl.eval import eval
-import json
-import tempfile
+from rraa_rl.eval_results import get_eval_results_path
 
 app = cyclopts.App()
+
 
 @app.default()
 def main(
     algs: list[str] = ["vd", "lcrl", "mppi"],
     envs: list[str] = [
-        "gridworld_map1", 
-        "gridworld_map5", 
-        "gridworld_map6", 
-        "gridworld_map7", 
-        "herdos", 
+        "gridworld_map1",
+        "gridworld_map5",
+        "gridworld_map6",
+        "gridworld_map7",
+        "herdos",
         "delivery",
         # "manip_scene",
         "ablation",
@@ -48,27 +50,29 @@ def main(
 
         if check_missing_scores:
             logger.info(f"Checking missing scores for {env_name}...")
-            score_file = pathlib.Path('/datadrive/vd') / env_name / f"eval_results.json"
+
+            score_file = get_eval_results_path(env_name)
+
             if score_file.exists():
                 with open(score_file, "r") as f:
                     all_results_env = json.load(f)
                 env_missing_none = True
             else:
-                logger.warning(f"    no score file found for {env_name}!")
+                logger.warning(f"    no score file found for {env_name}! Skipping...")
                 continue
 
         for alg in tqdm(algs, desc=f"Evaluating algs for {env_name}", unit="alg"):
 
             # ablation
-            if env_name == 'ablation':
+            if env_name == "ablation":
                 ablation_its = ablation_types
             else:
-                ablation_its = ['spec']
+                ablation_its = ["spec"]
 
             for ablation_type in ablation_its:
 
                 if check_missing_scores:
-                    label = f"{alg}_{env_name}" if not env_name == 'ablation' else f"{alg}_{ablation_type}_{env_name}"
+                    label = f"{alg}_{env_name}" if not env_name == "ablation" else f"{alg}_{ablation_type}_{env_name}"
                     if label not in all_results_env:
                         missing_scores[label] = (alg, env_name, ablation_type)
                         logger.warning(f"    missing {label}...")
@@ -81,10 +85,10 @@ def main(
                     ablation_type=ablation_type,
                     seed=seed,
                     n_envs_test=n_envs_test,
-                    eval_T=None, # defaults to env specific
+                    eval_T=None,  # defaults to env specific
                     debug=plot_failures,
                     missing=check_missing_runs,
-                    min_ckpt=50000 if not debug else 0
+                    min_ckpt=50000 if not debug else 0,
                 )
 
         if check_missing_scores and env_missing_none:
@@ -93,6 +97,7 @@ def main(
     if check_missing_scores and missing_scores:
         print(f"\nMISSING SCORES for:")
         print(missing_scores)
+
 
 if __name__ == "__main__":
     with ipdb.launch_ipdb_on_exception():

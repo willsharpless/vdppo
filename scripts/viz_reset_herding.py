@@ -5,13 +5,11 @@ import matplotlib.pyplot as plt
 from cyclopts import App
 
 from rraa_rl import herd_os_cbs
-from rraa_rl.run import Run
 from rraa_rl.src.env.general_task.env import Env
 from rraa_rl.src.env.general_task.get_env import get_env
-from rraa_rl.src.env.general_task.herd_base import HerdBaseCfg, HerdBasePlay, HerdingHerdCfg
 from rraa_rl.src.env.general_task.herd_os import HerdOs, HerdOsPlay
 from rraa_rl.trainer import Trainer
-from rraa_rl.vd_mappo import VDMAPPOAgent
+from rraa_rl.agents.vd_mappo import VDMAPPOAgent
 
 
 def main():

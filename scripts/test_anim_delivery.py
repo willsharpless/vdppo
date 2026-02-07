@@ -11,13 +11,11 @@ from valtr.reachability import DAGGUSingle, dag_to_str
 from rraa_rl.collector import Collector
 from rraa_rl.delivery_cbs import animate_delivery_traj
 from rraa_rl.deliveryrealv2_cbs import animate_deliveryrealv2_traj
-from rraa_rl.herd_os_cbs import animate_herding_traj
 from rraa_rl.load_ckpt import load_ckpt
 from rraa_rl.rollout_utils import extract_rollouts_eval
 from rraa_rl.src.env.general_task.delivery import Delivery
 from rraa_rl.src.env.general_task.deliveryrealv2 import DeliveryRealv2
-from rraa_rl.src.env.general_task.herd_os import HerdOs
-from rraa_rl.vd_mappo import VDMAPPOAgent
+from rraa_rl.agents.vd_mappo import VDMAPPOAgent
 
 app = cyclopts.App()
 

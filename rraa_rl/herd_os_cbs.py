@@ -1,10 +1,8 @@
 import pathlib
-import time
 
 import einops as ei
 import imageio.v2 as imageio
 import imageio.v3 as iio
-import ipdb
 import jax
 import jax.numpy as jnp
 import jax_dataclasses as jdc
@@ -12,9 +10,7 @@ import matplotlib.pyplot as plt
 import numpy as np
 import tqdm
 from flax import struct
-from loguru import logger
 from lovely_histogram import plot_histogram
-from matplotlib.animation import FFMpegWriter, FuncAnimation
 from matplotlib.collections import EllipseCollection
 from matplotlib.colors import CenteredNorm, to_rgba
 
@@ -26,7 +22,7 @@ from rraa_rl.src.env.general_task.herd_base import HerdingHerd, HerdingHerdCfg
 from rraa_rl.src.env.general_task.herd_os import HerdOs
 from rraa_rl.src.rl.utils.utils import get_BuRd_smooth
 from rraa_rl.trainer import CallbackProps
-from rraa_rl.vd_mappo import PPOData, VDMAPPOAgent
+from rraa_rl.agents.vd_mappo import PPOData, VDMAPPOAgent
 
 
 class VizValues(struct.PyTreeNode):
@@ -834,7 +830,7 @@ def animate_herding_traj(
     fps: int = 30,
 ):
     figsize = np.array([4, 3])
-    fig, ax = plt.subplots(figsize=figsize)
+    fig, ax = plt.subplots(figsize=figsize, dpi=400)
     env_base = HerdingHerd(cfg)
     mult = cfg.pos_multiplier
     env_base.setup_ax(ax)
