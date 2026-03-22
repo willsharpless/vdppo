@@ -12,8 +12,8 @@ screen -dmS gpu${GPU_ID}_job bash -c '
 conda activate jaxrlnew
 export CUDA_VISIBLE_DEVICES='"${GPU_ID}"'
 
-list_of_seeds=('"${seed}"')
-list_of_remaining_specs=(1 2 3 4 5)
+list_of_seeds=(0 1 2)
+list_of_remaining_specs=(6 7 8 9 10)
 
 # iterate thru n_specs and seeds
 for seed in "${list_of_seeds[@]}"; do

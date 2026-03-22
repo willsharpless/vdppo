@@ -117,7 +117,10 @@ def get_env_and_cbs(
         ablation_cbs.plot_eval_trajs,
         ablation_cbs.VizValues.create(),
     ]
-    ablation_collect_cbs = [ablation_cbs.viz_collect_data, ablation_cbs.viz_obs_histogram]
+    ablation_collect_cbs = [
+        # ablation_cbs.viz_collect_data,
+        # ablation_cbs.viz_obs_histogram
+    ]
     if agent_name == 'lcrl':
         ablation_eval_cbs, ablation_collect_cbs = [ablation_cbs.animate_eval_trajs_multi_agent_LDBA], []
 

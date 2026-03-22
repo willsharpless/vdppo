@@ -77,6 +77,11 @@ class DeliveryBaseCfg:
         [1.5, -2.0],
         [-4.0, -4.0],
         [0.0, 3.0],
+        [-2.6, 4.0],
+        [-4.0, 2.0],
+        [0.2, -4.2],
+        [3.5, -0.5],
+        [3.1, 4.0],
     ]
     radiuses: list[float] = [0.5] * len(centers)
 
@@ -530,10 +535,15 @@ class DeliveryBase(BaseEnv):
             # unsafe for ablation_depth
             "d_unsafe": self.is_herder_oob(state) | self.is_herder_in_obstacles(state),
         }
-        if state.centers.shape[0] > 2:
+        if state.centers.shape[0] > 2: # why? bc this breaks smth old
             predicates["target2"] = self.is_herder_in_target(state, center=self.cfg.centers[2], radius=self.cfg.radiuses[2])
             predicates["target3"] = self.is_herder_in_target(state, center=self.cfg.centers[3], radius=self.cfg.radiuses[3])
             predicates["target4"] = self.is_herder_in_target(state, center=self.cfg.centers[4], radius=self.cfg.radiuses[4])
+            predicates["target5"] = self.is_herder_in_target(state, center=self.cfg.centers[5], radius=self.cfg.radiuses[5])
+            predicates["target6"] = self.is_herder_in_target(state, center=self.cfg.centers[6], radius=self.cfg.radiuses[6])
+            predicates["target7"] = self.is_herder_in_target(state, center=self.cfg.centers[7], radius=self.cfg.radiuses[7])
+            predicates["target8"] = self.is_herder_in_target(state, center=self.cfg.centers[8], radius=self.cfg.radiuses[8])
+            predicates["target9"] = self.is_herder_in_target(state, center=self.cfg.centers[9], radius=self.cfg.radiuses[9])
         if self.cfg.dynamic_targets:
             predicates["target0"] = self.is_herder_in_dyn_target(state, center_ix=0)
             predicates["target1"] = self.is_herder_in_dyn_target(state, center_ix=1)
