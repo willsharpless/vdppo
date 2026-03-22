@@ -1,0 +1,6 @@
+[submodule "valtr"]
+	path = valtr
+	url = git@github.com:willsharpless/valtr.git
+[submodule "discrete_vi"]
+	path = discrete_vi
+	url = git@github.com:oswinso/discrete_vi.git
