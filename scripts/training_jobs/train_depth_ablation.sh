@@ -11,9 +11,12 @@ screen -dmS gpu${GPU_ID}_job bash -c '
 conda activate jaxrlnew
 export CUDA_VISIBLE_DEVICES='"${GPU_ID}"'
 
+list_of_remaining_seeds=(1 2)
+list_of_remaining_specs=(6 7 8 9 10)
+
 # iterate thru n_specs and seeds
-for seed in $(seq '"${seed}"' '"${seed}"'); do
-  for spec in $(seq 1 '"${n_spec}"'); do
+for seed in ${list_of_remaining_seeds[@]}; do
+  for spec in "${list_of_remaining_specs[@]}"; do
 
     python scripts/train.py '"${alg}"' \
     --env_name ablation_depth \

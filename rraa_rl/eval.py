@@ -39,7 +39,8 @@ def eval(
     missing: bool = False,
     min_ckpt: int = 50000,
     n_seeds: int = 3,
-    force: bool = False
+    force: bool = False,
+    write: bool = False,
 ):
 
     runs_dir = pathlib.Path("/datadrive/vd") / env_name / alg.upper()
@@ -56,20 +57,27 @@ def eval(
     if env_name == "ablation_depth":
         eval_T = eval_T or 512
         eval_T = max(eval_T, 512)
-        loop_range_vals = [4]
+        # loop_range_vals = [5, 6, 7, 8, 9]
+        # loop_range_vals = [7]
+        pass # testing higher N
+    if env_name == "ablation":
+        # loop_range_vals = [5, 6, 7, 8, 9]
+        # loop_range_vals = [5]
+        pass # testing higher N
     if env_name == "manip_scene":
         eval_T = eval_T or 512
         eval_T = max(eval_T, 512)
 
-    # out_file = pathlib.Path("/datadrive/vd") / env_name / f"eval_results.json"
-    out_file = get_eval_results_path(env_name)
-    out_file.parent.mkdir(parents=True, exist_ok=True)
+    if write:
+        # out_file = pathlib.Path("/datadrive/vd") / env_name / f"eval_results.json"
+        out_file = get_eval_results_path(env_name)
+        out_file.parent.mkdir(parents=True, exist_ok=True)
 
-    if out_file.exists():
-        with open(out_file, "r") as f:
-            all_results = json.load(f)
-    else:
-        all_results = {}
+        if out_file.exists():
+            with open(out_file, "r") as f:
+                all_results = json.load(f)
+        else:
+            all_results = {}
 
     loop_means, loop_stds = [], []
     missing_runs = []
@@ -111,12 +119,13 @@ def eval(
 
             # See if we already have results for this run.
             label = get_eval_label(alg, env_name, ablation_type)
-            if has_eval_results(label, seed_path, env_name):
-                if force:
-                    logger.info(f"Already have eval for {seed_path}, but running because force=True.")
-                else:
-                    logger.info(f"Skipping eval for {seed_path}, already have results.")
-                    continue
+            if write:
+                if has_eval_results(label, seed_path, env_name):
+                    if force:
+                        logger.info(f"Already have eval for {seed_path}, but running because force=True.")
+                    else:
+                        logger.info(f"Skipping eval for {seed_path}, already have results.")
+                        continue
 
             # if seed_path._str.endswith("seed0"):
             #     continue
@@ -205,6 +214,7 @@ def eval(
                     raise
             Tb_rollout = jax.device_get(Tb_rollout)
             bT_rollout = Tb_rollout.switch01()
+            # ipdb.set_trace()
 
             # Extract each rollout
             b_trajs = extract_rollouts_eval(bT_rollout)
@@ -221,7 +231,8 @@ def eval(
             }
 
             label = get_eval_label(alg, env_name, ablation_type)
-            save_eval_results(seed_path, out_file, eval_results, label)
+            if write:
+                save_eval_results(seed_path, out_file, eval_results, label)
 
             # b_values = []
             # for ii, traj in enumerate(b_trajs):
@@ -234,27 +245,35 @@ def eval(
             p_satisfied_mean = np.mean(b_is_satisfied)
             means.append(p_satisfied_mean)
 
-            logger.debug("p_satisfied_mean: {}".format(p_satisfied_mean))
+            # logger.debug("p_satisfied_mean: {}".format(p_satisfied_mean))
+            logger.debug("FOR SPEC {}, p_satisfied_mean: {}".format(i, p_satisfied_mean))
 
             # Animate some bad trajectories to check
             if debug and p_satisfied_mean < 1.0:
                 bad_traj = b_values_root < 0
                 bad_traj_sample = np.random.choice(np.where(bad_traj)[0], size=min(3, bad_traj.sum()), replace=False)
-                for ix in bad_traj_sample:
+
+                good_traj = b_values_root > 0
+                good_traj_sample = np.random.choice(np.where(good_traj)[0], size=min(3, good_traj.sum()), replace=False)
+
+                traj_sample = np.concatenate([bad_traj_sample, good_traj_sample])
+
+                for ix in traj_sample:
 
                     # get bad traj data
                     traj = b_trajs[ix]
                     cfg: HerdOs.Cfg = env.cfg
+                    qual_tag = "bad" if b_values_root[ix] < 0 else "good"
 
                     T_state: HerdOs.State = traj.state_now
 
                     # anim output
                     if alg != "mppi":
-                        anim_path = seed_path / f"bad_eval_animation_{ix}.mp4"
+                        anim_path = seed_path / f"{qual_tag}_eval_animation_{ix}.mp4"
                     else:
                         mppi_dir = pathlib.Path("/datadrive/vd") / env_name / alg.upper()
                         mppi_dir.mkdir(parents=True, exist_ok=True)
-                        anim_path = mppi_dir / f"bad_eval_animation_{ix}_seed{seed_path.split('_')[-1]}.mp4"
+                        anim_path = mppi_dir / f"{qual_tag}_eval_animation_{ix}_seed{seed_path.split('_')[-1]}.mp4"
 
                     # make env anim
                     if "gridworld" not in env_name:

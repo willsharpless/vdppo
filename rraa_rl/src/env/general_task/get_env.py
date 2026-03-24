@@ -363,37 +363,79 @@ def get_env_and_cbs(
 
         cbs = ablation_eval_cbs, ablation_collect_cbs
 
+    # elif env_name == "ablation_agent":
+    #     ## N spec and N agent Ablation Env (Double Integrator)
+
+    #     spec = "G(!oob) && G(!obstacles)" if n_agent == 1 else "G(!oob) && G(!obstacles) && G(!collide)"
+
+    #     ## IDEAS
+    #     # spec += " && F G (nonzero_vel) && F G (all_following_another)"
+    #     # spec += " && F G (nonzero_vel) && G F (all_following_another)"
+    #     spec += " && F G (nonzero_vel) && F G (all_close_to_any)"
+    #     # spec += " && F G (nonzero_vel) && G F (all_close_to_any)"
+    #     #could also try following a circular pattern
+    #     #could also try reaching a fixed order of targets (=depth with more agents)
+
+    #     base_cfg = DeliveryBaseCfg()
+
+    #     base_cfg.n_herders = n_agent
+    #     base_cfg.n_herd = n_agent
+    #     base_cfg.acc_maxs = [2.0] * n_agent
+    #     base_cfg.vel_maxs = [1.0] * n_agent
+    #     base_cfg.dynamic_targets = False
+    #     base_cfg.update_targets = False
+
+    #     cfg = Delivery.Cfg(specification=spec, base=base_cfg)
+    #     # cfg.eval_T = 512
+    #     env = Delivery(cfg)
+
+    #     cbs = ablation_eval_cbs, ablation_collect_cbs
+
     elif env_name == "ablation_depth":
         ## N spec and N agent Ablation Env (Double Integrator)
+
+        if n_spec > 10:
+            raise ValueError(f"Unsupported n_spec {n_spec} for agent vd. Add more targets to class.")
 
         spec = "G(!oob) && G(!obstacles)" if n_agent == 1 else "G(!oob) && G(!obstacles) && G(!collide)"
 
         if agent_name == "vd":
-            match n_spec:
-                case 1:
-                    spec = "(!d_unsafe)U (target0 && G(!d_unsafe))"
-                case 2:
-                    spec = "(!d_unsafe) U ( target0 && ( !d_unsafe ) U (target1 && G(!d_unsafe) ) )"
-                case 3:
-                    spec = "(!d_unsafe) U ( target0 && ( !d_unsafe ) U ( target1 && ( !d_unsafe ) U (target2 && G(!d_unsafe) ) ) )"
-                case 4:
-                    spec = "(!d_unsafe) U ( target0 && ( !d_unsafe ) U ( target1 && ( !d_unsafe ) U ( target2 && ( !d_unsafe ) U (target3 && G(!d_unsafe) ) ) ) )"
-                case 5:
-                    spec = "(!d_unsafe) U ( target0 && ( !d_unsafe ) U ( target1 && ( !d_unsafe ) U ( target2 && ( !d_unsafe ) U ( target3 && ( !d_unsafe ) U (target4 && G(!d_unsafe) ) ) ) ) )"
-                case _:
-                    raise ValueError(f"Unsupported n_spec {n_spec} for agent vd.")
+            # match n_spec:
+            #     case 1:
+            #         spec = "( !d_unsafe ) U ( target0 && G(!d_unsafe))"
+            #     case 2:
+            #         spec = "( !d_unsafe ) U ( target0 && ( !d_unsafe ) U ( target1 && G(!d_unsafe) ) )"
+            #     case 3:
+            #         spec = "( !d_unsafe ) U ( target0 && ( !d_unsafe ) U ( target1 && ( !d_unsafe ) U ( target2 && G(!d_unsafe) ) ) )"
+            #     case 4:
+            #         spec = "( !d_unsafe ) U ( target0 && ( !d_unsafe ) U ( target1 && ( !d_unsafe ) U ( target2 && ( !d_unsafe ) U ( target3 && G(!d_unsafe) ) ) )"
+            #     case 5:
+            #         spec = "( !d_unsafe ) U ( target0 && ( !d_unsafe ) U ( target1 && ( !d_unsafe ) U ( target2 && ( !d_unsafe ) U ( target3 && ( !d_unsafe ) U ( target4 && G(!d_unsafe) ) ) ) )"
+            #     case _:
+            #         raise ValueError(f"Unsupported n_spec {n_spec} for agent vd.")
+            
+            spec = ""
+            for j in range(n_spec):
+                spec += f"( !d_unsafe ) U ( target{j} && "
+            spec += f"G(!d_unsafe)" + " )" * n_spec
+
         else:
+
             dense_tag = "_dense" if dense else ""
-            if n_spec == 1:
-                spec += f" && F(target0{dense_tag})"
-            elif n_spec == 2:
-                spec += f" && F(target0{dense_tag} && F(target1{dense_tag}))"
-            elif n_spec == 3:
-                spec += f" && F(target0{dense_tag} && F(target1{dense_tag} && F(target2{dense_tag})))"
-            elif n_spec == 4:
-                spec += f" && F(target0{dense_tag} && F(target1{dense_tag} && F(target2{dense_tag} && F(target3{dense_tag}))))"
-            elif n_spec == 5:
-                spec += f" && F(target0{dense_tag} && F(target1{dense_tag} && F(target2{dense_tag} && F(target3{dense_tag} && F(target4{dense_tag})))))"
+            for j in range(n_spec):
+                spec += f" && F(target{j}{dense_tag}"
+            spec += ")" * j
+
+            # if n_spec == 1:
+            #     spec += f" && F(target0{dense_tag})"
+            # elif n_spec == 2:
+            #     spec += f" && F(target0{dense_tag} && F(target1{dense_tag}))"
+            # elif n_spec == 3:
+            #     spec += f" && F(target0{dense_tag} && F(target1{dense_tag} && F(target2{dense_tag})))"
+            # elif n_spec == 4:
+            #     spec += f" && F(target0{dense_tag} && F(target1{dense_tag} && F(target2{dense_tag} && F(target3{dense_tag}))))"
+            # elif n_spec == 5:
+            #     spec += f" && F(target0{dense_tag} && F(target1{dense_tag} && F(target2{dense_tag} && F(target3{dense_tag} && F(target4{dense_tag})))))"
 
         base_cfg = DeliveryBaseCfg()
 
@@ -405,6 +447,7 @@ def get_env_and_cbs(
         base_cfg.update_targets = False
 
         cfg = Delivery.Cfg(specification=spec, base=base_cfg)
+        # cfg.eval_T = 512
         env = Delivery(cfg)
 
         cbs = ablation_eval_cbs, ablation_collect_cbs

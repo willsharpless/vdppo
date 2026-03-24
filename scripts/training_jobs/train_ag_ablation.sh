@@ -1,6 +1,6 @@
 #!/bin/bash
 
-max_n_agent=5
+# max_n_agent=5
 
 alg=${1:-vd}  # Use first argument, default to 'vd'
 GPU_ID=${2:-0}
@@ -9,9 +9,11 @@ screen -dmS gpu${GPU_ID}_job bash -c '
 conda activate jaxrlnew
 export CUDA_VISIBLE_DEVICES='"${GPU_ID}"'
 
+list_of_remaining_specs=(6 7 8 9 10)
+
 # iterate thru n_specs and seeds
 for seed in $(seq 0 2); do
-  for ag in $(seq 1 '"${max_n_agent}"'); do
+  for ag in "${list_of_remaining_specs[@]}"; do
 
     python scripts/train.py '"${alg}"' \
     --env_name ablation \
