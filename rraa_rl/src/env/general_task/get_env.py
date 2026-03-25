@@ -118,9 +118,14 @@ def get_env_and_cbs(
         ablation_cbs.VizValues.create(),
     ]
     ablation_collect_cbs = [
-        # ablation_cbs.viz_collect_data,
-        # ablation_cbs.viz_obs_histogram
-    ]
+        ablation_cbs.viz_collect_data,
+        ablation_cbs.viz_obs_histogram
+    ] if n_agent <= 5 else []
+    if env_name == "ablation_swarm":
+        ablation_eval_cbs = [
+            ablation_cbs.animate_eval_trajs_multi_agent_swarm,
+        ]
+
     if agent_name == 'lcrl':
         ablation_eval_cbs, ablation_collect_cbs = [ablation_cbs.animate_eval_trajs_multi_agent_LDBA], []
 
@@ -363,33 +368,38 @@ def get_env_and_cbs(
 
         cbs = ablation_eval_cbs, ablation_collect_cbs
 
-    # elif env_name == "ablation_agent":
-    #     ## N spec and N agent Ablation Env (Double Integrator)
+    elif env_name == "ablation_swarm":
+        ## new env for agent ablation
 
-    #     spec = "G(!oob) && G(!obstacles)" if n_agent == 1 else "G(!oob) && G(!obstacles) && G(!collide)"
+        # spec = "G(!oob) && G(!obstacles)" if n_agent == 1 else "G(!oob) && G(!obstacles) && G(!collide)"
 
-    #     ## IDEAS
-    #     # spec += " && F G (nonzero_vel) && F G (all_following_another)"
-    #     # spec += " && F G (nonzero_vel) && G F (all_following_another)"
-    #     spec += " && F G (nonzero_vel) && F G (all_close_to_any)"
-    #     # spec += " && F G (nonzero_vel) && G F (all_close_to_any)"
-    #     #could also try following a circular pattern
-    #     #could also try reaching a fixed order of targets (=depth with more agents)
+        ## IDEAS
+        # spec += " && F G (all_nonzero_vel) && F G (all_close_next)"
+        # spec += " && F G (all_nonzero_vel) && G F (all_close_next)"
+        # spec += " && F G (all_nonzero_vel) && F G (all_close_any)"
+        # spec += " && F G (all_nonzero_vel) && G F (all_close_any)"
+        #could also try following a circular pattern
+        #could also try reaching a fixed order of targets (=depth with more agents)
 
-    #     base_cfg = DeliveryBaseCfg()
+        if n_agent == 1:
+            spec = "(!oob && !obstacles) U G(!oob && !obstacles && all_nonzero_vel)"
+        else:
+            spec = "(!oob && !obstacles && !collide) U G(!oob && !obstacles && !collide && all_nonzero_vel && all_close_any)"
 
-    #     base_cfg.n_herders = n_agent
-    #     base_cfg.n_herd = n_agent
-    #     base_cfg.acc_maxs = [2.0] * n_agent
-    #     base_cfg.vel_maxs = [1.0] * n_agent
-    #     base_cfg.dynamic_targets = False
-    #     base_cfg.update_targets = False
+        base_cfg = DeliveryBaseCfg()
 
-    #     cfg = Delivery.Cfg(specification=spec, base=base_cfg)
-    #     # cfg.eval_T = 512
-    #     env = Delivery(cfg)
+        base_cfg.n_herders = n_agent
+        base_cfg.n_herd = n_agent
+        base_cfg.acc_maxs = [2.0] * n_agent
+        base_cfg.vel_maxs = [1.0] * n_agent
+        base_cfg.dynamic_targets = False
+        base_cfg.update_targets = False
 
-    #     cbs = ablation_eval_cbs, ablation_collect_cbs
+        cfg = Delivery.Cfg(specification=spec, base=base_cfg)
+        # cfg.eval_T = 512
+        env = Delivery(cfg)
+
+        cbs = ablation_eval_cbs, ablation_collect_cbs
 
     elif env_name == "ablation_depth":
         ## N spec and N agent Ablation Env (Double Integrator)

@@ -505,6 +505,29 @@ class DeliveryBase(BaseEnv):
         c_is_herder_inside = which.any(ch_dists < (which.array(radius) - self.cfg.agent_radius))
         return c_is_herder_inside
 
+    def all_nonzero_vel(self, state: DeliveryBaseState, which=jnp, minvel=0.2): # originally used 0.5 vel, worked
+        h_vel = which.linalg.norm(state.herder_state[..., :, 2:4], axis=-1)
+        return which.all(h_vel >= minvel, axis=-1)
+
+    def all_close_next(self, state: DeliveryBaseState, which=jnp, radius=1.5): # originally used 1.0 radius, worked
+        # predicate is true when each herder is close to the next herder (chain-loop)
+        h_pos = state.herder_state[..., :, 0:2]
+        prev_pos = which.roll(h_pos, shift=1, axis=-2)
+        dist = which.linalg.norm(h_pos - prev_pos, axis=-1)
+        return which.max(dist, axis=-1) < radius
+
+    def all_close_any(self, state: DeliveryBaseState, which=jnp, radius=1.5):
+        # predicate is true when each herder is close to any other herder
+        h_pos = state.herder_state[..., :, 0:2]
+        pairwise_dists = which.linalg.norm(h_pos[..., :, None, :] - h_pos[..., None, :, :], axis=-1)
+        pairwise_dists = which.where(
+            which.eye(self.cfg.n_herders, dtype=bool),
+            which.array(which.inf, dtype=pairwise_dists.dtype),
+            pairwise_dists,
+        )
+        min_dist = which.min(pairwise_dists, axis=-1)
+        return which.max(min_dist, axis=-1) < radius
+
     def get_predicates_bool(self, state: DeliveryBaseState):
         n_centers = self.cfg.centers
         n_radius = self.cfg.radiuses
@@ -534,6 +557,9 @@ class DeliveryBase(BaseEnv):
             "ag1_base": self.is_herderX_at_base_ag(state, herder_ix=1),
             # unsafe for ablation_depth
             "d_unsafe": self.is_herder_oob(state) | self.is_herder_in_obstacles(state),
+            "all_nonzero_vel": self.all_nonzero_vel(state),
+            "all_close_next": self.all_close_next(state),
+            "all_close_any": self.all_close_any(state),
         }
         if state.centers.shape[0] > 2: # why? bc this breaks smth old
             predicates["target2"] = self.is_herder_in_target(state, center=self.cfg.centers[2], radius=self.cfg.radiuses[2])

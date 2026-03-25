@@ -9,15 +9,15 @@ screen -dmS gpu${GPU_ID}_job bash -c '
 conda activate jaxrlnew
 export CUDA_VISIBLE_DEVICES='"${GPU_ID}"'
 
-list_of_remaining_specs=(6 7 8 9 10)
+list_of_remaining_specs=(1 2 3 4 5 6 7 8 9 10)
 
 # iterate thru n_specs and seeds
-for seed in $(seq 0 2); do
-  for ag in "${list_of_remaining_specs[@]}"; do
-
+for ag in "${list_of_remaining_specs[@]}"; do
+  for seed in $(seq 0 2); do
+  
     python scripts/train.py '"${alg}"' \
-    --env_name ablation \
-    --name ablation_'"${alg}"'_spc${ag}_ag${ag}_seed${seed} \
+    --env_name ablation_swarm \
+    --name ablation_swarm_'"${alg}"'_spc${ag}_ag${ag}_seed${seed} \
     --n-spec ${ag} \
     --n-agent ${ag} \
     --seed ${seed}
