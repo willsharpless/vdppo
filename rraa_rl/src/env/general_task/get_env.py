@@ -434,7 +434,7 @@ def get_env_and_cbs(
             dense_tag = "_dense" if dense else ""
             for j in range(n_spec):
                 spec += f" && F(target{j}{dense_tag}"
-            spec += ")" * j
+            spec += ")" * n_spec
 
             # if n_spec == 1:
             #     spec += f" && F(target0{dense_tag})"

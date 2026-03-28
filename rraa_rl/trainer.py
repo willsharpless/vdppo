@@ -50,6 +50,7 @@ class Callback(Protocol):
 @Parameter("*", group="Trainer")
 @define
 class TrainerCfg(Cfg):
+    n_train_steps: int = 100_000
     eval_every: int = 5_000
     log_every: int = 100
     save_every: int = 5_000
@@ -114,7 +115,7 @@ class Trainer:
             yaml.dump(cfg_to_save, f)
         logger.success("Saved config to {}".format(yaml_path))
 
-        n_train_steps = 100_000
+        n_train_steps = self.cfg.n_train_steps
 
         if not debug:
             wandb_config = wandb_config if wandb_config is not None else {}
