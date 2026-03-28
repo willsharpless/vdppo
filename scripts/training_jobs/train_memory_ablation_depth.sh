@@ -11,7 +11,7 @@ export CUDA_VISIBLE_DEVICES='"${VD_GPU_ID}"'
 XLA_PYTHON_CLIENT_PREALLOCATE=false XLA_PYTHON_CLIENT_ALLOCATOR=platform \
 python scripts/paper/plot_ablation_memory.py \
   --env-name '"${ENV_NAME}"' \
-  --n-specs "2, 4, 8, 16, 32, 64, 128, 256" \
+  --n-specs "16, 32, 64, 128, 256" \
   --n-seeds 3 \
   --algs vd \
   --n-train-steps 10
@@ -24,7 +24,7 @@ export CUDA_VISIBLE_DEVICES='"${LCRL_GPU_ID}"'
 XLA_PYTHON_CLIENT_PREALLOCATE=false XLA_PYTHON_CLIENT_ALLOCATOR=platform \
 python scripts/paper/plot_ablation_memory.py \
   --env-name '"${ENV_NAME}"' \
-  --n-specs "2, 4, 8, 16, 32, 64, 128, 256" \
+  --n-specs "16, 32, 64, 128, 256" \
   --n-seeds 3 \
   --algs lcrl \
   --n-train-steps 10
