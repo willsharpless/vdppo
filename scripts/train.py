@@ -5,11 +5,11 @@ from rraa_rl.agents.cmdp_mappo import CMDPMAPPOAgent
 from rraa_rl.agents.lcrl_mappo import LCRLMAPPOAgent
 from rraa_rl.agents.vd_mappo import VDMAPPOAgent
 from rraa_rl.lcrl.lcrl_wrapper import LCRLWrapper
-from rraa_rl.run import Run
-from rraa_rl.src.env.general_task.env import Env
-from rraa_rl.src.env.general_task.get_env import get_env_and_cbs
-from rraa_rl.src.get_agent_cfg import get_lcrl_agent_cfg, get_vd_agent_cfg, get_cmdp_agent_cfg
-from rraa_rl.trainer import Trainer, TrainerCfg
+from rraa_rl.training.run import Run
+from rraa_rl.env.general_task.env import Env
+from rraa_rl.env.general_task.get_env import get_env_and_cbs
+from rraa_rl.get_agent_cfg import get_lcrl_agent_cfg, get_vd_agent_cfg, get_cmdp_agent_cfg
+from rraa_rl.training.trainer import Trainer, TrainerCfg
 
 app = App()
 

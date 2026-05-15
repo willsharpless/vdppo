@@ -1,7 +1,7 @@
 import ipdb
 import numpy as np
 
-from rraa_rl.gae import BellmanMax, gae_generalized
+from rraa_rl.common.gae import BellmanMax, gae_generalized
 
 
 def main():

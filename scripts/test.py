@@ -10,13 +10,13 @@ import numpy as np
 from loguru import logger
 from matplotlib.colors import to_rgba
 
-from rraa_rl.collector import Collector
-from rraa_rl.gridworld_cbs import save_animation_blit
-from rraa_rl.load_ckpt import load_ckpt
-from rraa_rl.rollout_temporal_analysis import evaluate_ltl_finite
-from rraa_rl.rollout_utils import extract_rollouts_eval
-from rraa_rl.src.env.general_task.env import StateWithTemporalNode
-from rraa_rl.src.env.general_task.gridworld import GridworldMAState
+from rraa_rl.training.collector import Collector
+from rraa_rl.callbacks.gridworld_cbs import save_animation_blit
+from rraa_rl.training.load_ckpt import load_ckpt
+from rraa_rl.training.rollout_temporal_analysis import evaluate_ltl_finite
+from rraa_rl.training.rollout_utils import extract_rollouts_eval
+from rraa_rl.env.general_task.env import StateWithTemporalNode
+from rraa_rl.env.general_task.gridworld import GridworldMAState
 from rraa_rl.agents.vd_mappo import VDMAPPOAgent
 
 app = cyclopts.App()

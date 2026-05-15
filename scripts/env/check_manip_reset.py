@@ -10,11 +10,11 @@ import numpy as np
 from loguru import logger
 from PIL import Image, ImageDraw, ImageFont
 
-from rraa_rl.collector import Collector, RolloutOutput
-from rraa_rl.envs.scene import ManipScene, SceneBaseMinState
-from rraa_rl.rollout_utils import extract_rollouts_eval
-from rraa_rl.src.env.general_task.env import StateWithTemporalNode
-from rraa_rl.src.get_agent_cfg import get_vd_agent_cfg
+from rraa_rl.training.collector import Collector, RolloutOutput
+from rraa_rl.env.scene import ManipScene, SceneBaseMinState
+from rraa_rl.training.rollout_utils import extract_rollouts_eval
+from rraa_rl.env.general_task.env import StateWithTemporalNode
+from rraa_rl.get_agent_cfg import get_vd_agent_cfg
 from rraa_rl.agents.vd_mappo import VDMAPPOAgent
 
 

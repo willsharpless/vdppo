@@ -7,9 +7,9 @@ import numpy as np
 import tqdm
 from loguru import logger
 
-from rraa_rl.eval_results import load_eval_results
-from rraa_rl.paper_plot_utils import get_ci, set_ax_style
-from rraa_rl.path_utils import get_paper_plot_dir
+from rraa_rl.training.eval_results import load_eval_results
+from rraa_rl.training.paper_plot_utils import get_ci, set_ax_style
+from rraa_rl.common.path_utils import get_paper_plot_dir
 
 app = cyclopts.App()
 
