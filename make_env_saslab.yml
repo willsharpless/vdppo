@@ -4,7 +4,7 @@ channels:
   - conda-forge
   - defaults
 dependencies:
-  - python=3.12
+  - python=3.10
   - pip
   - pip:
       # Core JAX with CUDA 12
@@ -23,17 +23,14 @@ dependencies:
       - brax
       - gymnax
       - gymnasium
-      - shimmy
       - mujoco
       - mujoco-mjx
-      - stable_baselines3
-      - sbx-rl
-      
+      - dm-control
+      - ogbench
+
       # Scientific computing
       - numpy==1.26.4  # JAX 0.4.26 needs numpy<2.0
       - scipy==1.11.4  # Compatible version
-      - pandas==2.3.3
-      - control==0.10.2
       
       # Distributions and utilities
       - distrax
@@ -47,13 +44,12 @@ dependencies:
       - seaborn==0.13.2
       - imageio==2.37.2
       - imageio-ffmpeg==0.6.0
+      - moviepy
       - colour==0.1.5
-      - graphviz==0.21
-      - PyOpenGL==3.1.10
       - glfw==2.10.0
-      - trimesh==4.11.0
-      - treescope==0.1.10
-      
+      - Pillow
+      - opencv-python
+
       # ML experiment tracking
       - wandb==0.23.1
       - tensorboardX==2.6.4
@@ -64,31 +60,27 @@ dependencies:
       - loguru==0.7.3
       - ipdb==0.13.13
       - ipython==9.9.0
-      - rich==14.2.0
       - tqdm==4.67.1
-      - click==8.3.1
-      
+      - requests
+      - absl-py
+      - etils
+
       # Data structures and parsing
       - attrs==25.4.0
-      - pydantic==2.12.5
-      - pydantic_core==2.41.5
-      - ml_collections==1.1.0
-      - msgpack==1.1.2
       - PyYAML==6.0.3
-      
+      - lxml
+
       # NLP utilities
       - nltk==3.9.2
       - wordfreq==3.1.1
-      - ftfy==6.3.1
-      - langcodes==3.5.1
 
       - cattrs
       - emoji
       - cairosvg
+      - rosbags
+      - segment-anything
+      - warp-lang
 
       # Git repositories (install these last)
-      - git+ssh://git@github.com/oswinso/lovely_histogram.git
-      - git+ssh://git@github.com/willsharpless/valtr.git
-      # Note: jax-f16 not in pip freeze, uncomment if needed:
-      # - git+https://github.com/willsharpless/jax-f16.git
-
+      - git+https://github.com/oswinso/lovely_histogram.git@90d4e086121a09fb5df6560cc3ac695006540ed2
+      - git+https://github.com/willsharpless/valtr.git@c6f6550f156297c3bc30135e80da79f12aaccf51
