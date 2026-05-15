@@ -24,8 +24,6 @@ where `ALG` is for example `vd` or `lcrl`, and  `ENV` is for example `herdos`, `
 
 ### testing
 
-If you'd like to make your own env, see `herd_base.py`. Here, dynamics/step, reset, obs and basic predicates are defined. Note, there is also a wrapper for each env, eg. `herd_os.py`.
-
-See `get_env.py` for env registration.x
+If you'd like to make your own env, see `herd_base.py`. Here, dynamics/step, reset, obs and basic predicates are defined. Note, there is also a wrapper for each env, eg. `herd_os.py`. See `get_env.py` for env registration.
 
 If you'd like to mess with the training, see the training agent classes, eg. `vd_mappo.py`.
