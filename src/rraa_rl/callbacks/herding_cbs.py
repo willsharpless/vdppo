@@ -20,7 +20,7 @@ from rraa_rl.common.jax_utils import jax_vmap, rep_vmap
 from rraa_rl.env.general_task.env import AugObs
 from rraa_rl.env.general_task.herd_base import HerdingHerd, HerdingHerdCfg
 from rraa_rl.env.general_task.herding import Herding
-from rraa_rl.rl.utils.utils import get_BuRd_smooth
+from rraa_rl.common.plot_utils import get_BuRd_smooth
 from rraa_rl.training.trainer import CallbackProps
 from rraa_rl.agents.vd_mappo import PPOData, VDMAPPOAgent
 

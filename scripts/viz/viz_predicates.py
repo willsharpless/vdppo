@@ -14,7 +14,7 @@ from rraa_rl.env.general_task.env import StateWithTemporalNode
 from rraa_rl.env.general_task.get_env import get_env
 from rraa_rl.env.general_task.herd_base import HerdBaseState
 from rraa_rl.env.general_task.herding import Herding
-from rraa_rl.rl.utils.utils import get_BuRd_smooth
+from rraa_rl.common.plot_utils import get_BuRd_smooth
 
 
 def main():

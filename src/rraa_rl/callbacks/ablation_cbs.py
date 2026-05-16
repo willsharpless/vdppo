@@ -20,7 +20,7 @@ from rraa_rl.callbacks.gridworld_cbs import save_animation_blit
 from rraa_rl.common.jax_utils import jax_vmap
 from rraa_rl.env.general_task.delivery import Delivery, DeliveryBaseCfg
 from rraa_rl.env.general_task.env import AugObs
-from rraa_rl.rl.utils.utils import get_BuRd_smooth
+from rraa_rl.common.plot_utils import get_BuRd_smooth
 from rraa_rl.training.trainer import CallbackProps
 from rraa_rl.agents.vd_mappo import PPOData, VDMAPPOAgent
 
