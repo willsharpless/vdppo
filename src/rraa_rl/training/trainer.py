@@ -276,9 +276,17 @@ class Trainer:
                 c_satisfied = c_temporal_value > 0.1
                 satisfy_prob = np.mean(c_satisfied)
                 info_satisfaction[f"Eval/Satisfy/{node_name}"] = satisfy_prob
-                logger.debug(
-                    "Temporal Idx {}: {} / {} ({:.1%})".format(
-                        temporal_node_idx, c_satisfied.sum(), len(c_satisfied), satisfy_prob
+                root_tag = ", ROOT" if temporal_node_idx == 0 else ""
+                node_name_type = node_name.split("%")[0][:-2]
+                node_name_id = node_name.split("%")[1][:-1]
+                # max_length = 13
+                # if len(node_name_type) > max_length:
+                #     node_name_type = node_name_type[:max_length-3] + "..."
+                # else:
+                #     node_name_type = node_name_type.ljust(max_length)
+                logger.opt(ansi=True).info(
+                    "Node <blue>{}</blue> (temporal {}) <magenta> success: {:2.1%}</magenta> ({} / {}) <blue>[{}]</blue>".format(
+                        node_name_id, temporal_node_idx, satisfy_prob, c_satisfied.sum(), len(c_satisfied), node_name_type
                     )
                 )
 
