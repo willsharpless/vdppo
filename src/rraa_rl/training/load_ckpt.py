@@ -7,22 +7,31 @@ import jax
 import yaml
 from loguru import logger
 
-from rraa_rl.agents.lcrl_mappo import LCRLMAPPOAgent
+from rraa_rl.agents.lcrl_ppo import LCRLPPOAgent
 from rraa_rl.training.run import Run
 from rraa_rl.env.general_task.env import Env
 from rraa_rl.env.general_task.get_env import get_env_and_cbs
 from rraa_rl.env.general_task.gridworld import GridworldMA
-from rraa_rl.agents.vd_mappo import VDMAPPOAgent
+from rraa_rl.agents.vdppo import VDPPOAgent
 
 
 class LoadCkptResult(NamedTuple):
     run: Run
-    agent: VDMAPPOAgent | LCRLMAPPOAgent
+    agent: VDPPOAgent | LCRLPPOAgent
     env: Env
     cfg_dict: dict
 
 
-def load_ckpt(run_path: pathlib.Path, step: int | None = None, alg: str = "vd", n_spec: int = 1, n_agent: int = 1, ashared=True, vshared=True, n_layers=2):
+def load_ckpt(
+    run_path: pathlib.Path,
+    step: int | None = None,
+    alg: str = "vdppo",
+    n_spec: int = 1,
+    n_agent: int = 1,
+    ashared=True,
+    vshared=True,
+    n_layers=2,
+):
     # Load the configs.
     yaml_path = run_path / "config.yaml"
     with open(yaml_path, "r") as f:
@@ -35,20 +44,20 @@ def load_ckpt(run_path: pathlib.Path, step: int | None = None, alg: str = "vd", 
     env: GridworldMA
     env, _, _ = get_env_and_cbs(env_name, agent_name=alg, n_spec=n_spec, n_agent=n_agent)
 
-    if alg == "vd":
-        agent_cfg = VDMAPPOAgent.Cfg.fromdict(cfg_dict["agent"])
+    if alg in {"vd", "vdppo"}:
+        agent_cfg = VDPPOAgent.Cfg.fromdict(cfg_dict["agent"])
         agent_cfg.actor_shared_trunk = ashared
         agent_cfg.value_shared_trunk = vshared
         agent_cfg.actor_hids = (128,) * n_layers
         agent_cfg.critic_hids = (128,) * n_layers
-        agent = VDMAPPOAgent.create(123, agent_cfg, env)
+        agent = VDPPOAgent.create(123, agent_cfg, env)
     elif alg == "lcrl":
-        agent_cfg = LCRLMAPPOAgent.Cfg.fromdict(cfg_dict["agent"])
+        agent_cfg = LCRLPPOAgent.Cfg.fromdict(cfg_dict["agent"])
         agent_cfg.actor_shared_trunk = ashared
         agent_cfg.value_shared_trunk = vshared
         agent_cfg.actor_hids = (128,) * n_layers
         agent_cfg.critic_hids = (128,) * n_layers
-        agent = LCRLMAPPOAgent.create(123, agent_cfg, env)
+        agent = LCRLPPOAgent.create(123, agent_cfg, env)
 
     ckpts_path = run_path / "ckpts"
     if step is None:
@@ -84,13 +93,13 @@ def load_ckpt(run_path: pathlib.Path, step: int | None = None, alg: str = "vd", 
     env: GridworldMA
     env, _, _ = get_env_and_cbs(env_name, agent_name=alg, n_spec=n_spec, n_agent=n_agent)
 
-    if alg == "vd":
-        agent_cfg = VDMAPPOAgent.Cfg.fromdict(cfg_dict["agent"])
-        agent = VDMAPPOAgent.create(123, agent_cfg, env)
+    if alg in {"vd", "vdppo"}:
+        agent_cfg = VDPPOAgent.Cfg.fromdict(cfg_dict["agent"])
+        agent = VDPPOAgent.create(123, agent_cfg, env)
     elif alg == "lcrl":
-        agent_cfg = LCRLMAPPOAgent.Cfg.fromdict(cfg_dict["agent"])
-        agent = LCRLMAPPOAgent.create(123, agent_cfg, env)
+        agent_cfg = LCRLPPOAgent.Cfg.fromdict(cfg_dict["agent"])
+        agent = LCRLPPOAgent.create(123, agent_cfg, env)
 
-    agent: VDMAPPOAgent | LCRLMAPPOAgent = flax.serialization.from_state_dict(agent, load_dict["agent"])
+    agent: VDPPOAgent | LCRLPPOAgent = flax.serialization.from_state_dict(agent, load_dict["agent"])
 
     return LoadCkptResult(run=run, agent=agent, env=env, cfg_dict=cfg_dict)

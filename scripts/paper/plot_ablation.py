@@ -15,7 +15,7 @@ app = cyclopts.App()
 
 
 def extract_abl_params_from_run_path(run_path: str) -> tuple[int, int, int]:
-    # e.g., chest_ablation_vd_spc3_ag1_seed1
+    # e.g., chest_ablation_vdppo_spc3_ag1_seed1
     parts = run_path.split("_")
     seed = int(parts[-1].replace("seed", ""))
     ag = int(parts[-2].replace("ag", ""))
@@ -28,7 +28,7 @@ def extract_abl_params_from_run_path(run_path: str) -> tuple[int, int, int]:
 def main():
     plot_dir = get_paper_plot_dir()
 
-    algs = ["vd", "lcrl", "mppi"]
+    algs = ["vdppo", "lcrl", "mppi"]
 
     # envs = ["ablation", "ablation_depth"]
     envs = ["ablation_depth"]
@@ -57,7 +57,7 @@ def main():
                     b_num_dict: dict[int, list[int]] = defaultdict(list)
                     b_tot_dict: dict[int, list[int]] = defaultdict(list)
                     for entry in entries:
-                        # e.g., chest_ablation_vd_spc3_ag1_seed1
+                        # e.g., chest_ablation_vdppo_spc3_ag1_seed1
                         run_path = entry["run_path"]
                         try:
                             spc, ag, seed = extract_abl_params_from_run_path(run_path)

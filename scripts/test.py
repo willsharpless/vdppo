@@ -17,7 +17,7 @@ from rraa_rl.training.rollout_temporal_analysis import evaluate_ltl_finite
 from rraa_rl.training.rollout_utils import extract_rollouts_eval
 from rraa_rl.env.general_task.env import StateWithTemporalNode
 from rraa_rl.env.general_task.gridworld import GridworldMAState
-from rraa_rl.agents.vd_mappo import VDMAPPOAgent
+from rraa_rl.agents.vdppo import VDPPOAgent
 
 app = cyclopts.App()
 
@@ -36,8 +36,8 @@ def main(run_path: pathlib.Path, n_env: int = 256, step: int | None = None):
     # env: GridworldMA
     # env, _, _ = get_env_and_cbs(env_name, agent_name=agent_name)
     #
-    # agent_cfg = VDMAPPOAgent.Cfg.fromdict(cfg_dict["agent"])
-    # agent = VDMAPPOAgent.create(123, agent_cfg, env)
+    # agent_cfg = VDPPOAgent.Cfg.fromdict(cfg_dict["agent"])
+    # agent = VDPPOAgent.create(123, agent_cfg, env)
     #
     # ckpts_path = run_path / "ckpts"
     # if step is None:
@@ -55,7 +55,7 @@ def main(run_path: pathlib.Path, n_env: int = 256, step: int | None = None):
     # with load_path.open("rb") as f:
     #     load_dict = pickle.load(f)
     #
-    # agent: VDMAPPOAgent = flax.serialization.from_state_dict(agent, load_dict["agent"])
+    # agent: VDPPOAgent = flax.serialization.from_state_dict(agent, load_dict["agent"])
     run, agent, env, cfg_dict = load_ckpt(run_path, step)
 
     logger.debug("Constructing collector_eval...")
@@ -67,7 +67,7 @@ def main(run_path: pathlib.Path, n_env: int = 256, step: int | None = None):
     b_state0 = env.get_eval_states(collector.cfg.n_envs, root_only=True)
 
     collect_opts = {}
-    if isinstance(agent, VDMAPPOAgent):
+    if isinstance(agent, VDPPOAgent):
         collect_opts["temporal_transitions"] = True
 
     Tb_rollout, info_collect = agent.collect_eval_with_states(collector, b_state0, env.eval_T, **collect_opts)

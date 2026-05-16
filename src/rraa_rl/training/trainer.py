@@ -14,12 +14,12 @@ from loguru import logger
 import wandb
 from rraa_rl.common.cfg_utils import Cfg
 from rraa_rl.training.collector import Collector, RolloutOutput, extract_info_from_rollout
-from rraa_rl.agents.lcrl_mappo import LCRLMAPPOAgent
+from rraa_rl.agents.lcrl_ppo import LCRLPPOAgent
 from rraa_rl.training.rollout_temporal_analysis import evaluate_ltl_finite
 from rraa_rl.training.rollout_utils import extract_rollouts_eval
 from rraa_rl.training.run import Run
 from rraa_rl.env.general_task.env import Env, StateWithTemporalNode
-from rraa_rl.agents.vd_mappo import VDMAPPOAgent
+from rraa_rl.agents.vdppo import VDPPOAgent
 
 
 @define
@@ -27,7 +27,7 @@ class CallbackProps:
     run: Run
 
     train_step: int
-    agent: VDMAPPOAgent
+    agent: VDPPOAgent
     bT_test_rollouts: list[RolloutOutput]
     bT_test_rollout: RolloutOutput
     test_trigger_dict: dict[tuple[str, str], np.ndarray]
@@ -59,9 +59,9 @@ class TrainerCfg(Cfg):
 class Trainer:
     Cfg = TrainerCfg
 
-    agent: VDMAPPOAgent | LCRLMAPPOAgent
+    agent: VDPPOAgent | LCRLPPOAgent
 
-    def __init__(self, agent: VDMAPPOAgent | LCRLMAPPOAgent, cfg: TrainerCfg):
+    def __init__(self, agent: VDPPOAgent | LCRLPPOAgent, cfg: TrainerCfg):
         self.cfg = cfg
         self.agent = agent
         self.b_state0 = None
@@ -126,7 +126,7 @@ class Trainer:
                 "spec": env.specification,
                 "wandb_name": run.wandb_name,
             } | wandb_config
-            wandb.init(project="vd_mappo", name=run.wandb_name, config=wandb_config)
+            wandb.init(project="vdppo", name=run.wandb_name, config=wandb_config)
 
         cb_props = CallbackProps(run, -1, self.agent, None, None, None, None, collector, None, None)
 
@@ -239,7 +239,7 @@ class Trainer:
             self.b_state0 = env.get_eval_states(collector.cfg.n_envs)
 
         collect_opts = {}
-        if isinstance(self.agent, VDMAPPOAgent):
+        if isinstance(self.agent, VDPPOAgent):
             collect_opts["temporal_transitions"] = True
 
         Tb_rollout, info_collect = self.agent.collect_eval_with_states(

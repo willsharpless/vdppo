@@ -13,23 +13,23 @@ from flax import struct
 from matplotlib.colors import to_rgba
 from matplotlib.colors import LinearSegmentedColormap
 
-from rraa_rl.agents.cmdp_mappo import CMDPMAPPOAgent
+from rraa_rl.agents.cmdp_ppo import CMDPPOAgent
 from rraa_rl.common.distribution import tfd
 from rraa_rl.common.jax_utils import jax_vmap
 from rraa_rl.lcrl.lcrl_wrapper import LCRLWrapper
-from rraa_rl.agents.lcrl_mappo import LCRLMAPPOAgent
+from rraa_rl.agents.lcrl_ppo import LCRLPPOAgent
 from rraa_rl.ldba.ldba import LDBAState
 from rraa_rl.control.cmdp_wrapper import CMDPEnvWrapper
 from rraa_rl.env.general_task.env import AugObs, AugObsAutomata, StateWithTemporalNode
 from rraa_rl.env.general_task.gridworld import GridworldMA, GridworldMABase, GridworldMAState
 from rraa_rl.training.trainer import CallbackProps
-from rraa_rl.agents.vd_mappo import VDMAPPOAgent
+from rraa_rl.agents.vdppo import VDPPOAgent
 
 plt.style.use("seaborn-v0_8-darkgrid")
 
 def animate_eval_trajs(p: CallbackProps):
-    if isinstance(p.agent, VDMAPPOAgent):
-        animate_eval_trajs_vd(p)
+    if isinstance(p.agent, VDPPOAgent):
+        animate_eval_trajs_vdppo(p)
     else:
         animate_eval_trajs_base(p)
 
@@ -100,7 +100,7 @@ def save_animation_blit(
     plt.close(fig)
 
 
-def animate_eval_trajs_vd(p: CallbackProps):
+def animate_eval_trajs_vdppo(p: CallbackProps):
     plots_dir = p.run.plots_dir
     env: GridworldMA = p.env
     cfg = env.base.cfg
@@ -421,7 +421,7 @@ class VizValues(struct.PyTreeNode):
         return VizValues()
 
     @jax.jit
-    def get_value_vd(self, agent: VDMAPPOAgent):
+    def get_value_vdppo(self, agent: VDPPOAgent):
         env: GridworldMA = agent.env
         env_base: GridworldMABase = env.base
 
@@ -458,7 +458,7 @@ class VizValues(struct.PyTreeNode):
         return bbt_V, bbtn_act, bbtn_probs, bbtn_entropy
 
     @jax.jit
-    def get_value_lcrl(self, agent: LCRLMAPPOAgent):
+    def get_value_lcrl(self, agent: LCRLPPOAgent):
         env: LCRLWrapper = agent.env
         env_base: GridworldMABase = env.base
 
@@ -496,7 +496,7 @@ class VizValues(struct.PyTreeNode):
         return bbt_V, bbtn_act, bbtn_probs, bbtn_entropy
 
     @jax.jit
-    def get_value_cmdp(self, agent: CMDPMAPPOAgent):
+    def get_value_cmdp(self, agent: CMDPPOAgent):
         env: CMDPEnvWrapper = agent.env
         env_base: GridworldMABase = env.base
 
@@ -540,17 +540,17 @@ class VizValues(struct.PyTreeNode):
         bbtn_act: list[jnp.ndarray]  # list for each agent.
 
         match p.agent:
-            case LCRLMAPPOAgent():
+            case LCRLPPOAgent():
                 env: LCRLWrapper = p.agent.env
                 bbt_V, bbtn_act, bbtn_probs, bbtn_entropy = jax.device_get(self.get_value_lcrl(p.agent))
                 n_automata_states = env.ldba.n_states
                 discrete_state_name = "Automata"
-            case VDMAPPOAgent():
+            case VDPPOAgent():
                 env: GridworldMA = p.agent.env
-                bbt_V, bbtn_act, bbtn_probs, bbtn_entropy = jax.device_get(self.get_value_vd(p.agent))
+                bbt_V, bbtn_act, bbtn_probs, bbtn_entropy = jax.device_get(self.get_value_vdppo(p.agent))
                 n_automata_states = env.n_temporal_nodes
                 discrete_state_name = "Temporal"
-            case CMDPMAPPOAgent():
+            case CMDPPOAgent():
                 env: CMDPEnvWrapper = p.agent.env
                 bbt_V, bbtn_act, bbtn_probs, bbtn_entropy = jax.device_get(self.get_value_cmdp(p.agent))
                 n_automata_states = env.n_conjunctions
@@ -671,7 +671,7 @@ class VizValues(struct.PyTreeNode):
 
 
 def collect_cb(p: CallbackProps):
-    if not isinstance(p.agent, LCRLMAPPOAgent):
+    if not isinstance(p.agent, LCRLPPOAgent):
         return
 
     # # Count how many of each automata state is present in the rollout.

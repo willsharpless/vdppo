@@ -53,7 +53,7 @@ class LCRLData:
 
 @Parameter("*", group="AgentConfig")
 @define
-class LCRLMAPPOAgentCfg(Cfg):
+class LCRLPPOAgentCfg(Cfg):
     actor_lr: float = 1e-3
     critic_lr: float = 1e-3
     max_grad_norm: float = 0.5
@@ -89,13 +89,13 @@ class LCRLMAPPOAgentCfg(Cfg):
 
 
 @ft.partial(struct.dataclass, frozen=False)
-class LCRLMAPPOAgent:
-    Cfg = LCRLMAPPOAgentCfg
+class LCRLPPOAgent:
+    Cfg = LCRLPPOAgentCfg
 
     network: TrainState
     env: Env = struct.field(pytree_node=False)
     # Class containing static (non-pytree) data.
-    cfg: LCRLMAPPOAgentCfg = struct.field(pytree_node=False)
+    cfg: LCRLPPOAgentCfg = struct.field(pytree_node=False)
 
     @staticmethod
     def get_agent_name() -> str:
@@ -109,7 +109,7 @@ class LCRLMAPPOAgent:
     def create(
         cls,
         seed: int,
-        cfg: LCRLMAPPOAgentCfg,
+        cfg: LCRLPPOAgentCfg,
         env: LCRLWrapper,
     ):
         """Initialize the PPO agent."""

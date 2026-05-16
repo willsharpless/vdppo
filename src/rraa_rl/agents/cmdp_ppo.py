@@ -47,7 +47,7 @@ class PPOData:
 
 @Parameter("*", group="AgentConfig")
 @define
-class CMDPMAPPOAgentCfg(Cfg):
+class CMDPPOAgentCfg(Cfg):
     actor_lr: float = 1e-3
     critic_lr: float = 1e-3
     lambda_lr: float = 1e-3
@@ -101,12 +101,12 @@ class CMDPMAPPOAgentCfg(Cfg):
     """GF constraint: sum_k reach >= thresh_gf. Since reach is always >=0, setting to -1.0 means no constraint."""
 
 @ft.partial(struct.dataclass, frozen=False)
-class CMDPMAPPOAgent:
-    Cfg = CMDPMAPPOAgentCfg
+class CMDPPOAgent:
+    Cfg = CMDPPOAgentCfg
 
     network: TrainState
     env: CMDPEnvWrapper = struct.field(pytree_node=False)
-    cfg: CMDPMAPPOAgentCfg = struct.field(pytree_node=False)
+    cfg: CMDPPOAgentCfg = struct.field(pytree_node=False)
 
     @staticmethod
     def get_agent_name() -> str:
@@ -120,7 +120,7 @@ class CMDPMAPPOAgent:
     def create(
         cls,
         seed: int,
-        cfg: CMDPMAPPOAgentCfg,
+        cfg: CMDPPOAgentCfg,
         env: CMDPEnvWrapper,
     ):
         key, init_key = jr.split(jr.key(seed))

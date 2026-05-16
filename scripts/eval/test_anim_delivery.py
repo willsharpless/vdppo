@@ -15,7 +15,7 @@ from rraa_rl.training.load_ckpt import load_ckpt
 from rraa_rl.training.rollout_utils import extract_rollouts_eval
 from rraa_rl.env.general_task.delivery import Delivery
 from rraa_rl.env.general_task.deliveryrealv2 import DeliveryRealv2
-from rraa_rl.agents.vd_mappo import VDMAPPOAgent
+from rraa_rl.agents.vdppo import VDPPOAgent
 
 app = cyclopts.App()
 
@@ -38,7 +38,7 @@ def main(run_path: pathlib.Path, n_env: int = 1, step: int | None = None, eval_T
     logger.debug("is_valid: {}".format(b_is_valid))
 
     collect_opts = {}
-    if isinstance(agent, VDMAPPOAgent):
+    if isinstance(agent, VDPPOAgent):
         collect_opts["temporal_transitions"] = True
 
     if eval_T is None:

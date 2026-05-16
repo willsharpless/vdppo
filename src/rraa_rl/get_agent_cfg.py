@@ -1,11 +1,12 @@
-from rraa_rl.agents.cmdp_mappo import CMDPMAPPOAgent
-from rraa_rl.agents.lcrl_mappo import LCRLMAPPOAgent
-from rraa_rl.agents.vd_mappo import VDMAPPOAgent
+from rraa_rl.agents.cmdp_ppo import CMDPPOAgent
+from rraa_rl.agents.lcrl_ppo import LCRLPPOAgent
+from rraa_rl.agents.vdppo import VDPPOAgent
+
 
 def get_cmdp_agent_cfg(env_name: str):
     env_name = env_name.lower()
 
-    cfg = CMDPMAPPOAgent.Cfg()
+    cfg = CMDPPOAgent.Cfg()
     cfg.actor_lr = 8e-4
     cfg.n_epochs = 2
     cfg.n_minibatches = 4
@@ -15,10 +16,11 @@ def get_cmdp_agent_cfg(env_name: str):
 
     return cfg
 
-def get_vd_agent_cfg(env_name: str):
+
+def get_vdppo_agent_cfg(env_name: str):
     env_name = env_name.lower()
 
-    cfg = VDMAPPOAgent.Cfg()
+    cfg = VDPPOAgent.Cfg()
     cfg.actor_lr = 8e-4
     cfg.n_epochs = 2
     cfg.n_minibatches = 4
@@ -48,7 +50,7 @@ def get_vd_agent_cfg(env_name: str):
 def get_lcrl_agent_cfg(env_name: str):
     env_name = env_name.lower()
 
-    cfg = LCRLMAPPOAgent.Cfg()
+    cfg = LCRLPPOAgent.Cfg()
     cfg.actor_lr = 3e-4
     cfg.entropy_coef = 1e-2
     cfg.n_envs_train = 4096

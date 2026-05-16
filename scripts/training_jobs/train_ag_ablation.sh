@@ -2,7 +2,7 @@
 
 # max_n_agent=5
 
-alg=${1:-vd}  # Use first argument, default to 'vd'
+alg=${1:-vdppo}  # Use first argument, default to 'vdppo'
 GPU_ID=${2:-0}
 
 screen -dmS gpu${GPU_ID}_job bash -c '

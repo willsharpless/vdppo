@@ -10,7 +10,7 @@ from rraa_rl.callbacks.deliveryreal_cbs import animate_deliveryreal_traj
 from rraa_rl.training.load_ckpt import load_ckpt
 from rraa_rl.training.rollout_utils import extract_rollouts_eval
 from rraa_rl.env.general_task.deliveryreal import DeliveryReal
-from rraa_rl.agents.vd_mappo import VDMAPPOAgent
+from rraa_rl.agents.vdppo import VDPPOAgent
 
 app = cyclopts.App()
 
@@ -27,7 +27,7 @@ def main(run_path: pathlib.Path, n_env: int = 1, step: int | None = None, eval_T
     b_state0 = env.get_eval_states(collector.cfg.n_envs, root_only=True)
 
     collect_opts = {}
-    if isinstance(agent, VDMAPPOAgent):
+    if isinstance(agent, VDPPOAgent):
         collect_opts["temporal_transitions"] = True
 
     eval_T = eval_T or env.eval_T

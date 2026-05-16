@@ -18,7 +18,7 @@ from rraa_rl.training.rollout_temporal_analysis import evaluate_ltl_finite
 from rraa_rl.training.load_ckpt import load_ckpt
 from rraa_rl.training.rollout_utils import extract_rollouts_eval
 from rraa_rl.env.general_task.herding import Herding
-from rraa_rl.agents.vd_mappo import VDMAPPOAgent
+from rraa_rl.agents.vdppo import VDPPOAgent
 from rraa_rl.control.MPPI import init_mppi
 import json
 import tempfile
@@ -27,7 +27,7 @@ app = cyclopts.App()
 
 @app.default()
 def eval(
-    alg: str = "vd",
+    alg: str = "vdppo",
     env_name: str = "herding",
     ablation_type: str = "spec",
     seed: int = 123,
@@ -91,7 +91,7 @@ def eval(
                 # ipdb.set_trace()
 
                 collect_opts = {}
-                if isinstance(agent, VDMAPPOAgent):
+                if isinstance(agent, VDPPOAgent):
                     collect_opts["temporal_transitions"] = True
 
                 eval_T = eval_T or env.eval_T

@@ -1,21 +1,21 @@
 import ipdb
 from cyclopts import App
 
-from rraa_rl.agents.cmdp_mappo import CMDPMAPPOAgent
-from rraa_rl.agents.lcrl_mappo import LCRLMAPPOAgent
-from rraa_rl.agents.vd_mappo import VDMAPPOAgent
+from rraa_rl.agents.cmdp_ppo import CMDPPOAgent
+from rraa_rl.agents.lcrl_ppo import LCRLPPOAgent
+from rraa_rl.agents.vdppo import VDPPOAgent
 from rraa_rl.lcrl.lcrl_wrapper import LCRLWrapper
 from rraa_rl.training.run import Run
 from rraa_rl.env.general_task.env import Env
 from rraa_rl.env.general_task.get_env import get_env_and_cbs
-from rraa_rl.get_agent_cfg import get_lcrl_agent_cfg, get_vd_agent_cfg, get_cmdp_agent_cfg
+from rraa_rl.get_agent_cfg import get_cmdp_agent_cfg, get_lcrl_agent_cfg, get_vdppo_agent_cfg
 from rraa_rl.training.trainer import Trainer, TrainerCfg
 
 app = App()
 
 
 @app.command()
-def vd(
+def vdppo(
     name: str | None = None,
     debug: bool = False,
     env_name: str = "Delivery",
@@ -29,8 +29,10 @@ def vd(
     n_layers: int = 2,
     run_callbacks: bool = True,
 ):
-    env, eval_cbs, collect_cbs = get_env_and_cbs(env_name, agent_name="vd", n_agent=n_agent, n_spec=n_spec, dense=dense)
-    agent_cfg = get_vd_agent_cfg(env_name)
+    env, eval_cbs, collect_cbs = get_env_and_cbs(
+        env_name, agent_name="vdppo", n_agent=n_agent, n_spec=n_spec, dense=dense
+    )
+    agent_cfg = get_vdppo_agent_cfg(env_name)
     agent_cfg.actor_shared_trunk = actor_shared_trunk
     agent_cfg.value_shared_trunk = value_shared_trunk
     agent_cfg.actor_hids = (128,) * n_layers
@@ -39,7 +41,7 @@ def vd(
     if hasattr(env.base, "n_envs"):
         env.base.n_envs = agent_cfg.n_envs_train
 
-    agent = VDMAPPOAgent.create(seed, agent_cfg, env)
+    agent = VDPPOAgent.create(seed, agent_cfg, env)
 
     return train(name, debug, env_name, seed, trainer_cfg, env, eval_cbs, collect_cbs, agent, run_callbacks)
 
@@ -62,7 +64,7 @@ def cmdp(
     if hasattr(env.base, "n_envs"):
         env.base.n_envs = agent_cfg.n_envs_train
 
-    agent = CMDPMAPPOAgent.create(seed, agent_cfg, env)
+    agent = CMDPPOAgent.create(seed, agent_cfg, env)
 
     return train(name, debug, env_name, seed, trainer_cfg, env, eval_cbs, collect_cbs, agent, run_callbacks)
 
@@ -88,7 +90,7 @@ def lcrl(
     if hasattr(env.base, "n_envs"):
         env.base.n_envs = agent_cfg.n_envs_train
 
-    agent = LCRLMAPPOAgent.create(seed, agent_cfg, env)
+    agent = LCRLPPOAgent.create(seed, agent_cfg, env)
     # agent_cfg.random_automata_init = True
 
     env.cfg.random_automata_init = agent_cfg.random_automata_init
@@ -105,7 +107,7 @@ def train(
     env: Env,
     eval_cbs: list,
     collect_cbs: list,
-    agent: VDMAPPOAgent | LCRLMAPPOAgent,
+    agent: VDPPOAgent | LCRLPPOAgent,
     run_callbacks: bool = True,
 ):
     agent_name = agent.get_agent_name()

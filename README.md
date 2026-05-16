@@ -12,7 +12,7 @@ This involves distributing rollouts across all nodes and using the corresponding
 
 ### setup
 ```
-conda env create -f conda/make_env.yml  # jax env
+conda env create -f make_env.yml  # jax env
 pip install -e .
 ```
 
@@ -20,10 +20,10 @@ pip install -e .
 ```
 python scripts/train.py ALG --name test30k --debug --env-name ENV --n-train-steps 30000
 ```
-where `ALG` is for example `vd` or `lcrl`, and  `ENV` is for example `herding`, `delivery`, `deliveryrealv2` or `ablation`.
+where `ALG` is for example `vdppo` or `lcrl`, and `ENV` is for example `herding`, `delivery`, `deliveryrealv2` or `ablation`.
 
 ### testing
 
 If you'd like to make your own env, see `herd_base.py`. Here, dynamics/step, reset, obs and basic predicates are defined. Note, there is also a wrapper for each env, eg. `herding.py`. See `get_env.py` for env registration.
 
-If you'd like to mess with the training, see the training agent classes, eg. `vd_mappo.py`.
+If you'd like to mess with the training, see the training agent classes, eg. `vdppo.py`.

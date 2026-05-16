@@ -20,7 +20,7 @@ app = cyclopts.App()
 
 @app.default()
 def main(
-    algs: list[str] = ["vd", "lcrl", "mppi"],
+    algs: list[str] = ["vdppo", "lcrl", "mppi"],
     envs: list[str] = [
         "gridworld_map1",
         "gridworld_map5",

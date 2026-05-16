@@ -1,6 +1,6 @@
 #!/bin/bash
 
-alg=${1:-vd}  # Use first argument, default to 'vd'
+alg=${1:-vdppo}  # Use first argument, default to 'vdppo'
 GPU_ID=${2:-0}
 env_name=${3:-herding}
 shared_trunk_actor=${4:-True}

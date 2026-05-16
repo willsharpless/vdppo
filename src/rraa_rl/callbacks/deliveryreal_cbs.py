@@ -23,7 +23,7 @@ from rraa_rl.env.general_task.deliveryreal_base import DeliveryRealBaseCfg
 from rraa_rl.env.general_task.env import AugObs
 from rraa_rl.common.plot_utils import get_BuRd_smooth
 from rraa_rl.training.trainer import CallbackProps
-from rraa_rl.agents.vd_mappo import PPOData, VDMAPPOAgent
+from rraa_rl.agents.vdppo import PPOData, VDPPOAgent
 
 plt.style.use("seaborn-v0_8-darkgrid")
 
@@ -34,7 +34,7 @@ class VizValues(struct.PyTreeNode):
         return VizValues()
 
     @jax.jit
-    def get_value(self, agent: VDMAPPOAgent):
+    def get_value(self, agent: VDPPOAgent):
         env = agent.env
         cfg = env.cfg.base
         halfsize = cfg.halfsize
@@ -799,7 +799,7 @@ class PlotRootTrajPreds(struct.PyTreeNode):
         return PlotRootTrajPreds()
 
     @jax.jit
-    def get_reach_values(self, agent: VDMAPPOAgent, bT_test_rollout: RolloutOutput):
+    def get_reach_values(self, agent: VDPPOAgent, bT_test_rollout: RolloutOutput):
         bT_obs_next = bT_test_rollout.obs_next
         bT_predicates_next = bT_test_rollout.predicates_next
         bTt_reach_val = rep_vmap(agent.get_t_reach_val, rep=2)(bT_obs_next, bT_predicates_next)

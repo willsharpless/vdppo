@@ -9,7 +9,7 @@ from rraa_rl.env.general_task.env import Env
 from rraa_rl.env.general_task.get_env import get_env
 from rraa_rl.env.general_task.herding import Herding, HerdingPlay
 from rraa_rl.training.trainer import Trainer
-from rraa_rl.agents.vd_mappo import VDMAPPOAgent
+from rraa_rl.agents.vdppo import VDPPOAgent
 
 
 def main():

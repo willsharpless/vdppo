@@ -21,7 +21,7 @@ from rraa_rl.training.rollout_temporal_analysis import evaluate_ltl_finite
 from rraa_rl.training.rollout_utils import extract_rollouts_eval
 from rraa_rl.training.run import Run
 from rraa_rl.env.general_task.env import Env, EnvStep, StateWithTemporalNode
-from rraa_rl.agents.vd_mappo import VDMAPPOAgent
+from rraa_rl.agents.vdppo import VDPPOAgent
 from rraa_rl.common.jax_utils import switch01
 from rraa_rl.training.trainer import CallbackProps
 from rraa_rl.env.general_task.get_env import get_env_and_cbs
@@ -86,7 +86,7 @@ class RolloutOutput:
 #     run: Run
 
 #     train_step: int
-#     agent: VDMAPPOAgent
+#     agent: VDPPOAgent
 #     bT_test_rollouts: list[RolloutOutput]
 #     bT_test_rollout: RolloutOutput
 #     test_trigger_dict: dict[tuple[str, str], np.ndarray]
@@ -487,9 +487,9 @@ class MPPI:
             yaml.dump(cfg_to_save, f)
         logger.success("Saved config to {}".format(yaml_path))
 
-        agent_cfg = VDMAPPOAgent.Cfg()
-        # agent_cfg = get_vd_agent_cfg("Delivery")
-        # dummy_agent = VDMAPPOAgent.create(0, agent_cfg, env)
+        agent_cfg = VDPPOAgent.Cfg()
+        # agent_cfg = get_vdppo_agent_cfg("Delivery")
+        # dummy_agent = VDPPOAgent.create(0, agent_cfg, env)
         class DummyAgent:
             def __init__(self, agent_cfg, env):
                 self.seed = 0

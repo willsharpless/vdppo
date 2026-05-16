@@ -57,7 +57,7 @@ class PPOData:
 
 @Parameter("*", group="AgentConfig")
 @define
-class VDMAPPOAgentCfg(Cfg):
+class VDPPOAgentCfg(Cfg):
     actor_lr: float = 1e-3
     critic_lr: float = 1e-3
     max_grad_norm: float = 0.5
@@ -105,24 +105,24 @@ class VDMAPPOAgentCfg(Cfg):
     """If true, instead of truncating on reach, we terminate so that we don't bootstrap."""
 
 
-class VDMAPPOStatic:
+class VDPPOStatic:
     def __init__(self, temporal_node_alloc: np.ndarray | None = None):
         self.temporal_node_alloc = temporal_node_alloc
 
 
 @ft.partial(struct.dataclass, frozen=False)
-class VDMAPPOAgent:
-    Cfg = VDMAPPOAgentCfg
+class VDPPOAgent:
+    Cfg = VDPPOAgentCfg
 
     network: TrainState
     env: Env = struct.field(pytree_node=False)
     # Class containing static (non-pytree) data.
-    static: VDMAPPOStatic = struct.field(pytree_node=False)
-    cfg: VDMAPPOAgentCfg = struct.field(pytree_node=False)
+    static: VDPPOStatic = struct.field(pytree_node=False)
+    cfg: VDPPOAgentCfg = struct.field(pytree_node=False)
 
     @staticmethod
     def get_agent_name() -> str:
-        return "VD"
+        return "VDPPO"
 
     def to_state_dict(self):
         """For saving to disk."""
@@ -132,7 +132,7 @@ class VDMAPPOAgent:
     def create(
         cls,
         seed: int,
-        cfg: VDMAPPOAgentCfg,
+        cfg: VDPPOAgentCfg,
         env: Env,
     ):
         """Initialize the PPO agent."""
@@ -201,7 +201,7 @@ class VDMAPPOAgent:
         network_def = ModuleDict(networks)
         network_params = network_def.init(init_key, **network_args)["params"]
         network = TrainState.create(network_def, network_params, tx=network_tx)
-        static = VDMAPPOStatic()
+        static = VDPPOStatic()
         return cls(network=network, env=env, static=static, cfg=cfg)
 
     def evaluate_dag(

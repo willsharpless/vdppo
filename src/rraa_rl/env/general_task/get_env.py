@@ -405,11 +405,11 @@ def get_env_and_cbs(
         ## N spec and N agent Ablation Env (Double Integrator)
 
         if n_spec > 10:
-            raise ValueError(f"Unsupported n_spec {n_spec} for agent vd. Add more targets to class.")
+            raise ValueError(f"Unsupported n_spec {n_spec} for agent vdppo. Add more targets to class.")
 
         spec = "G(!oob) && G(!obstacles)" if n_agent == 1 else "G(!oob) && G(!obstacles) && G(!collide)"
 
-        if agent_name == "vd":
+        if agent_name in {"vd", "vdppo"}:
             # match n_spec:
             #     case 1:
             #         spec = "( !d_unsafe ) U ( target0 && G(!d_unsafe))"
@@ -422,7 +422,7 @@ def get_env_and_cbs(
             #     case 5:
             #         spec = "( !d_unsafe ) U ( target0 && ( !d_unsafe ) U ( target1 && ( !d_unsafe ) U ( target2 && ( !d_unsafe ) U ( target3 && ( !d_unsafe ) U ( target4 && G(!d_unsafe) ) ) ) )"
             #     case _:
-            #         raise ValueError(f"Unsupported n_spec {n_spec} for agent vd.")
+            #         raise ValueError(f"Unsupported n_spec {n_spec} for agent vdppo.")
             
             spec = ""
             for j in range(n_spec):

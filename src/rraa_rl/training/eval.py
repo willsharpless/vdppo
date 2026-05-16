@@ -22,14 +22,14 @@ from rraa_rl.training.rollout_temporal_analysis import (get_ltl_finite_values_ro
 from rraa_rl.training.rollout_utils import extract_rollouts_eval
 from rraa_rl.env.general_task.delivery_base import DeliveryBase
 from rraa_rl.env.general_task.herding import Herding
-from rraa_rl.agents.vd_mappo import VDMAPPOAgent
+from rraa_rl.agents.vdppo import VDPPOAgent
 
 app = cyclopts.App()
 
 
 @app.default()
 def eval(
-    alg: str = "vd",
+    alg: str = "vdppo",
     env_name: str = "herding",
     ablation_type: str = "spec",
     seed: int = 123,
@@ -100,12 +100,12 @@ def eval(
         else:
             missing_run = False
             if is_ablation:
-                # For ablations, alg_env_path is like `chest_ablation_vd_spc3_ag1_seed1`
+                # For ablations, alg_env_path is like `chest_ablation_vdppo_spc3_ag1_seed1`
                 alg_env_paths = [
                     f"{env_name}_{alg}_spc{n_spec}_ag{n_agent}_seed{mppi_seed}" for mppi_seed in range(n_seeds)
                 ]
             else:
-                # For normal, alg_env_path is like `thank_herding_vd_seed1`
+                # For normal, alg_env_path is like `thank_herding_vdppo_seed1`
                 alg_env_paths = [f"{env_name}_{alg}_seed{mppi_seed}" for mppi_seed in range(n_seeds)]
 
         if alg != "mppi" and missing_run:
@@ -172,7 +172,7 @@ def eval(
             # ipdb.set_trace()
 
             collect_opts = {}
-            if isinstance(agent, VDMAPPOAgent):
+            if isinstance(agent, VDPPOAgent):
                 collect_opts["temporal_transitions"] = True
 
             eval_T = eval_T or env.eval_T
@@ -331,7 +331,7 @@ def find_runs(runs_dir, alg, env_name, n_seeds=3, ablation_type="spec", i=0, min
                 candidates = [d for d in runs_dir.iterdir() if d.is_dir() and d.name.endswith(candidate_tag)]
         else:
             candidate_tag = f"{alg}_seed{seed}"
-            # Has to end with e.g., "vd_seed0" to get picked up
+            # Has to end with e.g., "vdppo_seed0" to get picked up
             candidates = [d for d in runs_dir.iterdir() if d.is_dir() and d.name.endswith(candidate_tag)]
 
         if len(candidates) > 0:

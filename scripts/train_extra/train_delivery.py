@@ -7,7 +7,7 @@ from rraa_rl.env.general_task.delivery import Delivery
 from rraa_rl.env.general_task.delivery_base import DeliveryBaseCfg
 from rraa_rl.env.general_task.env import Env
 from rraa_rl.training.trainer import Trainer, TrainerCfg
-from rraa_rl.agents.vd_mappo import VDMAPPOAgent
+from rraa_rl.agents.vdppo import VDPPOAgent
 
 app = App()
 
@@ -73,8 +73,8 @@ def main(
 ):
     env = get_env(env_name)
 
-    cfg = VDMAPPOAgent.Cfg()
-    agent = VDMAPPOAgent.create(seed, cfg, env)
+    cfg = VDPPOAgent.Cfg()
+    agent = VDPPOAgent.create(seed, cfg, env)
 
     eval_cbs = [
         delivery_cbs.animate_eval_trajs,

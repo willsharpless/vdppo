@@ -30,17 +30,17 @@ def main():
         ],
         "manip_scene": [("root", "Overall"), ("drawer_open", "Open\nDrawer"), ("cube_in_drawer", "Cube in\nDrawer")],
     }
-    algs = ["vd", "lcrl", "mppi"]
+    algs = ["vdppo", "lcrl", "mppi"]
     plot_dir = get_paper_plot_dir()
 
     method_colors = {
-        "vd": "C0",
+        "vdppo": "C0",
         "lcrl": "C1",
         "mppi": "C2",
     }
 
     alg_display_name = {
-        "vd": "VD",
+        "vdppo": "VDPPO",
         "lcrl": "LCRL",
         "mppi": "MPPI",
     }

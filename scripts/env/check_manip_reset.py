@@ -14,8 +14,8 @@ from rraa_rl.training.collector import Collector, RolloutOutput
 from rraa_rl.env.scene import ManipScene, SceneBaseMinState
 from rraa_rl.training.rollout_utils import extract_rollouts_eval
 from rraa_rl.env.general_task.env import StateWithTemporalNode
-from rraa_rl.get_agent_cfg import get_vd_agent_cfg
-from rraa_rl.agents.vd_mappo import VDMAPPOAgent
+from rraa_rl.get_agent_cfg import get_vdppo_agent_cfg
+from rraa_rl.agents.vdppo import VDPPOAgent
 
 
 def main():
@@ -31,9 +31,9 @@ def main():
         cfg=Collector.Cfg(n_envs=n_envs_train, auto_reset=False),
         init=False
     )
-    agent_cfg = get_vd_agent_cfg("manip-scene")
+    agent_cfg = get_vdppo_agent_cfg("manip-scene")
     agent_cfg.actor_shared_trunk = True
-    agent = VDMAPPOAgent.create(12345, agent_cfg, env)
+    agent = VDPPOAgent.create(12345, agent_cfg, env)
 
     rollout_T = 100
     rollout: RolloutOutput

@@ -41,7 +41,7 @@ def _load_train_fns():
     assert spec is not None and spec.loader is not None, f"Failed to load training module from {train_path}"
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)
-    return module.vd, module.lcrl
+    return module.vdppo, module.lcrl
 
 
 def _parse_n_specs(n_specs: str | list[int]) -> list[int]:
@@ -64,7 +64,7 @@ def _parse_n_specs(n_specs: str | list[int]) -> list[int]:
 
 
 def _parse_algs(algs: str | list[str]) -> list[str]:
-    valid_algs = ["vd", "lcrl"]
+    valid_algs = ["vdppo", "lcrl"]
     if isinstance(algs, list):
         alg_vals = [str(v).lower() for v in algs]
     else:
@@ -154,8 +154,8 @@ def _run_train_child(
     run_name = f"memory_{env_name}_{alg}_spc{n_spec}_ag{n_agent}_seed{seed}"
 
     try:
-        vd, lcrl = _load_train_fns()
-        train_fn = {"vd": vd, "lcrl": lcrl}[alg]
+        vdppo, lcrl = _load_train_fns()
+        train_fn = {"vdppo": vdppo, "lcrl": lcrl}[alg]
         trainer_cfg = TrainerCfg(
             n_train_steps=n_train_steps,
             eval_every=n_train_steps + 1,
@@ -395,8 +395,8 @@ def _plot_rows(rows: list[dict], fig_path: Path):
     fig, ax = plt.subplots(figsize=figsize)
     set_ax_style(ax)
 
-    label_map = {"vd": "VDPPO", "lcrl": "LCRL"}
-    for alg in ["vd", "lcrl"]:
+    label_map = {"vdppo": "VDPPO", "lcrl": "LCRL"}
+    for alg in ["vdppo", "lcrl"]:
         alg_rows = [row for row in rows if row["alg"] == alg and row["success"]]
         if not alg_rows:
             continue

@@ -16,7 +16,7 @@ from rraa_rl.training.load_ckpt import load_ckpt
 from rraa_rl.training.rollout_temporal_analysis import evaluate_ltl_finite
 from rraa_rl.training.rollout_utils import extract_rollouts_eval
 from rraa_rl.callbacks.scene_cbs import animate_scene_traj
-from rraa_rl.agents.vd_mappo import VDMAPPOAgent
+from rraa_rl.agents.vdppo import VDPPOAgent
 
 app = cyclopts.App()
 
@@ -40,7 +40,7 @@ def main(run_path: pathlib.Path, n_env: int = 16, step: int | None = None):
     b_state0 = env.get_eval_states(collector.cfg.n_envs, root_only=True)
 
     collect_opts = {}
-    if isinstance(agent, VDMAPPOAgent):
+    if isinstance(agent, VDPPOAgent):
         collect_opts["temporal_transitions"] = True
 
     Tb_rollout, info_collect = agent.collect_eval_with_states(collector, b_state0, env.eval_T, **collect_opts)
