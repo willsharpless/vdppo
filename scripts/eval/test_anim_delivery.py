@@ -10,11 +10,11 @@ from valtr.reachability import DAGGUSingle, dag_to_str
 
 from rraa_rl.training.collector import Collector
 from rraa_rl.callbacks.delivery_cbs import animate_delivery_traj
-from rraa_rl.callbacks.deliveryrealv2_cbs import animate_deliveryrealv2_traj
+from rraa_rl.callbacks.deliveryreal_cbs import animate_deliveryreal_traj
 from rraa_rl.training.load_ckpt import load_ckpt
 from rraa_rl.training.rollout_utils import extract_rollouts_eval
 from rraa_rl.env.general_task.delivery import Delivery
-from rraa_rl.env.general_task.deliveryrealv2 import DeliveryRealv2
+from rraa_rl.env.general_task.deliveryreal import DeliveryReal
 from rraa_rl.agents.vdppo import VDPPOAgent
 
 app = cyclopts.App()
@@ -22,7 +22,7 @@ app = cyclopts.App()
 
 @app.default()
 def main(run_path: pathlib.Path, n_env: int = 1, step: int | None = None, eval_T: int | None = None):
-    env: DeliveryRealv2
+    env: DeliveryReal
     run, agent, env, cfg_dict = load_ckpt(run_path, step)
 
     collector = Collector.create(
@@ -85,12 +85,12 @@ def main(run_path: pathlib.Path, n_env: int = 1, step: int | None = None, eval_T
             T_pos_herder = T_state.base.herder_state[:, :, :2]
             T_pos_target = T_state.base.centers[:, :2, :2]  # only using first two centers
             animate_delivery_traj(anim_path, env, cfg.base, T_pos_herder, T_pos_target, T_temporal_node_idx, T_labels)
-        elif run.env_name == "deliveryrealv2":
-            T_state: DeliveryRealv2.State
-            cfg: DeliveryRealv2.Cfg = env.cfg
+        elif run.env_name == "deliveryreal":
+            T_state: DeliveryReal.State
+            cfg: DeliveryReal.Cfg = env.cfg
             T_pos_herder = T_state.base.herder_state[:, :, :2]
             T_pos_target = T_state.base.centers[:, :2, :2]
-            animate_deliveryrealv2_traj(
+            animate_deliveryreal_traj(
                 anim_path, env, cfg.base, T_pos_herder, T_pos_target, T_temporal_node_idx, T_labels
             )
 

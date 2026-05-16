@@ -77,7 +77,8 @@ class DeliveryReal(StaticTemporalNodeMixin, EnvUsingBase):
 
         is_oob = predicates["oob"] > eps
         is_in_obst = predicates["obstacles"] > eps
-        should_term = is_oob | is_in_obst
+        is_in_air = predicates["air_obstacles"] > eps
+        should_term = is_oob | is_in_obst | is_in_air
 
         # NOTE, both induce reset
         # terminating is suffix will not affect value (reached end-point)

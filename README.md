@@ -11,8 +11,8 @@ For given temporal logic, this PPO variant decomposes the Value into a graph of 
 This involves distributing rollouts across all nodes and using the corresponding BE for each node to compute the batched target. To compute the BE for each node, the necessary child/dependent Values (based on DVG) are bootstrapped with the current embedded approximation.
 
 ### setup
-```
-conda env create -f make_env.yml  # jax env
+``` 
+conda env create -f conda/make_env.yml  # jax env
 pip install -e .
 ```
 
@@ -20,7 +20,7 @@ pip install -e .
 ```
 python scripts/train.py ALG --name test30k --debug --env-name ENV --n-train-steps 30000
 ```
-where `ALG` is for example `vdppo` or `lcrl`, and `ENV` is for example `herding`, `delivery`, `deliveryrealv2` or `ablation`.
+where `ALG` is for example `vdppo` or `lcrl`, and `ENV` is for example `herding`, `delivery`, `deliveryreal` or `ablation`.
 
 ### testing
 

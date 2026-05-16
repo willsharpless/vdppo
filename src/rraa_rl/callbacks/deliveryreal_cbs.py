@@ -1,7 +1,6 @@
 import pathlib
 
 import einops as ei
-import imageio.v2 as imageio
 import imageio.v3 as iio
 import jax
 import jax.numpy as jnp
@@ -10,8 +9,6 @@ import matplotlib.pyplot as plt
 import numpy as np
 import tqdm
 from flax import struct
-from lovely_histogram import plot_histogram
-from matplotlib.collections import EllipseCollection
 from matplotlib.colors import CenteredNorm, to_rgba
 from valtr.reachability import collect_predicate_info
 
@@ -109,29 +106,6 @@ class VizValues(struct.PyTreeNode):
         fig.savefig(fig_path, bbox_inches="tight", dpi=500)
         plt.close(fig)
 
-        if p.train_step == 0:
-            # Only plot a contourf of the observations on the first step.
-            obs_names = env.get_obs_names()
-
-            n_obs = bb_obs.shape[-1]
-            ncol = 6
-            nrow = int(np.ceil(n_obs / ncol))
-            figsize = np.array([4 * ncol, 3 * nrow])
-            fig, axes = plt.subplots(nrow, ncol, figsize=figsize, layout="constrained", squeeze=False)
-            axes = axes.flatten()
-            for ii, ax in enumerate(axes[:n_obs]):
-                ax: plt.Axes
-                env.base.setup_ax(ax)
-                ax.set_title(f"{ii:02}: {obs_names[ii]}")
-
-                im = ax.contourf(bb_X, bb_Y, bb_obs[:, :, ii], levels=50)
-                fig.colorbar(im, ax=ax)
-
-            plot_dir = p.run.plots_dir
-            fig_path = plot_dir / "obs_contours.pdf"
-            fig.savefig(fig_path, bbox_inches="tight")
-            plt.close(fig)
-
 
 def plot_eval_trajs(p: CallbackProps):
     plots_dir = p.run.plots_dir
@@ -213,298 +187,8 @@ def plot_eval_trajs(p: CallbackProps):
 
 def animate_eval_trajs(p: CallbackProps):
     env: DeliveryReal = p.env
-    if env.n_agents == 1:
-        animate_eval_trajs_single_agent(p)
-    else:
-        animate_eval_trajs_multi_agent(p)
-
-
-def animate_eval_trajs_single_agent(p: CallbackProps):
-    plots_dir = p.run.plots_dir
-    env = p.env
-
-    n_temporal_nodes = env.n_temporal_nodes
-    ncol = n_temporal_nodes
-
-    bT_states: list[DeliveryReal.State] = [traj.state_now for traj in p.bT_test_rollouts]
-    b_temporal_idx = np.array([T_state.temporal_node_idx[0] for T_state in bT_states])
-
-    T_max = max(traj.shape[0] for traj in p.bT_test_rollouts)
-
-    # Count how many trajectories each temporal node has.
-    temporal_node_count = np.array([np.sum(b_temporal_idx == ii) for ii in range(n_temporal_nodes)])
-
-    figsize = np.array([4 * ncol, 3])
-    fig, axes = plt.subplots(1, ncol, figsize=figsize, dpi=200, layout="none")
-    if ncol == 1:
-        axes = [axes]
-
-    cfg = env.base.cfg
-
-    # Use facecolor to indicate the current temporal node.
-    colors_temporal_node = [f"C{ii}" for ii in range(n_temporal_nodes)]
-    pred_colors = {name: f"C{ii}" for ii, name in enumerate(env.pred_info.predicates)}
-
-    # Use edgecolor to indicate alive vs dead.
-    color_alive = to_rgba("C0", 0.0)
-    color_dead = np.array(to_rgba("C0"))
-
-    # Get the environment predicates for plotting
-    halfsize = cfg.halfsize
-    n_x = 65
-    n_y = 65
-    b_x = jnp.linspace(-halfsize[0], halfsize[0], num=n_x)
-    b_y = jnp.linspace(-halfsize[1], halfsize[1], num=n_y)
-    bb_X, bb_Y = jnp.meshgrid(b_x, b_y)
-    bb_pos = jnp.stack([bb_X, bb_Y], axis=-1)
-
-    key = jax.random.PRNGKey(0)
-    bb_key = ei.rearrange(jax.random.split(key, num=n_x * n_y), "(x y) ... -> x y ...", x=n_x, y=n_y)
-    bb_state = jax_vmap(env.reset, rep=2)(bb_key)
-
-    with jdc.copy_and_mutate(bb_state) as bb_state:
-        bb_state.base.herder_state = bb_state.base.herder_state.at[:, :, 0, :2].set(bb_pos)
-        bb_state.base.herder_state = bb_state.base.herder_state.at[:, :, 0, 2:4].set(0.0)
-        bb_state.temporal_node_idx = bb_state.temporal_node_idx.at[:].set(0)
-
-    bb_predicates = jax_vmap(env.get_predicates, rep=2)(bb_state)
-
-    node_idx_to_predicates = []
-    for node_idx in range(n_temporal_nodes):
-        node_ix = env.temporal_nodes[node_idx]
-        pred_info = collect_predicate_info(env.dag_nodes, node_ix)
-        node_idx_to_predicates.append(pred_info.predicates)
-    plot_predicates = [
-        "target0",
-        "target1",
-        "target2",
-        "target3",
-        "target4",
-        "target0_dense",
-        "target1_dense",
-        "target2_dense",
-        "target3_dense",
-        "target4_dense",
-        "oob",
-        "obstacles",
-    ]
-    if cfg.dynamic_targets:
-        plot_predicates = ["oob", "obstacles"]
-
-    # Check if MPPI rollouts are available
-    has_mppi = hasattr(p, "mppi_rollouts") and p.mppi_rollouts is not None
-
-    circ_collections = []
-    target_circs = []
-    mppi_line_collections = []  # Store line collections for MPPI trajectories
-    start_idxs, end_idxs = [], []
-    start_idx = 0
-    for ii, ax in enumerate(axes):
-        env.base.setup_ax(ax)
-
-        n_traj = temporal_node_count[ii]
-        end_idx = start_idx + n_traj
-        start_idxs.append(start_idx)
-        end_idxs.append(end_idx)
-
-        node_idx = env.temporal_nodes[ii]
-        node = env.dag_nodes[node_idx]
-        node_name = type(node).__name__
-        ax.set_title(f"Node {ii} ({node_name}) | {temporal_node_count[ii]} trajs")
-
-        for pred_name in node_idx_to_predicates[ii]:
-            if pred_name in plot_predicates:
-                ax.contourf(
-                    bb_X, bb_Y, bb_predicates[pred_name], levels=[0, 1], colors=pred_colors[pred_name], alpha=0.5
-                )
-
-        # Add target circles
-        if cfg.dynamic_targets:
-            target_circs_ax = []
-            for target_idx in range(len(cfg.centers)):
-                circ = plt.Circle(
-                    (0, 0),
-                    cfg.radiuses[target_idx],
-                    facecolor=pred_colors[f"target{target_idx}"],
-                    edgecolor="none",
-                    alpha=0.5,
-                    animated=True,
-                )
-                ax.add_patch(circ)
-                target_circs_ax.append(circ)
-            target_circs.append(target_circs_ax)
-
-        start_idx = end_idx
-
-        ec = EllipseCollection(
-            widths=np.full(n_traj, cfg.agent_radius * 2),
-            heights=np.full(n_traj, cfg.agent_radius * 2),
-            angles=np.zeros(n_traj),
-            units="xy",
-            offsets=np.zeros((n_traj, 2)),
-            transOffset=ax.transData,
-            facecolors="C1",
-            edgecolors="none",
-            animated=True,
-        )
-        ax.add_collection(ec)
-        circ_collections.append(ec)
-
-        # Add MPPI trajectory lines if available
-        if has_mppi:
-            # Create line objects for each MPPI sample trajectory
-            # We'll update these during animation
-            mppi_lines_ax = []
-            # Get number of MPPI samples from the rollouts (K dimension)
-            # mppi_rollouts shape: (T, B, J, K, H) for the state
-            n_mppi_samples = p.mppi_rollouts.state_now.base.herder_state.shape[3]
-            for _ in range(n_mppi_samples):
-                (line,) = ax.plot([], [], color="black", alpha=0.05, lw=0.5, animated=True)
-                mppi_lines_ax.append(line)
-            mppi_line_collections.append(mppi_lines_ax)
-
-    kk_text = ax.text(
-        0.02,
-        0.98,
-        "",
-        transform=ax.transAxes,
-        verticalalignment="top",
-        horizontalalignment="left",
-        color="white",
-        fontsize=8,
-        bbox=dict(facecolor="black", alpha=0.5, pad=2),
-    )
-    fig.tight_layout()
-
-    # Mark animated artists
-    for ec in circ_collections:
-        ec.set_animated(True)
-    if cfg.dynamic_targets:
-        for target_circs_ax in target_circs:
-            for circ in target_circs_ax:
-                circ.set_animated(True)
-    if has_mppi:
-        for mppi_lines_ax in mppi_line_collections:
-            for line in mppi_lines_ax:
-                line.set_animated(True)
-    kk_text.set_animated(True)
-
-    # Prime the renderer + background
-    fig.canvas.draw()
-    bg = fig.canvas.copy_from_bbox(fig.bbox)
-
-    plot_dir = plots_dir / "eval_trajs_anim"
-    plot_dir.mkdir(parents=True, exist_ok=True)
-    anim_path = plot_dir / f"eval_trajs_step{p.train_step}.mp4"
-
-    writer = imageio.get_writer(
-        anim_path,
-        fps=30,
-        codec="libx264",
-        format="ffmpeg",
-        ffmpeg_params=["-preset", "ultrafast", "-crf", "23"],
-    )
-
-    pbar = tqdm.trange(T_max, unit="frame", desc="Generating eval trajs animation")
-    try:
-        for kk in pbar:
-            # Restore background
-            fig.canvas.restore_region(bg)
-
-            # Update artists (do NOT return anything)
-            kk_text.set_text(f"Step {kk: 3}")
-
-            for ii, ax in enumerate(axes):
-                start_idx = start_idxs[ii]
-                end_idx = end_idxs[ii]
-
-                trajs = p.bT_test_rollouts[start_idx:end_idx]
-                n_traj = end_idx - start_idx
-
-                offsets = np.zeros((n_traj, 2))
-                facecolors = []
-                edgecolors = []
-
-                for jj, traj in enumerate(trajs):
-                    (T,) = traj.shape
-                    T_state = traj.state_now
-                    T_herder_pos = T_state.base.herder_state[:, 0, :2]
-
-                    t_idx = min(kk, T - 1)
-                    offsets[jj, :] = T_herder_pos[t_idx, :]
-
-                    temporal_node_idx = T_state.temporal_node_idx[t_idx]
-                    facecolors.append(colors_temporal_node[temporal_node_idx])
-
-                    if kk < T:
-                        edgecolors.append(color_alive)
-                    else:
-                        edgecolors.append(color_dead)
-
-                    # Update target positions
-                    if jj == 0 and cfg.dynamic_targets:
-                        T_centers = T_state.base.centers
-                        for target_idx, circ in enumerate(target_circs[ii]):
-                            circ.center = T_centers[t_idx, target_idx, :]
-
-                circ_collections[ii].set_offsets(offsets)
-                circ_collections[ii].set_facecolor(facecolors)
-                circ_collections[ii].set_edgecolor(edgecolors)
-
-                # Update MPPI trajectory lines if available
-                if has_mppi and n_traj > 0:
-                    # mppi_rollouts shape: (T, B, J, K, H) for state_now.base.herder_state
-                    # Get the first trajectory in this temporal node group
-                    batch_idx = start_idx
-                    # Get MPPI rollouts for this timestep, last iteration (-1 on J dim)
-                    mppi_state = p.mppi_rollouts.state_now.base.herder_state
-                    t_idx = min(kk, mppi_state.shape[0] - 1)
-                    # (K, H, 2) - positions for all K samples over H horizon steps
-                    KH_pos = mppi_state[t_idx, batch_idx, -1, :, :, 0, :2]
-                    n_mppi_samples = KH_pos.shape[0]
-
-                    for k_idx, line in enumerate(mppi_line_collections[ii]):
-                        if k_idx < n_mppi_samples:
-                            H_pos = KH_pos[k_idx]  # (H, 2)
-                            line.set_data(H_pos[:, 0], H_pos[:, 1])
-                        else:
-                            line.set_data([], [])
-
-            # Draw only animated artists
-            for ec in circ_collections:
-                ec.axes.draw_artist(ec)
-            if cfg.dynamic_targets:
-                for target_circs_ax in target_circs:
-                    for circ in target_circs_ax:
-                        circ.axes.draw_artist(circ)
-            if has_mppi:
-                for mppi_lines_ax in mppi_line_collections:
-                    for line in mppi_lines_ax:
-                        line.axes.draw_artist(line)
-            kk_text.axes.draw_artist(kk_text)
-
-            # Blit + grab frame
-            fig.canvas.blit(fig.bbox)
-            frame_rgba = np.asarray(fig.canvas.buffer_rgba(), dtype=np.uint8)
-            frame_rgb = np.ascontiguousarray(frame_rgba[..., :3])
-
-            # If the frame dimensions are not divisible by 16, then pad until they are.
-            h, w, _ = frame_rgb.shape
-            h_pad = (16 - (h % 16)) % 16
-            w_pad = (16 - (w % 16)) % 16
-            if h_pad > 0 or w_pad > 0:
-                frame_rgb = np.pad(
-                    frame_rgb,
-                    ((0, h_pad), (0, w_pad), (0, 0)),
-                    mode="constant",
-                    constant_values=0,
-                )
-
-            writer.append_data(frame_rgb)
-
-    finally:
-        writer.close()
-        plt.close(fig)
+    assert env.n_agents == 3
+    animate_eval_trajs_multi_agent(p)
 
 
 def animate_eval_trajs_multi_agent(p: CallbackProps):
@@ -567,6 +251,10 @@ def animate_eval_trajs_multi_agent(p: CallbackProps):
     with jdc.copy_and_mutate(bb_state) as bb_state:
         bb_state.base.herder_state = bb_state.base.herder_state.at[:, :, 0, :2].set(bb_pos)
         bb_state.base.herder_state = bb_state.base.herder_state.at[:, :, 0, 2:4].set(0.0)
+
+        bb_state.base.herder_state = bb_state.base.herder_state.at[:, :, 1, :2].set(5.0)
+        bb_state.base.herder_state = bb_state.base.herder_state.at[:, :, 2, :2].set(-5.0)
+
         bb_state.temporal_node_idx = bb_state.temporal_node_idx.at[:].set(0)
 
     bb_predicates = jax_vmap(env.get_predicates, rep=2)(bb_state)
@@ -591,7 +279,11 @@ def animate_eval_trajs_multi_agent(p: CallbackProps):
         "obstacles",
     ]
     if cfg.dynamic_targets:
-        plot_predicates = ["oob", "obstacles"]
+        plot_predicates = ["oob", "obstacles", "air_obstacles"]
+
+    # ipdb.set_trace()
+
+    # ipdb.set_trace()
 
     figsize = 0.9 * np.array([4 * ncol, 3 * nrow])
     fig, axes = plt.subplots(nrow, ncol, figsize=figsize, dpi=80, squeeze=False, layout="none")
@@ -625,11 +317,11 @@ def animate_eval_trajs_multi_agent(p: CallbackProps):
                 circs.append(circ)
             herds[(ii, jj)] = circs
 
-            for pred_name in node_idx_to_predicates[jj]:
-                if pred_name in plot_predicates:
-                    ax.contourf(
-                        bb_X, bb_Y, bb_predicates[pred_name], levels=[0, 1], colors=pred_colors[pred_name], alpha=0.5
-                    )
+            # for pred_name in node_idx_to_predicates[jj]:
+            #     if pred_name in plot_predicates:
+            #         ax.contourf(
+            #             bb_X, bb_Y, bb_predicates[pred_name], levels=[0, 1], colors=pred_colors[pred_name], alpha=0.5
+            #         )
 
             # Add target circles
             if cfg.dynamic_targets:
@@ -924,36 +616,37 @@ def viz_collect_data(p: CallbackProps):
 
 
 def viz_obs_histogram(p: CallbackProps):
-    train_step = p.train_step
-
-    # Only plot every 5_000 steps.
-    if train_step % 5_000 != 0:
-        return
-
-    agent = p.agent
-    b_data: PPOData = jax.device_get(p.info_update["debug/b_data"])
-    Tb_rollout: RolloutOutput = jax.device_get(p.Tb_rollout)
-
-    # Visualize the observation distribution on a histogram.
-    b_obs_: AugObs = b_data.obs
-    b_obs = b_obs_.combine(which=np)
-
-    batch_size, n_obs = b_obs.shape
-    nrow = n_obs
-    figsize = np.array([8, 1.5 * nrow])
-    fig, axes = plt.subplots(nrow, figsize=figsize, layout="constrained")
-    if nrow == 1:
-        axes = [axes]
-    for ii, ax in enumerate(axes):
-        obs_dim = np.asarray(b_obs[:, ii])
-        plot_histogram(obs_dim, ax=ax, center="mean")
-        ax.set_ylabel(f"{ii}")
-
-    plot_dir = p.run.plots_dir / "obs_hist"
-    plot_dir.mkdir(parents=True, exist_ok=True)
-    fig_path = plot_dir / f"obs_hist_step{p.train_step}.jpg"
-    fig.savefig(fig_path, bbox_inches="tight", dpi=500)
-    plt.close(fig)
+    return
+    # train_step = p.train_step
+    #
+    # # Only plot every 5_000 steps.
+    # if train_step % 5_000 != 0:
+    #     return
+    #
+    # agent = p.agent
+    # b_data: PPOData = jax.device_get(p.info_update["debug/b_data"])
+    # Tb_rollout: RolloutOutput = jax.device_get(p.Tb_rollout)
+    #
+    # # Visualize the observation distribution on a histogram.
+    # b_obs_: AugObs = b_data.obs
+    # b_obs = b_obs_.combine(which=np)
+    #
+    # batch_size, n_obs = b_obs.shape
+    # nrow = n_obs
+    # figsize = np.array([8, 1.5 * nrow])
+    # fig, axes = plt.subplots(nrow, figsize=figsize, layout="constrained")
+    # if nrow == 1:
+    #     axes = [axes]
+    # for ii, ax in enumerate(axes):
+    #     obs_dim = np.asarray(b_obs[:, ii])
+    #     plot_histogram(obs_dim, ax=ax, center="mean")
+    #     ax.set_ylabel(f"{ii}")
+    #
+    # plot_dir = p.run.plots_dir / "obs_hist"
+    # plot_dir.mkdir(parents=True, exist_ok=True)
+    # fig_path = plot_dir / f"obs_hist_step{p.train_step}.jpg"
+    # fig.savefig(fig_path, bbox_inches="tight", dpi=500)
+    # plt.close(fig)
 
 
 def env_layout_plot(p: CallbackProps):
@@ -1005,6 +698,10 @@ def env_layout_plot(p: CallbackProps):
         with jdc.copy_and_mutate(bb_state) as bb_state:
             bb_state.base.herder_state = bb_state.base.herder_state.at[:, :, 0, :2].set(bb_pos)
             bb_state.base.herder_state = bb_state.base.herder_state.at[:, :, 0, 2:4].set(0.0)
+
+            bb_state.base.herder_state = bb_state.base.herder_state.at[:, :, 1, :2].set(5.0)
+            bb_state.base.herder_state = bb_state.base.herder_state.at[:, :, 2, :2].set(-5.0)
+
             bb_state.temporal_node_idx = bb_state.temporal_node_idx.at[:].set(0)
 
         bb_predicates = jax_vmap(env.get_predicates, rep=2)(bb_state)
@@ -1028,20 +725,20 @@ def env_layout_plot(p: CallbackProps):
             "obstacles",
         ]
         if cfg.dynamic_targets:
-            plot_predicates = ["obstacles"]
+            plot_predicates = ["obstacles"] if not cfg.air_obstacles else ["obstacles", "air_obstacles"]
 
         for pred_name in plot_predicates:
             if pred_name in bb_predicates:
-                ax.contourf(
-                    bb_X, bb_Y, bb_predicates[pred_name], levels=[0, 1], colors=pred_colors[pred_name], alpha=0.8
-                )
+                alpha = 0.2 if not pred_name in ["oob", "obstacles"] else 0.6
+                color = "red" if pred_name == "air_obstacles" else pred_colors[pred_name]
+                ax.contourf(bb_X, bb_Y, bb_predicates[pred_name], levels=[0, 1], colors=color, alpha=alpha)
 
         # Set agent and herd positions for the first step
         traj = bT_test_rollouts[batch_idx]
         T_state: DeliveryReal.State = traj.state_now
         T_herder_pos = T_state.base.herder_state[:, :, :2]
         for agent_idx, circ in enumerate(agent_circs):
-            pos = [[-0.9, 1.8], [1.4, 1.3], [0.3, 2.5]][agent_idx]  # fixed positions for layout
+            pos = [[-2.1, 0.3], [3.0, -0.2], [0.1, -0.1]][agent_idx]  # fixed positions for layout
             circ.center = pos
 
         # Plot targets if dynamic targets are enabled
@@ -1049,7 +746,7 @@ def env_layout_plot(p: CallbackProps):
             for target_idx in range(2):
                 circ = plt.Circle((0, 0), cfg.radiuses[target_idx], facecolor=["C1", "C2"][target_idx], alpha=0.2)
                 # circ.center = T_state.base.centers[t_idx, target_idx, :2]
-                circ.center = [[-3.8, 1.9], [1.9, -2.1]][target_idx]  # fixed positions for layout
+                circ.center = [[-3.8, 1.9], [1.9, -4.1]][target_idx]  # fixed positions for layout
                 ax.add_patch(circ)
 
         # if cfg.dynamic_targets:
@@ -1064,6 +761,7 @@ def env_layout_plot(p: CallbackProps):
         fig.savefig(static_path, bbox_inches="tight", dpi=500)
         plt.close(fig)
 
+
 def animate_eval_trajs_multi_agent_LDBA(p: CallbackProps):
     plots_dir = p.run.plots_dir
     env: DeliveryReal = p.env
@@ -1071,7 +769,7 @@ def animate_eval_trajs_multi_agent_LDBA(p: CallbackProps):
 
     n_traj_anim = 5
     n_temporal_nodes = env.ldba.n_states
-    starting_automata_states_to_plot = [0, 1, 2, n_temporal_nodes-1]
+    starting_automata_states_to_plot = [0, 1, 2, n_temporal_nodes - 1]
     n_nodes_to_plot = len(starting_automata_states_to_plot)
 
     bT_test_rollouts = p.bT_test_rollouts
@@ -1130,11 +828,21 @@ def animate_eval_trajs_multi_agent_LDBA(p: CallbackProps):
         bb_state.ldba_state.state = bb_state.ldba_state.state.at[:].set(0)
     bb_predicates = jax_vmap(env.get_predicates, rep=2)(bb_state)
 
-    plot_predicates = ['target0', 'target1', 'target2', 'target3', 'target4',
-                    'target0_dense', 'target1_dense', 'target2_dense', 'target3_dense', 'target4_dense',
-                    'oob', 'obstacles']
+    plot_predicates = [
+        "target0",
+        "target1",
+        "target2",
+        "target3",
+        "target4",
+        "target0_dense",
+        "target1_dense",
+        "target2_dense",
+        "target3_dense",
+        "target4_dense",
+        "obstacles",
+    ]
     if cfg.dynamic_targets:
-        plot_predicates = ['oob', 'obstacles']
+        plot_predicates = ["obstacles"]
 
     node_idx_to_predicates = [plot_predicates for _ in range(n_nodes_to_plot)]
 
@@ -1146,17 +854,17 @@ def animate_eval_trajs_multi_agent_LDBA(p: CallbackProps):
     target_circs: dict[tuple[int, int], list[plt.Circle]] = {}
     for ii in range(n_traj_anim):
         for jj in range(n_nodes_to_plot):
-            ax = axes[jj, ii]
+            ax: plt.Axes = axes[jj, ii]
             env.base.setup_ax(ax)
 
-            node_name = 'LDBA State'
+            node_name = "LDBA State"
             ax.set_title(f"Node {starting_automata_states_to_plot[jj]} ({node_name})")
 
             circs = []
             for agent_idx in range(env.n_agents):
                 circ = plt.Circle((0, 0), cfg.agent_radius, facecolor="C1", edgecolor="none")
                 if env.base.cfg.base_agent and agent_idx == env.n_agents - 1:
-                    circ = plt.Circle((0, 0), 2*cfg.agent_radius, facecolor="C1", edgecolor="black")
+                    circ = plt.Circle((0, 0), 2 * cfg.agent_radius, facecolor="C1", edgecolor="black")
                 ax.add_patch(circ)
                 circs.append(circ)
             agent_collections[(ii, jj)] = circs
@@ -1170,15 +878,22 @@ def animate_eval_trajs_multi_agent_LDBA(p: CallbackProps):
 
             for pred_name in node_idx_to_predicates[jj]:
                 if pred_name in plot_predicates:
-                    ax.contourf(bb_X, bb_Y, bb_predicates[pred_name], levels=[0, 1], colors=pred_colors[pred_name], alpha=0.5)
+                    ax.contourf(
+                        bb_X, bb_Y, bb_predicates[pred_name], levels=[0, 1], colors=pred_colors[pred_name], alpha=0.5
+                    )
 
             # Add target circles
             if cfg.dynamic_targets:
                 circs = []
                 for pred in relevant_targets:
-                    circ = plt.Circle((0, 0), cfg.radiuses[int(pred.split('target')[1].replace("_dense", ""))],
-                                    facecolor=pred_colors[pred],
-                                    edgecolor='none', alpha=0.5, animated=True)
+                    circ = plt.Circle(
+                        (0, 0),
+                        cfg.radiuses[int(pred.split("target")[1].replace("_dense", ""))],
+                        facecolor=pred_colors[pred],
+                        edgecolor="none",
+                        alpha=0.5,
+                        animated=True,
+                    )
                     ax.add_patch(circ)
                     circs.append(circ)
                 target_circs[(ii, jj)] = circs
@@ -1326,30 +1041,6 @@ def animate_eval_trajs_multi_agent_LDBA(p: CallbackProps):
     #     writer.close()
     plt.close(fig)
 
-def obstacles_to_aabbs(cfg, which=jnp, agent_radius=0.2):
-    """
-    Returns AABBs for all obstacles.
-
-    Output shape: (n_obst, 4) with columns [xmin, ymin, xmax, ymax]
-    """
-    centers = which.array(cfg.obstacle_centers)  # (n_obst, 2)
-    radii = which.array(cfg.obstacle_radiuses)  # (n_obst,)
-    ratios = which.array(cfg.obstacle_lw_ratios)  # (n_obst,)
-
-    # effective_radii = radii - agent_radius - 0.03 
-    # # 0.03 bc patches slightly off from pred still
-    effective_radii = radii
-
-    half_x = effective_radii * ratios + agent_radius
-    half_y = effective_radii + agent_radius
-
-    xmin = centers[:, 0] - half_x
-    xmax = centers[:, 0] + half_x
-    ymin = centers[:, 1] - half_y
-    ymax = centers[:, 1] + half_y
-
-    return which.stack([xmin, ymin, xmax, ymax], axis=-1)
-
 
 def animate_deliveryreal_traj(
     anim_path: pathlib.Path,
@@ -1362,49 +1053,12 @@ def animate_deliveryreal_traj(
     fps: int = 30,
 ):
     figsize = np.array([4, 3])
-    fig, ax = plt.subplots(figsize=figsize)
+    fig, ax = plt.subplots(figsize=figsize, dpi=400)
     # env_base = DeliveryRealBase(cfg)
     env_base = env.base
     # mult = cfg.pos_multiplier
     mult = 1
     env_base.setup_ax(ax)
-
-    # (n_boxes, 4) [xmin, ymin, xmax, ymax]
-    aabbs = obstacles_to_aabbs(cfg, which=np)
-
-    # Convert the aabb to rectangles.
-    for aabb in aabbs:
-        xmin, ymin, xmax, ymax = aabb
-        width = xmax - xmin
-        height = ymax - ymin
-        rect = plt.Rectangle((xmin, ymin), width, height, facecolor="black", edgecolor="none", alpha=0.7)
-        ax.add_patch(rect)
-
-    # # Get the env predicates (obstacles/oob) for plotting
-    # halfsize = cfg.halfsize
-    # n_x = 65
-    # n_y = 65
-    # b_x = jnp.linspace(-halfsize[0], halfsize[0], num=n_x)
-    # b_y = jnp.linspace(-halfsize[1], halfsize[1], num=n_y)
-    # bb_X, bb_Y = jnp.meshgrid(b_x, b_y)
-    # bb_pos = jnp.stack([bb_X, bb_Y], axis=-1)
-
-    # key = jax.random.PRNGKey(0)
-    # bb_key = ei.rearrange(jax.random.split(key, num=n_x * n_y), "(x y) ... -> x y ...", x=n_x, y=n_y)
-    # bb_state = jax_vmap(env.reset, rep=2)(bb_key)
-
-    # with jdc.copy_and_mutate(bb_state) as bb_state:
-    #     bb_state.base.herder_state = bb_state.base.herder_state.at[:, :, 0, :2].set(bb_pos)
-    #     bb_state.base.herder_state = bb_state.base.herder_state.at[:, :, 0, 2:4].set(0.0)
-    #     bb_state.temporal_node_idx = bb_state.temporal_node_idx.at[:].set(0)
-
-    # bb_predicates = jax_vmap(env.get_predicates, rep=2)(bb_state)
-    # plot_predicates = ["oob", "obstacles"]
-
-    # for pred_name in plot_predicates:
-    #     ax.contourf(
-    #         bb_X, bb_Y, bb_predicates[pred_name], levels=[0, 1], colors='k', alpha=0.5
-    #     )
 
     assert env_base.cfg.n_herders == 3
 
@@ -1436,6 +1090,35 @@ def animate_deliveryreal_traj(
         fontsize=8,
         bbox=dict(facecolor="black", alpha=0.5, pad=2),
     )
+
+    # Label the agents and the targets.
+    agent_texts = []
+    for agent_idx in range(env_base.n_agents):
+        text = ax.text(
+            0,
+            0,
+            f"A{agent_idx}",
+            verticalalignment="center",
+            horizontalalignment="center",
+            color="white",
+            fontsize=6,
+            weight="bold",
+        )
+        agent_texts.append(text)
+    target_texts = []
+    for target_idx in range(2):
+        text = ax.text(
+            0,
+            0,
+            f"T{target_idx}",
+            verticalalignment="center",
+            horizontalalignment="center",
+            color="white",
+            fontsize=6,
+            weight="bold",
+        )
+        target_texts.append(text)
+
     fig.tight_layout()
 
     def update_fn(kk: int):
@@ -1451,6 +1134,9 @@ def animate_deliveryreal_traj(
         for ii, pos_herder in enumerate(n_pos_herder):
             agent_circs[ii].center = pos_herder
 
+            # Set the position of the agent text
+            agent_texts[ii].set_position(pos_herder)
+
             if color_temporal_node is not None:
                 agent_circs[ii].set_edgecolor(color_temporal_node)
                 # agent_circs[ii].set_facecolor(f"C{ii+1}")
@@ -1458,11 +1144,14 @@ def animate_deliveryreal_traj(
         for ii, pos_target in enumerate(n_pos_target):
             target_circs[ii].center = pos_target
 
+            # Set the position of the target text.
+            target_texts[ii].set_position(pos_target)
+
         text = f"Step: {kk}"
         if T_labels is not None:
             text += f"\n{T_labels[kk]}"
         kk_text.set_text(text)
 
     T = len(T_pos_herder)
-    artists = all_circs + [kk_text]
+    artists = all_circs + [kk_text, *agent_texts, *target_texts]
     save_animation_blit(fig, artists, anim_path, T, fps=fps, update_fn=update_fn)
