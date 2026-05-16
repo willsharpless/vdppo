@@ -1,0 +1,85 @@
+name: jaxrl-mac-mps
+channels:
+  - conda-forge
+  - defaults
+dependencies:
+  - python=3.13
+  - pip
+  - pip:
+      # jax-mps documents Python 3.13 installation and warns that mismatched
+      # jaxlib versions are likely to fail at JIT compile time.
+      - jax==0.10.0
+      - jaxlib==0.10.0
+      - jax-mps==0.10.0
+
+      # JAX ecosystem
+      - flax==0.12.0
+      - optax==0.2.6
+      - chex==0.1.91
+      - jaxopt==0.8.5
+      - orbax-checkpoint==0.11.31
+
+      # RL / envs
+      - brax==0.14.0
+      - gymnax==0.0.9
+      - gymnasium==1.2.3
+      - mujoco==3.4.0
+      - mujoco-mjx==3.4.0
+      - dm-control
+      - ogbench
+
+      # Scientific / numerics
+      - numpy==2.4.1
+      - scipy==1.17.0
+
+      # Utilities
+      - distrax==0.1.7
+      - tfp-nightly==0.26.0.dev20260113
+      - einops==0.8.1
+      - jax_dataclasses==1.6.3
+      - jaxtyping==0.3.5
+
+      # Visualization / media
+      - matplotlib==3.10.8
+      - seaborn==0.13.2
+      - imageio==2.37.2
+      - imageio-ffmpeg==0.6.0
+      - moviepy
+      - colour==0.1.5
+      - glfw==2.10.0
+      - Pillow
+      - opencv-python
+
+      # Logging / CLI
+      - wandb==0.23.1
+      - tensorboardX==2.6.4
+      - sentry-sdk==2.49.0
+      - cyclopts==4.4.5
+      - loguru==0.7.3
+      - ipdb==0.13.13
+      - ipython==9.9.0
+      - tqdm==4.67.1
+      - requests
+      - absl-py
+      - etils
+
+      # Data / parsing
+      - attrs==25.4.0
+      - PyYAML==6.0.3
+      - lxml
+      - cattrs
+
+      # NLP / naming utilities
+      - nltk==3.9.2
+      - wordfreq==3.1.1
+
+      # Script-specific extras
+      - emoji
+      - cairosvg
+      - rosbags
+      - segment-anything
+      - warp-lang
+
+      # Git dependencies
+      - git+https://github.com/oswinso/lovely_histogram.git@90d4e086121a09fb5df6560cc3ac695006540ed2
+      - git+https://github.com/willsharpless/valtr.git@c6f6550f156297c3bc30135e80da79f12aaccf51

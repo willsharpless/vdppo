@@ -1,0 +1,85 @@
+name: jaxrl-mac-metal
+channels:
+  - conda-forge
+  - defaults
+dependencies:
+  - python=3.10
+  - pip
+  - pip:
+      # Apple's published compatibility table for jax-metal 0.1.1 starts at jaxlib 0.4.34.
+      # Pinning jax==jaxlib avoids PJRT compatibility shims.
+      - jax==0.4.34
+      - jaxlib==0.4.34
+      - jax-metal==0.1.1
+
+      # JAX ecosystem
+      - flax
+      - optax
+      - chex
+      - jaxopt
+      - orbax-checkpoint
+
+      # RL / envs
+      - brax
+      - gymnax
+      - gymnasium
+      - mujoco
+      - mujoco-mjx
+      - dm-control
+      - ogbench
+
+      # Scientific / numerics
+      - numpy==1.26.4
+      - scipy==1.11.4
+
+      # Utilities
+      - distrax
+      - tfp-nightly==0.26.0.dev20260113
+      - einops==0.8.1
+      - jax_dataclasses
+      - jaxtyping
+
+      # Visualization / media
+      - matplotlib==3.10.8
+      - seaborn==0.13.2
+      - imageio==2.37.2
+      - imageio-ffmpeg==0.6.0
+      - moviepy
+      - colour==0.1.5
+      - glfw==2.10.0
+      - Pillow
+      - opencv-python
+
+      # Logging / CLI
+      - wandb==0.23.1
+      - tensorboardX==2.6.4
+      - sentry-sdk==2.49.0
+      - cyclopts==4.4.5
+      - loguru==0.7.3
+      - ipdb==0.13.13
+      - ipython==9.9.0
+      - tqdm==4.67.1
+      - requests
+      - absl-py
+      - etils
+
+      # Data / parsing
+      - attrs==25.4.0
+      - PyYAML==6.0.3
+      - lxml
+      - cattrs
+
+      # NLP / naming utilities
+      - nltk==3.9.2
+      - wordfreq==3.1.1
+
+      # Script-specific extras
+      - emoji
+      - cairosvg
+      - rosbags
+      - segment-anything
+      - warp-lang
+
+      # Git dependencies
+      - git+https://github.com/oswinso/lovely_histogram.git@90d4e086121a09fb5df6560cc3ac695006540ed2
+      - git+https://github.com/willsharpless/valtr.git@c6f6550f156297c3bc30135e80da79f12aaccf51
