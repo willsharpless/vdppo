@@ -18,12 +18,12 @@ pip install -e .
 
 ### run, eg.
 ```
-python scripts/train.py ALG --name test30k --debug --env-name ENV --n-train-steps 30000
+python scripts/train.py ALG --name test --debug --env-name ENV --n-train-steps 30000
 ```
-where `ALG` is for example `vdppo` or `lcrl`, and `ENV` is for example `herding`, `delivery`, `deliveryreal` or `ablation`.
+where `ALG` is, for example, `vdppo`, `lcrl` or `mppi`. `ENV` is for example `herding`, `delivery` (sim), `deliveryreal` (hardware), `manip_scene`, `gridworld_map[N]` or `ablation`. Use the `--help` flag to see more options.
 
 ### testing
 
-If you'd like to make your own env, see `herd_base.py`. Here, dynamics/step, reset, obs and basic predicates are defined. Note, there is also a wrapper for each env, eg. `herding.py`. See `get_env.py` for env registration.
+If you'd like to make your own env, see `herd_base.py` (which defines `HerdBase` from `BaseEnv`). Here, dynamics/step, reset, obs and basic predicates are defined. Note, there is also a wrapper for each env, eg. `herding.py`. See `get_env.py` for env registration.
 
 If you'd like to mess with the training, see the training agent classes, eg. `vdppo.py`.
