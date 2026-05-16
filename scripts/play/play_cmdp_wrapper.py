@@ -6,7 +6,7 @@ from rraa_rl.env.general_task.get_env import get_env_and_cbs
 
 
 def main():
-    env_name = "herdos"
+    env_name = "herding"
     env, _, _ = get_env_and_cbs(env_name, agent_name="vd")
     cfg = CMDPEnvWrapper.Cfg()
     env_cmdp = CMDPEnvWrapper(cfg, env)

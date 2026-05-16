@@ -71,7 +71,7 @@ def cmdp(
 def lcrl(
     name: str | None = None,
     debug: bool = False,
-    env_name: str = "HerdOs",
+    env_name: str = "Herding",
     seed: int = 123,
     trainer_cfg: TrainerCfg = TrainerCfg(),
     n_agent: int = 1,

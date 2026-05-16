@@ -13,12 +13,12 @@ from rraa_rl.env.general_task.herd_base import HerdBase, HerdBaseCfg, HerdingHer
 
 
 @define(slots=False)
-class HerdOsCfg(EnvCfg, StaticTemporalNodeMixinCfg):
+class HerdingCfg(EnvCfg, StaticTemporalNodeMixinCfg):
     specification: str = "F G herd_herded"
     base: HerdingHerdCfg = HerdBaseCfg()
 
 
-class HerdOs(StaticTemporalNodeMixin, EnvUsingBase):
+class Herding(StaticTemporalNodeMixin, EnvUsingBase):
     """Herding environment with one or more herders and a herd of agents. The herd moves according to some fixed policy.
     The herders can influence the herd by moving around them.
 
@@ -31,10 +31,10 @@ class HerdOs(StaticTemporalNodeMixin, EnvUsingBase):
     action: (n_herders, 2): int, {0, 1, 2} for each axis, where 0 = -accel, 1 = no accel, 2 = accel
     """
 
-    Cfg = HerdOsCfg
+    Cfg = HerdingCfg
     State = StateWithTemporalNode[HerdingHerd.State]
 
-    def __init__(self, cfg: HerdOsCfg = HerdOsCfg()):
+    def __init__(self, cfg: HerdingCfg = HerdingCfg()):
         self.cfg = cfg
         base_env = HerdingHerd(cfg.base, should_term_fn=self.should_terminate)
         EnvUsingBase.__init__(self, cfg, self.specification, base_env)
@@ -69,19 +69,19 @@ class HerdOs(StaticTemporalNodeMixin, EnvUsingBase):
 
 
 # @define(slots=False)
-# class HerdOsPlayCfg(EnvCfg, StaticTemporalNodeMixinCfg):
+# class HerdingPlayCfg(EnvCfg, StaticTemporalNodeMixinCfg):
 #     specification: str = "F herder_c1 && F herder_c2 && G(!herder_oob) && G(!herder_collide)"
 #
 #     base: HerdBasePlayCfg = HerdBasePlayCfg()
 #
 #
-# class HerdOsPlay(StaticTemporalNodeMixin, EnvUsingBase):
-#     """HerdOs but for playing around."""
+# class HerdingPlay(StaticTemporalNodeMixin, EnvUsingBase):
+#     """Herding but for playing around."""
 #
-#     Cfg = HerdOsCfg
+#     Cfg = HerdingCfg
 #     State = StateWithTemporalNode
 #
-#     def __init__(self, cfg: HerdOsPlayCfg = HerdOsPlayCfg()):
+#     def __init__(self, cfg: HerdingPlayCfg = HerdingPlayCfg()):
 #         self.cfg = cfg
 #         base_env = HerdBasePlay(cfg.base, should_term_fn=self.should_terminate)
 #         EnvUsingBase.__init__(self, cfg, self.specification, base_env)

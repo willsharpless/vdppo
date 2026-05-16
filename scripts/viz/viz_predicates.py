@@ -13,12 +13,12 @@ from rraa_rl.common.jax_utils import jax_vmap
 from rraa_rl.env.general_task.env import StateWithTemporalNode
 from rraa_rl.env.general_task.get_env import get_env
 from rraa_rl.env.general_task.herd_base import HerdBaseState
-from rraa_rl.env.general_task.herd_os import HerdOs
+from rraa_rl.env.general_task.herding import Herding
 from rraa_rl.rl.utils.utils import get_BuRd_smooth
 
 
 def main():
-    env: HerdOs = get_env("herdos_dbg")
+    env: Herding = get_env("herding_dbg")
     cfg = env.cfg.base
     halfsize = cfg.halfsize
 

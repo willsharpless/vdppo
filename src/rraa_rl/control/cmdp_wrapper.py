@@ -230,7 +230,7 @@ class CMDPEnvWrapper(Env):
         self.cfg = cfg
 
         dag_builder, dag_root = to_dag_notransform(
-            env.specification, ir_filename="dags/herd_os_ir", dag_filename="dags/cmdp"
+            env.specification, ir_filename="dags/herding_ir", dag_filename="dags/cmdp"
         )
         self.dag_nodes_notrans = dag_builder.nodes
         self.dag_root_notrans = dag_root

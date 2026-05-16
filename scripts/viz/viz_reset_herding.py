@@ -4,16 +4,16 @@ import jax.random as jr
 import matplotlib.pyplot as plt
 from cyclopts import App
 
-from rraa_rl.callbacks import herd_os_cbs
+from rraa_rl.callbacks import herding_cbs
 from rraa_rl.env.general_task.env import Env
 from rraa_rl.env.general_task.get_env import get_env
-from rraa_rl.env.general_task.herd_os import HerdOs, HerdOsPlay
+from rraa_rl.env.general_task.herding import Herding, HerdingPlay
 from rraa_rl.training.trainer import Trainer
 from rraa_rl.agents.vd_mappo import VDMAPPOAgent
 
 
 def main():
-    env: HerdOs = get_env("HerdOs")
+    env: Herding = get_env("Herding")
 
     agent_radius = env.cfg.base.agent_radius
 

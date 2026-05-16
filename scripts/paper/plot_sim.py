@@ -22,7 +22,7 @@ def main():
         # "gridworld_map5":,
         # "gridworld_map6":,
         # "gridworld_map7":,
-        "herdos": [("root", "Overall"), ("safety", "Safety"), ("herded", "Herded")],
+        "herding": [("root", "Overall"), ("safety", "Safety"), ("herded", "Herded")],
         "delivery": [
             ("root", "Overall"),
             ("safety", "Safety"),

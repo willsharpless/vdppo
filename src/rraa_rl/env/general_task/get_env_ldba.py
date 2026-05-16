@@ -1,6 +1,6 @@
 import jax.numpy as jnp
 
-from rraa_rl.callbacks import ablation_cbs, delivery_cbs, gridworld_cbs, herd_os_cbs
+from rraa_rl.callbacks import ablation_cbs, delivery_cbs, gridworld_cbs, herding_cbs
 # from rraa_rl.env.scene import ManipScene
 from rraa_rl.common.jax_utils import tree_stack
 from rraa_rl.lcrl.lcrl_wrapper import LCRLEnvCfg, LCRLWrapper
@@ -9,16 +9,16 @@ from rraa_rl.env.general_task.delivery import Delivery, DeliveryBase, DeliveryBa
 from rraa_rl.env.general_task.env import Env
 from rraa_rl.env.general_task.gridworld import GridworldMA, GridworldMACfg, GridworldMap
 from rraa_rl.env.general_task.herd_base import HerdingHerdCfg
-from rraa_rl.env.general_task.herd_os import HerdOs
+from rraa_rl.env.general_task.herding import Herding
 
 
 def get_env_ldba(env_name: str, n_spec: int = 1, n_agent: int = 1) -> tuple[Env, list, list]:
 
-    if env_name == "herdos":
+    if env_name == "herding":
         return create_herding_ldba()
 
-    elif env_name == "herdos_dbg":
-        # cfg = get_cfg_herdos()
+    elif env_name == "herding_dbg":
+        # cfg = get_cfg_herding()
 
         # # 1 herder, 1 herd for easy viz.
         # cfg.base.n_herd = 1
@@ -26,9 +26,9 @@ def get_env_ldba(env_name: str, n_spec: int = 1, n_agent: int = 1) -> tuple[Env,
         # cfg.base.acc_maxs = [2.0]
         # cfg.base.vel_maxs = [1.0]
 
-        # env = HerdOs(cfg)
+        # env = Herding(cfg)
         # cbs = herd_eval_cbs, herd_collect_cbs
-        raise NotImplementedError("""HerdOsDbg environment is not implemented in this snippet.""")
+        raise NotImplementedError("""HerdingDbg environment is not implemented in this snippet.""")
 
     # elif env_name == "gridworld_map0":
 

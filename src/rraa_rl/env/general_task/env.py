@@ -153,7 +153,7 @@ class EnvCfg:
 class Env(Generic[_EnvState, _Obs]):
     def __init__(self, cfg: EnvCfg, specification: str):
         self.cfg = cfg
-        dag_builder, dag_root = to_dag(specification, ir_filename="dags/herd_os_ir", dag_filename="dags/herd_os_dag")
+        dag_builder, dag_root = to_dag(specification, ir_filename="dags/herding_ir", dag_filename="dags/herding_dag")
         self.dag_nodes = dag_builder.nodes
         self.dag_root = dag_root
         self.pred_info = collect_predicate_info(self.dag_nodes, self.dag_root)

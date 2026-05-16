@@ -26,7 +26,7 @@ def main(
         "gridworld_map5",
         "gridworld_map6",
         "gridworld_map7",
-        "herdos",
+        "herding",
         "delivery",
         # "manip_scene",
         "ablation",

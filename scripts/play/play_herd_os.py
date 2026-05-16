@@ -7,12 +7,12 @@ import numpy as np
 from matplotlib.animation import FuncAnimation
 
 from rraa_rl.env.general_task.env import StateWithTemporalNode
-from rraa_rl.env.general_task.herd_os import HerdOs, HerdOsCfg
+from rraa_rl.env.general_task.herding import Herding, HerdingCfg
 
 
 def main():
-    cfg_os = HerdOsCfg()
-    env = HerdOs(cfg_os)
+    cfg_os = HerdingCfg()
+    env = Herding(cfg_os)
 
     cfg = cfg_os.base
 
@@ -81,7 +81,7 @@ def main():
         return herd_circs + herder_circs + [kk_text]
 
     anim = FuncAnimation(fig, update, frames=len(env_states), init_func=init, blit=True)
-    anim.save("herd_os_rollout.mp4", fps=10, dpi=200)
+    anim.save("herding_rollout.mp4", fps=10, dpi=200)
     plt.close(fig)
 
 

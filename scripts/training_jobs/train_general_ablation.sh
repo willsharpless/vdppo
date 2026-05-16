@@ -2,7 +2,7 @@
 
 alg=${1:-vd}  # Use first argument, default to 'vd'
 GPU_ID=${2:-0}
-env_name=${3:-herdos}
+env_name=${3:-herding}
 shared_trunk_actor=${4:-True}
 shared_trunk_value=${5:-True}
 

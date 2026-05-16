@@ -27,7 +27,7 @@ def get_vd_agent_cfg(env_name: str):
     cfg.n_envs_train = 4096
     cfg.actor_shared_trunk = True
 
-    if env_name == "herdos":
+    if env_name == "herding":
         pass
 
     if env_name == "gridworld_map1":

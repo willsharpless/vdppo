@@ -15,13 +15,13 @@ from rraa_rl.callbacks.ablation_cbs import animate_ablation_traj
 from rraa_rl.training.collector import Collector
 from rraa_rl.training.eval_results import get_eval_label, get_eval_results_path, has_eval_results, save_eval_results
 from rraa_rl.callbacks.gridworld_cbs import animate_gridworld_traj
-from rraa_rl.callbacks.herd_os_cbs import animate_herding_traj
+from rraa_rl.callbacks.herding_cbs import animate_herding_traj
 from rraa_rl.training.load_ckpt import load_ckpt
 from rraa_rl.control.MPPI import init_mppi
 from rraa_rl.training.rollout_temporal_analysis import (get_ltl_finite_values_rollout)
 from rraa_rl.training.rollout_utils import extract_rollouts_eval
 from rraa_rl.env.general_task.delivery_base import DeliveryBase
-from rraa_rl.env.general_task.herd_os import HerdOs
+from rraa_rl.env.general_task.herding import Herding
 from rraa_rl.agents.vd_mappo import VDMAPPOAgent
 
 app = cyclopts.App()
@@ -30,7 +30,7 @@ app = cyclopts.App()
 @app.default()
 def eval(
     alg: str = "vd",
-    env_name: str = "herdos",
+    env_name: str = "herding",
     ablation_type: str = "spec",
     seed: int = 123,
     n_envs_test: int = 128,
@@ -105,7 +105,7 @@ def eval(
                     f"{env_name}_{alg}_spc{n_spec}_ag{n_agent}_seed{mppi_seed}" for mppi_seed in range(n_seeds)
                 ]
             else:
-                # For normal, alg_env_path is like `thank_herdos_vd_seed1`
+                # For normal, alg_env_path is like `thank_herding_vd_seed1`
                 alg_env_paths = [f"{env_name}_{alg}_seed{mppi_seed}" for mppi_seed in range(n_seeds)]
 
         if alg != "mppi" and missing_run:
@@ -262,10 +262,10 @@ def eval(
 
                     # get bad traj data
                     traj = b_trajs[ix]
-                    cfg: HerdOs.Cfg = env.cfg
+                    cfg: Herding.Cfg = env.cfg
                     qual_tag = "bad" if b_values_root[ix] < 0 else "good"
 
-                    T_state: HerdOs.State = traj.state_now
+                    T_state: Herding.State = traj.state_now
 
                     # anim output
                     if alg != "mppi":
@@ -284,7 +284,7 @@ def eval(
                             f"Temporal {t_node_idx} ({env.temporal_node_names[t_node_idx]})"
                             for t_node_idx in T_state.temporal_node_idx
                         ]
-                        if env_name == "herdos":
+                        if env_name == "herding":
                             animate_herding_traj(anim_path, cfg.base, T_pos_herd, T_pos_herder, None, T_labels)
                         elif is_ablation:
                             animate_ablation_traj(anim_path, env, cfg.base, T_pos_herder, None, T_labels)

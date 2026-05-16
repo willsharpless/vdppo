@@ -7,10 +7,10 @@ from valtr.reachability import (DAGAvoid, DAGConst, DAGGUMinN, DAGGUSingle, DAGI
 
 from rraa_rl.training.collector import RolloutOutput
 from rraa_rl.env.general_task.env import DAGTransition, get_rules
-from rraa_rl.env.general_task.herd_os import HerdOs
+from rraa_rl.env.general_task.herding import Herding
 
 
-def evaluate_triggers(env: HerdOs, trajs: list[RolloutOutput]) -> dict:
+def evaluate_triggers(env: Herding, trajs: list[RolloutOutput]) -> dict:
     triggers_dict = {}
     for ii, traj in enumerate(trajs):
         triggers = get_rules(env.temporal_nodes, env.dag_nodes, traj.predicates_next)
@@ -25,7 +25,7 @@ def evaluate_triggers(env: HerdOs, trajs: list[RolloutOutput]) -> dict:
     return triggers_dict
 
 
-def evaluate_ltl_finite(env: HerdOs, T_pred: dict[str, np.ndarray], which=jnp):
+def evaluate_ltl_finite(env: Herding, T_pred: dict[str, np.ndarray], which=jnp):
     dag_nodes = env.dag_nodes
     dag_root = env.dag_root
 

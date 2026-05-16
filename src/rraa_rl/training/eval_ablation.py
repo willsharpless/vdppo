@@ -11,14 +11,13 @@ from loguru import logger
 
 from rraa_rl.training.collector import Collector
 from rraa_rl.callbacks.deliveryreal_cbs import animate_deliveryreal_traj
-from rraa_rl.callbacks.herd_os_cbs import animate_herding_traj
+from rraa_rl.callbacks.herding_cbs import animate_herding_traj
 from rraa_rl.callbacks.ablation_cbs import animate_ablation_traj
 from rraa_rl.callbacks.gridworld_cbs import animate_gridworld_traj
 from rraa_rl.training.rollout_temporal_analysis import evaluate_ltl_finite
 from rraa_rl.training.load_ckpt import load_ckpt
 from rraa_rl.training.rollout_utils import extract_rollouts_eval
-from rraa_rl.env.general_task.deliveryreal import DeliveryReal
-from rraa_rl.env.general_task.herd_os import HerdOs
+from rraa_rl.env.general_task.herding import Herding
 from rraa_rl.agents.vd_mappo import VDMAPPOAgent
 from rraa_rl.control.MPPI import init_mppi
 import json
@@ -29,7 +28,7 @@ app = cyclopts.App()
 @app.default()
 def eval(
     alg: str = "vd",
-    env_name: str = "herdos",
+    env_name: str = "herding",
     ablation_type: str = "spec",
     seed: int = 123,
     n_envs_test: int = 128,
@@ -123,9 +122,9 @@ def eval(
                         
                         # get bad traj data
                         traj = b_trajs[ix]
-                        cfg: HerdOs.Cfg = env.cfg
+                        cfg: Herding.Cfg = env.cfg
 
-                        T_state: HerdOs.State = traj.state_now
+                        T_state: Herding.State = traj.state_now
 
                         # anim output
                         if alg != "mppi":
@@ -143,7 +142,7 @@ def eval(
                             T_labels = [
                                 f"Temporal {t_node_idx} ({env.temporal_node_names[t_node_idx]})" for t_node_idx in T_state.temporal_node_idx
                             ]
-                            if env_name == "herdos":
+                            if env_name == "herding":
                                 animate_herding_traj(anim_path, cfg.base, T_pos_herd, T_pos_herder, None, T_labels)
                             elif "ablation" in env_name:
                                 animate_ablation_traj(anim_path, env, cfg.base, T_pos_herder, None, T_labels)

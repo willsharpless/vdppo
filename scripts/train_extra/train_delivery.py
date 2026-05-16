@@ -82,7 +82,7 @@ def main(
         delivery_cbs.plot_eval_trajs,
         delivery_cbs.VizValues.create(),
     ]
-    # eval_cbs = [herd_os_cbs.plot_eval_trajs, VizValues.create()]
+    # eval_cbs = [herding_cbs.plot_eval_trajs, VizValues.create()]
     collect_cbs = [delivery_cbs.viz_collect_data, delivery_cbs.viz_obs_histogram]
 
     env_name = type(env).__name__

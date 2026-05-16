@@ -1,6 +1,6 @@
 import jax.numpy as jnp
 
-from rraa_rl.callbacks import ablation_cbs, delivery_cbs, deliveryreal_cbs, deliveryrealv2_cbs, gridworld_cbs, herd_os_cbs
+from rraa_rl.callbacks import ablation_cbs, delivery_cbs, deliveryreal_cbs, deliveryrealv2_cbs, gridworld_cbs, herding_cbs
 from rraa_rl.control.cmdp_wrapper import CMDPEnvWrapper
 from rraa_rl.common.jax_utils import tree_stack
 from rraa_rl.lcrl.lcrl_wrapper import LCRLEnvCfg, LCRLWrapper
@@ -9,7 +9,7 @@ from rraa_rl.env.general_task.delivery import Delivery, DeliveryBase, DeliveryBa
 from rraa_rl.env.general_task.env import Env
 from rraa_rl.env.general_task.gridworld import GridworldMA, GridworldMACfg, GridworldMap
 from rraa_rl.env.general_task.herd_base import HerdingHerdCfg
-from rraa_rl.env.general_task.herd_os import HerdOs
+from rraa_rl.env.general_task.herding import Herding
 from rraa_rl.env.general_task.delivery import DeliveryBase, DeliveryBaseCfg, Delivery, DeliveryCfg
 from rraa_rl.env.general_task.deliveryreal import DeliveryRealBase, DeliveryRealBaseCfg, DeliveryReal, DeliveryRealCfg
 from rraa_rl.env.general_task.deliveryrealv2 import DeliveryRealv2Base, DeliveryRealv2BaseCfg, DeliveryRealv2, DeliveryRealv2Cfg
@@ -18,7 +18,7 @@ import ipdb
 from loguru import logger
 
 
-def get_cfg_herdos():
+def get_cfg_herding():
     # specification = "F G herd_herded && G !herder_oob"
     # fmt: off
     # spec = "G(!herder_unsafe) && (F G (herd_herded) && F( herd_gate_1 )"
@@ -56,7 +56,7 @@ def get_cfg_herdos():
 
     base_cfg.trunc_steps = 150
 
-    cfg = HerdOs.Cfg(specification=spec, base=base_cfg)
+    cfg = Herding.Cfg(specification=spec, base=base_cfg)
     cfg.eval_T = 512
     return cfg, spec
 
@@ -67,14 +67,14 @@ def get_env_and_cbs(
     env_name = env_name.lower()
 
     herd_eval_cbs = [
-        herd_os_cbs.env_layout_plot,
-        herd_os_cbs.animate_eval_trajs,
-        herd_os_cbs.PlotRootTrajPreds.create(),
-        herd_os_cbs.plot_eval_trajs,
+        herding_cbs.env_layout_plot,
+        herding_cbs.animate_eval_trajs,
+        herding_cbs.PlotRootTrajPreds.create(),
+        herding_cbs.plot_eval_trajs,
     ]
     herd_collect_cbs = []
     if agent_name == 'lcrl':
-        herd_eval_cbs = [herd_os_cbs.animate_eval_trajs_multi_agent_LDBA]
+        herd_eval_cbs = [herding_cbs.animate_eval_trajs_multi_agent_LDBA]
 
     gridworld_eval_cbs = [gridworld_cbs.animate_eval_trajs, gridworld_cbs.VizValues.create()]
     gridworld_collect_cbs = [gridworld_cbs.collect_cb]
@@ -132,19 +132,19 @@ def get_env_and_cbs(
     manip_eval_cbs = []
     manip_collect_cbs = []
 
-    if env_name == "herdos":
-        cfg, spec = get_cfg_herdos()
-        env = HerdOs(cfg)
+    if env_name == "herding":
+        cfg, spec = get_cfg_herding()
+        env = Herding(cfg)
         cbs = herd_eval_cbs, herd_collect_cbs
 
-    elif env_name == "herdos_hardware":
-        cfg, spec = get_cfg_herdos()
+    elif env_name == "herding_hardware":
+        cfg, spec = get_cfg_herding()
         cfg.base.wall_thick_x = 0.95
-        env = HerdOs(cfg)
+        env = Herding(cfg)
         cbs = herd_eval_cbs, herd_collect_cbs
 
-    elif env_name == "herdos_dbg":
-        cfg, spec = get_cfg_herdos()
+    elif env_name == "herding_dbg":
+        cfg, spec = get_cfg_herding()
 
         # 1 herder, 1 herd for easy viz.
         cfg.base.n_herd = 1
@@ -152,7 +152,7 @@ def get_env_and_cbs(
         cfg.base.acc_maxs = [2.0]
         cfg.base.vel_maxs = [1.0]
 
-        env = HerdOs(cfg)
+        env = Herding(cfg)
         cbs = herd_eval_cbs, herd_collect_cbs
 
     elif env_name == "gridworld_map1_r":

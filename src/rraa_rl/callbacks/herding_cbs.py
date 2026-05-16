@@ -19,7 +19,7 @@ from rraa_rl.callbacks.gridworld_cbs import save_animation_blit
 from rraa_rl.common.jax_utils import jax_vmap, rep_vmap
 from rraa_rl.env.general_task.env import AugObs
 from rraa_rl.env.general_task.herd_base import HerdingHerd, HerdingHerdCfg
-from rraa_rl.env.general_task.herd_os import HerdOs
+from rraa_rl.env.general_task.herding import Herding
 from rraa_rl.rl.utils.utils import get_BuRd_smooth
 from rraa_rl.training.trainer import CallbackProps
 from rraa_rl.agents.vd_mappo import PPOData, VDMAPPOAgent
@@ -142,7 +142,7 @@ def plot_eval_trajs(p: CallbackProps):
     n_temporal_nodes = env.n_temporal_nodes
     ncol = n_temporal_nodes
 
-    bT_states: list[HerdOs.State] = [traj.state_now for traj in p.bT_test_rollouts]
+    bT_states: list[Herding.State] = [traj.state_now for traj in p.bT_test_rollouts]
     b_temporal_idx = np.array([T_state.temporal_node_idx[0] for T_state in bT_states])
 
     # Count how many trajectories each temporal node has.
@@ -177,7 +177,7 @@ def plot_eval_trajs(p: CallbackProps):
         for traj in p.bT_test_rollouts[start_idx:end_idx]:
             (T,) = traj.shape
 
-            T_state: HerdOs.State = traj.state_now
+            T_state: Herding.State = traj.state_now
             T_herder_pos = T_state.base.herder_state[:, 0, :2]
             assert T_herder_pos.shape == (T, 2)
 
@@ -210,7 +210,7 @@ def plot_eval_trajs(p: CallbackProps):
 
 def env_layout_plot(p: CallbackProps):
     plots_dir = p.run.plots_dir
-    env: HerdOs = p.env
+    env: Herding = p.env
     cfg = env.base.cfg
 
     n_temporal_nodes = env.n_temporal_nodes
@@ -252,7 +252,7 @@ def env_layout_plot(p: CallbackProps):
                 herds[(ii, jj)] = circs
 
         batch_idxs: dict[tuple[int, int], int] = {}
-        bT_states: list[HerdOs.State] = [traj.state_now for traj in bT_test_rollouts]
+        bT_states: list[Herding.State] = [traj.state_now for traj in bT_test_rollouts]
         b_temporal_idx = np.array([T_state.temporal_node_idx[0] for T_state in bT_states])
         temporal_node_count = np.array([np.sum(b_temporal_idx == ii) for ii in range(n_temporal_nodes)])
         offsets = np.array([0, *np.cumsum(temporal_node_count)])
@@ -263,7 +263,7 @@ def env_layout_plot(p: CallbackProps):
         for ii in range(1):
             for jj in range(1):
                 traj = bT_test_rollouts[batch_idx]
-                T_state: HerdOs.State = traj.state_now
+                T_state: Herding.State = traj.state_now
                 T_herder_pos = T_state.base.herder_state[:, :, :2]
                 circs = agent_collections[(ii, jj)]
                 for agent_idx, circ in enumerate(circs):
@@ -285,7 +285,7 @@ def env_layout_plot(p: CallbackProps):
 
 
 def animate_eval_trajs(p: CallbackProps):
-    env: HerdOs = p.env
+    env: Herding = p.env
     if env.n_agents == 1:
         animate_eval_trajs_single_agent(p)
     else:
@@ -299,7 +299,7 @@ def animate_eval_trajs_single_agent(p: CallbackProps):
     n_temporal_nodes = env.n_temporal_nodes
     ncol = n_temporal_nodes
 
-    bT_states: list[HerdOs.State] = [traj.state_now for traj in p.bT_test_rollouts]
+    bT_states: list[Herding.State] = [traj.state_now for traj in p.bT_test_rollouts]
     b_temporal_idx = np.array([T_state.temporal_node_idx[0] for T_state in bT_states])
 
     T_max = max(traj.shape[0] for traj in p.bT_test_rollouts)
@@ -409,7 +409,7 @@ def animate_eval_trajs_single_agent(p: CallbackProps):
 
                 for jj, traj in enumerate(trajs):
                     (T,) = traj.shape
-                    T_state: HerdOs.State = traj.state_now
+                    T_state: Herding.State = traj.state_now
                     T_herder_pos = T_state.base.herder_state[:, 0, :2]
 
                     t_idx = min(kk, T - 1)
@@ -458,7 +458,7 @@ def animate_eval_trajs_single_agent(p: CallbackProps):
 
 def animate_eval_trajs_multi_agent(p: CallbackProps):
     plots_dir = p.run.plots_dir
-    env: HerdOs = p.env
+    env: Herding = p.env
     cfg = env.base.cfg
 
     n_traj_anim = 8
@@ -467,7 +467,7 @@ def animate_eval_trajs_multi_agent(p: CallbackProps):
 
     bT_test_rollouts = p.bT_test_rollouts
 
-    bT_states: list[HerdOs.State] = [traj.state_now for traj in bT_test_rollouts]
+    bT_states: list[Herding.State] = [traj.state_now for traj in bT_test_rollouts]
     b_temporal_idx = np.array([T_state.temporal_node_idx[0] for T_state in bT_states])
 
     temporal_node_count = np.array([np.sum(b_temporal_idx == ii) for ii in range(n_temporal_nodes)])
@@ -590,7 +590,7 @@ def animate_eval_trajs_multi_agent(p: CallbackProps):
                     batch_idx = batch_idxs[ii, jj]
                     traj = bT_test_rollouts[batch_idx]
                     (T,) = traj.shape
-                    T_state: HerdOs.State = traj.state_now
+                    T_state: Herding.State = traj.state_now
                     T_herder_pos = T_state.base.herder_state[:, :, :2]
 
                     t_idx = min(kk, T - 1)
@@ -695,7 +695,7 @@ class PlotRootTrajPreds(struct.PyTreeNode):
                 T_reach_vals = bTt_reach_vals[bb, :traj_len, ii]
                 ax.plot(T_reach_vals)
 
-            T_state: HerdOs.State = trajs[bb].state_now
+            T_state: Herding.State = trajs[bb].state_now
             T_temporal_node_idx = T_state.temporal_node_idx
 
             ax = axes[-1]
@@ -740,13 +740,13 @@ def viz_collect_data(p: CallbackProps):
     cfg_agent = agent.cfg
 
     # Find rollouts where the target is larger than 2, figure out why...
-    Tb_state: HerdOs.State = Tb_rollout.state_now
+    Tb_state: Herding.State = Tb_rollout.state_now
     bT_A, bT_Q, bT_temporal_idx = agent.compute_A_Q(Tb_rollout, debug=True)
 
     b_Q = b_data.Q
     n_temporal_nodes = env.n_temporal_nodes
     # ---------------------------------------------------------------
-    b_state: HerdOs.State = b_data.state
+    b_state: Herding.State = b_data.state
     b_pos = b_state.base.herder_state[:, 0, :2]
 
     b_temporal_idx = b_state.temporal_node_idx
@@ -878,7 +878,7 @@ def animate_herding_traj(
     fig.tight_layout()
 
     def update_fn(kk: int):
-        # T_state: HerdOs.State = traj.state_now
+        # T_state: Herding.State = traj.state_now
         # n_pos_herd = T_state.base.herd_state[kk, :, :2]
         # n_pos_herder = T_state.base.herder_state[kk, :, :2]
         # temporal_node_idx = T_state.temporal_node_idx[kk]
@@ -917,7 +917,7 @@ def animate_herding_traj(
 
 def animate_eval_trajs_multi_agent_LDBA(p: CallbackProps):
     plots_dir = p.run.plots_dir
-    env: HerdOs = p.env
+    env: Herding = p.env
     cfg = env.base.cfg
 
     n_traj_anim = 5
@@ -927,7 +927,7 @@ def animate_eval_trajs_multi_agent_LDBA(p: CallbackProps):
 
     bT_test_rollouts = p.bT_test_rollouts
 
-    bT_states: list[HerdOs.State] = [traj.state_now for traj in bT_test_rollouts]
+    bT_states: list[Herding.State] = [traj.state_now for traj in bT_test_rollouts]
     b_temporal_idx = np.array([T_state.ldba_state.state[0] for T_state in bT_states])
 
     temporal_node_count = np.array([np.sum(b_temporal_idx == ii) for ii in range(n_temporal_nodes)])
@@ -1050,7 +1050,7 @@ def animate_eval_trajs_multi_agent_LDBA(p: CallbackProps):
                     batch_idx = batch_idxs[ii, jj]
                     traj = bT_test_rollouts[batch_idx]
                     (T,) = traj.shape
-                    T_state: HerdOs.State = traj.state_now
+                    T_state: Herding.State = traj.state_now
                     T_herder_pos = T_state.base.herder_state[:, :, :2]
 
                     t_idx = min(kk, T - 1)
