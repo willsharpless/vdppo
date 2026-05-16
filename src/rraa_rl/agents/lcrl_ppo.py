@@ -21,7 +21,7 @@ from rraa_rl.training.collector import Collector, RolloutOutput
 from rraa_rl.common.distribution import tfd
 from rraa_rl.common.gae import sum_gae
 from rraa_rl.common.jax_types import FloatScalar, bFloat
-from rraa_rl.lcrl.lcrl_wrapper import LCRLWrapper
+from rraa_rl.automata.lcrl_wrapper import LCRLWrapper
 from rraa_rl.common.nn_modules import BaseObsOnly, IndexAtEnd, SeparateMAMultiDiscretePolicy, VDValue
 from rraa_rl.env.general_task.env import Env
 from rraa_rl.common.train_state import ModuleDict, Params, TrainState

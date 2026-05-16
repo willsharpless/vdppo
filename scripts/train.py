@@ -1,10 +1,12 @@
 import ipdb
+import jax.random as jr
 from cyclopts import App
 
 from rraa_rl.agents.cmdp_ppo import CMDPPOAgent
 from rraa_rl.agents.lcrl_ppo import LCRLPPOAgent
 from rraa_rl.agents.vdppo import VDPPOAgent
-from rraa_rl.lcrl.lcrl_wrapper import LCRLWrapper
+from rraa_rl.automata.lcrl_wrapper import LCRLWrapper
+from rraa_rl.control.MPPI import MPPI
 from rraa_rl.training.run import Run
 from rraa_rl.env.general_task.env import Env
 from rraa_rl.env.general_task.get_env import get_env_and_cbs
@@ -96,6 +98,33 @@ def lcrl(
     env.cfg.random_automata_init = agent_cfg.random_automata_init
 
     return train(name, debug, env_name, seed, trainer_cfg, env, eval_cbs, collect_cbs, agent, run_callbacks)
+
+
+@app.command()
+def mppi(
+    name: str | None = None,
+    debug: bool = False,
+    env_name: str = "Delivery",
+    seed: int = 123,
+    mppi_cfg: MPPI.Cfg = MPPI.Cfg(),
+    n_agent: int = 1,
+    n_spec: int = 1,
+    dense: bool = True,
+    run_callbacks: bool = True,
+):
+    env, eval_cbs, _ = get_env_and_cbs(
+        env_name, agent_name="mppi", n_agent=n_agent, n_spec=n_spec, dense=dense
+    )
+
+    run = Run.create(env_name=env_name.lower(), agent_name="MPPI", name=name, debug=debug)
+    agent = MPPI(env=env, cfg=mppi_cfg, key=jr.PRNGKey(seed))
+
+    if not run_callbacks:
+        eval_cbs = []
+
+    key_base = jr.PRNGKey(seed)
+    _, _, key_eval = jr.split(key_base, 3)
+    agent.eval(run=run, key_eval=key_eval, eval_cbs=eval_cbs, debug=debug)
 
 
 def train(
