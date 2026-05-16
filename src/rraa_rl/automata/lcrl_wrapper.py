@@ -11,7 +11,7 @@ from attrs import define
 from jaxtyping import PRNGKeyArray
 
 from rraa_rl.common.jax_utils import tree_cat
-from rraa_rl.ldba.ldba import LDBA, LDBAState
+from rraa_rl.automata.ldba import LDBA, LDBAState
 from rraa_rl.env.general_task.env import AugObsAutomata, BaseEnv, EnvCfg, EnvStep, EnvUsingBase
 from rraa_rl.common.train_utils import tree_where
 

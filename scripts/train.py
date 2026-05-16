@@ -4,7 +4,7 @@ from cyclopts import App
 from rraa_rl.agents.cmdp_ppo import CMDPPOAgent
 from rraa_rl.agents.lcrl_ppo import LCRLPPOAgent
 from rraa_rl.agents.vdppo import VDPPOAgent
-from rraa_rl.lcrl.lcrl_wrapper import LCRLWrapper
+from rraa_rl.automata.lcrl_wrapper import LCRLWrapper
 from rraa_rl.training.run import Run
 from rraa_rl.env.general_task.env import Env
 from rraa_rl.env.general_task.get_env import get_env_and_cbs

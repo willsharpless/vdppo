@@ -3,8 +3,8 @@ import jax.numpy as jnp
 from rraa_rl.callbacks import ablation_cbs, delivery_cbs, gridworld_cbs, herding_cbs
 # from rraa_rl.env.scene import ManipScene
 from rraa_rl.common.jax_utils import tree_stack
-from rraa_rl.lcrl.lcrl_wrapper import LCRLEnvCfg, LCRLWrapper
-from rraa_rl.ldba.ldba import LDBA, Guard, Transition, parse_ltl2ldba
+from rraa_rl.automata.lcrl_wrapper import LCRLEnvCfg, LCRLWrapper
+from rraa_rl.automata.ldba import LDBA, Guard, Transition, parse_ltl2ldba
 from rraa_rl.env.general_task.delivery import Delivery, DeliveryBase, DeliveryBaseCfg, DeliveryCfg
 from rraa_rl.env.general_task.env import Env
 from rraa_rl.env.general_task.gridworld import GridworldMA, GridworldMACfg, GridworldMap

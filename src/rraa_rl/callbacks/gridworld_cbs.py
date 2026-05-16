@@ -16,9 +16,9 @@ from matplotlib.colors import LinearSegmentedColormap
 from rraa_rl.agents.cmdp_ppo import CMDPPOAgent
 from rraa_rl.common.distribution import tfd
 from rraa_rl.common.jax_utils import jax_vmap
-from rraa_rl.lcrl.lcrl_wrapper import LCRLWrapper
+from rraa_rl.automata.lcrl_wrapper import LCRLWrapper
 from rraa_rl.agents.lcrl_ppo import LCRLPPOAgent
-from rraa_rl.ldba.ldba import LDBAState
+from rraa_rl.automata.ldba import LDBAState
 from rraa_rl.control.cmdp_wrapper import CMDPEnvWrapper
 from rraa_rl.env.general_task.env import AugObs, AugObsAutomata, StateWithTemporalNode
 from rraa_rl.env.general_task.gridworld import GridworldMA, GridworldMABase, GridworldMAState
