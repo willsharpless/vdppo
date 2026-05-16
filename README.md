@@ -12,7 +12,7 @@ This involves distributing rollouts across all nodes and using the corresponding
 
 ### setup
 ```
-conda env create -f make_env.yml  # jax env
+conda env create -f conda/make_env.yml  # jax env
 pip install -e .
 ```
 
