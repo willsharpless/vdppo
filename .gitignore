@@ -4,7 +4,7 @@
 
 *memory_load*
 
-*rraa_rl.egg-info
+*vdppo.egg-info
 
 # Ignore more stuff - 01/25/26
 /.emoji_cache*
@@ -13,37 +13,10 @@
 /valtr/paper/plots/*
 
 # Ignore all experiments
-/rraa_rl/model/hopper_avoid_ceiling/**
-# /model/*
-/model_rebuttal_results/*
-/model_rebuttal_results_NIKHIL/*
-/BASELINE_Hopper_rebuttal/*
-/model_old_results_DELETE/*
-/model_valdec/**
 /dags/**
-
-# Ignore all experiments
-/rraa_rl/exp/**
-
-# except certain files
-!/rraa_rl/exp/safeCartpole_swingup
-!/rraa_rl/exp/safeCartpole_swingup/PPO
-!/rraa_rl/exp/safeCartpole_swingup/PPO/test
-!/rraa_rl/exp/safeCartpole_swingup/PPO/test/**
-
-# render
-/render/figs/*
-/render/gifs/*
-/render/f16_somefigs_061025/*
-/render/gifs/frames/*
-/render/gifs/wonky_traj_frames/*
-
 *.tar.gz
 
 #eval
-# /eval/eval_all/*
-# /eval/eval_all_80725/*
-# /eval/eval_halfcheetah_resetgoal_model/*
 /eval/**
 /model/**
 
