@@ -8,13 +8,13 @@ import jax_dataclasses as jdc
 import matplotlib.pyplot as plt
 import numpy as np
 
-from rraa_rl.common.geometry import AABB, dist_pt_to_aabb
-from rraa_rl.common.jax_utils import jax_vmap
-from rraa_rl.env.general_task.env import StateWithTemporalNode
-from rraa_rl.env.general_task.get_env import get_env
-from rraa_rl.env.general_task.herd_base import HerdBaseState
-from rraa_rl.env.general_task.herding import Herding
-from rraa_rl.common.plot_utils import get_BuRd_smooth
+from vdppo.common.geometry import AABB, dist_pt_to_aabb
+from vdppo.common.jax_utils import jax_vmap
+from vdppo.env.general_task.env import StateWithTemporalNode
+from vdppo.env.general_task.get_env import get_env
+from vdppo.env.general_task.herd_base import HerdBaseState
+from vdppo.env.general_task.herding import Herding
+from vdppo.common.plot_utils import get_BuRd_smooth
 
 
 def main():

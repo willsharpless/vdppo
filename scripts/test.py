@@ -10,14 +10,14 @@ import numpy as np
 from loguru import logger
 from matplotlib.colors import to_rgba
 
-from rraa_rl.training.collector import Collector
-from rraa_rl.callbacks.gridworld_cbs import save_animation_blit
-from rraa_rl.training.load_ckpt import load_ckpt
-from rraa_rl.training.rollout_temporal_analysis import evaluate_ltl_finite
-from rraa_rl.training.rollout_utils import extract_rollouts_eval
-from rraa_rl.env.general_task.env import StateWithTemporalNode
-from rraa_rl.env.general_task.gridworld import GridworldMAState
-from rraa_rl.agents.vdppo import VDPPOAgent
+from vdppo.training.collector import Collector
+from vdppo.callbacks.gridworld_cbs import save_animation_blit
+from vdppo.training.load_ckpt import load_ckpt
+from vdppo.training.rollout_temporal_analysis import evaluate_ltl_finite
+from vdppo.training.rollout_utils import extract_rollouts_eval
+from vdppo.env.general_task.env import StateWithTemporalNode
+from vdppo.env.general_task.gridworld import GridworldMAState
+from vdppo.agents.vdppo import VDPPOAgent
 
 app = cyclopts.App()
 

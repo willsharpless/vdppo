@@ -8,8 +8,8 @@ import jax.numpy as jnp
 import numpy as np
 from loguru import logger
 
-from rraa_rl.env.manipspace.scene_env import SceneEnv
-from rraa_rl.env.manipspace.scene_env_jax import ManipStep, SceneEnvJax, SceneEnvState
+from vdppo.env.manipspace.scene_env import SceneEnv
+from vdppo.env.manipspace.scene_env_jax import ManipStep, SceneEnvJax, SceneEnvState
 
 os.environ["XLA_FLAGS"] = "--xla_gpu_graph_min_graph_size=1"
 
@@ -666,7 +666,7 @@ def compare_action_processing(
 
     # Compare yaw extraction
     # JAX yaw extraction (from scene_env_jax.py)
-    from rraa_rl.env.manipspace.lie.so3_jax import mat_to_quat
+    from vdppo.env.manipspace.lie.so3_jax import mat_to_quat
 
     jax_quat = np.asarray(jax.device_get(mat_to_quat(jnp.array(jax_effector_mat))))
     # w, x, y, z = jax_quat

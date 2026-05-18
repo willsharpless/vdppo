@@ -6,8 +6,8 @@ import matplotlib.pyplot as plt
 import numpy as np
 from matplotlib.animation import FuncAnimation
 
-from rraa_rl.env.general_task.env import StateWithTemporalNode
-from rraa_rl.env.general_task.herding import Herding, HerdingCfg
+from vdppo.env.general_task.env import StateWithTemporalNode
+from vdppo.env.general_task.herding import Herding, HerdingCfg
 
 
 def main():

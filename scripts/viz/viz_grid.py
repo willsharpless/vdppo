@@ -2,8 +2,8 @@ import ipdb
 import matplotlib.pyplot as plt
 import numpy as np
 
-from rraa_rl.env.general_task.get_env import get_env_and_cbs
-from rraa_rl.env.general_task.gridworld import GridworldMA
+from vdppo.env.general_task.get_env import get_env_and_cbs
+from vdppo.env.general_task.gridworld import GridworldMA
 
 
 def main():

@@ -313,7 +313,7 @@ def add_colored_text_overlay_per_char_rgb(
     return clip
 
 def get_timing_data(seed: int):
-    export_dir = "/Users/oswinso/research/me/rraa-rl/media/02-04__delivery/timing_npzs"
+    export_dir = "/Users/oswinso/research/me/vdppo/media/02-04__delivery/timing_npzs"
     export_dir = pathlib.Path(export_dir)
     npz_path = export_dir / f"timing_seed{seed}.npz"
 

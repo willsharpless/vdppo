@@ -1,12 +1,12 @@
 from cyclopts import App
 
-from rraa_rl.callbacks import delivery_cbs
-from rraa_rl.training.run import Run
-from rraa_rl.env.general_task.delivery import Delivery
-from rraa_rl.env.general_task.delivery_base import DeliveryBaseCfg
-from rraa_rl.env.general_task.env import Env
-from rraa_rl.control.MPPI import MPPI
-# from rraa_rl.training.trainer import Trainer, TrainerCfg
+from vdppo.callbacks import delivery_cbs
+from vdppo.training.run import Run
+from vdppo.env.general_task.delivery import Delivery
+from vdppo.env.general_task.delivery_base import DeliveryBaseCfg
+from vdppo.env.general_task.env import Env
+from vdppo.control.MPPI import MPPI
+# from vdppo.training.trainer import Trainer, TrainerCfg
 import jax.random as jr
 
 app = App()

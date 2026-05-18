@@ -4,12 +4,12 @@ import jax.random as jr
 import matplotlib.pyplot as plt
 from cyclopts import App
 
-from rraa_rl.callbacks import herding_cbs
-from rraa_rl.env.general_task.env import Env
-from rraa_rl.env.general_task.get_env import get_env
-from rraa_rl.env.general_task.herding import Herding, HerdingPlay
-from rraa_rl.training.trainer import Trainer
-from rraa_rl.agents.vdppo import VDPPOAgent
+from vdppo.callbacks import herding_cbs
+from vdppo.env.general_task.env import Env
+from vdppo.env.general_task.get_env import get_env
+from vdppo.env.general_task.herding import Herding, HerdingPlay
+from vdppo.training.trainer import Trainer
+from vdppo.agents.vdppo import VDPPOAgent
 
 
 def main():

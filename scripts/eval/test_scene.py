@@ -10,13 +10,13 @@ import tqdm
 from loguru import logger
 from PIL import Image
 
-from rraa_rl.training.collector import Collector
-from rraa_rl.env.scene import ManipScene
-from rraa_rl.training.load_ckpt import load_ckpt
-from rraa_rl.training.rollout_temporal_analysis import evaluate_ltl_finite
-from rraa_rl.training.rollout_utils import extract_rollouts_eval
-from rraa_rl.callbacks.scene_cbs import animate_scene_traj
-from rraa_rl.agents.vdppo import VDPPOAgent
+from vdppo.training.collector import Collector
+from vdppo.env.scene import ManipScene
+from vdppo.training.load_ckpt import load_ckpt
+from vdppo.training.rollout_temporal_analysis import evaluate_ltl_finite
+from vdppo.training.rollout_utils import extract_rollouts_eval
+from vdppo.callbacks.scene_cbs import animate_scene_traj
+from vdppo.agents.vdppo import VDPPOAgent
 
 app = cyclopts.App()
 

@@ -1,0 +1,105 @@
+import pathlib
+import pickle
+from typing import NamedTuple
+
+import flax
+import jax
+import yaml
+from loguru import logger
+
+from vdppo.agents.lcrl_ppo import LCRLPPOAgent
+from vdppo.training.run import Run
+from vdppo.env.general_task.env import Env
+from vdppo.env.general_task.get_env import get_env_and_cbs
+from vdppo.env.general_task.gridworld import GridworldMA
+from vdppo.agents.vdppo import VDPPOAgent
+
+
+class LoadCkptResult(NamedTuple):
+    run: Run
+    agent: VDPPOAgent | LCRLPPOAgent
+    env: Env
+    cfg_dict: dict
+
+
+def load_ckpt(
+    run_path: pathlib.Path,
+    step: int | None = None,
+    alg: str = "vdppo",
+    n_spec: int = 1,
+    n_agent: int = 1,
+    ashared=True,
+    vshared=True,
+    n_layers=2,
+):
+    # Load the configs.
+    yaml_path = run_path / "config.yaml"
+    with open(yaml_path, "r") as f:
+        cfg_dict = yaml.safe_load(f)
+
+    run = Run.fromdict(cfg_dict["run"])
+    env_name = run.env_name
+    # agent_name = run.agent_name # sometimes capitalizes, differing from previous signature
+
+    env: GridworldMA
+    env, _, _ = get_env_and_cbs(env_name, agent_name=alg, n_spec=n_spec, n_agent=n_agent)
+
+    if alg in {"vd", "vdppo"}:
+        agent_cfg = VDPPOAgent.Cfg.fromdict(cfg_dict["agent"])
+        agent_cfg.actor_shared_trunk = ashared
+        agent_cfg.value_shared_trunk = vshared
+        agent_cfg.actor_hids = (128,) * n_layers
+        agent_cfg.critic_hids = (128,) * n_layers
+        agent = VDPPOAgent.create(123, agent_cfg, env)
+    elif alg == "lcrl":
+        agent_cfg = LCRLPPOAgent.Cfg.fromdict(cfg_dict["agent"])
+        agent_cfg.actor_shared_trunk = ashared
+        agent_cfg.value_shared_trunk = vshared
+        agent_cfg.actor_hids = (128,) * n_layers
+        agent_cfg.critic_hids = (128,) * n_layers
+        agent = LCRLPPOAgent.create(123, agent_cfg, env)
+
+    ckpts_path = run_path / "ckpts"
+    if step is None:
+        latest_ckpt = sorted(ckpts_path.glob("params_*.pkl"))
+        assert latest_ckpt, f"No checkpoints found in {ckpts_path}"
+
+        load_path = latest_ckpt[-1]
+    else:
+        load_path = ckpts_path / f"params_{step:09}.pkl"
+        if not load_path.exists():
+            available = sorted(ckpts_path.glob("params_*.pkl"))
+            raise FileNotFoundError(f"Checkpoint not found: {load_path}. Available: {available}")
+    logger.info(f"Restoring from {load_path}")
+
+    cfg_dict["step"] = step
+
+    try:
+        with load_path.open("rb") as f:
+            load_dict = pickle.load(f)
+    except:
+        # Try loading numpy version
+        load_path_np = ckpts_path.with_name(load_path.stem + "_np.pkl")
+        if not load_path_np.exists():
+            raise
+
+        logger.info(f"Failed to load standard pickle, trying numpy version at {load_path_np}")
+        with load_path_np.open("rb") as f:
+            load_dict = pickle.load(f)
+
+        load_dict = jax.device_put(load_dict)
+
+    # Move loading env after try loading pickle because above could fail
+    env: GridworldMA
+    env, _, _ = get_env_and_cbs(env_name, agent_name=alg, n_spec=n_spec, n_agent=n_agent)
+
+    if alg in {"vd", "vdppo"}:
+        agent_cfg = VDPPOAgent.Cfg.fromdict(cfg_dict["agent"])
+        agent = VDPPOAgent.create(123, agent_cfg, env)
+    elif alg == "lcrl":
+        agent_cfg = LCRLPPOAgent.Cfg.fromdict(cfg_dict["agent"])
+        agent = LCRLPPOAgent.create(123, agent_cfg, env)
+
+    agent: VDPPOAgent | LCRLPPOAgent = flax.serialization.from_state_dict(agent, load_dict["agent"])
+
+    return LoadCkptResult(run=run, agent=agent, env=env, cfg_dict=cfg_dict)

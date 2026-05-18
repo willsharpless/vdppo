@@ -1,8 +1,8 @@
 import ipdb
 import numpy as np
 
-from rraa_rl.control.cmdp_wrapper import CMDPEnvWrapper
-from rraa_rl.env.general_task.get_env import get_env_and_cbs
+from vdppo.control.cmdp_wrapper import CMDPEnvWrapper
+from vdppo.env.general_task.get_env import get_env_and_cbs
 
 
 def main():

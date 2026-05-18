@@ -12,8 +12,8 @@ import numpy as np
 from loguru import logger
 from tqdm.auto import tqdm
 
-from rraa_rl.training.eval import eval
-from rraa_rl.training.eval_results import get_eval_results_path
+from vdppo.training.eval import eval
+from vdppo.training.eval_results import get_eval_results_path
 
 app = cyclopts.App()
 

@@ -5,12 +5,12 @@ import ipdb
 import jax
 import jax.random as jr
 
-from rraa_rl.training.collector import Collector
-from rraa_rl.callbacks.herding_cbs import animate_herding_traj
-from rraa_rl.training.load_ckpt import load_ckpt
-from rraa_rl.training.rollout_utils import extract_rollouts_eval
-from rraa_rl.env.general_task.herding import Herding
-from rraa_rl.agents.vdppo import VDPPOAgent
+from vdppo.training.collector import Collector
+from vdppo.callbacks.herding_cbs import animate_herding_traj
+from vdppo.training.load_ckpt import load_ckpt
+from vdppo.training.rollout_utils import extract_rollouts_eval
+from vdppo.env.general_task.herding import Herding
+from vdppo.agents.vdppo import VDPPOAgent
 
 app = cyclopts.App()
 

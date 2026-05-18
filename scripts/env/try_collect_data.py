@@ -9,11 +9,11 @@ import tqdm
 from loguru import logger
 from PIL import Image, ImageDraw, ImageFont
 
-from rraa_rl.env.manipspace.data.button_plan import ButtonPlanOracle
-from rraa_rl.env.manipspace.data.cube_plan import CubePlanOracle
-from rraa_rl.env.manipspace.data.drawer_plan import DrawerPlanOracle
-from rraa_rl.env.manipspace.data.window_plan import WindowPlanOracle
-from rraa_rl.env.manipspace.scene_env import SceneEnv
+from vdppo.env.manipspace.data.button_plan import ButtonPlanOracle
+from vdppo.env.manipspace.data.cube_plan import CubePlanOracle
+from vdppo.env.manipspace.data.drawer_plan import DrawerPlanOracle
+from vdppo.env.manipspace.data.window_plan import WindowPlanOracle
+from vdppo.env.manipspace.scene_env import SceneEnv
 
 
 def main(noise: float = 0.0, noise_smoothing: float = 0.5):

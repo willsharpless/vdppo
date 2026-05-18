@@ -10,12 +10,12 @@ import numpy as np
 from loguru import logger
 from PIL import Image, ImageDraw, ImageFont
 
-from rraa_rl.training.collector import Collector, RolloutOutput
-from rraa_rl.env.scene import ManipScene, SceneBaseMinState
-from rraa_rl.training.rollout_utils import extract_rollouts_eval
-from rraa_rl.env.general_task.env import StateWithTemporalNode
-from rraa_rl.get_agent_cfg import get_vdppo_agent_cfg
-from rraa_rl.agents.vdppo import VDPPOAgent
+from vdppo.training.collector import Collector, RolloutOutput
+from vdppo.env.scene import ManipScene, SceneBaseMinState
+from vdppo.training.rollout_utils import extract_rollouts_eval
+from vdppo.env.general_task.env import StateWithTemporalNode
+from vdppo.get_agent_cfg import get_vdppo_agent_cfg
+from vdppo.agents.vdppo import VDPPOAgent
 
 
 def main():

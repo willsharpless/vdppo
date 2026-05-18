@@ -5,10 +5,10 @@ import jax_dataclasses as jdc
 import numpy as np
 from loguru import logger
 
-from rraa_rl.automata.lcrl_wrapper import LCRLWrapper
-from rraa_rl.env.general_task.env import EnvStep
-from rraa_rl.env.general_task.get_env import get_env_and_cbs
-from rraa_rl.env.general_task.gridworld import GridworldMAState
+from vdppo.automata.lcrl_wrapper import LCRLWrapper
+from vdppo.env.general_task.env import EnvStep
+from vdppo.env.general_task.get_env import get_env_and_cbs
+from vdppo.env.general_task.gridworld import GridworldMAState
 
 
 def main():

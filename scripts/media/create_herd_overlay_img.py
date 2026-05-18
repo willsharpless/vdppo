@@ -13,7 +13,7 @@ from matplotlib.collections import LineCollection
 from matplotlib.colors import to_rgb, to_rgba
 from segment_anything import SamPredictor, sam_model_registry
 
-from rraa_rl.common.path_utils import get_root_dir
+from vdppo.common.path_utils import get_root_dir
 
 app = cyclopts.App()
 

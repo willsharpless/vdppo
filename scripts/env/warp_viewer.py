@@ -43,7 +43,7 @@ from etils import epath
 from mujoco.mjx.third_party.mujoco_warp._src.io import find_keys, make_trajectory, override_model
 from ogbench.manipspace import lie, mjcf_utils
 
-from rraa_rl.env.manipspace.diff_ik import DiffIKController
+from vdppo.env.manipspace.diff_ik import DiffIKController
 
 
 class EngineOptions(enum.IntEnum):
@@ -158,7 +158,7 @@ class IKController:
 
         # Initialize IK controller using UR5e model
         self._desc_dir = (
-            Path(__file__).resolve().parent.parent.parent / "src" / "rraa_rl" / "env" / "manipspace" / "descriptions"
+            Path(__file__).resolve().parent.parent.parent / "src" / "vdppo" / "env" / "manipspace" / "descriptions"
         )
         ik_mjcf = mjcf.from_path(
             (self._desc_dir / "universal_robots_ur5e" / "ur5e.xml").as_posix(), escape_separators=True

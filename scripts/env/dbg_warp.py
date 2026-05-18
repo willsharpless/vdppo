@@ -4,7 +4,7 @@ import jax.numpy as jnp
 import jax
 import jax.random as jr
 
-from rraa_rl.env.scene import ManipScene
+from vdppo.env.scene import ManipScene
 
 
 def main():

@@ -16,9 +16,9 @@ import numpy as np
 from loguru import logger
 from scipy import stats
 
-from rraa_rl.training.paper_plot_utils import set_ax_style
-from rraa_rl.common.path_utils import get_paper_plot_dir, get_runs_dir
-from rraa_rl.training.trainer import TrainerCfg
+from vdppo.training.paper_plot_utils import set_ax_style
+from vdppo.common.path_utils import get_paper_plot_dir, get_runs_dir
+from vdppo.training.trainer import TrainerCfg
 
 app = cyclopts.App()
 GPU_METRIC_NAME = "peak_gpu_mem_gib"

@@ -2,16 +2,16 @@ import ipdb
 import jax.random as jr
 from cyclopts import App
 
-from rraa_rl.agents.cmdp_ppo import CMDPPOAgent
-from rraa_rl.agents.lcrl_ppo import LCRLPPOAgent
-from rraa_rl.agents.vdppo import VDPPOAgent
-from rraa_rl.automata.lcrl_wrapper import LCRLWrapper
-from rraa_rl.control.MPPI import MPPI
-from rraa_rl.training.run import Run
-from rraa_rl.env.general_task.env import Env
-from rraa_rl.env.general_task.get_env import get_env_and_cbs
-from rraa_rl.get_agent_cfg import get_cmdp_agent_cfg, get_lcrl_agent_cfg, get_vdppo_agent_cfg
-from rraa_rl.training.trainer import Trainer, TrainerCfg
+from vdppo.agents.cmdp_ppo import CMDPPOAgent
+from vdppo.agents.lcrl_ppo import LCRLPPOAgent
+from vdppo.agents.vdppo import VDPPOAgent
+from vdppo.automata.lcrl_wrapper import LCRLWrapper
+from vdppo.control.MPPI import MPPI
+from vdppo.training.run import Run
+from vdppo.env.general_task.env import Env
+from vdppo.env.general_task.get_env import get_env_and_cbs
+from vdppo.get_agent_cfg import get_cmdp_agent_cfg, get_lcrl_agent_cfg, get_vdppo_agent_cfg
+from vdppo.training.trainer import Trainer, TrainerCfg
 
 app = App()
 
