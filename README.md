@@ -1,10 +1,10 @@
 # VDPPO
 
-This repo contains the jax code for Value Decomposition PPO from [Bellman Value Decomposition for Task Logic](https://willsharpless.github.io/valdec-site/) \[RSS '26\]. The algorithm relies on [valtr](https://willsharpless.github.io/valtr/) to generate the decomposed Value graph (DVG).
+This repo contains the jax code for Value Decomposition PPO from [Bellman Value Decomposition for Task Logic](https://willsharpless.github.io/valdec-site/) \[RSS '26\]. The algorithm relies on [valtr](https://github.com/willsharpless/valtr) to generate the decomposed Value graph (DVG).
 
 ## basic summary
 
-For given temporal logic, this PPO variant decomposes the Value into a graph of "atomic" Bellman equations (BEs) (via [valtr](https://willsharpless.github.io/valtr/)) and learns an actor and critic for all policies and Values concurrently by embedding (one-hot) the graph. 
+For given temporal logic, this PPO variant decomposes the Value into a graph of "atomic" Bellman equations (BEs) (via [valtr](https://github.com/willsharpless/valtr)) and learns an actor and critic for all policies and Values concurrently by embedding (one-hot) the graph. 
 
 ![VDPPO graphic](vdppo_graphic.png)
 
