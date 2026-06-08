@@ -20,7 +20,7 @@ pip install -e .
 ```
 python scripts/train.py ALG --name test --debug --env-name ENV --n-train-steps 30000
 ```
-where `ALG` is, for example, `vdppo`, `lcrl` or `mppi`. `ENV` is for example `herding`, `delivery` (sim vers.), `deliveryreal` (hardware vers.), `manip_scene`, `gridworld_map[N]` or `ablation`. Use the `--help` flag to see more options. Remove `--n-train-steps` to load the minimum steps for reported scores. 
+where `ALG` is, for example, `vdppo`, `lcrl` or `mppi`. `ENV` is for example `herding`, `delivery` (sim vers.), `deliveryreal` (hardware vers.), `manip_scene`, `gridworld_map[N]` or `ablation`. Use the `--help` flag to see more options. Remove `--n-train-steps` to load the steps for reported scores. 
 
 ### testing
 
